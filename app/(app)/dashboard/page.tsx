@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
 import { Topbar } from '@/components/layout/topbar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -63,22 +64,39 @@ export default function DashboardPage() {
   const [medicoesRecentes, setMedicoesRecentes] = useState<any[]>([])
   const [grupos, setGrupos] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [rtConnected, setRtConnected] = useState(false)
+
+  async function fetchDashboard(initial = false) {
+    try {
+      const res = await fetch('/api/dashboard')
+      if (res.ok) {
+        const data = await res.json()
+        setContratos(data.contratos || [])
+        setMedicoesRecentes(data.medicoes_recentes || [])
+        setGrupos(data.grupos || [])
+      }
+    } finally {
+      if (initial) setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    async function fetchDashboard() {
-      try {
-        const res = await fetch('/api/dashboard')
-        if (res.ok) {
-          const data = await res.json()
-          setContratos(data.contratos || [])
-          setMedicoesRecentes(data.medicoes_recentes || [])
-          setGrupos(data.grupos || [])
-        }
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchDashboard()
+    fetchDashboard(true)
+  }, [])
+
+  // Realtime subscription — refresh KPIs when any measurement changes
+  useEffect(() => {
+    const supabase = createClient()
+    const channel = supabase
+      .channel('dashboard-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'medicoes' },
+        () => { fetchDashboard() }
+      )
+      .subscribe((status) => setRtConnected(status === 'SUBSCRIBED'))
+
+    return () => { supabase.removeChannel(channel) }
   }, [])
 
   const totalContratado = contratos.reduce((a, c) => a + (c.valor_contratado || 0), 0)
@@ -159,7 +177,18 @@ export default function DashboardPage() {
     <div className="flex-1 overflow-auto" style={{ background: '#080C14' }}>
       <Topbar
         title="Dashboard Geral"
-        subtitle="Visão consolidada de todos os contratos"
+        subtitle={
+          <span className="flex items-center gap-2">
+            Visão consolidada de todos os contratos
+            <span className="flex items-center gap-1" style={{ color: rtConnected ? '#10B981' : '#475569' }}>
+              <span
+                className={`w-1.5 h-1.5 rounded-full inline-block ${rtConnected ? 'animate-pulse' : ''}`}
+                style={{ background: rtConnected ? '#10B981' : '#475569' }}
+              />
+              {rtConnected ? 'Ao Vivo' : 'Conectando...'}
+            </span>
+          </span>
+        }
         actions={
           <Link href="/contratos/novo">
             <Button size="sm">

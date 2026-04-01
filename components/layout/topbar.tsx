@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 
 interface TopbarProps {
   title?: string
-  subtitle?: string
+  subtitle?: React.ReactNode
   actions?: React.ReactNode
 }
 
@@ -23,7 +23,7 @@ export function Topbar({ title, subtitle, actions }: TopbarProps) {
           <h2 className="font-bold text-[#F1F5F9] text-base leading-tight">{title}</h2>
         )}
         {subtitle && (
-          <p className="text-xs text-[#475569] leading-tight">{subtitle}</p>
+          <div className="text-xs text-[#475569] leading-tight">{subtitle}</div>
         )}
       </div>
       <div className="flex items-center gap-2">

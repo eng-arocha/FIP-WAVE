@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
 import { Topbar } from '@/components/layout/topbar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -61,6 +62,7 @@ export default function AprovacoesPage() {
   const [motivo, setMotivo] = useState('')
   const [saving, setSaving] = useState(false)
   const [quickAprovando, setQuickAprovando] = useState<string | null>(null)
+  const [rtConnected, setRtConnected] = useState(false)
 
   useEffect(() => {
     async function loadAprovacoes() {
@@ -76,6 +78,51 @@ export default function AprovacoesPage() {
       }
     }
     loadAprovacoes()
+  }, [])
+
+  // Realtime subscription — live updates without F5
+  useEffect(() => {
+    const supabase = createClient()
+    const channel = supabase
+      .channel('aprovacoes-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'medicoes' },
+        (payload) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { eventType, new: newRow } = payload as any
+          if (eventType === 'INSERT' && ['submetido', 'em_analise'].includes(newRow?.status)) {
+            // New submission from another session — re-fetch to get joined contrato data
+            fetch('/api/aprovacoes').then(r => r.json()).then(data => {
+              setPendentes(data.pendentes ?? [])
+            })
+          } else if (eventType === 'UPDATE') {
+            const newStatus: string = newRow?.status
+            if (['aprovado', 'rejeitado', 'cancelado'].includes(newStatus)) {
+              // A pending measurement was just acted on — move it to historico
+              setPendentes(prev => {
+                const item = prev.find(p => p.id === newRow.id)
+                if (item) {
+                  setHistorico(hist => [
+                    { ...item, status: newStatus, updated_at: newRow.updated_at || new Date().toISOString() },
+                    ...hist,
+                  ])
+                }
+                return prev.filter(p => p.id !== newRow.id)
+              })
+            } else if (newStatus === 'submetido') {
+              // Re-submitted measurement — refresh full list
+              fetch('/api/aprovacoes').then(r => r.json()).then(data => {
+                setPendentes(data.pendentes ?? [])
+                setHistorico(data.historico ?? [])
+              })
+            }
+          }
+        }
+      )
+      .subscribe((status) => setRtConnected(status === 'SUBSCRIBED'))
+
+    return () => { supabase.removeChannel(channel) }
   }, [])
 
   async function quickAprovar(m: PendenteMedicao) {
@@ -182,7 +229,18 @@ export default function AprovacoesPage() {
     <div className="flex-1 overflow-auto" style={{ background: '#080C14' }}>
       <Topbar
         title="Fila de Aprovações"
-        subtitle="Medições aguardando análise e histórico"
+        subtitle={
+          <span className="flex items-center gap-2">
+            Medições aguardando análise e histórico
+            <span className="flex items-center gap-1" style={{ color: rtConnected ? '#10B981' : '#475569' }}>
+              <span
+                className={`w-1.5 h-1.5 rounded-full inline-block ${rtConnected ? 'animate-pulse' : ''}`}
+                style={{ background: rtConnected ? '#10B981' : '#475569' }}
+              />
+              {rtConnected ? 'Ao Vivo' : 'Conectando...'}
+            </span>
+          </span>
+        }
       />
 
       <div className="p-6">

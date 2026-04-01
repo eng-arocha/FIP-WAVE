@@ -2,6 +2,7 @@
 
 import { use, useState, useEffect } from 'react'
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
 import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -56,6 +57,20 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
       fetchMedicao()
     }
   }, [status])
+
+  // Realtime: auto-refresh when this measurement is approved/rejected elsewhere
+  useEffect(() => {
+    const supabase = createClient()
+    const channel = supabase
+      .channel(`medicao-${medicaoId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'medicoes', filter: `id=eq.${medicaoId}` },
+        () => { fetchMedicao() }
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [medicaoId])
 
   if (!medicao || !status) {
     return (
