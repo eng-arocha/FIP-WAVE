@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,75 +12,49 @@ import {
 } from '@/components/ui/dialog'
 import {
   CheckCircle2, XCircle, Clock, AlertCircle,
-  FileText, Building2, Calendar, ArrowRight
+  FileText, Building2, Calendar, ArrowRight, Loader2
 } from 'lucide-react'
 import { formatCurrency, formatDate, formatDatetime, getMedicaoStatusColor } from '@/lib/utils'
 import { MEDICAO_STATUS_LABELS, MedicaoStatus } from '@/types'
 
-const PENDING_MEDICOES = [
-  {
-    id: '4',
-    numero: 4,
-    periodo_referencia: '2026-03',
-    tipo: 'misto' as const,
-    status: 'submetido' as const,
-    valor_total: 580000,
-    solicitante_nome: 'Engenheiro Wave',
-    solicitante_email: 'eng@waveinstalacoes.com.br',
-    data_submissao: '2026-03-28T10:00:00Z',
-    contrato: {
-      id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-      numero: 'WAVE-2025-001',
-      descricao: 'Contrato de Instalações - Empreendimento Wave',
-      contratado: { nome: 'Wave Instalações SPE LTDA' },
-    },
-    anexos_count: 3,
-    nfs_count: 2,
-  },
-]
+interface PendenteMedicao {
+  id: string
+  numero: number
+  periodo_referencia: string
+  tipo: string
+  status: string
+  valor_total: number
+  solicitante_nome: string
+  solicitante_email: string
+  data_submissao: string
+  contrato: {
+    id: string
+    numero: string
+    descricao: string
+    contratado: { nome: string }
+  }
+}
 
-const HISTORICO_APROVACOES = [
-  {
-    id: '3',
-    numero: 3,
-    periodo_referencia: '2026-02',
-    tipo: 'misto' as const,
-    status: 'aprovado' as const,
-    valor_total: 620000,
-    data_aprovacao: '2026-03-05T14:30:00Z',
-    aprovador_nome: 'Fiscal FIP',
-    contrato: { numero: 'WAVE-2025-001', contratado: { nome: 'Wave Instalações SPE LTDA' } },
-    contrato_id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-  },
-  {
-    id: '2',
-    numero: 2,
-    periodo_referencia: '2026-01',
-    tipo: 'servico' as const,
-    status: 'aprovado' as const,
-    valor_total: 1200000,
-    data_aprovacao: '2026-02-04T11:00:00Z',
-    aprovador_nome: 'Fiscal FIP',
-    contrato: { numero: 'WAVE-2025-001', contratado: { nome: 'Wave Instalações SPE LTDA' } },
-    contrato_id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-  },
-  {
-    id: '1',
-    numero: 1,
-    periodo_referencia: '2025-12',
-    tipo: 'faturamento_direto' as const,
-    status: 'aprovado' as const,
-    valor_total: 1420000,
-    data_aprovacao: '2026-01-07T16:00:00Z',
-    aprovador_nome: 'Fiscal FIP',
-    contrato: { numero: 'WAVE-2025-001', contratado: { nome: 'Wave Instalações SPE LTDA' } },
-    contrato_id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-  },
-]
+interface HistoricoMedicao {
+  id: string
+  numero: number
+  periodo_referencia: string
+  tipo: string
+  status: string
+  valor_total: number
+  updated_at?: string
+  contrato: {
+    id: string
+    numero: string
+    contratado?: { nome: string }
+  }
+  aprovacoes?: { aprovador_nome: string }[]
+}
 
 export default function AprovacoesPage() {
-  const [pendentes, setPendentes] = useState(PENDING_MEDICOES)
-  const [historico, setHistorico] = useState(HISTORICO_APROVACOES)
+  const [pendentes, setPendentes] = useState<PendenteMedicao[]>([])
+  const [historico, setHistorico] = useState<HistoricoMedicao[]>([])
+  const [loading, setLoading] = useState(true)
   const [aba, setAba] = useState<'pendentes' | 'historico'>('pendentes')
   const [modalAprovar, setModalAprovar] = useState<string | null>(null)
   const [modalRejeitar, setModalRejeitar] = useState<string | null>(null)
@@ -88,27 +62,89 @@ export default function AprovacoesPage() {
   const [motivo, setMotivo] = useState('')
   const [saving, setSaving] = useState(false)
 
+  useEffect(() => {
+    async function loadAprovacoes() {
+      try {
+        const res = await fetch('/api/aprovacoes')
+        if (res.ok) {
+          const data = await res.json()
+          setPendentes(data.pendentes ?? [])
+          setHistorico(data.historico ?? [])
+        }
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadAprovacoes()
+  }, [])
+
   const medicaoAprovar = pendentes.find(m => m.id === modalAprovar)
   const medicaoRejeitar = pendentes.find(m => m.id === modalRejeitar)
 
   async function confirmarAprovacao() {
-    if (!modalAprovar) return
+    if (!modalAprovar || !medicaoAprovar) return
     setSaving(true)
-    await new Promise(r => setTimeout(r, 1200))
-    setPendentes(prev => prev.filter(m => m.id !== modalAprovar))
-    setSaving(false)
-    setModalAprovar(null)
-    setComentario('')
+    try {
+      const res = await fetch(`/api/contratos/${medicaoAprovar.contrato.id}/medicoes/${medicaoAprovar.id}/aprovar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          aprovadorNome: 'Fiscal FIP',
+          aprovadorEmail: 'fiscal@fipengenharia.com.br',
+          comentario,
+          medicao: medicaoAprovar,
+        }),
+      })
+      if (res.ok) {
+        setPendentes(prev => prev.filter(m => m.id !== modalAprovar))
+        setHistorico(prev => [
+          {
+            ...medicaoAprovar,
+            status: 'aprovado',
+            updated_at: new Date().toISOString(),
+            aprovacoes: [{ aprovador_nome: 'Fiscal FIP' }],
+          },
+          ...prev,
+        ])
+      }
+    } finally {
+      setSaving(false)
+      setModalAprovar(null)
+      setComentario('')
+    }
   }
 
   async function confirmarRejeicao() {
-    if (!modalRejeitar || !motivo) return
+    if (!modalRejeitar || !motivo || !medicaoRejeitar) return
     setSaving(true)
-    await new Promise(r => setTimeout(r, 1200))
-    setPendentes(prev => prev.filter(m => m.id !== modalRejeitar))
-    setSaving(false)
-    setModalRejeitar(null)
-    setMotivo('')
+    try {
+      const res = await fetch(`/api/contratos/${medicaoRejeitar.contrato.id}/medicoes/${medicaoRejeitar.id}/rejeitar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          aprovadorNome: 'Fiscal FIP',
+          aprovadorEmail: 'fiscal@fipengenharia.com.br',
+          motivo,
+          medicao: medicaoRejeitar,
+        }),
+      })
+      if (res.ok) {
+        setPendentes(prev => prev.filter(m => m.id !== modalRejeitar))
+        setHistorico(prev => [
+          {
+            ...medicaoRejeitar,
+            status: 'rejeitado',
+            updated_at: new Date().toISOString(),
+            aprovacoes: [{ aprovador_nome: 'Fiscal FIP' }],
+          },
+          ...prev,
+        ])
+      }
+    } finally {
+      setSaving(false)
+      setModalRejeitar(null)
+      setMotivo('')
+    }
   }
 
   const TIPO_LABELS: Record<string, string> = {
@@ -194,8 +230,29 @@ export default function AprovacoesPage() {
           </button>
         </div>
 
+        {/* Loading skeleton */}
+        {loading && (
+          <div className="space-y-3">
+            {[1, 2, 3].map(i => (
+              <Card key={i} className="animate-pulse">
+                <CardContent className="p-5">
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 bg-gray-200 rounded-xl flex-shrink-0" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 bg-gray-200 rounded w-1/3" />
+                      <div className="h-3 bg-gray-200 rounded w-1/2" />
+                      <div className="h-3 bg-gray-200 rounded w-1/4" />
+                    </div>
+                    <div className="h-6 bg-gray-200 rounded w-24" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
         {/* Pendentes */}
-        {aba === 'pendentes' && (
+        {!loading && aba === 'pendentes' && (
           <div className="space-y-3">
             {pendentes.length === 0 ? (
               <div className="text-center py-16 text-gray-400">
@@ -215,8 +272,8 @@ export default function AprovacoesPage() {
                         <div>
                           <div className="flex items-center gap-2 mb-1">
                             <span className="font-bold text-gray-900">Medição #{String(m.numero).padStart(3, '0')}</span>
-                            <Badge className={getMedicaoStatusColor(m.status)}>
-                              {MEDICAO_STATUS_LABELS[m.status]}
+                            <Badge className={getMedicaoStatusColor(m.status as MedicaoStatus)}>
+                              {MEDICAO_STATUS_LABELS[m.status as MedicaoStatus]}
                             </Badge>
                             <Badge className={TIPO_COLORS[m.tipo]}>{TIPO_LABELS[m.tipo]}</Badge>
                           </div>
@@ -224,11 +281,10 @@ export default function AprovacoesPage() {
                         </div>
                         <p className="text-xl font-bold text-[#1e3a5f] flex-shrink-0">{formatCurrency(m.valor_total)}</p>
                       </div>
-                      <div className="grid grid-cols-4 gap-3 text-xs text-gray-500 mb-3">
+                      <div className="grid grid-cols-3 gap-3 text-xs text-gray-500 mb-3">
                         <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {m.periodo_referencia}</span>
                         <span className="flex items-center gap-1"><Building2 className="w-3 h-3" /> {m.contrato.contratado.nome}</span>
                         <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> Subm. {formatDate(m.data_submissao)}</span>
-                        <span>{m.anexos_count} anexo(s) · {m.nfs_count} NF(s)</span>
                       </div>
                       <div className="flex gap-2">
                         <Button variant="success" size="sm" onClick={() => setModalAprovar(m.id)}>
@@ -254,43 +310,49 @@ export default function AprovacoesPage() {
         )}
 
         {/* Histórico */}
-        {aba === 'historico' && (
+        {!loading && aba === 'historico' && (
           <div className="space-y-2">
-            {historico.map(m => (
-              <Card key={m.id} className="hover:shadow-sm transition-shadow">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      m.status === 'aprovado' ? 'bg-green-100' : 'bg-red-100'
-                    }`}>
-                      {m.status === 'aprovado'
-                        ? <CheckCircle2 className="w-4 h-4 text-green-600" />
-                        : <XCircle className="w-4 h-4 text-red-500" />
-                      }
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm">Medição #{String(m.numero).padStart(3, '0')}</span>
-                        <Badge className={getMedicaoStatusColor(m.status as MedicaoStatus)}>
-                          {MEDICAO_STATUS_LABELS[m.status as MedicaoStatus]}
-                        </Badge>
-                        <Badge className={TIPO_COLORS[m.tipo]}>{TIPO_LABELS[m.tipo]}</Badge>
+            {historico.map(m => {
+              const dataAprovacao = m.updated_at
+              const aprovadorNome = m.aprovacoes?.[0]?.aprovador_nome || '—'
+              return (
+                <Card key={m.id} className="hover:shadow-sm transition-shadow">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                        m.status === 'aprovado' ? 'bg-green-100' : 'bg-red-100'
+                      }`}>
+                        {m.status === 'aprovado'
+                          ? <CheckCircle2 className="w-4 h-4 text-green-600" />
+                          : <XCircle className="w-4 h-4 text-red-500" />
+                        }
                       </div>
-                      <p className="text-xs text-gray-500">{m.contrato.numero} · {m.periodo_referencia}</p>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm">Medição #{String(m.numero).padStart(3, '0')}</span>
+                          <Badge className={getMedicaoStatusColor(m.status as MedicaoStatus)}>
+                            {MEDICAO_STATUS_LABELS[m.status as MedicaoStatus]}
+                          </Badge>
+                          <Badge className={TIPO_COLORS[m.tipo]}>{TIPO_LABELS[m.tipo]}</Badge>
+                        </div>
+                        <p className="text-xs text-gray-500">{m.contrato.numero} · {m.periodo_referencia}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold text-sm">{formatCurrency(m.valor_total)}</p>
+                        <p className="text-xs text-gray-400">
+                          {m.status === 'aprovado' ? 'Aprovado' : 'Rejeitado'} em {dataAprovacao ? formatDate(dataAprovacao) : '—'}
+                        </p>
+                      </div>
+                      <Link href={`/contratos/${m.contrato.id}/medicoes/${m.id}`}>
+                        <Button variant="ghost" size="sm">
+                          <ArrowRight className="w-4 h-4" />
+                        </Button>
+                      </Link>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-sm">{formatCurrency(m.valor_total)}</p>
-                      <p className="text-xs text-gray-400">{m.status === 'aprovado' ? 'Aprovado' : 'Rejeitado'} em {formatDate(m.data_aprovacao)}</p>
-                    </div>
-                    <Link href={`/contratos/${m.contrato_id}/medicoes/${m.id}`}>
-                      <Button variant="ghost" size="sm">
-                        <ArrowRight className="w-4 h-4" />
-                      </Button>
-                    </Link>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              )
+            })}
           </div>
         )}
       </div>

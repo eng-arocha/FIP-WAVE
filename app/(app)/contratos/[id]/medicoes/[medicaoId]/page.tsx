@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useState } from 'react'
+import { use, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import {
   ArrowLeft, CheckCircle2, XCircle, MessageSquare, Download,
-  FileText, User, Calendar, Hash, Clock, Paperclip, AlertCircle
+  FileText, User, Calendar, Hash, Clock, Paperclip, AlertCircle, Loader2
 } from 'lucide-react'
 import {
   formatCurrency, formatDatetime, formatDate,
@@ -21,76 +21,70 @@ import {
 } from '@/lib/utils'
 import { MEDICAO_STATUS_LABELS, TIPO_MEDICAO_LABELS, MedicaoStatus } from '@/types'
 
-const MOCK_MEDICAO = {
-  id: '4',
-  numero: 4,
-  periodo_referencia: '2026-03',
-  tipo: 'misto' as const,
-  status: 'submetido' as const,
-  valor_total: 580000,
-  solicitante_nome: 'Engenheiro Wave',
-  solicitante_email: 'eng@waveinstalacoes.com.br',
-  data_submissao: '2026-03-28T10:00:00Z',
-  observacoes: 'Medição referente ao mês de março/2026. Inclui serviços de instalação elétrica e fornecimento de materiais hidráulicos.',
-  motivo_rejeicao: null,
-  contrato: {
-    id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-    numero: 'WAVE-2025-001',
-    descricao: 'Contrato de Instalações - Empreendimento Wave',
-    contratante: { nome: 'Wave Instalações SPE LTDA', email_contato: 'medicao@waveinstalacoes.com.br' },
-    contratado: { nome: 'FIP Engenharia', email_contato: 'financeiro@fipengenharia.com.br' },
-  },
-  itens: [
-    { id: '1', codigo: '1.1.1', descricao: 'QDC - Quadro Distribuição Circuitos', unidade: 'un', qtd_medida: 5, valor_unit: 3200, valor_total: 16000 },
-    { id: '2', codigo: '1.2.1', descricao: 'Eletroduto flexível 3/4"', unidade: 'm', qtd_medida: 800, valor_unit: 8.5, valor_total: 6800 },
-    { id: '3', codigo: '1.2.2', descricao: 'Cabo 2,5mm² 450/750V', unidade: 'm', qtd_medida: 2000, valor_unit: 4.2, valor_total: 8400 },
-    { id: '4', codigo: '2.1.1', descricao: 'Tubo PVC 50mm água fria', unidade: 'm', qtd_medida: 200, valor_unit: 18, valor_total: 3600 },
-  ],
-  notas_fiscais: [
-    { id: '1', numero_nf: '000123', emitente: 'Distribuidora Elétrica ABC LTDA', valor: 31200, data_emissao: '2026-03-25', status_validacao: 'pendente' as 'pendente' | 'aprovada' | 'rejeitada' },
-    { id: '2', numero_nf: '000456', emitente: 'Hidráulica XYZ Comércio', valor: 3600, data_emissao: '2026-03-26', status_validacao: 'pendente' as 'pendente' | 'aprovada' | 'rejeitada' },
-  ],
-  anexos: [
-    { id: '1', nome_original: 'Relatório Fotográfico Março.pdf', tipo_documento: 'relatorio_fotos', tamanho_bytes: 4200000 },
-    { id: '2', nome_original: 'NF-000123.pdf', tipo_documento: 'nota_fiscal', tamanho_bytes: 180000 },
-    { id: '3', nome_original: 'NF-000456.pdf', tipo_documento: 'nota_fiscal', tamanho_bytes: 165000 },
-  ],
-  aprovacoes: [
-    { id: '1', aprovador_nome: 'Engenheiro Wave', aprovador_email: 'eng@waveinstalacoes.com.br', acao: 'comentou' as const, comentario: 'Medição submetida para aprovação. Documentos anexados.', created_at: '2026-03-28T10:00:00Z' },
-  ],
-}
-
 export default function MedicaoDetailPage({ params }: { params: Promise<{ id: string; medicaoId: string }> }) {
   const { id: contratoId, medicaoId } = use(params)
-  const medicao = MOCK_MEDICAO
 
+  const [medicao, setMedicao] = useState<any>(null)
   const [modalAprovar, setModalAprovar] = useState(false)
   const [modalRejeitar, setModalRejeitar] = useState(false)
   const [comentario, setComentario] = useState('')
   const [motivo, setMotivo] = useState('')
   const [saving, setSaving] = useState(false)
-  const [status, setStatus] = useState<MedicaoStatus>(medicao.status)
+  const [status, setStatus] = useState<MedicaoStatus | null>(null)
+
+  async function fetchMedicao() {
+    const res = await fetch(`/api/contratos/${contratoId}/medicoes/${medicaoId}`)
+    if (res.ok) {
+      const data = await res.json()
+      setMedicao(data)
+      setStatus(data.status)
+    }
+  }
+
+  useEffect(() => {
+    fetchMedicao()
+  }, [contratoId, medicaoId])
+
+  useEffect(() => {
+    if (status !== null && medicao !== null && status !== medicao.status) {
+      fetchMedicao()
+    }
+  }, [status])
+
+  if (!medicao || !status) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-[#1e3a5f]" />
+      </div>
+    )
+  }
 
   const isPendente = status === 'submetido' || status === 'em_analise'
 
   async function aprovar() {
     setSaving(true)
-    await new Promise(r => setTimeout(r, 1200))
+    const res = await fetch(`/api/contratos/${contratoId}/medicoes/${medicaoId}/aprovar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ aprovadorNome: 'Fiscal FIP', aprovadorEmail: 'fiscal@fipengenharia.com.br', comentario, medicao })
+    })
     setSaving(false)
-    setStatus('aprovado')
-    setModalAprovar(false)
+    if (res.ok) { setStatus('aprovado'); setModalAprovar(false) }
   }
 
   async function rejeitar() {
     if (!motivo) return
     setSaving(true)
-    await new Promise(r => setTimeout(r, 1200))
+    const res = await fetch(`/api/contratos/${contratoId}/medicoes/${medicaoId}/rejeitar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ aprovadorNome: 'Fiscal FIP', aprovadorEmail: 'fiscal@fipengenharia.com.br', comentario: motivo, medicao })
+    })
     setSaving(false)
-    setStatus('rejeitado')
-    setModalRejeitar(false)
+    if (res.ok) { setStatus('rejeitado'); setModalRejeitar(false) }
   }
 
-  const ACAO_CONFIG = {
+  const ACAO_CONFIG: Record<string, { icon: any; color: string; label: string }> = {
     aprovado: { icon: CheckCircle2, color: 'text-green-600', label: 'Aprovação' },
     rejeitado: { icon: XCircle, color: 'text-red-500', label: 'Rejeição' },
     solicitou_ajuste: { icon: AlertCircle, color: 'text-yellow-500', label: 'Ajuste Solicitado' },
@@ -102,11 +96,16 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
+  const itens: any[] = medicao.medicao_itens || []
+  const anexos: any[] = medicao.medicao_anexos || []
+  const notas_fiscais: any[] = medicao.notas_fiscais || []
+  const aprovacoes: any[] = medicao.aprovacoes || []
+
   return (
     <div className="flex-1 overflow-auto">
       <Topbar
         title={`Medição #${String(medicao.numero).padStart(3, '0')} — ${medicao.periodo_referencia}`}
-        subtitle={medicao.contrato.numero}
+        subtitle={medicao.contrato?.numero}
         actions={
           <div className="flex gap-2">
             <Link href={`/contratos/${contratoId}`}>
@@ -115,7 +114,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                 Voltar
               </Button>
             </Link>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={() => window.print()}>
               <Download className="w-4 h-4" />
               Exportar PDF
             </Button>
@@ -137,7 +136,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                         {MEDICAO_STATUS_LABELS[status]}
                       </Badge>
                       <Badge className="bg-teal-100 text-teal-700 border-teal-200">
-                        {TIPO_MEDICAO_LABELS[medicao.tipo]}
+                        {TIPO_MEDICAO_LABELS[medicao.tipo as keyof typeof TIPO_MEDICAO_LABELS]}
                       </Badge>
                     </div>
                     <p className="text-2xl font-bold text-[#1e3a5f]">{formatCurrency(medicao.valor_total)}</p>
@@ -199,7 +198,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
             {/* Itens */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Itens da Medição ({medicao.itens.length})</CardTitle>
+                <CardTitle className="text-sm">Itens da Medição ({itens.length})</CardTitle>
               </CardHeader>
               <CardContent>
                 <table className="w-full text-xs">
@@ -214,14 +213,14 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                     </tr>
                   </thead>
                   <tbody>
-                    {medicao.itens.map(item => (
+                    {itens.map((item: any) => (
                       <tr key={item.id} className="border-b border-gray-50">
-                        <td className="py-2 font-mono text-gray-400">{item.codigo}</td>
-                        <td className="py-2 text-gray-700">{item.descricao}</td>
-                        <td className="py-2 text-center text-gray-500">{item.unidade}</td>
-                        <td className="py-2 text-right">{item.qtd_medida.toLocaleString('pt-BR')}</td>
-                        <td className="py-2 text-right text-gray-500">{formatCurrency(item.valor_unit)}</td>
-                        <td className="py-2 text-right font-semibold text-gray-900">{formatCurrency(item.valor_total)}</td>
+                        <td className="py-2 font-mono text-gray-400">{item.detalhamento?.codigo}</td>
+                        <td className="py-2 text-gray-700">{item.detalhamento?.descricao}</td>
+                        <td className="py-2 text-center text-gray-500">{item.detalhamento?.unidade}</td>
+                        <td className="py-2 text-right">{Number(item.quantidade_medida).toLocaleString('pt-BR')}</td>
+                        <td className="py-2 text-right text-gray-500">{formatCurrency(item.valor_unitario)}</td>
+                        <td className="py-2 text-right font-semibold text-gray-900">{formatCurrency(item.quantidade_medida * item.valor_unitario)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -236,14 +235,14 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
             </Card>
 
             {/* Notas Fiscais */}
-            {medicao.notas_fiscais.length > 0 && (
+            {notas_fiscais.length > 0 && (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-sm">Notas Fiscais — Faturamento Direto</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
-                    {medicao.notas_fiscais.map(nf => (
+                    {notas_fiscais.map((nf: any) => (
                       <div key={nf.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                         <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
                         <div className="flex-1">
@@ -275,20 +274,27 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
               <CardHeader>
                 <CardTitle className="text-sm flex items-center gap-2">
                   <Paperclip className="w-4 h-4" />
-                  Documentos Anexados ({medicao.anexos.length})
+                  Documentos Anexados ({anexos.length})
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {medicao.anexos.map(a => (
-                    <div key={a.id} className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50 cursor-pointer group">
+                  {anexos.map((a: any) => (
+                    <a
+                      key={a.id}
+                      href={a.url}
+                      download={a.nome_original}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50 cursor-pointer group"
+                    >
                       <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium text-gray-700 truncate">{a.nome_original}</p>
                         <p className="text-[10px] text-gray-400">{formatBytes(a.tamanho_bytes)}</p>
                       </div>
                       <Download className="w-3.5 h-3.5 text-gray-300 group-hover:text-[#1e3a5f] flex-shrink-0" />
-                    </div>
+                    </a>
                   ))}
                 </div>
               </CardContent>
@@ -301,8 +307,8 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {medicao.aprovacoes.map(a => {
-                    const config = ACAO_CONFIG[a.acao]
+                  {aprovacoes.map((a: any) => {
+                    const config = ACAO_CONFIG[a.acao] || ACAO_CONFIG['comentou']
                     const Icon = config.icon
                     return (
                       <div key={a.id} className="flex gap-3">
@@ -342,13 +348,13 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
               <CardContent className="space-y-3 text-xs">
                 <div>
                   <p className="text-gray-400 font-medium uppercase tracking-wide text-[10px] mb-0.5">Contratante</p>
-                  <p className="font-medium text-gray-800">{medicao.contrato.contratante.nome}</p>
-                  <p className="text-gray-400">{medicao.contrato.contratante.email_contato}</p>
+                  <p className="font-medium text-gray-800">{medicao.contrato?.contratante?.nome}</p>
+                  <p className="text-gray-400">{medicao.contrato?.contratante?.email_contato}</p>
                 </div>
                 <div>
                   <p className="text-gray-400 font-medium uppercase tracking-wide text-[10px] mb-0.5">Contratado</p>
-                  <p className="font-medium text-gray-800">{medicao.contrato.contratado.nome}</p>
-                  <p className="text-gray-400">{medicao.contrato.contratado.email_contato}</p>
+                  <p className="font-medium text-gray-800">{medicao.contrato?.contratado?.nome}</p>
+                  <p className="text-gray-400">{medicao.contrato?.contratado?.email_contato}</p>
                 </div>
               </CardContent>
             </Card>
@@ -370,7 +376,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
           </DialogHeader>
           <div className="py-2 space-y-3">
             <div className="p-3 bg-green-50 rounded-lg text-xs text-green-700">
-              Ao aprovar, um e-mail automático será enviado para o fornecedor ({medicao.contrato.contratado.nome}) com a confirmação.
+              Ao aprovar, um e-mail automático será enviado para o fornecedor ({medicao.contrato?.contratado?.nome}) com a confirmação.
             </div>
             <div className="space-y-1.5">
               <Label>Comentário (opcional)</Label>

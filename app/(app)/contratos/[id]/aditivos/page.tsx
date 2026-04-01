@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useState } from 'react'
+import { use, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent } from '@/components/ui/card'
@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
 } from '@/components/ui/dialog'
-import { ArrowLeft, Plus, FileText, TrendingUp, Calendar, AlignLeft } from 'lucide-react'
+import { ArrowLeft, Plus, FileText, TrendingUp, Calendar, AlignLeft, Loader2 } from 'lucide-react'
 import { formatCurrency, formatDate, getAditivoStatusColor } from '@/lib/utils'
 import { AditivoTipo, AditivoStatus, ADITIVO_TIPO_LABELS } from '@/types'
 
@@ -23,16 +23,10 @@ const ADITIVO_STATUS_LABELS: Record<AditivoStatus, string> = {
   rejeitado: 'Rejeitado',
 }
 
-const MOCK_ADITIVOS: Array<{
-  id: string; numero: number; tipo: AditivoTipo; descricao: string;
-  valor_anterior?: number; valor_adicional?: number; valor_novo?: number;
-  data_fim_anterior?: string; data_fim_nova?: string;
-  status: AditivoStatus; created_at: string;
-}> = []
-
 export default function AditivosPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: contratoId } = use(params)
-  const [aditivos, setAditivos] = useState(MOCK_ADITIVOS)
+  const [aditivos, setAditivos] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
@@ -44,6 +38,13 @@ export default function AditivosPage({ params }: { params: Promise<{ id: string 
     data_fim_nova: '',
   })
 
+  useEffect(() => {
+    fetch(`/api/contratos/${contratoId}/aditivos`)
+      .then(r => r.json())
+      .then(data => setAditivos(data))
+      .finally(() => setLoading(false))
+  }, [contratoId])
+
   const set = (field: string, value: string) => setForm(f => ({ ...f, [field]: value }))
 
   const isValor = form.tipo === 'valor' || form.tipo === 'misto'
@@ -51,24 +52,29 @@ export default function AditivosPage({ params }: { params: Promise<{ id: string 
 
   async function salvar() {
     setSaving(true)
-    await new Promise(r => setTimeout(r, 800))
-    const novo = {
-      id: crypto.randomUUID(),
-      numero: aditivos.length + 1,
-      tipo: form.tipo as AditivoTipo,
-      descricao: form.descricao,
-      valor_anterior: isValor ? parseFloat(form.valor_anterior) : undefined,
-      valor_adicional: isValor ? parseFloat(form.valor_adicional) : undefined,
-      valor_novo: isValor ? parseFloat(form.valor_anterior) + parseFloat(form.valor_adicional) : undefined,
-      data_fim_anterior: isPrazo ? form.data_fim_anterior : undefined,
-      data_fim_nova: isPrazo ? form.data_fim_nova : undefined,
-      status: 'pendente' as AditivoStatus,
-      created_at: new Date().toISOString(),
+    try {
+      const res = await fetch(`/api/contratos/${contratoId}/aditivos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tipo: form.tipo,
+          descricao: form.descricao,
+          valor_anterior: isValor ? parseFloat(form.valor_anterior) || undefined : undefined,
+          valor_adicional: isValor ? parseFloat(form.valor_adicional) || undefined : undefined,
+          valor_novo: isValor && form.valor_anterior && form.valor_adicional
+            ? parseFloat(form.valor_anterior) + parseFloat(form.valor_adicional)
+            : undefined,
+          data_fim_anterior: isPrazo ? form.data_fim_anterior || undefined : undefined,
+          data_fim_nova: isPrazo ? form.data_fim_nova || undefined : undefined,
+        }),
+      })
+      const novo = await res.json()
+      setAditivos(prev => [...prev, novo])
+      setModalOpen(false)
+      setForm({ tipo: '', descricao: '', valor_anterior: '', valor_adicional: '', data_fim_anterior: '', data_fim_nova: '' })
+    } finally {
+      setSaving(false)
     }
-    setAditivos(prev => [...prev, novo])
-    setSaving(false)
-    setModalOpen(false)
-    setForm({ tipo: '', descricao: '', valor_anterior: '', valor_adicional: '', data_fim_anterior: '', data_fim_nova: '' })
   }
 
   const TIPO_ICON: Record<AditivoTipo, React.ElementType> = {
@@ -100,7 +106,12 @@ export default function AditivosPage({ params }: { params: Promise<{ id: string 
       />
 
       <div className="p-6">
-        {aditivos.length === 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center py-16 text-gray-400">
+            <Loader2 className="w-6 h-6 animate-spin mr-2" />
+            <span>Carregando aditivos...</span>
+          </div>
+        ) : aditivos.length === 0 ? (
           <div className="text-center py-16">
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <FileText className="w-8 h-8 text-gray-300" />
@@ -115,7 +126,7 @@ export default function AditivosPage({ params }: { params: Promise<{ id: string 
         ) : (
           <div className="space-y-3">
             {aditivos.map(aditivo => {
-              const Icon = TIPO_ICON[aditivo.tipo]
+              const Icon = TIPO_ICON[aditivo.tipo as AditivoTipo]
               return (
                 <Card key={aditivo.id}>
                   <CardContent className="p-5">
@@ -127,10 +138,10 @@ export default function AditivosPage({ params }: { params: Promise<{ id: string 
                         <div className="flex items-center gap-2 mb-1">
                           <span className="font-bold text-gray-900">Aditivo #{aditivo.numero}</span>
                           <Badge className="bg-orange-100 text-orange-700 border-orange-200">
-                            {ADITIVO_TIPO_LABELS[aditivo.tipo]}
+                            {ADITIVO_TIPO_LABELS[aditivo.tipo as AditivoTipo]}
                           </Badge>
                           <Badge className={getAditivoStatusColor(aditivo.status)}>
-                            {ADITIVO_STATUS_LABELS[aditivo.status]}
+                            {ADITIVO_STATUS_LABELS[aditivo.status as AditivoStatus]}
                           </Badge>
                         </div>
                         <p className="text-sm text-gray-600">{aditivo.descricao}</p>

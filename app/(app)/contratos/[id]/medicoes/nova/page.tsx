@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, use } from 'react'
+import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
@@ -11,44 +11,9 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Upload, Trash2, Plus, FileText, AlertCircle, Info } from 'lucide-react'
+import { ArrowLeft, Upload, Trash2, Plus, FileText, AlertCircle, Info, Loader2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { TipoMedicao, TipoAnexo } from '@/types'
-
-// Estrutura do contrato para lançamento de itens
-const ESTRUTURA = [
-  {
-    id: '1', codigo: '1.0', nome: 'Instalações Elétricas', tipo: 'misto',
-    tarefas: [
-      {
-        id: 't1', codigo: '1.1', nome: 'Quadros de Distribuição',
-        detalhamentos: [
-          { id: 'd1', codigo: '1.1.1', descricao: 'QDC - Quadro Distribuição Circuitos', unidade: 'un', qtd_contratada: 45, valor_unit: 3200, qtd_acumulada: 12 },
-          { id: 'd2', codigo: '1.1.2', descricao: 'QGBT - Quadro Geral Baixa Tensão', unidade: 'un', qtd_contratada: 3, valor_unit: 28000, qtd_acumulada: 1 },
-        ]
-      },
-      {
-        id: 't2', codigo: '1.2', nome: 'Eletrodutos e Cabos',
-        detalhamentos: [
-          { id: 'd3', codigo: '1.2.1', descricao: 'Eletroduto flexível 3/4"', unidade: 'm', qtd_contratada: 8500, valor_unit: 8.5, qtd_acumulada: 2100 },
-          { id: 'd4', codigo: '1.2.2', descricao: 'Cabo 2,5mm² 450/750V', unidade: 'm', qtd_contratada: 25000, valor_unit: 4.2, qtd_acumulada: 6500 },
-        ]
-      }
-    ]
-  },
-  {
-    id: '2', codigo: '2.0', nome: 'Instalações Hidráulicas', tipo: 'misto',
-    tarefas: [
-      {
-        id: 't3', codigo: '2.1', nome: 'Tubulações',
-        detalhamentos: [
-          { id: 'd5', codigo: '2.1.1', descricao: 'Tubo PVC 50mm água fria', unidade: 'm', qtd_contratada: 3200, valor_unit: 18, qtd_acumulada: 800 },
-          { id: 'd6', codigo: '2.1.2', descricao: 'Tubo CPVC 22mm água quente', unidade: 'm', qtd_contratada: 1800, valor_unit: 32, qtd_acumulada: 450 },
-        ]
-      }
-    ]
-  },
-]
 
 type AnexoItem = {
   id: string
@@ -57,17 +22,14 @@ type AnexoItem = {
   tamanho: string
 }
 
-type ItemMedicao = {
-  detalhamento_id: string
-  quantidade: number
-}
-
 export default function NovaMedicaoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: contratoId } = use(params)
   const router = useRouter()
 
   const [step, setStep] = useState(1)
   const [saving, setSaving] = useState(false)
+  const [estrutura, setEstrutura] = useState<any[]>([])
+  const [loadingEstrutura, setLoadingEstrutura] = useState(true)
 
   // Step 1: Dados gerais
   const [periodo, setPeriodo] = useState('')
@@ -83,6 +45,13 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
   const [anexos, setAnexos] = useState<AnexoItem[]>([])
   const [novasNFs, setNovasNFs] = useState<{ numero: string; emitente: string; valor: string; data: string }[]>([])
 
+  useEffect(() => {
+    fetch(`/api/contratos/${contratoId}/estrutura`)
+      .then(r => r.json())
+      .then(data => setEstrutura(data))
+      .finally(() => setLoadingEstrutura(false))
+  }, [contratoId])
+
   const TIPO_MEDICAO_LABELS: Record<TipoMedicao, string> = {
     servico: 'Serviço (Mão de Obra)',
     faturamento_direto: 'Faturamento Direto (Material)',
@@ -95,11 +64,11 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
 
   function calcularValorTotal() {
     let total = 0
-    for (const grupo of ESTRUTURA) {
-      for (const tarefa of grupo.tarefas) {
-        for (const det of tarefa.detalhamentos) {
+    for (const grupo of estrutura) {
+      for (const tarefa of (grupo.tarefas || [])) {
+        for (const det of (tarefa.detalhamentos || [])) {
           const qtd = itensMedicao[det.id] || 0
-          total += qtd * det.valor_unit
+          total += qtd * (det.valor_unitario || 0)
         }
       }
     }
@@ -116,9 +85,38 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
 
   async function submeter() {
     setSaving(true)
-    await new Promise(r => setTimeout(r, 1500))
-    setSaving(false)
-    router.push(`/contratos/${contratoId}`)
+    try {
+      const itens = []
+      for (const grupo of estrutura) {
+        for (const tarefa of (grupo.tarefas || [])) {
+          for (const det of (tarefa.detalhamentos || [])) {
+            const qtd = itensMedicao[det.id] || 0
+            if (qtd > 0) itens.push({ detalhamento_id: det.id, quantidade_medida: qtd, valor_unitario: det.valor_unitario })
+          }
+        }
+      }
+      const nfs = novasNFs
+        .filter(nf => nf.numero && nf.valor)
+        .map(nf => ({ numero_nf: nf.numero, emitente: nf.emitente, valor: parseFloat(nf.valor), data_emissao: nf.data }))
+      const res = await fetch(`/api/contratos/${contratoId}/medicoes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          periodo_referencia: periodo,
+          tipo,
+          solicitante_nome: solicitante,
+          solicitante_email: emailSolicitante,
+          observacoes,
+          itens,
+          notas_fiscais: nfs,
+        }),
+      })
+      if (res.ok) {
+        router.push(`/contratos/${contratoId}`)
+      }
+    } finally {
+      setSaving(false)
+    }
   }
 
   const totalMedicao = calcularValorTotal()
@@ -229,62 +227,70 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
               <span>Informe as quantidades medidas neste período para cada item. Apenas os itens com quantidade &gt; 0 serão incluídos na medição.</span>
             </div>
 
-            {ESTRUTURA.map(grupo => (
-              <Card key={grupo.id}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <span className="text-gray-400 font-mono">{grupo.codigo}</span>
-                    {grupo.nome}
-                    <Badge className="bg-teal-100 text-teal-700 border-teal-200 text-[10px]">
-                      {grupo.tipo === 'misto' ? 'Misto' : grupo.tipo}
-                    </Badge>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {grupo.tarefas.map(tarefa => (
-                    <div key={tarefa.id} className="mb-4 last:mb-0">
-                      <p className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1">
-                        <span className="font-mono text-gray-400">{tarefa.codigo}</span>
-                        {tarefa.nome}
-                      </p>
-                      <div className="space-y-2">
-                        {tarefa.detalhamentos.map(det => {
-                          const qtd = itensMedicao[det.id] || 0
-                          const saldo = det.qtd_contratada - det.qtd_acumulada
-                          const valor = qtd * det.valor_unit
-                          return (
-                            <div key={det.id} className={`grid grid-cols-12 gap-2 p-2 rounded-lg text-xs items-center ${qtd > 0 ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'}`}>
-                              <div className="col-span-1 text-gray-400 font-mono">{det.codigo}</div>
-                              <div className="col-span-4 text-gray-700 font-medium">{det.descricao}</div>
-                              <div className="col-span-1 text-center text-gray-500">{det.unidade}</div>
-                              <div className="col-span-2 text-center">
-                                <span className="text-gray-400">Saldo: </span>
-                                <span className="font-medium text-gray-700">{saldo.toLocaleString('pt-BR')}</span>
+            {loadingEstrutura ? (
+              <div className="flex items-center justify-center py-16 text-gray-400">
+                <Loader2 className="w-6 h-6 animate-spin mr-2" />
+                <span>Carregando estrutura...</span>
+              </div>
+            ) : (
+              estrutura.map(grupo => (
+                <Card key={grupo.id}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <span className="text-gray-400 font-mono">{grupo.codigo}</span>
+                      {grupo.nome}
+                      <Badge className="bg-teal-100 text-teal-700 border-teal-200 text-[10px]">
+                        {grupo.tipo_medicao === 'misto' ? 'Misto' : grupo.tipo_medicao}
+                      </Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {(grupo.tarefas || []).map((tarefa: any) => (
+                      <div key={tarefa.id} className="mb-4 last:mb-0">
+                        <p className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1">
+                          <span className="font-mono text-gray-400">{tarefa.codigo}</span>
+                          {tarefa.nome}
+                        </p>
+                        <div className="space-y-2">
+                          {(tarefa.detalhamentos || []).map((det: any) => {
+                            const qtd = itensMedicao[det.id] || 0
+                            const qtdAcumulada = det.qtd_acumulada || 0
+                            const saldo = det.quantidade_contratada - qtdAcumulada
+                            const valor = qtd * (det.valor_unitario || 0)
+                            return (
+                              <div key={det.id} className={`grid grid-cols-12 gap-2 p-2 rounded-lg text-xs items-center ${qtd > 0 ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'}`}>
+                                <div className="col-span-1 text-gray-400 font-mono">{det.codigo}</div>
+                                <div className="col-span-4 text-gray-700 font-medium">{det.descricao}</div>
+                                <div className="col-span-1 text-center text-gray-500">{det.unidade}</div>
+                                <div className="col-span-2 text-center">
+                                  <span className="text-gray-400">Saldo: </span>
+                                  <span className="font-medium text-gray-700">{saldo.toLocaleString('pt-BR')}</span>
+                                </div>
+                                <div className="col-span-2">
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    max={saldo}
+                                    step="0.001"
+                                    className="h-7 text-xs text-center"
+                                    placeholder="0"
+                                    value={qtd || ''}
+                                    onChange={e => setQtd(det.id, parseFloat(e.target.value) || 0)}
+                                  />
+                                </div>
+                                <div className="col-span-2 text-right font-semibold text-[#1e3a5f]">
+                                  {valor > 0 ? formatCurrency(valor) : '—'}
+                                </div>
                               </div>
-                              <div className="col-span-2">
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  max={saldo}
-                                  step="0.001"
-                                  className="h-7 text-xs text-center"
-                                  placeholder="0"
-                                  value={qtd || ''}
-                                  onChange={e => setQtd(det.id, parseFloat(e.target.value) || 0)}
-                                />
-                              </div>
-                              <div className="col-span-2 text-right font-semibold text-[#1e3a5f]">
-                                {valor > 0 ? formatCurrency(valor) : '—'}
-                              </div>
-                            </div>
-                          )
-                        })}
+                            )
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            ))}
+                    ))}
+                  </CardContent>
+                </Card>
+              ))
+            )}
 
             {/* Subtotal */}
             <Card className="border-[#1e3a5f] bg-[#1e3a5f]/5">

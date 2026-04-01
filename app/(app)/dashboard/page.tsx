@@ -9,40 +9,14 @@ import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  LineChart, Line, AreaChart, Area
+  AreaChart, Area
 } from 'recharts'
 import {
   TrendingUp, FileText, Clock, CheckCircle2, AlertCircle,
-  DollarSign, Building2, Plus, ArrowRight
+  DollarSign, Building2, Plus, ArrowRight, Loader2
 } from 'lucide-react'
 import { formatCurrency, formatPercent, getContratoStatusColor, getMedicaoStatusColor } from '@/lib/utils'
 import { CONTRATO_STATUS_LABELS, MEDICAO_STATUS_LABELS, type TipoMedicao, type MedicaoStatus } from '@/types'
-
-// Mock data para demonstração
-const MOCK_CONTRATOS = [
-  {
-    id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-    numero: 'WAVE-2025-001',
-    descricao: 'Contrato de Instalações - Empreendimento Wave',
-    contratante: { nome: 'FIP Engenharia' },
-    contratado: { nome: 'Wave Instalações SPE LTDA' },
-    tipo: 'percentual_servico_material' as const,
-    status: 'ativo' as const,
-    valor_total: 18000000,
-    valor_medido: 3240000,
-    saldo: 14760000,
-    percentual_medido: 18,
-    qtd_medicoes_aprovadas: 3,
-    qtd_medicoes_pendentes: 1,
-  },
-]
-
-const MOCK_MEDICOES_RECENTES: Array<{ id: string; numero: number; periodo_referencia: string; tipo: TipoMedicao; status: MedicaoStatus; valor_total: number; solicitante_nome: string; contrato: { numero: string } }> = [
-  { id: '1', numero: 4, periodo_referencia: '2026-03', tipo: 'misto', status: 'submetido', valor_total: 580000, solicitante_nome: 'Engenheiro Wave', contrato: { numero: 'WAVE-2025-001' } },
-  { id: '2', numero: 3, periodo_referencia: '2026-02', tipo: 'misto', status: 'aprovado', valor_total: 620000, solicitante_nome: 'Engenheiro Wave', contrato: { numero: 'WAVE-2025-001' } },
-  { id: '3', numero: 2, periodo_referencia: '2026-01', tipo: 'servico', status: 'aprovado', valor_total: 1200000, solicitante_nome: 'Engenheiro Wave', contrato: { numero: 'WAVE-2025-001' } },
-  { id: '4', numero: 1, periodo_referencia: '2025-12', tipo: 'faturamento_direto', status: 'aprovado', valor_total: 1420000, solicitante_nome: 'Engenheiro Wave', contrato: { numero: 'WAVE-2025-001' } },
-]
 
 const CURVA_S_DATA = [
   { mes: 'Jan/25', previsto: 5, realizado: 0, acumulado_prev: 5, acumulado_real: 0 },
@@ -62,19 +36,47 @@ const CURVA_S_DATA = [
   { mes: 'Mar/26', previsto: 4, realizado: null, acumulado_prev: 100, acumulado_real: null },
 ]
 
-const GRUPOS_DATA = [
-  { nome: 'Inst. Elétricas', contratado: 7200000, medido: 1440000 },
-  { nome: 'Inst. Hidráulicas', contratado: 5400000, medido: 972000 },
-  { nome: 'Ar-Condicionado', contratado: 3600000, medido: 648000 },
-  { nome: 'SPDA/Aterramento', contratado: 900000, medido: 108000 },
-  { nome: 'Gestão', contratado: 900000, medido: 72000 },
-]
-
 export default function DashboardPage() {
-  const totalContratado = MOCK_CONTRATOS.reduce((a, c) => a + c.valor_total, 0)
-  const totalMedido = MOCK_CONTRATOS.reduce((a, c) => a + c.valor_medido, 0)
-  const totalSaldo = MOCK_CONTRATOS.reduce((a, c) => a + c.saldo, 0)
-  const pendentesAprovacao = MOCK_MEDICOES_RECENTES.filter(m => m.status === 'submetido' || m.status === 'em_analise').length
+  const [contratos, setContratos] = useState<any[]>([])
+  const [medicoesRecentes, setMedicoesRecentes] = useState<any[]>([])
+  const [grupos, setGrupos] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function fetchDashboard() {
+      try {
+        const res = await fetch('/api/dashboard')
+        if (res.ok) {
+          const data = await res.json()
+          setContratos(data.contratos || [])
+          setMedicoesRecentes(data.medicoes_recentes || [])
+          setGrupos(data.grupos || [])
+        }
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchDashboard()
+  }, [])
+
+  const totalContratado = contratos.reduce((a, c) => a + (c.valor_contratado || 0), 0)
+  const totalMedido = contratos.reduce((a, c) => a + (c.valor_medido || 0), 0)
+  const totalSaldo = contratos.reduce((a, c) => a + (c.saldo_restante || 0), 0)
+  const pendentesAprovacao = contratos.reduce((a, c) => a + (c.qtd_medicoes_pendentes || 0), 0)
+
+  const gruposData = grupos.map((g: any) => ({
+    nome: g.grupo_nome,
+    contratado: g.valor_contratado,
+    medido: g.valor_medido,
+  }))
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-[#1e3a5f]" />
+      </div>
+    )
+  }
 
   return (
     <div className="flex-1 overflow-auto">
@@ -100,7 +102,7 @@ export default function DashboardPage() {
                 <div>
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Total Contratado</p>
                   <p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(totalContratado)}</p>
-                  <p className="text-xs text-gray-500 mt-1">{MOCK_CONTRATOS.length} contrato(s) ativo(s)</p>
+                  <p className="text-xs text-gray-500 mt-1">{contratos.length} contrato(s) ativo(s)</p>
                 </div>
                 <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
                   <FileText className="w-5 h-5 text-blue-600" />
@@ -115,7 +117,7 @@ export default function DashboardPage() {
                 <div>
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Total Medido</p>
                   <p className="text-2xl font-bold text-green-700 mt-1">{formatCurrency(totalMedido)}</p>
-                  <p className="text-xs text-gray-500 mt-1">{formatPercent(totalMedido / totalContratado * 100)} do total</p>
+                  <p className="text-xs text-gray-500 mt-1">{totalContratado > 0 ? formatPercent(totalMedido / totalContratado * 100) : '0%'} do total</p>
                 </div>
                 <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
                   <TrendingUp className="w-5 h-5 text-green-600" />
@@ -130,7 +132,7 @@ export default function DashboardPage() {
                 <div>
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Saldo Restante</p>
                   <p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(totalSaldo)}</p>
-                  <p className="text-xs text-gray-500 mt-1">{formatPercent(totalSaldo / totalContratado * 100)} do total</p>
+                  <p className="text-xs text-gray-500 mt-1">{totalContratado > 0 ? formatPercent(totalSaldo / totalContratado * 100) : '0%'} do total</p>
                 </div>
                 <div className="w-10 h-10 rounded-lg bg-gray-50 flex items-center justify-center">
                   <DollarSign className="w-5 h-5 text-gray-600" />
@@ -192,7 +194,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={GRUPOS_DATA} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                <BarChart data={gruposData} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
                   <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`} />
                   <YAxis type="category" dataKey="nome" tick={{ fontSize: 10 }} width={90} />
@@ -219,8 +221,8 @@ export default function DashboardPage() {
               </Link>
             </CardHeader>
             <CardContent className="space-y-3">
-              {MOCK_CONTRATOS.map((c) => (
-                <Link key={c.id} href={`/contratos/${c.id}`}>
+              {contratos.map((c: any) => (
+                <Link key={c.contrato_id} href={`/contratos/${c.contrato_id}`}>
                   <div className="p-3 rounded-lg border border-gray-100 hover:border-gray-300 hover:bg-gray-50 transition-colors cursor-pointer">
                     <div className="flex items-start justify-between mb-2">
                       <div>
@@ -228,18 +230,18 @@ export default function DashboardPage() {
                         <p className="text-xs text-gray-500 line-clamp-1">{c.descricao}</p>
                       </div>
                       <Badge className={getContratoStatusColor(c.status)}>
-                        {CONTRATO_STATUS_LABELS[c.status]}
+                        {CONTRATO_STATUS_LABELS[c.status as keyof typeof CONTRATO_STATUS_LABELS]}
                       </Badge>
                     </div>
                     <div className="space-y-1">
                       <div className="flex justify-between text-xs text-gray-500">
                         <span>Avanço financeiro</span>
-                        <span className="font-medium text-gray-700">{formatPercent(c.percentual_medido)}</span>
+                        <span className="font-medium text-gray-700">{formatPercent(c.percentual_medido || 0)}</span>
                       </div>
-                      <Progress value={c.percentual_medido} className="h-1.5" />
+                      <Progress value={c.percentual_medido || 0} className="h-1.5" />
                       <div className="flex justify-between text-xs mt-1">
-                        <span className="text-gray-500">Medido: <span className="font-medium text-gray-700">{formatCurrency(c.valor_medido)}</span></span>
-                        <span className="text-gray-500">Saldo: <span className="font-medium text-gray-700">{formatCurrency(c.saldo)}</span></span>
+                        <span className="text-gray-500">Medido: <span className="font-medium text-gray-700">{formatCurrency(c.valor_medido || 0)}</span></span>
+                        <span className="text-gray-500">Saldo: <span className="font-medium text-gray-700">{formatCurrency(c.saldo_restante || 0)}</span></span>
                       </div>
                     </div>
                   </div>
@@ -260,8 +262,8 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                {MOCK_MEDICOES_RECENTES.map((m) => (
-                  <Link key={m.id} href={`/contratos/${MOCK_CONTRATOS[0].id}/medicoes/${m.id}`}>
+                {medicoesRecentes.map((m: any) => (
+                  <Link key={m.id} href={`/contratos/${m.contrato?.id}/medicoes/${m.id}`}>
                     <div className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer border border-transparent hover:border-gray-200">
                       <div className="w-9 h-9 rounded-lg bg-[#1e3a5f]/10 flex items-center justify-center flex-shrink-0">
                         <span className="text-xs font-bold text-[#1e3a5f]">#{String(m.numero).padStart(2, '0')}</span>
@@ -269,11 +271,11 @@ export default function DashboardPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium text-gray-900">Medição {m.periodo_referencia}</span>
-                          <Badge className={`${getMedicaoStatusColor(m.status)} text-[10px]`}>
-                            {MEDICAO_STATUS_LABELS[m.status]}
+                          <Badge className={`${getMedicaoStatusColor(m.status as MedicaoStatus)} text-[10px]`}>
+                            {MEDICAO_STATUS_LABELS[m.status as MedicaoStatus]}
                           </Badge>
                         </div>
-                        <p className="text-xs text-gray-500">{m.contrato.numero}</p>
+                        <p className="text-xs text-gray-500">{m.contrato?.numero}</p>
                       </div>
                       <span className="text-sm font-semibold text-gray-900 flex-shrink-0">{formatCurrency(m.valor_total)}</span>
                     </div>
