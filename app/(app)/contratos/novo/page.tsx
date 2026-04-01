@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
@@ -13,21 +13,23 @@ import { Textarea } from '@/components/ui/textarea'
 import { ArrowLeft, Info } from 'lucide-react'
 import { ContratoTipo } from '@/types'
 
-const EMPRESAS_CONTRATANTES = [
-  { id: '11111111-1111-1111-1111-111111111111', nome: 'FIP Engenharia' },
-]
-const EMPRESAS_CONTRATADAS = [
-  { id: '22222222-2222-2222-2222-222222222222', nome: 'Wave Instalações SPE LTDA' },
-]
+interface Empresa {
+  id: string
+  nome: string
+  tipo: string
+}
 
 export default function NovoContratoPage() {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
+  const [loadingEmpresas, setLoadingEmpresas] = useState(true)
+  const [contratantes, setContratantes] = useState<Empresa[]>([])
+  const [contratados, setContratados] = useState<Empresa[]>([])
   const [form, setForm] = useState({
     numero: '',
     descricao: '',
     escopo: '',
-    contratante_id: '11111111-1111-1111-1111-111111111111',
+    contratante_id: '',
     contratado_id: '',
     tipo: '' as ContratoTipo | '',
     valor_total: '',
@@ -41,15 +43,64 @@ export default function NovoContratoPage() {
     objeto: '',
   })
 
+  useEffect(() => {
+    async function loadEmpresas() {
+      try {
+        const res = await fetch('/api/empresas')
+        if (res.ok) {
+          const data: Empresa[] = await res.json()
+          const ct = data.filter(e => e.tipo === 'contratante')
+          const cd = data.filter(e => e.tipo === 'contratado')
+          setContratantes(ct)
+          setContratados(cd)
+          if (ct.length > 0) {
+            setForm(f => ({ ...f, contratante_id: ct[0].id }))
+          }
+        }
+      } finally {
+        setLoadingEmpresas(false)
+      }
+    }
+    loadEmpresas()
+  }, [])
+
   const set = (field: string, value: string) => setForm(f => ({ ...f, [field]: value }))
 
   const isPercentual = form.tipo === 'percentual_servico_material'
 
   async function salvar() {
     setSaving(true)
-    await new Promise(r => setTimeout(r, 1000))
-    setSaving(false)
-    router.push('/contratos')
+    try {
+      const payload = {
+        numero: form.numero,
+        descricao: form.descricao,
+        escopo: form.escopo,
+        objeto: form.objeto,
+        contratante_id: form.contratante_id,
+        contratado_id: form.contratado_id,
+        tipo: form.tipo,
+        valor_total: parseFloat(form.valor_total),
+        valor_servicos: parseFloat(form.valor_servicos) || undefined,
+        valor_material_direto: parseFloat(form.valor_material_direto) || undefined,
+        data_inicio: form.data_inicio,
+        data_fim: form.data_fim,
+        local_obra: form.local_obra,
+        fiscal_obra: form.fiscal_obra,
+        email_fiscal: form.email_fiscal,
+        status: 'ativo',
+      }
+      const res = await fetch('/api/contratos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (res.ok) {
+        const newContrato = await res.json()
+        router.push(`/contratos/${newContrato.id}`)
+      }
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -118,12 +169,12 @@ export default function NovoContratoPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label>Contratante *</Label>
-                  <Select value={form.contratante_id} onValueChange={v => set('contratante_id', v)}>
+                  <Select value={form.contratante_id} onValueChange={v => set('contratante_id', v)} disabled={loadingEmpresas}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Selecione o contratante" />
+                      <SelectValue placeholder={loadingEmpresas ? 'Carregando...' : 'Selecione o contratante'} />
                     </SelectTrigger>
                     <SelectContent>
-                      {EMPRESAS_CONTRATANTES.map(e => (
+                      {contratantes.map(e => (
                         <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>
                       ))}
                     </SelectContent>
@@ -131,12 +182,12 @@ export default function NovoContratoPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label>Contratado *</Label>
-                  <Select value={form.contratado_id} onValueChange={v => set('contratado_id', v)}>
+                  <Select value={form.contratado_id} onValueChange={v => set('contratado_id', v)} disabled={loadingEmpresas}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Selecione o contratado" />
+                      <SelectValue placeholder={loadingEmpresas ? 'Carregando...' : 'Selecione o contratado'} />
                     </SelectTrigger>
                     <SelectContent>
-                      {EMPRESAS_CONTRATADAS.map(e => (
+                      {contratados.map(e => (
                         <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>
                       ))}
                     </SelectContent>
