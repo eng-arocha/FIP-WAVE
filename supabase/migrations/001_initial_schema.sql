@@ -155,9 +155,8 @@ CREATE TABLE medicao_itens (
   medicao_id UUID NOT NULL REFERENCES medicoes(id) ON DELETE CASCADE,
   detalhamento_id UUID NOT NULL REFERENCES detalhamentos(id),
   quantidade_medida DECIMAL(15,3) NOT NULL DEFAULT 0,
-  valor_medido DECIMAL(15,2) GENERATED ALWAYS AS (quantidade_medida * (
-    SELECT valor_unitario FROM detalhamentos d WHERE d.id = detalhamento_id
-  )) STORED,
+  valor_unitario DECIMAL(15,4) NOT NULL DEFAULT 0,
+  valor_medido DECIMAL(15,2) GENERATED ALWAYS AS (quantidade_medida * valor_unitario) STORED,
   percentual_medido DECIMAL(5,2),
   observacao TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
