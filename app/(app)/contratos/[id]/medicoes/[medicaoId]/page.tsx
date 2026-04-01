@@ -32,6 +32,8 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState<MedicaoStatus | null>(null)
 
+  const [historicoMedicoes, setHistoricoMedicoes] = useState<any[]>([])
+
   async function fetchMedicao() {
     const res = await fetch(`/api/contratos/${contratoId}/medicoes/${medicaoId}`)
     if (res.ok) {
@@ -43,6 +45,10 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
 
   useEffect(() => {
     fetchMedicao()
+    // Load historical measurements for anomaly detection
+    fetch(`/api/contratos/${contratoId}/medicoes`)
+      .then(r => r.ok ? r.json() : [])
+      .then((lista: any[]) => setHistoricoMedicoes(lista.filter((m: any) => m.status === 'aprovado' && m.id !== medicaoId)))
   }, [contratoId, medicaoId])
 
   useEffect(() => {
@@ -60,6 +66,15 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
   }
 
   const isPendente = status === 'submetido' || status === 'em_analise'
+
+  // Anomaly detection: flag if value is >2x the average of approved measurements
+  const anomalia = (() => {
+    if (historicoMedicoes.length < 2) return null
+    const media = historicoMedicoes.reduce((s, m) => s + (m.valor_total || 0), 0) / historicoMedicoes.length
+    if (media > 0 && medicao.valor_total > media * 2)
+      return { media, fator: (medicao.valor_total / media).toFixed(1) }
+    return null
+  })()
 
   async function aprovar() {
     setSaving(true)
@@ -131,6 +146,18 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           {/* Main content */}
           <div className="xl:col-span-2 space-y-5">
+            {/* Anomaly alert */}
+            {anomalia && (
+              <div className="flex items-start gap-3 p-4 rounded-xl border border-red-800/50 bg-red-900/20">
+                <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-red-400">Valor atípico detectado</p>
+                  <p className="text-xs text-red-300/70 mt-0.5">
+                    Esta medição ({formatCurrency(medicao.valor_total)}) é <strong className="text-red-300">{anomalia.fator}×</strong> a média histórica de medições aprovadas ({formatCurrency(anomalia.media)}). Revise os itens antes de aprovar.
+                  </p>
+                </div>
+              </div>
+            )}
             {/* Header card */}
             <Card>
               <CardContent className="p-5">
