@@ -2,11 +2,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Building2, Lock, Mail, AlertCircle } from 'lucide-react'
+import { Waves, Lock, Mail, AlertCircle } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -27,49 +23,241 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#1e3a5f] to-[#2d5a8e] flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <div
+      className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
+      style={{
+        background: 'linear-gradient(135deg, #080C14 0%, #0D1421 50%, #080C14 100%)',
+      }}
+    >
+      {/* Grid overlay */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          backgroundImage:
+            'linear-gradient(rgba(59,130,246,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(59,130,246,0.03) 1px, transparent 1px)',
+          backgroundSize: '40px 40px',
+        }}
+      />
+
+      {/* Animated floating particles */}
+      <div
+        className="absolute top-[10%] left-[15%] w-72 h-72 rounded-full pointer-events-none"
+        style={{
+          background: 'radial-gradient(circle, rgba(59,130,246,0.12) 0%, transparent 70%)',
+          animation: 'floatA 18s ease-in-out infinite',
+          filter: 'blur(2px)',
+        }}
+      />
+      <div
+        className="absolute bottom-[15%] right-[10%] w-96 h-96 rounded-full pointer-events-none"
+        style={{
+          background: 'radial-gradient(circle, rgba(6,182,212,0.10) 0%, transparent 70%)',
+          animation: 'floatB 22s ease-in-out infinite',
+          filter: 'blur(2px)',
+        }}
+      />
+      <div
+        className="absolute top-[55%] left-[5%] w-56 h-56 rounded-full pointer-events-none"
+        style={{
+          background: 'radial-gradient(circle, rgba(59,130,246,0.08) 0%, transparent 70%)',
+          animation: 'floatC 26s ease-in-out infinite',
+          filter: 'blur(3px)',
+        }}
+      />
+      <div
+        className="absolute top-[20%] right-[20%] w-48 h-48 rounded-full pointer-events-none"
+        style={{
+          background: 'radial-gradient(circle, rgba(16,185,129,0.07) 0%, transparent 70%)',
+          animation: 'floatD 20s ease-in-out infinite',
+          filter: 'blur(3px)',
+        }}
+      />
+
+      <style>{`
+        @keyframes floatA {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          33% { transform: translate(30px, -40px) scale(1.05); }
+          66% { transform: translate(-20px, 20px) scale(0.97); }
+        }
+        @keyframes floatB {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          40% { transform: translate(-40px, -30px) scale(1.08); }
+          70% { transform: translate(25px, 15px) scale(0.95); }
+        }
+        @keyframes floatC {
+          0%, 100% { transform: translate(0, 0); }
+          50% { transform: translate(20px, -50px) scale(1.1); }
+        }
+        @keyframes floatD {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          45% { transform: translate(-30px, 30px) scale(0.9); }
+        }
+      `}</style>
+
+      <div className="w-full max-w-md relative z-10">
+        {/* Logo area */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-white/10 rounded-2xl mb-4">
-            <Building2 className="w-8 h-8 text-white" />
+          <div
+            className="inline-flex items-center gap-3 mb-5 px-5 py-3 rounded-2xl"
+            style={{
+              background: 'rgba(59,130,246,0.10)',
+              border: '1px solid rgba(59,130,246,0.20)',
+            }}
+          >
+            <Waves className="w-7 h-7" style={{ color: '#06B6D4' }} />
+            <span
+              className="text-2xl font-black tracking-widest"
+              style={{
+                background: 'linear-gradient(90deg, #3B82F6, #06B6D4)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}
+            >
+              WAVE
+            </span>
           </div>
-          <h1 className="text-2xl font-bold text-white">FIP Gestão de Medições</h1>
-          <p className="text-blue-200 text-sm mt-1">Controle de Contratos e Medições</p>
+
+          <h1
+            className="text-4xl font-black tracking-tight mb-2"
+            style={{
+              background: 'linear-gradient(90deg, #3B82F6 0%, #06B6D4 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+            }}
+          >
+            FIP-WAVE
+          </h1>
+          <p className="text-sm" style={{ color: '#94A3B8' }}>
+            Gestão de Contratos &amp; Medições
+          </p>
         </div>
-        <Card className="shadow-2xl border-0">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-lg text-gray-800">Acesso ao Sistema</CardTitle>
-            <CardDescription>Entre com seu e-mail e senha cadastrados</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={entrar} className="space-y-4">
-              {erro && (
-                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                  {erro}
-                </div>
+
+        {/* Card */}
+        <div
+          className="rounded-2xl p-8"
+          style={{
+            background: 'rgba(17,24,39,0.80)',
+            backdropFilter: 'blur(24px)',
+            border: '1px solid #1E293B',
+            boxShadow: '0 25px 50px rgba(0,0,0,0.5), 0 0 0 1px rgba(59,130,246,0.05) inset',
+          }}
+        >
+          <form onSubmit={entrar} className="space-y-5">
+            {erro && (
+              <div
+                className="flex items-center gap-2.5 p-3.5 rounded-xl text-sm"
+                style={{
+                  background: 'rgba(239,68,68,0.10)',
+                  border: '1px solid rgba(239,68,68,0.30)',
+                  color: '#FCA5A5',
+                }}
+              >
+                <AlertCircle className="w-4 h-4 flex-shrink-0" style={{ color: '#EF4444' }} />
+                {erro}
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <label
+                htmlFor="email"
+                className="block text-xs font-semibold uppercase tracking-wider"
+                style={{ color: '#94A3B8' }}
+              >
+                E-mail
+              </label>
+              <div className="relative">
+                <Mail
+                  className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4"
+                  style={{ color: '#475569' }}
+                />
+                <input
+                  id="email"
+                  type="email"
+                  placeholder="seu@email.com.br"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  required
+                  className="w-full pl-10 pr-4 py-3 rounded-xl text-sm outline-none transition-all"
+                  style={{
+                    background: '#0D1421',
+                    border: '1px solid #1E293B',
+                    color: '#F1F5F9',
+                  }}
+                  onFocus={e => { e.currentTarget.style.borderColor = '#3B82F6'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.10)' }}
+                  onBlur={e => { e.currentTarget.style.borderColor = '#1E293B'; e.currentTarget.style.boxShadow = 'none' }}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label
+                htmlFor="senha"
+                className="block text-xs font-semibold uppercase tracking-wider"
+                style={{ color: '#94A3B8' }}
+              >
+                Senha
+              </label>
+              <div className="relative">
+                <Lock
+                  className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4"
+                  style={{ color: '#475569' }}
+                />
+                <input
+                  id="senha"
+                  type="password"
+                  placeholder="••••••••"
+                  value={senha}
+                  onChange={e => setSenha(e.target.value)}
+                  required
+                  className="w-full pl-10 pr-4 py-3 rounded-xl text-sm outline-none transition-all"
+                  style={{
+                    background: '#0D1421',
+                    border: '1px solid #1E293B',
+                    color: '#F1F5F9',
+                  }}
+                  onFocus={e => { e.currentTarget.style.borderColor = '#3B82F6'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.10)' }}
+                  onBlur={e => { e.currentTarget.style.borderColor = '#1E293B'; e.currentTarget.style.boxShadow = 'none' }}
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 rounded-xl text-sm font-bold tracking-wide transition-all duration-200 flex items-center justify-center gap-2"
+              style={{
+                background: loading
+                  ? 'rgba(59,130,246,0.40)'
+                  : 'linear-gradient(90deg, #3B82F6 0%, #06B6D4 100%)',
+                color: '#fff',
+                boxShadow: loading ? 'none' : '0 0 24px rgba(59,130,246,0.35)',
+                cursor: loading ? 'not-allowed' : 'pointer',
+              }}
+              onMouseEnter={e => {
+                if (!loading) e.currentTarget.style.boxShadow = '0 0 36px rgba(59,130,246,0.55)'
+              }}
+              onMouseLeave={e => {
+                if (!loading) e.currentTarget.style.boxShadow = '0 0 24px rgba(59,130,246,0.35)'
+              }}
+            >
+              {loading ? (
+                <>
+                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                  </svg>
+                  Entrando...
+                </>
+              ) : (
+                'Entrar no Sistema'
               )}
-              <div className="space-y-1.5">
-                <Label htmlFor="email">E-mail</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <Input id="email" type="email" placeholder="seu@email.com.br" className="pl-9" value={email} onChange={e => setEmail(e.target.value)} required />
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="senha">Senha</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <Input id="senha" type="password" placeholder="••••••••" className="pl-9" value={senha} onChange={e => setSenha(e.target.value)} required />
-                </div>
-              </div>
-              <Button type="submit" className="w-full bg-[#1e3a5f] hover:bg-[#2d5a8e]" loading={loading}>
-                Entrar no Sistema
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-        <p className="text-center text-blue-200/60 text-xs mt-6">FIP Engenharia © 2025 — v1.0</p>
+            </button>
+          </form>
+        </div>
+
+        <p className="text-center mt-6 text-xs" style={{ color: '#475569' }}>
+          Acesso restrito · FIP Engenharia © 2025
+        </p>
       </div>
     </div>
   )

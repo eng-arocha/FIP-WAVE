@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -14,7 +13,7 @@ import {
   CheckCircle2, XCircle, Clock, AlertCircle,
   FileText, Building2, Calendar, ArrowRight, Loader2
 } from 'lucide-react'
-import { formatCurrency, formatDate, formatDatetime, getMedicaoStatusColor } from '@/lib/utils'
+import { formatCurrency, formatDate, getMedicaoStatusColor } from '@/lib/utils'
 import { MEDICAO_STATUS_LABELS, MedicaoStatus } from '@/types'
 
 interface PendenteMedicao {
@@ -153,78 +152,130 @@ export default function AprovacoesPage() {
     misto: 'Misto',
   }
   const TIPO_COLORS: Record<string, string> = {
-    servico: 'bg-purple-100 text-purple-700 border-purple-200',
-    faturamento_direto: 'bg-blue-100 text-blue-700 border-blue-200',
-    misto: 'bg-teal-100 text-teal-700 border-teal-200',
+    servico: 'bg-purple-900/40 text-purple-300 border border-purple-700/50',
+    faturamento_direto: 'bg-blue-900/40 text-blue-300 border border-blue-700/50',
+    misto: 'bg-teal-900/40 text-teal-300 border border-teal-700/50',
   }
 
+  const totalAprovado = [...historico].reduce((a, m) => a + m.valor_total, 0)
+  const qtdAprovadas = historico.filter(h => h.status === 'aprovado').length
+
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="flex-1 overflow-auto" style={{ background: '#080C14' }}>
       <Topbar
         title="Fila de Aprovações"
         subtitle="Medições aguardando análise e histórico"
       />
 
       <div className="p-6">
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-4 mb-5">
-          <Card className={pendentes.length > 0 ? 'border-yellow-300' : ''}>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${pendentes.length > 0 ? 'bg-yellow-100' : 'bg-gray-100'}`}>
-                <Clock className={`w-5 h-5 ${pendentes.length > 0 ? 'text-yellow-600' : 'text-gray-400'}`} />
-              </div>
-              <div>
-                <p className={`text-xl font-bold ${pendentes.length > 0 ? 'text-yellow-600' : 'text-gray-900'}`}>{pendentes.length}</p>
-                <p className="text-xs text-gray-500">Aguardando aprovação</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center">
-                <CheckCircle2 className="w-5 h-5 text-green-600" />
-              </div>
-              <div>
-                <p className="text-xl font-bold text-gray-900">{historico.filter(h => h.status === 'aprovado').length}</p>
-                <p className="text-xs text-gray-500">Aprovadas (total)</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center">
-                <FileText className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-xl font-bold text-gray-900">
-                  {formatCurrency([...historico].reduce((a, m) => a + m.valor_total, 0))}
-                </p>
-                <p className="text-xs text-gray-500">Total aprovado</p>
-              </div>
-            </CardContent>
-          </Card>
+        {/* Stats cards */}
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          {/* Pendentes */}
+          <div
+            className="rounded-xl p-4 flex items-center gap-3"
+            style={{
+              background: '#111827',
+              border: `1px solid ${pendentes.length > 0 ? 'rgba(245,158,11,0.30)' : '#1E293B'}`,
+              borderLeft: `4px solid ${pendentes.length > 0 ? '#F59E0B' : '#1E293B'}`,
+            }}
+          >
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{
+                background: pendentes.length > 0 ? 'rgba(245,158,11,0.12)' : 'rgba(71,85,105,0.15)',
+              }}
+            >
+              <Clock
+                className="w-5 h-5"
+                style={{ color: pendentes.length > 0 ? '#F59E0B' : '#475569' }}
+              />
+            </div>
+            <div>
+              <p
+                className="text-2xl font-bold"
+                style={{ color: pendentes.length > 0 ? '#F59E0B' : '#F1F5F9' }}
+              >
+                {pendentes.length}
+              </p>
+              <p className="text-xs" style={{ color: '#475569' }}>Aguardando aprovação</p>
+            </div>
+          </div>
+
+          {/* Aprovadas */}
+          <div
+            className="rounded-xl p-4 flex items-center gap-3"
+            style={{
+              background: '#111827',
+              border: '1px solid rgba(16,185,129,0.20)',
+              borderLeft: '4px solid #10B981',
+            }}
+          >
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: 'rgba(16,185,129,0.12)' }}
+            >
+              <CheckCircle2 className="w-5 h-5" style={{ color: '#10B981' }} />
+            </div>
+            <div>
+              <p className="text-2xl font-bold" style={{ color: '#F1F5F9' }}>{qtdAprovadas}</p>
+              <p className="text-xs" style={{ color: '#475569' }}>Aprovadas (total)</p>
+            </div>
+          </div>
+
+          {/* Total valor */}
+          <div
+            className="rounded-xl p-4 flex items-center gap-3"
+            style={{
+              background: '#111827',
+              border: '1px solid rgba(59,130,246,0.20)',
+              borderLeft: '4px solid #3B82F6',
+            }}
+          >
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: 'rgba(59,130,246,0.12)' }}
+            >
+              <FileText className="w-5 h-5" style={{ color: '#3B82F6' }} />
+            </div>
+            <div>
+              <p className="text-xl font-bold" style={{ color: '#F1F5F9' }}>{formatCurrency(totalAprovado)}</p>
+              <p className="text-xs" style={{ color: '#475569' }}>Total aprovado</p>
+            </div>
+          </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-lg w-fit">
+        {/* Tab switcher */}
+        <div
+          className="flex gap-1 mb-5 w-fit p-1 rounded-xl"
+          style={{ background: '#0D1421', border: '1px solid #1E293B' }}
+        >
           <button
             onClick={() => setAba('pendentes')}
-            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${
-              aba === 'pendentes' ? 'bg-white text-[#1e3a5f] shadow-sm' : 'text-gray-500 hover:text-gray-700'
-            }`}
+            className="px-4 py-1.5 text-sm font-medium rounded-lg transition-all duration-150 flex items-center gap-2"
+            style={
+              aba === 'pendentes'
+                ? { background: '#1a2236', color: '#F1F5F9', boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }
+                : { color: '#475569' }
+            }
           >
             Pendentes
             {pendentes.length > 0 && (
-              <span className="bg-yellow-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+              <span
+                className="text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center"
+                style={{ background: '#F59E0B', color: '#fff' }}
+              >
                 {pendentes.length}
               </span>
             )}
           </button>
           <button
             onClick={() => setAba('historico')}
-            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-              aba === 'historico' ? 'bg-white text-[#1e3a5f] shadow-sm' : 'text-gray-500 hover:text-gray-700'
-            }`}
+            className="px-4 py-1.5 text-sm font-medium rounded-lg transition-all duration-150"
+            style={
+              aba === 'historico'
+                ? { background: '#1a2236', color: '#F1F5F9', boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }
+                : { color: '#475569' }
+            }
           >
             Histórico
           </button>
@@ -234,19 +285,21 @@ export default function AprovacoesPage() {
         {loading && (
           <div className="space-y-3">
             {[1, 2, 3].map(i => (
-              <Card key={i} className="animate-pulse">
-                <CardContent className="p-5">
-                  <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 bg-gray-200 rounded-xl flex-shrink-0" />
-                    <div className="flex-1 space-y-2">
-                      <div className="h-4 bg-gray-200 rounded w-1/3" />
-                      <div className="h-3 bg-gray-200 rounded w-1/2" />
-                      <div className="h-3 bg-gray-200 rounded w-1/4" />
-                    </div>
-                    <div className="h-6 bg-gray-200 rounded w-24" />
+              <div
+                key={i}
+                className="rounded-xl p-5 animate-pulse"
+                style={{ background: '#111827', border: '1px solid #1E293B' }}
+              >
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-xl flex-shrink-0" style={{ background: '#1E293B' }} />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 rounded w-1/3" style={{ background: '#1E293B' }} />
+                    <div className="h-3 rounded w-1/2" style={{ background: '#1E293B' }} />
+                    <div className="h-3 rounded w-1/4" style={{ background: '#1E293B' }} />
                   </div>
-                </CardContent>
-              </Card>
+                  <div className="h-6 rounded w-24" style={{ background: '#1E293B' }} />
+                </div>
+              </div>
             ))}
           </div>
         )}
@@ -255,56 +308,124 @@ export default function AprovacoesPage() {
         {!loading && aba === 'pendentes' && (
           <div className="space-y-3">
             {pendentes.length === 0 ? (
-              <div className="text-center py-16 text-gray-400">
-                <CheckCircle2 className="w-12 h-12 mx-auto mb-3 text-green-400" />
-                <p className="font-semibold text-gray-600">Nenhuma medição pendente</p>
-                <p className="text-sm mt-1">Todas as medições foram analisadas</p>
+              <div className="text-center py-16">
+                <CheckCircle2 className="w-12 h-12 mx-auto mb-3" style={{ color: '#10B981', opacity: 0.6 }} />
+                <p className="font-semibold" style={{ color: '#94A3B8' }}>Nenhuma medição pendente</p>
+                <p className="text-sm mt-1" style={{ color: '#475569' }}>Todas as medições foram analisadas</p>
               </div>
             ) : pendentes.map(m => (
-              <Card key={m.id} className="border-yellow-200 bg-yellow-50/30">
-                <CardContent className="p-5">
+              <div
+                key={m.id}
+                className="rounded-xl transition-all duration-150"
+                style={{
+                  background: '#111827',
+                  border: '1px solid rgba(245,158,11,0.20)',
+                  borderLeft: '4px solid #F59E0B',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(245,158,11,0.40)')}
+                onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(245,158,11,0.20)')}
+              >
+                <div className="p-5">
                   <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 bg-yellow-100 rounded-xl flex flex-col items-center justify-center flex-shrink-0">
-                      <AlertCircle className="w-5 h-5 text-yellow-600" />
+                    <div
+                      className="w-12 h-12 rounded-xl flex flex-col items-center justify-center flex-shrink-0"
+                      style={{ background: 'rgba(245,158,11,0.10)' }}
+                    >
+                      <AlertCircle className="w-5 h-5" style={{ color: '#F59E0B' }} />
                     </div>
                     <div className="flex-1">
                       <div className="flex items-start justify-between mb-2">
                         <div>
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="font-bold text-gray-900">Medição #{String(m.numero).padStart(3, '0')}</span>
+                            <span className="font-bold" style={{ color: '#F1F5F9' }}>
+                              Medição #{String(m.numero).padStart(3, '0')}
+                            </span>
                             <Badge className={getMedicaoStatusColor(m.status as MedicaoStatus)}>
                               {MEDICAO_STATUS_LABELS[m.status as MedicaoStatus]}
                             </Badge>
-                            <Badge className={TIPO_COLORS[m.tipo]}>{TIPO_LABELS[m.tipo]}</Badge>
+                            <span
+                              className={`text-xs px-2 py-0.5 rounded-full font-medium ${TIPO_COLORS[m.tipo]}`}
+                            >
+                              {TIPO_LABELS[m.tipo]}
+                            </span>
                           </div>
-                          <p className="text-sm text-gray-600">{m.contrato.numero} · {m.contrato.descricao}</p>
+                          <p className="text-sm" style={{ color: '#94A3B8' }}>
+                            {m.contrato.numero} · {m.contrato.descricao}
+                          </p>
                         </div>
-                        <p className="text-xl font-bold text-[#1e3a5f] flex-shrink-0">{formatCurrency(m.valor_total)}</p>
+                        <p
+                          className="text-xl font-bold flex-shrink-0"
+                          style={{
+                            background: 'linear-gradient(90deg, #3B82F6, #06B6D4)',
+                            WebkitBackgroundClip: 'text',
+                            WebkitTextFillColor: 'transparent',
+                          }}
+                        >
+                          {formatCurrency(m.valor_total)}
+                        </p>
                       </div>
-                      <div className="grid grid-cols-3 gap-3 text-xs text-gray-500 mb-3">
-                        <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {m.periodo_referencia}</span>
-                        <span className="flex items-center gap-1"><Building2 className="w-3 h-3" /> {m.contrato.contratado.nome}</span>
-                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> Subm. {formatDate(m.data_submissao)}</span>
+                      <div
+                        className="grid grid-cols-3 gap-3 text-xs mb-4"
+                        style={{ color: '#475569' }}
+                      >
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" /> {m.periodo_referencia}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Building2 className="w-3 h-3" /> {m.contrato.contratado.nome}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" /> Subm. {formatDate(m.data_submissao)}
+                        </span>
                       </div>
-                      <div className="flex gap-2">
-                        <Button variant="success" size="sm" onClick={() => setModalAprovar(m.id)}>
+                      <div className="flex gap-2 flex-wrap">
+                        <button
+                          onClick={() => setModalAprovar(m.id)}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-150"
+                          style={{
+                            background: 'linear-gradient(90deg, #059669, #10B981)',
+                            color: '#fff',
+                            boxShadow: '0 0 12px rgba(16,185,129,0.25)',
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 0 20px rgba(16,185,129,0.40)')}
+                          onMouseLeave={e => (e.currentTarget.style.boxShadow = '0 0 12px rgba(16,185,129,0.25)')}
+                        >
                           <CheckCircle2 className="w-3.5 h-3.5" />
                           Aprovar
-                        </Button>
-                        <Button variant="destructive" size="sm" onClick={() => setModalRejeitar(m.id)}>
+                        </button>
+                        <button
+                          onClick={() => setModalRejeitar(m.id)}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-150"
+                          style={{
+                            background: '#EF4444',
+                            color: '#fff',
+                            boxShadow: '0 0 12px rgba(239,68,68,0.20)',
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.background = '#DC2626')}
+                          onMouseLeave={e => (e.currentTarget.style.background = '#EF4444')}
+                        >
                           <XCircle className="w-3.5 h-3.5" />
                           Rejeitar
-                        </Button>
+                        </button>
                         <Link href={`/contratos/${m.contrato.id}/medicoes/${m.id}`}>
-                          <Button variant="outline" size="sm">
-                            Ver detalhes <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                          </Button>
+                          <button
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150"
+                            style={{
+                              background: 'transparent',
+                              border: '1px solid #2d3f5c',
+                              color: '#94A3B8',
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.borderColor = '#3B82F6'; e.currentTarget.style.color = '#F1F5F9' }}
+                            onMouseLeave={e => { e.currentTarget.style.borderColor = '#2d3f5c'; e.currentTarget.style.color = '#94A3B8' }}
+                          >
+                            Ver detalhes <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
                         </Link>
                       </div>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             ))}
           </div>
         )}
@@ -315,42 +436,71 @@ export default function AprovacoesPage() {
             {historico.map(m => {
               const dataAprovacao = m.updated_at
               const aprovadorNome = m.aprovacoes?.[0]?.aprovador_nome || '—'
+              const isAprovado = m.status === 'aprovado'
               return (
-                <Card key={m.id} className="hover:shadow-sm transition-shadow">
-                  <CardContent className="p-4">
+                <div
+                  key={m.id}
+                  className="rounded-xl transition-all duration-150"
+                  style={{
+                    background: '#111827',
+                    border: '1px solid #1E293B',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#1a2236')}
+                  onMouseLeave={e => (e.currentTarget.style.background = '#111827')}
+                >
+                  <div className="p-4">
                     <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                        m.status === 'aprovado' ? 'bg-green-100' : 'bg-red-100'
-                      }`}>
-                        {m.status === 'aprovado'
-                          ? <CheckCircle2 className="w-4 h-4 text-green-600" />
-                          : <XCircle className="w-4 h-4 text-red-500" />
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                        style={{
+                          background: isAprovado ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+                        }}
+                      >
+                        {isAprovado
+                          ? <CheckCircle2 className="w-4 h-4" style={{ color: '#10B981' }} />
+                          : <XCircle className="w-4 h-4" style={{ color: '#EF4444' }} />
                         }
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm">Medição #{String(m.numero).padStart(3, '0')}</span>
+                          <span className="font-medium text-sm" style={{ color: '#F1F5F9' }}>
+                            Medição #{String(m.numero).padStart(3, '0')}
+                          </span>
                           <Badge className={getMedicaoStatusColor(m.status as MedicaoStatus)}>
                             {MEDICAO_STATUS_LABELS[m.status as MedicaoStatus]}
                           </Badge>
-                          <Badge className={TIPO_COLORS[m.tipo]}>{TIPO_LABELS[m.tipo]}</Badge>
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${TIPO_COLORS[m.tipo]}`}
+                          >
+                            {TIPO_LABELS[m.tipo]}
+                          </span>
                         </div>
-                        <p className="text-xs text-gray-500">{m.contrato.numero} · {m.periodo_referencia}</p>
+                        <p className="text-xs" style={{ color: '#475569' }}>
+                          {m.contrato.numero} · {m.periodo_referencia}
+                        </p>
                       </div>
                       <div className="text-right">
-                        <p className="font-semibold text-sm">{formatCurrency(m.valor_total)}</p>
-                        <p className="text-xs text-gray-400">
-                          {m.status === 'aprovado' ? 'Aprovado' : 'Rejeitado'} em {dataAprovacao ? formatDate(dataAprovacao) : '—'}
+                        <p className="font-semibold text-sm" style={{ color: '#F1F5F9' }}>
+                          {formatCurrency(m.valor_total)}
+                        </p>
+                        <p className="text-xs" style={{ color: '#475569' }}>
+                          {isAprovado ? 'Aprovado' : 'Rejeitado'} em{' '}
+                          {dataAprovacao ? formatDate(dataAprovacao) : '—'}
                         </p>
                       </div>
                       <Link href={`/contratos/${m.contrato.id}/medicoes/${m.id}`}>
-                        <Button variant="ghost" size="sm">
+                        <button
+                          className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                          style={{ color: '#475569' }}
+                          onMouseEnter={e => { e.currentTarget.style.background = '#1E293B'; e.currentTarget.style.color = '#94A3B8' }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#475569' }}
+                        >
                           <ArrowRight className="w-4 h-4" />
-                        </Button>
+                        </button>
                       </Link>
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
               )
             })}
           </div>
@@ -361,23 +511,34 @@ export default function AprovacoesPage() {
       <Dialog open={!!modalAprovar} onOpenChange={() => setModalAprovar(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-green-700 flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2" style={{ color: '#10B981' }}>
               <CheckCircle2 className="w-5 h-5" />
               Aprovar Medição
             </DialogTitle>
             <DialogDescription>
-              {medicaoAprovar && <>
-                <strong>{medicaoAprovar.contrato.numero}</strong> · Período {medicaoAprovar.periodo_referencia} ·{' '}
-                <strong>{formatCurrency(medicaoAprovar.valor_total)}</strong>
-              </>}
+              {medicaoAprovar && (
+                <>
+                  <strong>{medicaoAprovar.contrato.numero}</strong> · Período {medicaoAprovar.periodo_referencia} ·{' '}
+                  <strong>{formatCurrency(medicaoAprovar.valor_total)}</strong>
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
           <div className="py-2 space-y-3">
-            <div className="p-3 bg-green-50 rounded-lg text-xs text-green-700">
+            <div
+              className="p-3 rounded-lg text-xs"
+              style={{
+                background: 'rgba(16,185,129,0.08)',
+                border: '1px solid rgba(16,185,129,0.20)',
+                color: '#6EE7B7',
+              }}
+            >
               Um e-mail de confirmação será enviado automaticamente para o fornecedor e para os envolvidos no contrato.
             </div>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Comentário (opcional)</label>
+              <label className="text-sm font-medium" style={{ color: '#94A3B8' }}>
+                Comentário (opcional)
+              </label>
               <Textarea
                 placeholder="Observações sobre a aprovação..."
                 value={comentario}
@@ -399,7 +560,7 @@ export default function AprovacoesPage() {
       <Dialog open={!!modalRejeitar} onOpenChange={() => setModalRejeitar(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-red-700 flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2" style={{ color: '#EF4444' }}>
               <XCircle className="w-5 h-5" />
               Rejeitar Medição
             </DialogTitle>
@@ -409,7 +570,9 @@ export default function AprovacoesPage() {
           </DialogHeader>
           <div className="py-2">
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Motivo da Rejeição *</label>
+              <label className="text-sm font-medium" style={{ color: '#94A3B8' }}>
+                Motivo da Rejeição *
+              </label>
               <Textarea
                 placeholder="Descreva detalhadamente o que precisa ser corrigido..."
                 value={motivo}

@@ -23,9 +23,9 @@ const TIPO_MEDICAO_LABELS: Record<TipoMedicao, string> = {
   misto: 'Misto',
 }
 const TIPO_MEDICAO_COLORS: Record<TipoMedicao, string> = {
-  servico: 'bg-purple-100 text-purple-700 border-purple-200',
-  faturamento_direto: 'bg-blue-100 text-blue-700 border-blue-200',
-  misto: 'bg-teal-100 text-teal-700 border-teal-200',
+  servico: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
+  faturamento_direto: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+  misto: 'bg-teal-500/10 text-teal-400 border-teal-500/20',
 }
 
 export default function EstruturaPage({ params }: { params: Promise<{ id: string }> }) {
@@ -149,7 +149,7 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
 
       <div className="p-6 space-y-3">
         {loading ? (
-          <div className="flex items-center justify-center py-16 text-gray-400">
+          <div className="flex items-center justify-center py-16 text-blue-400">
             <Loader2 className="w-6 h-6 animate-spin mr-2" />
             <span>Carregando estrutura...</span>
           </div>
@@ -159,18 +159,18 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
               {/* Grupo Macro Header */}
               <CardContent className="p-0">
                 <div
-                  className="flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                  className="flex items-center gap-3 p-4 cursor-pointer hover:bg-[#0D1421] transition-colors"
                   onClick={() => toggleExpanded(grupo.id)}
                 >
                   {expanded[grupo.id] ? (
-                    <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                    <ChevronDown className="w-4 h-4 text-[#475569] flex-shrink-0" />
                   ) : (
-                    <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                    <ChevronRight className="w-4 h-4 text-[#475569] flex-shrink-0" />
                   )}
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-mono text-xs text-gray-400">{grupo.codigo}</span>
-                      <span className="font-bold text-gray-900">{grupo.nome}</span>
+                      <span className="font-mono text-xs text-[#475569]">{grupo.codigo}</span>
+                      <span className="font-bold text-[#F1F5F9]">{grupo.nome}</span>
                       <Badge className={TIPO_MEDICAO_COLORS[grupo.tipo_medicao as TipoMedicao]}>
                         {TIPO_MEDICAO_LABELS[grupo.tipo_medicao as TipoMedicao]}
                       </Badge>
@@ -180,14 +180,14 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
                         value={grupo.valor_contratado > 0 ? ((grupo.valor_medido || 0) / grupo.valor_contratado) * 100 : 0}
                         className="h-1.5 w-48"
                       />
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-[#475569]">
                         {formatPercent(grupo.valor_contratado > 0 ? ((grupo.valor_medido || 0) / grupo.valor_contratado) * 100 : 0)} medido
                       </span>
                     </div>
                   </div>
                   <div className="text-right text-sm">
-                    <p className="font-bold text-gray-900">{formatCurrency(grupo.valor_contratado)}</p>
-                    <p className="text-xs text-gray-400">{(grupo.tarefas || []).length} tarefa(s)</p>
+                    <p className="font-bold text-[#F1F5F9]">{formatCurrency(grupo.valor_contratado)}</p>
+                    <p className="text-xs text-[#475569]">{(grupo.tarefas || []).length} tarefa(s)</p>
                   </div>
                   <Button variant="ghost" size="icon" className="w-7 h-7" onClick={e => { e.stopPropagation() }}>
                     <Pencil className="w-3.5 h-3.5" />
@@ -196,13 +196,13 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
 
                 {/* Tarefas */}
                 {expanded[grupo.id] && (
-                  <div className="border-t border-gray-100">
+                  <div className="border-t border-[#1E293B]">
                     {(grupo.tarefas || []).map((tarefa: any) => (
-                      <div key={tarefa.id} className="border-b border-gray-50 last:border-0">
-                        <div className="flex items-center gap-3 px-8 py-3 bg-gray-50/50">
-                          <span className="font-mono text-xs text-gray-400">{tarefa.codigo}</span>
-                          <span className="font-semibold text-sm text-gray-800 flex-1">{tarefa.nome}</span>
-                          <span className="text-xs font-medium text-gray-600">{formatCurrency(tarefa.valor_total)}</span>
+                      <div key={tarefa.id} className="border-b border-[#1E293B] last:border-0">
+                        <div className="flex items-center gap-3 px-8 py-3 bg-[#0D1421]">
+                          <span className="font-mono text-xs text-[#475569]">{tarefa.codigo}</span>
+                          <span className="font-semibold text-sm text-[#94A3B8] flex-1">{tarefa.nome}</span>
+                          <span className="text-xs font-medium text-[#94A3B8]">{formatCurrency(tarefa.valor_total)}</span>
                           <Button
                             variant="ghost"
                             size="sm"
@@ -222,19 +222,19 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
                             const pct = qtdContratada > 0 ? (qtdMedida / qtdContratada) * 100 : 0
                             const valorTotal = qtdContratada * (det.valor_unitario || 0)
                             return (
-                              <div key={det.id} className="grid grid-cols-12 gap-2 py-1.5 px-2 rounded hover:bg-gray-50 text-xs items-center">
-                                <span className="col-span-1 font-mono text-gray-400">{det.codigo}</span>
-                                <span className="col-span-4 text-gray-700">{det.descricao}</span>
-                                <span className="col-span-1 text-center text-gray-500">{det.unidade}</span>
+                              <div key={det.id} className="grid grid-cols-12 gap-2 py-1.5 px-2 rounded hover:bg-[#0D1421] text-xs items-center">
+                                <span className="col-span-1 font-mono text-[#475569]">{det.codigo}</span>
+                                <span className="col-span-4 text-[#94A3B8]">{det.descricao}</span>
+                                <span className="col-span-1 text-center text-[#475569]">{det.unidade}</span>
                                 <span className="col-span-2 text-right">
-                                  <span className="text-gray-400">{qtdMedida.toLocaleString('pt-BR')}</span>
-                                  <span className="text-gray-300"> / </span>
-                                  <span className="text-gray-600">{qtdContratada.toLocaleString('pt-BR')}</span>
+                                  <span className="text-[#475569]">{qtdMedida.toLocaleString('pt-BR')}</span>
+                                  <span className="text-[#1E293B]"> / </span>
+                                  <span className="text-[#94A3B8]">{qtdContratada.toLocaleString('pt-BR')}</span>
                                 </span>
                                 <div className="col-span-2">
                                   <Progress value={pct} className="h-1.5" />
                                 </div>
-                                <span className="col-span-2 text-right font-medium text-gray-700">{formatCurrency(valorTotal)}</span>
+                                <span className="col-span-2 text-right font-medium text-[#94A3B8]">{formatCurrency(valorTotal)}</span>
                               </div>
                             )
                           })}
@@ -244,7 +244,7 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
 
                     {/* Add tarefa */}
                     <div className="px-8 py-2">
-                      <Button variant="ghost" size="sm" className="text-xs text-gray-400" onClick={() => setModalTarefa(grupo.id)}>
+                      <Button variant="ghost" size="sm" className="text-xs text-[#475569]" onClick={() => setModalTarefa(grupo.id)}>
                         <Plus className="w-3 h-3 mr-1" />
                         Adicionar Tarefa
                       </Button>
@@ -262,7 +262,7 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Layers className="w-5 h-5 text-[#1e3a5f]" />
+              <Layers className="w-5 h-5 text-blue-400" />
               Novo Grupo Macro
             </DialogTitle>
             <DialogDescription>Nível 1 da estrutura hierárquica do contrato.</DialogDescription>
@@ -270,13 +270,13 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
           <div className="space-y-3 py-2">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>Código *</Label>
-                <Input placeholder="Ex: 6.0" value={formGrupo.codigo} onChange={e => setFormGrupo(f => ({ ...f, codigo: e.target.value }))} />
+                <Label className="text-[#94A3B8]">Código *</Label>
+                <Input placeholder="Ex: 6.0" value={formGrupo.codigo} onChange={e => setFormGrupo(f => ({ ...f, codigo: e.target.value }))} className="bg-[#0D1421] border-[#1E293B] text-[#F1F5F9] focus:border-blue-500" />
               </div>
               <div className="space-y-1.5">
-                <Label>Tipo de Medição *</Label>
+                <Label className="text-[#94A3B8]">Tipo de Medição *</Label>
                 <Select value={formGrupo.tipo_medicao} onValueChange={v => setFormGrupo(f => ({ ...f, tipo_medicao: v as TipoMedicao }))}>
-                  <SelectTrigger>
+                  <SelectTrigger className="bg-[#0D1421] border-[#1E293B] text-[#F1F5F9]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -287,12 +287,12 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
                 </Select>
               </div>
               <div className="col-span-2 space-y-1.5">
-                <Label>Nome do Grupo *</Label>
-                <Input placeholder="Ex: Instalações de Proteção contra Incêndio" value={formGrupo.nome} onChange={e => setFormGrupo(f => ({ ...f, nome: e.target.value }))} />
+                <Label className="text-[#94A3B8]">Nome do Grupo *</Label>
+                <Input placeholder="Ex: Instalações de Proteção contra Incêndio" value={formGrupo.nome} onChange={e => setFormGrupo(f => ({ ...f, nome: e.target.value }))} className="bg-[#0D1421] border-[#1E293B] text-[#F1F5F9] focus:border-blue-500" />
               </div>
               <div className="col-span-2 space-y-1.5">
-                <Label>Valor Contratado (R$) *</Label>
-                <Input type="number" placeholder="0,00" value={formGrupo.valor_contratado} onChange={e => setFormGrupo(f => ({ ...f, valor_contratado: e.target.value }))} />
+                <Label className="text-[#94A3B8]">Valor Contratado (R$) *</Label>
+                <Input type="number" placeholder="0,00" value={formGrupo.valor_contratado} onChange={e => setFormGrupo(f => ({ ...f, valor_contratado: e.target.value }))} className="bg-[#0D1421] border-[#1E293B] text-[#F1F5F9] focus:border-blue-500" />
               </div>
             </div>
           </div>
@@ -314,16 +314,16 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3 py-2">
             <div className="space-y-1.5">
-              <Label>Código *</Label>
-              <Input placeholder="Ex: 1.3" value={formTarefa.codigo} onChange={e => setFormTarefa(f => ({ ...f, codigo: e.target.value }))} />
+              <Label className="text-[#94A3B8]">Código *</Label>
+              <Input placeholder="Ex: 1.3" value={formTarefa.codigo} onChange={e => setFormTarefa(f => ({ ...f, codigo: e.target.value }))} className="bg-[#0D1421] border-[#1E293B] text-[#F1F5F9] focus:border-blue-500" />
             </div>
             <div className="space-y-1.5">
-              <Label>Valor Total (R$) *</Label>
-              <Input type="number" placeholder="0,00" value={formTarefa.valor_total} onChange={e => setFormTarefa(f => ({ ...f, valor_total: e.target.value }))} />
+              <Label className="text-[#94A3B8]">Valor Total (R$) *</Label>
+              <Input type="number" placeholder="0,00" value={formTarefa.valor_total} onChange={e => setFormTarefa(f => ({ ...f, valor_total: e.target.value }))} className="bg-[#0D1421] border-[#1E293B] text-[#F1F5F9] focus:border-blue-500" />
             </div>
             <div className="col-span-2 space-y-1.5">
-              <Label>Nome da Tarefa *</Label>
-              <Input placeholder="Ex: Subestação" value={formTarefa.nome} onChange={e => setFormTarefa(f => ({ ...f, nome: e.target.value }))} />
+              <Label className="text-[#94A3B8]">Nome da Tarefa *</Label>
+              <Input placeholder="Ex: Subestação" value={formTarefa.nome} onChange={e => setFormTarefa(f => ({ ...f, nome: e.target.value }))} className="bg-[#0D1421] border-[#1E293B] text-[#F1F5F9] focus:border-blue-500" />
             </div>
           </div>
           <DialogFooter>
@@ -344,27 +344,27 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3 py-2">
             <div className="space-y-1.5">
-              <Label>Código *</Label>
-              <Input placeholder="Ex: 1.1.3" value={formDetalhe.codigo} onChange={e => setFormDetalhe(f => ({ ...f, codigo: e.target.value }))} />
+              <Label className="text-[#94A3B8]">Código *</Label>
+              <Input placeholder="Ex: 1.1.3" value={formDetalhe.codigo} onChange={e => setFormDetalhe(f => ({ ...f, codigo: e.target.value }))} className="bg-[#0D1421] border-[#1E293B] text-[#F1F5F9] focus:border-blue-500" />
             </div>
             <div className="space-y-1.5">
-              <Label>Unidade *</Label>
-              <Input placeholder="un, m, m², kg..." value={formDetalhe.unidade} onChange={e => setFormDetalhe(f => ({ ...f, unidade: e.target.value }))} />
+              <Label className="text-[#94A3B8]">Unidade *</Label>
+              <Input placeholder="un, m, m², kg..." value={formDetalhe.unidade} onChange={e => setFormDetalhe(f => ({ ...f, unidade: e.target.value }))} className="bg-[#0D1421] border-[#1E293B] text-[#F1F5F9] focus:border-blue-500" />
             </div>
             <div className="col-span-2 space-y-1.5">
-              <Label>Descrição *</Label>
-              <Input placeholder="Descrição do item" value={formDetalhe.descricao} onChange={e => setFormDetalhe(f => ({ ...f, descricao: e.target.value }))} />
+              <Label className="text-[#94A3B8]">Descrição *</Label>
+              <Input placeholder="Descrição do item" value={formDetalhe.descricao} onChange={e => setFormDetalhe(f => ({ ...f, descricao: e.target.value }))} className="bg-[#0D1421] border-[#1E293B] text-[#F1F5F9] focus:border-blue-500" />
             </div>
             <div className="space-y-1.5">
-              <Label>Quantidade Contratada *</Label>
-              <Input type="number" placeholder="0" value={formDetalhe.qtd_contratada} onChange={e => setFormDetalhe(f => ({ ...f, qtd_contratada: e.target.value }))} />
+              <Label className="text-[#94A3B8]">Quantidade Contratada *</Label>
+              <Input type="number" placeholder="0" value={formDetalhe.qtd_contratada} onChange={e => setFormDetalhe(f => ({ ...f, qtd_contratada: e.target.value }))} className="bg-[#0D1421] border-[#1E293B] text-[#F1F5F9] focus:border-blue-500" />
             </div>
             <div className="space-y-1.5">
-              <Label>Valor Unitário (R$) *</Label>
-              <Input type="number" placeholder="0,00" value={formDetalhe.valor_unitario} onChange={e => setFormDetalhe(f => ({ ...f, valor_unitario: e.target.value }))} />
+              <Label className="text-[#94A3B8]">Valor Unitário (R$) *</Label>
+              <Input type="number" placeholder="0,00" value={formDetalhe.valor_unitario} onChange={e => setFormDetalhe(f => ({ ...f, valor_unitario: e.target.value }))} className="bg-[#0D1421] border-[#1E293B] text-[#F1F5F9] focus:border-blue-500" />
             </div>
             {formDetalhe.qtd_contratada && formDetalhe.valor_unitario && (
-              <div className="col-span-2 p-2 bg-blue-50 rounded text-xs text-blue-700 text-center">
+              <div className="col-span-2 p-2 bg-blue-500/10 rounded text-xs text-blue-400 text-center">
                 Valor Total: <strong>{formatCurrency(parseFloat(formDetalhe.qtd_contratada) * parseFloat(formDetalhe.valor_unitario))}</strong>
               </div>
             )}

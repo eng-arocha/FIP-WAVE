@@ -3,20 +3,18 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Progress } from '@/components/ui/progress'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   AreaChart, Area
 } from 'recharts'
 import {
   TrendingUp, FileText, Clock, CheckCircle2, AlertCircle,
-  DollarSign, Building2, Plus, ArrowRight, Loader2
+  DollarSign, Plus, ArrowRight, Loader2
 } from 'lucide-react'
 import { formatCurrency, formatPercent, getContratoStatusColor, getMedicaoStatusColor } from '@/lib/utils'
-import { CONTRATO_STATUS_LABELS, MEDICAO_STATUS_LABELS, type TipoMedicao, type MedicaoStatus } from '@/types'
+import { CONTRATO_STATUS_LABELS, MEDICAO_STATUS_LABELS, type MedicaoStatus } from '@/types'
 
 const CURVA_S_DATA = [
   { mes: 'Jan/25', previsto: 5, realizado: 0, acumulado_prev: 5, acumulado_real: 0 },
@@ -35,6 +33,14 @@ const CURVA_S_DATA = [
   { mes: 'Fev/26', previsto: 4, realizado: 3.44, acumulado_prev: 96, acumulado_real: 18.0 },
   { mes: 'Mar/26', previsto: 4, realizado: null, acumulado_prev: 100, acumulado_real: null },
 ]
+
+const chartTooltipStyle = {
+  backgroundColor: '#0D1421',
+  border: '1px solid #1E293B',
+  borderRadius: '8px',
+  color: '#F1F5F9',
+  fontSize: 12,
+}
 
 export default function DashboardPage() {
   const [contratos, setContratos] = useState<any[]>([])
@@ -72,14 +78,14 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-[#1e3a5f]" />
+      <div className="flex-1 flex items-center justify-center" style={{ background: '#080C14' }}>
+        <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#3B82F6' }} />
       </div>
     )
   }
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="flex-1 overflow-auto" style={{ background: '#080C14' }}>
       <Topbar
         title="Dashboard Geral"
         subtitle="Visão consolidada de todos os contratos"
@@ -96,194 +102,415 @@ export default function DashboardPage() {
       <div className="p-6 space-y-6">
         {/* KPI Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="pt-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Total Contratado</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(totalContratado)}</p>
-                  <p className="text-xs text-gray-500 mt-1">{contratos.length} contrato(s) ativo(s)</p>
-                </div>
-                <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
-                  <FileText className="w-5 h-5 text-blue-600" />
-                </div>
+          {/* Total Contratado */}
+          <div
+            className="rounded-xl p-5 transition-all duration-200 cursor-default"
+            style={{
+              background: '#111827',
+              border: '1px solid #1E293B',
+              borderBottom: '2px solid rgba(59,130,246,0.40)',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = '#2d3f5c')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = '#1E293B')}
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#475569' }}>
+                  Total Contratado
+                </p>
+                <p className="text-2xl font-bold" style={{ color: '#F1F5F9' }}>
+                  {formatCurrency(totalContratado)}
+                </p>
+                <p className="text-xs mt-1" style={{ color: '#475569' }}>
+                  {contratos.length} contrato(s) ativo(s)
+                </p>
               </div>
-            </CardContent>
-          </Card>
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                style={{ background: 'rgba(59,130,246,0.15)' }}
+              >
+                <FileText className="w-5 h-5" style={{ color: '#3B82F6' }} />
+              </div>
+            </div>
+          </div>
 
-          <Card>
-            <CardContent className="pt-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Total Medido</p>
-                  <p className="text-2xl font-bold text-green-700 mt-1">{formatCurrency(totalMedido)}</p>
-                  <p className="text-xs text-gray-500 mt-1">{totalContratado > 0 ? formatPercent(totalMedido / totalContratado * 100) : '0%'} do total</p>
-                </div>
-                <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
-                  <TrendingUp className="w-5 h-5 text-green-600" />
-                </div>
+          {/* Total Medido */}
+          <div
+            className="rounded-xl p-5 transition-all duration-200 cursor-default"
+            style={{
+              background: '#111827',
+              border: '1px solid #1E293B',
+              borderBottom: '2px solid rgba(16,185,129,0.40)',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = '#2d3f5c')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = '#1E293B')}
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#475569' }}>
+                  Total Medido
+                </p>
+                <p className="text-2xl font-bold" style={{ color: '#10B981' }}>
+                  {formatCurrency(totalMedido)}
+                </p>
+                <p className="text-xs mt-1" style={{ color: '#475569' }}>
+                  {totalContratado > 0 ? formatPercent(totalMedido / totalContratado * 100) : '0%'} do total
+                </p>
               </div>
-            </CardContent>
-          </Card>
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                style={{ background: 'rgba(16,185,129,0.15)' }}
+              >
+                <TrendingUp className="w-5 h-5" style={{ color: '#10B981' }} />
+              </div>
+            </div>
+          </div>
 
-          <Card>
-            <CardContent className="pt-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Saldo Restante</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(totalSaldo)}</p>
-                  <p className="text-xs text-gray-500 mt-1">{totalContratado > 0 ? formatPercent(totalSaldo / totalContratado * 100) : '0%'} do total</p>
-                </div>
-                <div className="w-10 h-10 rounded-lg bg-gray-50 flex items-center justify-center">
-                  <DollarSign className="w-5 h-5 text-gray-600" />
-                </div>
+          {/* Saldo Restante */}
+          <div
+            className="rounded-xl p-5 transition-all duration-200 cursor-default"
+            style={{
+              background: '#111827',
+              border: '1px solid #1E293B',
+              borderBottom: '2px solid rgba(71,85,105,0.60)',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = '#2d3f5c')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = '#1E293B')}
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#475569' }}>
+                  Saldo Restante
+                </p>
+                <p className="text-2xl font-bold" style={{ color: '#F1F5F9' }}>
+                  {formatCurrency(totalSaldo)}
+                </p>
+                <p className="text-xs mt-1" style={{ color: '#475569' }}>
+                  {totalContratado > 0 ? formatPercent(totalSaldo / totalContratado * 100) : '0%'} do total
+                </p>
               </div>
-            </CardContent>
-          </Card>
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                style={{ background: 'rgba(71,85,105,0.20)' }}
+              >
+                <DollarSign className="w-5 h-5" style={{ color: '#94A3B8' }} />
+              </div>
+            </div>
+          </div>
 
-          <Card className={pendentesAprovacao > 0 ? 'border-yellow-300' : ''}>
-            <CardContent className="pt-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Aguard. Aprovação</p>
-                  <p className={`text-2xl font-bold mt-1 ${pendentesAprovacao > 0 ? 'text-yellow-600' : 'text-gray-900'}`}>
-                    {pendentesAprovacao}
-                  </p>
-                  <Link href="/aprovacoes" className="text-xs text-[#1e3a5f] hover:underline mt-1 inline-block">
-                    Ver fila →
-                  </Link>
-                </div>
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${pendentesAprovacao > 0 ? 'bg-yellow-50' : 'bg-gray-50'}`}>
-                  {pendentesAprovacao > 0 ? (
-                    <AlertCircle className="w-5 h-5 text-yellow-500" />
-                  ) : (
-                    <CheckCircle2 className="w-5 h-5 text-gray-400" />
-                  )}
-                </div>
+          {/* Aguardando Aprovação */}
+          <div
+            className="rounded-xl p-5 transition-all duration-200 cursor-default"
+            style={{
+              background: '#111827',
+              border: `1px solid ${pendentesAprovacao > 0 ? 'rgba(245,158,11,0.30)' : '#1E293B'}`,
+              borderBottom: `2px solid ${pendentesAprovacao > 0 ? 'rgba(245,158,11,0.50)' : 'rgba(71,85,105,0.40)'}`,
+            }}
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#475569' }}>
+                  Aguard. Aprovação
+                </p>
+                <p
+                  className="text-2xl font-bold mt-1"
+                  style={{ color: pendentesAprovacao > 0 ? '#F59E0B' : '#F1F5F9' }}
+                >
+                  {pendentesAprovacao}
+                </p>
+                <Link
+                  href="/aprovacoes"
+                  className="text-xs mt-1 inline-block hover:underline"
+                  style={{ color: '#3B82F6' }}
+                >
+                  Ver fila →
+                </Link>
               </div>
-            </CardContent>
-          </Card>
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                style={{
+                  background: pendentesAprovacao > 0 ? 'rgba(245,158,11,0.15)' : 'rgba(71,85,105,0.20)',
+                }}
+              >
+                {pendentesAprovacao > 0 ? (
+                  <AlertCircle className="w-5 h-5" style={{ color: '#F59E0B' }} />
+                ) : (
+                  <CheckCircle2 className="w-5 h-5" style={{ color: '#475569' }} />
+                )}
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Charts row */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {/* Curva S */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Curva S — Avanço Físico-Financeiro Acumulado (%)</CardTitle>
-            </CardHeader>
-            <CardContent>
+          <div
+            className="rounded-xl overflow-hidden"
+            style={{ background: '#111827', border: '1px solid #1E293B' }}
+          >
+            <div className="px-5 pt-5 pb-3">
+              <h3 className="text-sm font-semibold" style={{ color: '#F1F5F9' }}>
+                Curva S — Avanço Físico-Financeiro Acumulado (%)
+              </h3>
+            </div>
+            <div className="px-4 pb-5" style={{ background: '#0D1421', margin: '0 12px 12px', borderRadius: '10px' }}>
               <ResponsiveContainer width="100%" height={260}>
-                <AreaChart data={CURVA_S_DATA} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="mes" tick={{ fontSize: 10 }} interval={2} />
-                  <YAxis tick={{ fontSize: 10 }} unit="%" />
-                  <Tooltip formatter={(v) => v !== null ? `${v}%` : 'N/D'} />
-                  <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
-                  <Area type="monotone" dataKey="acumulado_prev" name="Previsto" stroke="#94a3b8" fill="#f1f5f9" strokeDasharray="5 3" strokeWidth={2} />
-                  <Area type="monotone" dataKey="acumulado_real" name="Realizado" stroke="#1e3a5f" fill="#dbeafe" strokeWidth={2} connectNulls={false} />
+                <AreaChart data={CURVA_S_DATA} margin={{ top: 12, right: 10, left: 0, bottom: 5 }}>
+                  <defs>
+                    <linearGradient id="gradPrev" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#2d3f5c" stopOpacity={0.4} />
+                      <stop offset="95%" stopColor="#2d3f5c" stopOpacity={0.0} />
+                    </linearGradient>
+                    <linearGradient id="gradReal" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" />
+                  <XAxis
+                    dataKey="mes"
+                    tick={{ fontSize: 10, fill: '#475569' }}
+                    interval={2}
+                    axisLine={{ stroke: '#1E293B' }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10, fill: '#475569' }}
+                    unit="%"
+                    axisLine={{ stroke: '#1E293B' }}
+                    tickLine={false}
+                  />
+                  <Tooltip
+                    contentStyle={chartTooltipStyle}
+                    formatter={(v) => v !== null ? `${v}%` : 'N/D'}
+                  />
+                  <Legend
+                    iconSize={10}
+                    wrapperStyle={{ fontSize: 11, color: '#94A3B8' }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="acumulado_prev"
+                    name="Previsto"
+                    stroke="#2d3f5c"
+                    fill="url(#gradPrev)"
+                    strokeDasharray="5 3"
+                    strokeWidth={2}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="acumulado_real"
+                    name="Realizado"
+                    stroke="#3B82F6"
+                    fill="url(#gradReal)"
+                    strokeWidth={2}
+                    connectNulls={false}
+                  />
                 </AreaChart>
               </ResponsiveContainer>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* Grupos Macro */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Medido por Grupo Macro (R$)</CardTitle>
-            </CardHeader>
-            <CardContent>
+          <div
+            className="rounded-xl overflow-hidden"
+            style={{ background: '#111827', border: '1px solid #1E293B' }}
+          >
+            <div className="px-5 pt-5 pb-3">
+              <h3 className="text-sm font-semibold" style={{ color: '#F1F5F9' }}>
+                Medido por Grupo Macro (R$)
+              </h3>
+            </div>
+            <div className="px-4 pb-5" style={{ background: '#0D1421', margin: '0 12px 12px', borderRadius: '10px' }}>
               <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={gruposData} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-                  <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`} />
-                  <YAxis type="category" dataKey="nome" tick={{ fontSize: 10 }} width={90} />
-                  <Tooltip formatter={(v) => formatCurrency(v as number)} />
-                  <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
-                  <Bar dataKey="contratado" name="Contratado" fill="#e2e8f0" radius={[0, 3, 3, 0]} />
-                  <Bar dataKey="medido" name="Medido" fill="#1e3a5f" radius={[0, 3, 3, 0]} />
+                <BarChart data={gruposData} layout="vertical" margin={{ top: 12, right: 20, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" horizontal={false} />
+                  <XAxis
+                    type="number"
+                    tick={{ fontSize: 10, fill: '#475569' }}
+                    tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`}
+                    axisLine={{ stroke: '#1E293B' }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="nome"
+                    tick={{ fontSize: 10, fill: '#475569' }}
+                    width={90}
+                    axisLine={{ stroke: '#1E293B' }}
+                    tickLine={false}
+                  />
+                  <Tooltip
+                    contentStyle={chartTooltipStyle}
+                    formatter={(v) => formatCurrency(v as number)}
+                  />
+                  <Legend
+                    iconSize={10}
+                    wrapperStyle={{ fontSize: 11, color: '#94A3B8' }}
+                  />
+                  <Bar dataKey="contratado" name="Contratado" fill="#1E293B" radius={[0, 3, 3, 0]} />
+                  <Bar dataKey="medido" name="Medido" fill="#3B82F6" radius={[0, 3, 3, 0]} />
                 </BarChart>
               </ResponsiveContainer>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
 
         {/* Contratos + Medições recentes */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {/* Contratos */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-sm">Contratos Ativos</CardTitle>
+          <div
+            className="rounded-xl overflow-hidden"
+            style={{ background: '#111827', border: '1px solid #1E293B' }}
+          >
+            <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid #1E293B' }}>
+              <h3 className="text-sm font-semibold" style={{ color: '#F1F5F9' }}>Contratos Ativos</h3>
               <Link href="/contratos">
-                <Button variant="ghost" size="sm" className="text-xs h-7">
-                  Ver todos <ArrowRight className="w-3 h-3 ml-1" />
-                </Button>
+                <button
+                  className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg transition-colors"
+                  style={{ color: '#94A3B8' }}
+                  onMouseEnter={e => { e.currentTarget.style.color = '#F1F5F9'; e.currentTarget.style.background = '#1a2236' }}
+                  onMouseLeave={e => { e.currentTarget.style.color = '#94A3B8'; e.currentTarget.style.background = 'transparent' }}
+                >
+                  Ver todos <ArrowRight className="w-3 h-3" />
+                </button>
               </Link>
-            </CardHeader>
-            <CardContent className="space-y-3">
+            </div>
+            <div className="p-4 space-y-3">
               {contratos.map((c: any) => (
                 <Link key={c.contrato_id} href={`/contratos/${c.contrato_id}`}>
-                  <div className="p-3 rounded-lg border border-gray-100 hover:border-gray-300 hover:bg-gray-50 transition-colors cursor-pointer">
+                  <div
+                    className="p-3 rounded-xl transition-all duration-150 cursor-pointer"
+                    style={{
+                      background: '#0D1421',
+                      border: '1px solid #1E293B',
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.borderColor = 'rgba(59,130,246,0.50)'
+                      e.currentTarget.style.background = '#111827'
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.borderColor = '#1E293B'
+                      e.currentTarget.style.background = '#0D1421'
+                    }}
+                  >
                     <div className="flex items-start justify-between mb-2">
                       <div>
-                        <p className="font-semibold text-sm text-gray-900">{c.numero}</p>
-                        <p className="text-xs text-gray-500 line-clamp-1">{c.descricao}</p>
+                        <p className="font-semibold text-sm" style={{ color: '#F1F5F9' }}>{c.numero}</p>
+                        <p className="text-xs line-clamp-1 mt-0.5" style={{ color: '#475569' }}>{c.descricao}</p>
                       </div>
                       <Badge className={getContratoStatusColor(c.status)}>
                         {CONTRATO_STATUS_LABELS[c.status as keyof typeof CONTRATO_STATUS_LABELS]}
                       </Badge>
                     </div>
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs text-gray-500">
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-xs" style={{ color: '#475569' }}>
                         <span>Avanço financeiro</span>
-                        <span className="font-medium text-gray-700">{formatPercent(c.percentual_medido || 0)}</span>
+                        <span className="font-semibold" style={{ color: '#94A3B8' }}>
+                          {formatPercent(c.percentual_medido || 0)}
+                        </span>
                       </div>
-                      <Progress value={c.percentual_medido || 0} className="h-1.5" />
+                      {/* Custom progress bar */}
+                      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#1E293B' }}>
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${Math.min(c.percentual_medido || 0, 100)}%`,
+                            background: 'linear-gradient(90deg, #2563EB, #06B6D4)',
+                          }}
+                        />
+                      </div>
                       <div className="flex justify-between text-xs mt-1">
-                        <span className="text-gray-500">Medido: <span className="font-medium text-gray-700">{formatCurrency(c.valor_medido || 0)}</span></span>
-                        <span className="text-gray-500">Saldo: <span className="font-medium text-gray-700">{formatCurrency(c.saldo_restante || 0)}</span></span>
+                        <span style={{ color: '#475569' }}>
+                          Medido:{' '}
+                          <span className="font-medium" style={{ color: '#94A3B8' }}>
+                            {formatCurrency(c.valor_medido || 0)}
+                          </span>
+                        </span>
+                        <span style={{ color: '#475569' }}>
+                          Saldo:{' '}
+                          <span className="font-medium" style={{ color: '#94A3B8' }}>
+                            {formatCurrency(c.saldo_restante || 0)}
+                          </span>
+                        </span>
                       </div>
                     </div>
                   </div>
                 </Link>
               ))}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* Medições Recentes */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-sm">Medições Recentes</CardTitle>
+          <div
+            className="rounded-xl overflow-hidden"
+            style={{ background: '#111827', border: '1px solid #1E293B' }}
+          >
+            <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid #1E293B' }}>
+              <h3 className="text-sm font-semibold" style={{ color: '#F1F5F9' }}>Medições Recentes</h3>
               <Link href="/aprovacoes">
-                <Button variant="ghost" size="sm" className="text-xs h-7">
-                  Fila de aprovação <ArrowRight className="w-3 h-3 ml-1" />
-                </Button>
+                <button
+                  className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg transition-colors"
+                  style={{ color: '#94A3B8' }}
+                  onMouseEnter={e => { e.currentTarget.style.color = '#F1F5F9'; e.currentTarget.style.background = '#1a2236' }}
+                  onMouseLeave={e => { e.currentTarget.style.color = '#94A3B8'; e.currentTarget.style.background = 'transparent' }}
+                >
+                  Fila de aprovação <ArrowRight className="w-3 h-3" />
+                </button>
               </Link>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
+            </div>
+            <div className="p-4">
+              <div className="space-y-1">
                 {medicoesRecentes.map((m: any) => (
                   <Link key={m.id} href={`/contratos/${m.contrato?.id}/medicoes/${m.id}`}>
-                    <div className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer border border-transparent hover:border-gray-200">
-                      <div className="w-9 h-9 rounded-lg bg-[#1e3a5f]/10 flex items-center justify-center flex-shrink-0">
-                        <span className="text-xs font-bold text-[#1e3a5f]">#{String(m.numero).padStart(2, '0')}</span>
+                    <div
+                      className="flex items-center gap-3 p-2.5 rounded-xl transition-all duration-150 cursor-pointer"
+                      style={{ border: '1px solid transparent' }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.background = '#1a2236'
+                        e.currentTarget.style.borderColor = '#1E293B'
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.background = 'transparent'
+                        e.currentTarget.style.borderColor = 'transparent'
+                      }}
+                    >
+                      <div
+                        className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                        style={{ background: 'rgba(59,130,246,0.12)' }}
+                      >
+                        <span
+                          className="text-xs font-bold"
+                          style={{
+                            background: 'linear-gradient(90deg, #3B82F6, #06B6D4)',
+                            WebkitBackgroundClip: 'text',
+                            WebkitTextFillColor: 'transparent',
+                          }}
+                        >
+                          #{String(m.numero).padStart(2, '0')}
+                        </span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-gray-900">Medição {m.periodo_referencia}</span>
+                          <span className="text-sm font-medium" style={{ color: '#F1F5F9' }}>
+                            Medição {m.periodo_referencia}
+                          </span>
                           <Badge className={`${getMedicaoStatusColor(m.status as MedicaoStatus)} text-[10px]`}>
                             {MEDICAO_STATUS_LABELS[m.status as MedicaoStatus]}
                           </Badge>
                         </div>
-                        <p className="text-xs text-gray-500">{m.contrato?.numero}</p>
+                        <p className="text-xs" style={{ color: '#475569' }}>{m.contrato?.numero}</p>
                       </div>
-                      <span className="text-sm font-semibold text-gray-900 flex-shrink-0">{formatCurrency(m.valor_total)}</span>
+                      <span className="text-sm font-semibold flex-shrink-0" style={{ color: '#F1F5F9' }}>
+                        {formatCurrency(m.valor_total)}
+                      </span>
                     </div>
                   </Link>
                 ))}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -4,29 +4,37 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[#080C14] disabled:pointer-events-none disabled:opacity-50',
   {
     variants: {
       variant: {
-        default: 'bg-[#1e3a5f] text-white hover:bg-[#162d4a] focus-visible:ring-[#1e3a5f]',
-        destructive: 'bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-600',
-        outline: 'border border-gray-300 bg-white hover:bg-gray-50 text-gray-700',
-        secondary: 'bg-gray-100 text-gray-900 hover:bg-gray-200',
-        ghost: 'hover:bg-gray-100 text-gray-700',
-        link: 'text-[#1e3a5f] underline-offset-4 hover:underline',
-        success: 'bg-green-600 text-white hover:bg-green-700 focus-visible:ring-green-600',
-        warning: 'bg-yellow-500 text-white hover:bg-yellow-600 focus-visible:ring-yellow-500',
+        default:
+          'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-lg shadow-blue-900/30 hover:shadow-blue-700/40 hover:brightness-110 focus-visible:ring-blue-500',
+        destructive:
+          'bg-red-600 text-white hover:bg-red-500 focus-visible:ring-red-600 shadow-sm',
+        outline:
+          'border border-[#2d3f5c] bg-transparent text-[#94A3B8] hover:border-blue-500 hover:text-white focus-visible:ring-blue-500',
+        secondary:
+          'bg-[#1a2236] text-[#94A3B8] hover:bg-[#1E293B] hover:text-[#F1F5F9] focus-visible:ring-[#2d3f5c]',
+        ghost:
+          'bg-transparent text-[#94A3B8] hover:bg-[#1a2236] hover:text-[#F1F5F9] focus-visible:ring-[#2d3f5c]',
+        link:
+          'text-blue-400 underline-offset-4 hover:underline hover:text-cyan-400',
+        success:
+          'bg-emerald-600 text-white hover:bg-emerald-500 focus-visible:ring-emerald-600 shadow-sm',
+        warning:
+          'bg-amber-500 text-white hover:bg-amber-400 focus-visible:ring-amber-500 shadow-sm',
       },
       size: {
         default: 'h-9 px-4 py-2',
-        sm: 'h-8 rounded-md px-3 text-xs',
-        lg: 'h-11 rounded-md px-8 text-base',
-        icon: 'h-9 w-9',
+        sm:      'h-8 rounded-md px-3 text-xs',
+        lg:      'h-11 rounded-md px-8 text-base',
+        icon:    'h-9 w-9',
       },
     },
     defaultVariants: {
       variant: 'default',
-      size: 'default',
+      size:    'default',
     },
   }
 )
@@ -49,7 +57,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         {...props}
       >
         {loading && (
-          <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+          <svg className="animate-spin h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
