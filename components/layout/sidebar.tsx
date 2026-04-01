@@ -6,11 +6,11 @@ import {
   LayoutDashboard,
   FileText,
   Building2,
-  ClipboardCheck,
   CheckSquare,
   Settings,
   ChevronRight,
   Hammer,
+  LogOut,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -82,11 +82,11 @@ export function Sidebar() {
       {/* Footer */}
       <div className="p-4 border-t border-white/10">
         <Link
-          href="/configuracoes"
+          href="/logout"
           className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/10 transition-colors"
         >
-          <Settings className="w-4 h-4" />
-          <span>Configurações</span>
+          <LogOut className="w-4 h-4" />
+          <span>Sair do Sistema</span>
         </Link>
         <div className="mt-3 px-3 py-2">
           <p className="text-xs text-white/40">v1.0.0 · FIP Engenharia</p>
