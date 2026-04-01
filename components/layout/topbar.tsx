@@ -1,6 +1,6 @@
 'use client'
 
-import { Bell, User, Search } from 'lucide-react'
+import { Bell, User, Search, Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface TopbarProps {
@@ -12,6 +12,12 @@ interface TopbarProps {
 export function Topbar({ title, subtitle, actions }: TopbarProps) {
   return (
     <header className="h-14 bg-[#0D1421]/80 backdrop-blur-sm border-b border-[#1E293B] flex items-center justify-between px-6">
+      <button
+        onClick={() => window.dispatchEvent(new CustomEvent('open-mobile-sidebar'))}
+        className="lg:hidden p-2 rounded-lg text-[#475569] hover:text-[#94A3B8] hover:bg-[#1a2236] transition-colors mr-1"
+      >
+        <Menu className="w-5 h-5" />
+      </button>
       <div>
         {title && (
           <h2 className="font-bold text-[#F1F5F9] text-base leading-tight">{title}</h2>

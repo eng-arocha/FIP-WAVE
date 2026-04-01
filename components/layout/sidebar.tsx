@@ -2,12 +2,14 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useState, useEffect } from 'react'
 import {
   LayoutDashboard,
   FileText,
   Building2,
   CheckSquare,
   LogOut,
+  X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -37,11 +39,36 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname()
+  const [mobileOpen, setMobileOpen] = useState(false)
+
+  useEffect(() => {
+    const handler = () => setMobileOpen(true)
+    window.addEventListener('open-mobile-sidebar', handler)
+    return () => window.removeEventListener('open-mobile-sidebar', handler)
+  }, [])
 
   return (
-    <aside className="w-64 min-h-screen bg-[#080C14] border-r border-[#1E293B] flex flex-col relative">
+    <>
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+      <aside className={cn(
+        "w-64 min-h-screen bg-[#080C14] border-r border-[#1E293B] flex flex-col relative transition-transform duration-300 ease-in-out fixed inset-y-0 left-0 z-50 lg:static lg:translate-x-0",
+        mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+      )}>
       {/* Top accent line */}
       <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-blue-600 via-cyan-400 to-transparent" />
+
+      {/* Mobile close button */}
+      <button
+        onClick={() => setMobileOpen(false)}
+        className="absolute top-4 right-4 lg:hidden p-1 rounded-lg text-[#475569] hover:text-[#94A3B8] hover:bg-[#111827]"
+      >
+        <X className="w-4 h-4" />
+      </button>
 
       {/* Logo */}
       <div className="px-5 pt-7 pb-5 border-b border-[#1E293B]">
@@ -65,6 +92,7 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={() => setMobileOpen(false)}
               className={cn(
                 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group relative',
                 isActive
@@ -100,6 +128,7 @@ export function Sidebar() {
 
         <Link
           href="/logout"
+          onClick={() => setMobileOpen(false)}
           className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-[#475569] hover:text-[#94A3B8] hover:bg-[#111827] transition-colors"
         >
           <LogOut className="w-4 h-4" />
@@ -111,5 +140,6 @@ export function Sidebar() {
         </div>
       </div>
     </aside>
+    </>
   )
 }
