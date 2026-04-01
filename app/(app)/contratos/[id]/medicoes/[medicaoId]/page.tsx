@@ -54,7 +54,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
   if (!medicao || !status) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-[#1e3a5f]" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
       </div>
     )
   }
@@ -84,11 +84,11 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
     if (res.ok) { setStatus('rejeitado'); setModalRejeitar(false) }
   }
 
-  const ACAO_CONFIG: Record<string, { icon: any; color: string; label: string }> = {
-    aprovado: { icon: CheckCircle2, color: 'text-green-600', label: 'Aprovação' },
-    rejeitado: { icon: XCircle, color: 'text-red-500', label: 'Rejeição' },
-    solicitou_ajuste: { icon: AlertCircle, color: 'text-yellow-500', label: 'Ajuste Solicitado' },
-    comentou: { icon: MessageSquare, color: 'text-blue-500', label: 'Comentário' },
+  const ACAO_CONFIG: Record<string, { icon: any; color: string; bg: string; label: string }> = {
+    aprovado: { icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-900/30', label: 'Aprovação' },
+    rejeitado: { icon: XCircle, color: 'text-red-400', bg: 'bg-red-900/30', label: 'Rejeição' },
+    solicitou_ajuste: { icon: AlertCircle, color: 'text-amber-400', bg: 'bg-amber-900/30', label: 'Ajuste Solicitado' },
+    comentou: { icon: MessageSquare, color: 'text-blue-400', bg: 'bg-blue-500/10', label: 'Comentário' },
   }
 
   const formatBytes = (bytes: number) => {
@@ -114,7 +114,12 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                 Voltar
               </Button>
             </Link>
-            <Button variant="outline" size="sm" onClick={() => window.print()}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => window.print()}
+              className="border-[#1E293B] text-[#94A3B8] hover:text-[#F1F5F9] hover:bg-[#1E293B] print:hidden"
+            >
               <Download className="w-4 h-4" />
               Exportar PDF
             </Button>
@@ -135,11 +140,11 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                       <Badge className={getMedicaoStatusColor(status)}>
                         {MEDICAO_STATUS_LABELS[status]}
                       </Badge>
-                      <Badge className="bg-teal-100 text-teal-700 border-teal-200">
+                      <Badge className="bg-teal-900/30 text-teal-400 border-teal-800/50">
                         {TIPO_MEDICAO_LABELS[medicao.tipo as keyof typeof TIPO_MEDICAO_LABELS]}
                       </Badge>
                     </div>
-                    <p className="text-2xl font-bold text-[#1e3a5f]">{formatCurrency(medicao.valor_total)}</p>
+                    <p className="text-2xl font-bold text-blue-400">{formatCurrency(medicao.valor_total)}</p>
                   </div>
                   {isPendente && (
                     <div className="flex gap-2">
@@ -157,38 +162,38 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                   <div className="flex items-center gap-2">
-                    <Hash className="w-3.5 h-3.5 text-gray-400" />
+                    <Hash className="w-3.5 h-3.5 text-[#475569]" />
                     <div>
-                      <p className="text-gray-400">Medição</p>
-                      <p className="font-medium">#{String(medicao.numero).padStart(3, '0')}</p>
+                      <p className="text-[#475569]">Medição</p>
+                      <p className="font-medium text-[#F1F5F9]">#{String(medicao.numero).padStart(3, '0')}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                    <Calendar className="w-3.5 h-3.5 text-[#475569]" />
                     <div>
-                      <p className="text-gray-400">Período</p>
-                      <p className="font-medium">{medicao.periodo_referencia}</p>
+                      <p className="text-[#475569]">Período</p>
+                      <p className="font-medium text-[#F1F5F9]">{medicao.periodo_referencia}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <User className="w-3.5 h-3.5 text-gray-400" />
+                    <User className="w-3.5 h-3.5 text-[#475569]" />
                     <div>
-                      <p className="text-gray-400">Solicitante</p>
-                      <p className="font-medium">{medicao.solicitante_nome}</p>
+                      <p className="text-[#475569]">Solicitante</p>
+                      <p className="font-medium text-[#F1F5F9]">{medicao.solicitante_nome}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Clock className="w-3.5 h-3.5 text-gray-400" />
+                    <Clock className="w-3.5 h-3.5 text-[#475569]" />
                     <div>
-                      <p className="text-gray-400">Submetido em</p>
-                      <p className="font-medium">{formatDate(medicao.data_submissao)}</p>
+                      <p className="text-[#475569]">Submetido em</p>
+                      <p className="font-medium text-[#F1F5F9]">{formatDate(medicao.data_submissao)}</p>
                     </div>
                   </div>
                 </div>
 
                 {medicao.observacoes && (
-                  <div className="mt-4 pt-4 border-t text-xs text-gray-600">
-                    <p className="font-medium text-gray-500 mb-1">Observações:</p>
+                  <div className="mt-4 pt-4 border-t border-[#1E293B] text-xs text-[#94A3B8]">
+                    <p className="font-medium text-[#475569] mb-1">Observações:</p>
                     <p>{medicao.observacoes}</p>
                   </div>
                 )}
@@ -198,36 +203,36 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
             {/* Itens */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Itens da Medição ({itens.length})</CardTitle>
+                <CardTitle className="text-sm text-[#F1F5F9]">Itens da Medição ({itens.length})</CardTitle>
               </CardHeader>
               <CardContent>
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b border-gray-100">
-                      <th className="text-left py-2 text-gray-400 font-medium">Código</th>
-                      <th className="text-left py-2 text-gray-400 font-medium">Descrição</th>
-                      <th className="text-center py-2 text-gray-400 font-medium">Un.</th>
-                      <th className="text-right py-2 text-gray-400 font-medium">Qtd.</th>
-                      <th className="text-right py-2 text-gray-400 font-medium">V. Unit.</th>
-                      <th className="text-right py-2 text-gray-400 font-medium">Total</th>
+                    <tr className="border-b border-[#1E293B]">
+                      <th className="text-left py-2 text-[#475569] font-medium">Código</th>
+                      <th className="text-left py-2 text-[#475569] font-medium">Descrição</th>
+                      <th className="text-center py-2 text-[#475569] font-medium">Un.</th>
+                      <th className="text-right py-2 text-[#475569] font-medium">Qtd.</th>
+                      <th className="text-right py-2 text-[#475569] font-medium">V. Unit.</th>
+                      <th className="text-right py-2 text-[#475569] font-medium">Total</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {itens.map((item: any) => (
-                      <tr key={item.id} className="border-b border-gray-50">
-                        <td className="py-2 font-mono text-gray-400">{item.detalhamento?.codigo}</td>
-                        <td className="py-2 text-gray-700">{item.detalhamento?.descricao}</td>
-                        <td className="py-2 text-center text-gray-500">{item.detalhamento?.unidade}</td>
-                        <td className="py-2 text-right">{Number(item.quantidade_medida).toLocaleString('pt-BR')}</td>
-                        <td className="py-2 text-right text-gray-500">{formatCurrency(item.valor_unitario)}</td>
-                        <td className="py-2 text-right font-semibold text-gray-900">{formatCurrency(item.quantidade_medida * item.valor_unitario)}</td>
+                    {itens.map((item: any, idx: number) => (
+                      <tr key={item.id} className={`border-b border-[#1E293B] ${idx % 2 === 0 ? 'bg-[#0D1421]' : 'bg-[#111827]'}`}>
+                        <td className="py-2 font-mono text-[#475569]">{item.detalhamento?.codigo}</td>
+                        <td className="py-2 text-[#94A3B8]">{item.detalhamento?.descricao}</td>
+                        <td className="py-2 text-center text-[#475569]">{item.detalhamento?.unidade}</td>
+                        <td className="py-2 text-right text-[#F1F5F9]">{Number(item.quantidade_medida).toLocaleString('pt-BR')}</td>
+                        <td className="py-2 text-right text-[#475569]">{formatCurrency(item.valor_unitario)}</td>
+                        <td className="py-2 text-right font-semibold text-[#F1F5F9]">{formatCurrency(item.quantidade_medida * item.valor_unitario)}</td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr className="border-t-2 border-gray-200">
-                      <td colSpan={5} className="pt-2 font-bold text-gray-700">Total da Medição</td>
-                      <td className="pt-2 text-right font-bold text-[#1e3a5f] text-sm">{formatCurrency(medicao.valor_total)}</td>
+                    <tr className="border-t-2 border-[#2d3f5c]">
+                      <td colSpan={5} className="pt-2 font-bold text-[#94A3B8]">Total da Medição</td>
+                      <td className="pt-2 text-right font-bold text-blue-400 text-sm">{formatCurrency(medicao.valor_total)}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -238,23 +243,23 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
             {notas_fiscais.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-sm">Notas Fiscais — Faturamento Direto</CardTitle>
+                  <CardTitle className="text-sm text-[#F1F5F9]">Notas Fiscais — Faturamento Direto</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
                     {notas_fiscais.map((nf: any) => (
-                      <div key={nf.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                        <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                      <div key={nf.id} className="flex items-center gap-3 p-3 bg-[#0D1421] rounded-lg border border-[#1E293B]">
+                        <FileText className="w-4 h-4 text-[#475569] flex-shrink-0" />
                         <div className="flex-1">
-                          <p className="text-sm font-medium text-gray-900">NF {nf.numero_nf}</p>
-                          <p className="text-xs text-gray-500">{nf.emitente} · {formatDate(nf.data_emissao)}</p>
+                          <p className="text-sm font-medium text-[#F1F5F9]">NF {nf.numero_nf}</p>
+                          <p className="text-xs text-[#475569]">{nf.emitente} · {formatDate(nf.data_emissao)}</p>
                         </div>
                         <div className="text-right">
-                          <p className="font-semibold text-sm">{formatCurrency(nf.valor)}</p>
+                          <p className="font-semibold text-sm text-[#F1F5F9]">{formatCurrency(nf.valor)}</p>
                           <Badge className={
-                            nf.status_validacao === 'aprovada' ? 'bg-green-100 text-green-700 border-green-200' :
-                            nf.status_validacao === 'rejeitada' ? 'bg-red-100 text-red-700 border-red-200' :
-                            'bg-yellow-100 text-yellow-700 border-yellow-200'
+                            nf.status_validacao === 'aprovada' ? 'bg-emerald-900/30 text-emerald-400 border-emerald-800/50' :
+                            nf.status_validacao === 'rejeitada' ? 'bg-red-900/30 text-red-400 border-red-800/50' :
+                            'bg-amber-900/30 text-amber-400 border-amber-800/50'
                           }>
                             {nf.status_validacao === 'aprovada' ? 'Validada' : nf.status_validacao === 'rejeitada' ? 'Rejeitada' : 'Pendente'}
                           </Badge>
@@ -272,7 +277,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
             {/* Anexos */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm flex items-center gap-2">
+                <CardTitle className="text-sm flex items-center gap-2 text-[#F1F5F9]">
                   <Paperclip className="w-4 h-4" />
                   Documentos Anexados ({anexos.length})
                 </CardTitle>
@@ -286,14 +291,14 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                       download={a.nome_original}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50 cursor-pointer group"
+                      className="flex items-center gap-2 p-2 rounded-lg hover:bg-[#1a2236] cursor-pointer group"
                     >
-                      <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                      <FileText className="w-4 h-4 text-[#475569] flex-shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-gray-700 truncate">{a.nome_original}</p>
-                        <p className="text-[10px] text-gray-400">{formatBytes(a.tamanho_bytes)}</p>
+                        <p className="text-xs font-medium text-[#94A3B8] truncate">{a.nome_original}</p>
+                        <p className="text-[10px] text-[#475569]">{formatBytes(a.tamanho_bytes)}</p>
                       </div>
-                      <Download className="w-3.5 h-3.5 text-gray-300 group-hover:text-[#1e3a5f] flex-shrink-0" />
+                      <Download className="w-3.5 h-3.5 text-[#475569] group-hover:text-blue-400 flex-shrink-0" />
                     </a>
                   ))}
                 </div>
@@ -303,7 +308,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
             {/* Timeline */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Histórico / Timeline</CardTitle>
+                <CardTitle className="text-sm text-[#F1F5F9]">Histórico / Timeline</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
@@ -312,14 +317,14 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                     const Icon = config.icon
                     return (
                       <div key={a.id} className="flex gap-3">
-                        <div className={`w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0 ${config.color}`}>
+                        <div className={`w-7 h-7 rounded-full ${config.bg} flex items-center justify-center flex-shrink-0 ${config.color}`}>
                           <Icon className="w-4 h-4" />
                         </div>
                         <div className="flex-1">
-                          <p className="text-xs font-semibold text-gray-800">{a.aprovador_nome}</p>
-                          <p className="text-xs text-gray-500">{config.label}</p>
-                          {a.comentario && <p className="text-xs text-gray-600 mt-1 bg-gray-50 p-2 rounded">{a.comentario}</p>}
-                          <p className="text-[10px] text-gray-400 mt-1">{formatDatetime(a.created_at)}</p>
+                          <p className="text-xs font-semibold text-[#F1F5F9]">{a.aprovador_nome}</p>
+                          <p className="text-xs text-[#475569]">{config.label}</p>
+                          {a.comentario && <p className="text-xs text-[#94A3B8] mt-1 bg-[#0D1421] p-2 rounded border border-[#1E293B]">{a.comentario}</p>}
+                          <p className="text-[10px] text-[#475569] mt-1">{formatDatetime(a.created_at)}</p>
                         </div>
                       </div>
                     )
@@ -327,12 +332,12 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
 
                   {status === 'aprovado' && (
                     <div className="flex gap-3">
-                      <div className="w-7 h-7 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 text-green-600">
+                      <div className="w-7 h-7 rounded-full bg-emerald-900/30 flex items-center justify-center flex-shrink-0 text-emerald-400">
                         <CheckCircle2 className="w-4 h-4" />
                       </div>
                       <div>
-                        <p className="text-xs font-semibold text-gray-800">Medição Aprovada</p>
-                        <p className="text-xs text-gray-500">E-mail enviado para o fornecedor</p>
+                        <p className="text-xs font-semibold text-[#F1F5F9]">Medição Aprovada</p>
+                        <p className="text-xs text-[#475569]">E-mail enviado para o fornecedor</p>
                       </div>
                     </div>
                   )}
@@ -343,18 +348,18 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
             {/* Partes */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Partes</CardTitle>
+                <CardTitle className="text-sm text-[#F1F5F9]">Partes</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-xs">
                 <div>
-                  <p className="text-gray-400 font-medium uppercase tracking-wide text-[10px] mb-0.5">Contratante</p>
-                  <p className="font-medium text-gray-800">{medicao.contrato?.contratante?.nome}</p>
-                  <p className="text-gray-400">{medicao.contrato?.contratante?.email_contato}</p>
+                  <p className="text-[#475569] font-medium uppercase tracking-wide text-[10px] mb-0.5">Contratante</p>
+                  <p className="font-medium text-[#F1F5F9]">{medicao.contrato?.contratante?.nome}</p>
+                  <p className="text-[#475569]">{medicao.contrato?.contratante?.email_contato}</p>
                 </div>
-                <div>
-                  <p className="text-gray-400 font-medium uppercase tracking-wide text-[10px] mb-0.5">Contratado</p>
-                  <p className="font-medium text-gray-800">{medicao.contrato?.contratado?.nome}</p>
-                  <p className="text-gray-400">{medicao.contrato?.contratado?.email_contato}</p>
+                <div className="border-t border-[#1E293B] pt-3">
+                  <p className="text-[#475569] font-medium uppercase tracking-wide text-[10px] mb-0.5">Contratado</p>
+                  <p className="font-medium text-[#F1F5F9]">{medicao.contrato?.contratado?.nome}</p>
+                  <p className="text-[#475569]">{medicao.contrato?.contratado?.email_contato}</p>
                 </div>
               </CardContent>
             </Card>
@@ -364,26 +369,27 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
 
       {/* Modal Aprovar */}
       <Dialog open={modalAprovar} onOpenChange={setModalAprovar}>
-        <DialogContent>
+        <DialogContent className="bg-[#111827] border border-[#1E293B]">
           <DialogHeader>
-            <DialogTitle className="text-green-700 flex items-center gap-2">
+            <DialogTitle className="text-emerald-400 flex items-center gap-2">
               <CheckCircle2 className="w-5 h-5" />
               Aprovar Medição #{String(medicao.numero).padStart(3, '0')}
             </DialogTitle>
-            <DialogDescription>
-              Valor: <strong>{formatCurrency(medicao.valor_total)}</strong> · Período: {medicao.periodo_referencia}
+            <DialogDescription className="text-[#94A3B8]">
+              Valor: <strong className="text-[#F1F5F9]">{formatCurrency(medicao.valor_total)}</strong> · Período: {medicao.periodo_referencia}
             </DialogDescription>
           </DialogHeader>
           <div className="py-2 space-y-3">
-            <div className="p-3 bg-green-50 rounded-lg text-xs text-green-700">
+            <div className="p-3 bg-emerald-900/20 border border-emerald-800/40 rounded-lg text-xs text-emerald-400">
               Ao aprovar, um e-mail automático será enviado para o fornecedor ({medicao.contrato?.contratado?.nome}) com a confirmação.
             </div>
             <div className="space-y-1.5">
-              <Label>Comentário (opcional)</Label>
+              <Label className="text-xs text-[#475569] font-medium uppercase tracking-wider">Comentário (opcional)</Label>
               <Textarea
                 placeholder="Adicione observações sobre a aprovação..."
                 value={comentario}
                 onChange={e => setComentario(e.target.value)}
+                className="bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] placeholder:text-[#475569]"
               />
             </div>
           </div>
@@ -399,24 +405,24 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
 
       {/* Modal Rejeitar */}
       <Dialog open={modalRejeitar} onOpenChange={setModalRejeitar}>
-        <DialogContent>
+        <DialogContent className="bg-[#111827] border border-[#1E293B]">
           <DialogHeader>
-            <DialogTitle className="text-red-700 flex items-center gap-2">
+            <DialogTitle className="text-red-400 flex items-center gap-2">
               <XCircle className="w-5 h-5" />
               Rejeitar Medição #{String(medicao.numero).padStart(3, '0')}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-[#94A3B8]">
               Informe o motivo da rejeição. O fornecedor será notificado por e-mail.
             </DialogDescription>
           </DialogHeader>
           <div className="py-2 space-y-3">
             <div className="space-y-1.5">
-              <Label>Motivo da Rejeição *</Label>
+              <Label className="text-xs text-[#475569] font-medium uppercase tracking-wider">Motivo da Rejeição *</Label>
               <Textarea
                 placeholder="Descreva claramente o motivo da rejeição e o que precisa ser corrigido..."
                 value={motivo}
                 onChange={e => setMotivo(e.target.value)}
-                className="min-h-[100px]"
+                className="min-h-[100px] bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] placeholder:text-[#475569]"
               />
             </div>
           </div>

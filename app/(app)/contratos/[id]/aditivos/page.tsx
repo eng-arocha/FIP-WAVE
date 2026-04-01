@@ -107,17 +107,17 @@ export default function AditivosPage({ params }: { params: Promise<{ id: string 
 
       <div className="p-6">
         {loading ? (
-          <div className="flex items-center justify-center py-16 text-gray-400">
+          <div className="flex items-center justify-center py-16 text-blue-400">
             <Loader2 className="w-6 h-6 animate-spin mr-2" />
             <span>Carregando aditivos...</span>
           </div>
         ) : aditivos.length === 0 ? (
           <div className="text-center py-16">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <FileText className="w-8 h-8 text-gray-300" />
+            <div className="w-16 h-16 bg-[#111827] border border-[#1E293B] rounded-full flex items-center justify-center mx-auto mb-4">
+              <FileText className="w-8 h-8 text-[#475569]" />
             </div>
-            <p className="font-semibold text-gray-600">Nenhum aditivo cadastrado</p>
-            <p className="text-sm text-gray-400 mt-1 mb-4">Registre aditivos de valor, prazo ou escopo aqui</p>
+            <p className="font-semibold text-[#94A3B8]">Nenhum aditivo cadastrado</p>
+            <p className="text-sm text-[#475569] mt-1 mb-4">Registre aditivos de valor, prazo ou escopo aqui</p>
             <Button onClick={() => setModalOpen(true)}>
               <Plus className="w-4 h-4" />
               Cadastrar Primeiro Aditivo
@@ -131,37 +131,37 @@ export default function AditivosPage({ params }: { params: Promise<{ id: string 
                 <Card key={aditivo.id}>
                   <CardContent className="p-5">
                     <div className="flex items-start gap-4">
-                      <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <Icon className="w-5 h-5 text-orange-600" />
+                      <div className="w-10 h-10 bg-amber-500/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <Icon className="w-5 h-5 text-amber-400" />
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="font-bold text-gray-900">Aditivo #{aditivo.numero}</span>
-                          <Badge className="bg-orange-100 text-orange-700 border-orange-200">
+                          <span className="font-bold text-[#F1F5F9]">Aditivo #{aditivo.numero}</span>
+                          <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/20">
                             {ADITIVO_TIPO_LABELS[aditivo.tipo as AditivoTipo]}
                           </Badge>
                           <Badge className={getAditivoStatusColor(aditivo.status)}>
                             {ADITIVO_STATUS_LABELS[aditivo.status as AditivoStatus]}
                           </Badge>
                         </div>
-                        <p className="text-sm text-gray-600">{aditivo.descricao}</p>
+                        <p className="text-sm text-[#94A3B8]">{aditivo.descricao}</p>
                         {aditivo.valor_novo && (
-                          <div className="mt-2 text-xs text-gray-500">
+                          <div className="mt-2 text-xs text-[#475569]">
                             <span>Valor anterior: {formatCurrency(aditivo.valor_anterior || 0)}</span>
                             <span className="mx-2">→</span>
-                            <span className="font-semibold text-green-700">Novo valor: {formatCurrency(aditivo.valor_novo)}</span>
-                            <span className="ml-2 text-green-600">(+{formatCurrency(aditivo.valor_adicional || 0)})</span>
+                            <span className="font-semibold text-emerald-400">Novo valor: {formatCurrency(aditivo.valor_novo)}</span>
+                            <span className="ml-2 text-emerald-400">(+{formatCurrency(aditivo.valor_adicional || 0)})</span>
                           </div>
                         )}
                         {aditivo.data_fim_nova && (
-                          <div className="mt-1 text-xs text-gray-500">
+                          <div className="mt-1 text-xs text-[#475569]">
                             <span>Prazo anterior: {formatDate(aditivo.data_fim_anterior || '')}</span>
                             <span className="mx-2">→</span>
-                            <span className="font-semibold text-blue-700">Novo prazo: {formatDate(aditivo.data_fim_nova)}</span>
+                            <span className="font-semibold text-blue-400">Novo prazo: {formatDate(aditivo.data_fim_nova)}</span>
                           </div>
                         )}
                       </div>
-                      <p className="text-xs text-gray-400">{formatDate(aditivo.created_at)}</p>
+                      <p className="text-xs text-[#475569]">{formatDate(aditivo.created_at)}</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -180,9 +180,9 @@ export default function AditivosPage({ params }: { params: Promise<{ id: string 
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="space-y-1.5">
-              <Label>Tipo de Aditivo *</Label>
+              <Label className="text-[#94A3B8]">Tipo de Aditivo *</Label>
               <Select value={form.tipo} onValueChange={v => set('tipo', v)}>
-                <SelectTrigger>
+                <SelectTrigger className="bg-[#0D1421] border-[#1E293B] text-[#F1F5F9]">
                   <SelectValue placeholder="Selecione o tipo" />
                 </SelectTrigger>
                 <SelectContent>
@@ -194,21 +194,21 @@ export default function AditivosPage({ params }: { params: Promise<{ id: string 
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Descrição / Justificativa *</Label>
-              <Textarea placeholder="Descreva o motivo e objeto do aditivo..." value={form.descricao} onChange={e => set('descricao', e.target.value)} />
+              <Label className="text-[#94A3B8]">Descrição / Justificativa *</Label>
+              <Textarea placeholder="Descreva o motivo e objeto do aditivo..." value={form.descricao} onChange={e => set('descricao', e.target.value)} className="bg-[#0D1421] border-[#1E293B] text-[#F1F5F9] focus:border-blue-500" />
             </div>
             {isValor && (
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label>Valor Anterior (R$)</Label>
-                  <Input type="number" placeholder="0,00" value={form.valor_anterior} onChange={e => set('valor_anterior', e.target.value)} />
+                  <Label className="text-[#94A3B8]">Valor Anterior (R$)</Label>
+                  <Input type="number" placeholder="0,00" value={form.valor_anterior} onChange={e => set('valor_anterior', e.target.value)} className="bg-[#0D1421] border-[#1E293B] text-[#F1F5F9] focus:border-blue-500" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Valor do Acréscimo (R$)</Label>
-                  <Input type="number" placeholder="0,00" value={form.valor_adicional} onChange={e => set('valor_adicional', e.target.value)} />
+                  <Label className="text-[#94A3B8]">Valor do Acréscimo (R$)</Label>
+                  <Input type="number" placeholder="0,00" value={form.valor_adicional} onChange={e => set('valor_adicional', e.target.value)} className="bg-[#0D1421] border-[#1E293B] text-[#F1F5F9] focus:border-blue-500" />
                 </div>
                 {form.valor_anterior && form.valor_adicional && (
-                  <div className="col-span-2 p-2 bg-green-50 rounded text-xs text-green-700 text-center">
+                  <div className="col-span-2 p-2 bg-emerald-500/10 rounded text-xs text-emerald-400 text-center">
                     Novo valor total: <strong>{formatCurrency(parseFloat(form.valor_anterior) + parseFloat(form.valor_adicional))}</strong>
                   </div>
                 )}
@@ -217,12 +217,12 @@ export default function AditivosPage({ params }: { params: Promise<{ id: string 
             {isPrazo && (
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label>Data Fim Anterior</Label>
-                  <Input type="date" value={form.data_fim_anterior} onChange={e => set('data_fim_anterior', e.target.value)} />
+                  <Label className="text-[#94A3B8]">Data Fim Anterior</Label>
+                  <Input type="date" value={form.data_fim_anterior} onChange={e => set('data_fim_anterior', e.target.value)} className="bg-[#0D1421] border-[#1E293B] text-[#F1F5F9] focus:border-blue-500" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Nova Data de Término</Label>
-                  <Input type="date" value={form.data_fim_nova} onChange={e => set('data_fim_nova', e.target.value)} />
+                  <Label className="text-[#94A3B8]">Nova Data de Término</Label>
+                  <Input type="date" value={form.data_fim_nova} onChange={e => set('data_fim_nova', e.target.value)} className="bg-[#0D1421] border-[#1E293B] text-[#F1F5F9] focus:border-blue-500" />
                 </div>
               </div>
             )}

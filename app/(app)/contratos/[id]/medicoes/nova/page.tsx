@@ -148,14 +148,14 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
           ].map((s, i) => (
             <div key={s.n} className="flex items-center">
               <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                step === s.n ? 'bg-[#1e3a5f] text-white' :
-                step > s.n ? 'bg-green-100 text-green-700' :
-                'bg-gray-100 text-gray-400'
+                step === s.n ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+                step > s.n ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-800/50' :
+                'bg-[#1E293B] text-[#475569]'
               }`}>
                 <span>{s.n}</span>
                 <span>{s.label}</span>
               </div>
-              {i < 3 && <div className="w-6 h-px bg-gray-200 mx-1" />}
+              {i < 3 && <div className="w-6 h-px bg-[#1E293B] mx-1" />}
             </div>
           ))}
         </div>
@@ -164,54 +164,58 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
         {step === 1 && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">Dados da Medição</CardTitle>
+              <CardTitle className="text-sm text-[#F1F5F9]">Dados da Medição</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label>Período de Referência *</Label>
+                  <Label className="text-xs text-[#475569] font-medium uppercase tracking-wider">Período de Referência *</Label>
                   <Input
                     type="month"
                     value={periodo}
                     onChange={e => setPeriodo(e.target.value)}
+                    className="bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] placeholder:text-[#475569]"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Tipo de Medição *</Label>
+                  <Label className="text-xs text-[#475569] font-medium uppercase tracking-wider">Tipo de Medição *</Label>
                   <Select value={tipo} onValueChange={v => setTipo(v as TipoMedicao)}>
-                    <SelectTrigger>
+                    <SelectTrigger className="bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9]">
                       <SelectValue placeholder="Selecione o tipo" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-[#111827] border border-[#1E293B]">
                       {Object.entries(TIPO_MEDICAO_LABELS).map(([k, v]) => (
-                        <SelectItem key={k} value={k}>{v}</SelectItem>
+                        <SelectItem key={k} value={k} className="text-[#F1F5F9] focus:bg-[#1E293B] focus:text-[#F1F5F9]">{v}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Nome do Solicitante *</Label>
+                  <Label className="text-xs text-[#475569] font-medium uppercase tracking-wider">Nome do Solicitante *</Label>
                   <Input
                     placeholder="Nome completo"
                     value={solicitante}
                     onChange={e => setSolicitante(e.target.value)}
+                    className="bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] placeholder:text-[#475569]"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>E-mail do Solicitante *</Label>
+                  <Label className="text-xs text-[#475569] font-medium uppercase tracking-wider">E-mail do Solicitante *</Label>
                   <Input
                     type="email"
                     placeholder="email@empresa.com.br"
                     value={emailSolicitante}
                     onChange={e => setEmailSolicitante(e.target.value)}
+                    className="bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] placeholder:text-[#475569]"
                   />
                 </div>
                 <div className="col-span-2 space-y-1.5">
-                  <Label>Observações</Label>
+                  <Label className="text-xs text-[#475569] font-medium uppercase tracking-wider">Observações</Label>
                   <Textarea
                     placeholder="Informações adicionais sobre a medição..."
                     value={observacoes}
                     onChange={e => setObservacoes(e.target.value)}
+                    className="bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] placeholder:text-[#475569]"
                   />
                 </div>
               </div>
@@ -222,24 +226,24 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
         {/* Step 2: Itens */}
         {step === 2 && (
           <div className="space-y-4">
-            <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg text-xs text-blue-700">
+            <div className="flex items-center gap-2 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg text-xs text-blue-400">
               <Info className="w-4 h-4 flex-shrink-0" />
               <span>Informe as quantidades medidas neste período para cada item. Apenas os itens com quantidade &gt; 0 serão incluídos na medição.</span>
             </div>
 
             {loadingEstrutura ? (
-              <div className="flex items-center justify-center py-16 text-gray-400">
-                <Loader2 className="w-6 h-6 animate-spin mr-2" />
+              <div className="flex items-center justify-center py-16 text-[#475569]">
+                <Loader2 className="w-6 h-6 animate-spin mr-2 text-blue-400" />
                 <span>Carregando estrutura...</span>
               </div>
             ) : (
               estrutura.map(grupo => (
                 <Card key={grupo.id}>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <span className="text-gray-400 font-mono">{grupo.codigo}</span>
+                    <CardTitle className="text-sm flex items-center gap-2 text-[#F1F5F9]">
+                      <span className="text-[#475569] font-mono">{grupo.codigo}</span>
                       {grupo.nome}
-                      <Badge className="bg-teal-100 text-teal-700 border-teal-200 text-[10px]">
+                      <Badge className="bg-blue-500/10 text-blue-400 border-blue-500/20 text-[10px]">
                         {grupo.tipo_medicao === 'misto' ? 'Misto' : grupo.tipo_medicao}
                       </Badge>
                     </CardTitle>
@@ -247,8 +251,8 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                   <CardContent>
                     {(grupo.tarefas || []).map((tarefa: any) => (
                       <div key={tarefa.id} className="mb-4 last:mb-0">
-                        <p className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1">
-                          <span className="font-mono text-gray-400">{tarefa.codigo}</span>
+                        <p className="text-xs font-semibold text-[#94A3B8] mb-2 flex items-center gap-1">
+                          <span className="font-mono text-[#475569]">{tarefa.codigo}</span>
                           {tarefa.nome}
                         </p>
                         <div className="space-y-2">
@@ -258,13 +262,13 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                             const saldo = det.quantidade_contratada - qtdAcumulada
                             const valor = qtd * (det.valor_unitario || 0)
                             return (
-                              <div key={det.id} className={`grid grid-cols-12 gap-2 p-2 rounded-lg text-xs items-center ${qtd > 0 ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'}`}>
-                                <div className="col-span-1 text-gray-400 font-mono">{det.codigo}</div>
-                                <div className="col-span-4 text-gray-700 font-medium">{det.descricao}</div>
-                                <div className="col-span-1 text-center text-gray-500">{det.unidade}</div>
+                              <div key={det.id} className={`grid grid-cols-12 gap-2 p-2 rounded-lg text-xs items-center ${qtd > 0 ? 'bg-blue-500/10 border border-blue-500/20' : 'bg-[#0D1421]'}`}>
+                                <div className="col-span-1 text-[#475569] font-mono">{det.codigo}</div>
+                                <div className="col-span-4 text-[#F1F5F9] font-medium">{det.descricao}</div>
+                                <div className="col-span-1 text-center text-[#94A3B8]">{det.unidade}</div>
                                 <div className="col-span-2 text-center">
-                                  <span className="text-gray-400">Saldo: </span>
-                                  <span className="font-medium text-gray-700">{saldo.toLocaleString('pt-BR')}</span>
+                                  <span className="text-[#475569]">Saldo: </span>
+                                  <span className="font-medium text-[#94A3B8]">{saldo.toLocaleString('pt-BR')}</span>
                                 </div>
                                 <div className="col-span-2">
                                   <Input
@@ -272,13 +276,13 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                     min="0"
                                     max={saldo}
                                     step="0.001"
-                                    className="h-7 text-xs text-center"
+                                    className="h-7 text-xs text-center bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] placeholder:text-[#475569]"
                                     placeholder="0"
                                     value={qtd || ''}
                                     onChange={e => setQtd(det.id, parseFloat(e.target.value) || 0)}
                                   />
                                 </div>
-                                <div className="col-span-2 text-right font-semibold text-[#1e3a5f]">
+                                <div className="col-span-2 text-right font-semibold text-blue-400">
                                   {valor > 0 ? formatCurrency(valor) : '—'}
                                 </div>
                               </div>
@@ -293,10 +297,10 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
             )}
 
             {/* Subtotal */}
-            <Card className="border-[#1e3a5f] bg-[#1e3a5f]/5">
+            <Card className="border-blue-500/20 bg-blue-500/5">
               <CardContent className="p-4 flex justify-between items-center">
-                <span className="font-semibold text-gray-700">Total da Medição</span>
-                <span className="text-2xl font-bold text-[#1e3a5f]">{formatCurrency(totalMedicao)}</span>
+                <span className="font-semibold text-[#F1F5F9]">Total da Medição</span>
+                <span className="text-2xl font-bold text-blue-400">{formatCurrency(totalMedicao)}</span>
               </CardContent>
             </Card>
           </div>
@@ -308,16 +312,16 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
             {/* Upload */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Documentos e Comprovantes</CardTitle>
+                <CardTitle className="text-sm text-[#F1F5F9]">Documentos e Comprovantes</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-[#1e3a5f] transition-colors cursor-pointer">
-                  <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-600 font-medium">Clique para fazer upload ou arraste arquivos</p>
-                  <p className="text-xs text-gray-400 mt-1">PDF, PNG, JPG, XLS • Máximo 10MB por arquivo</p>
+                <div className="border-2 border-dashed border-[#1E293B] rounded-lg p-8 text-center hover:border-blue-500/40 transition-colors cursor-pointer">
+                  <Upload className="w-8 h-8 text-[#475569] mx-auto mb-2" />
+                  <p className="text-sm text-[#94A3B8] font-medium">Clique para fazer upload ou arraste arquivos</p>
+                  <p className="text-xs text-[#475569] mt-1">PDF, PNG, JPG, XLS • Máximo 10MB por arquivo</p>
                   <div className="flex justify-center gap-2 mt-3 flex-wrap">
                     {(['nota_fiscal', 'boleto', 'relatorio_fotos', 'medicao_assinada', 'outro'] as TipoAnexo[]).map(t => (
-                      <Badge key={t} className="bg-gray-100 text-gray-600 border-gray-200 text-[10px]">{t.replace('_', ' ')}</Badge>
+                      <Badge key={t} className="bg-[#1E293B] text-[#94A3B8] border-[#1E293B] text-[10px]">{t.replace('_', ' ')}</Badge>
                     ))}
                   </div>
                 </div>
@@ -328,7 +332,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
             {(tipo === 'faturamento_direto' || tipo === 'misto') && (
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle className="text-sm">Notas Fiscais — Faturamento Direto</CardTitle>
+                  <CardTitle className="text-sm text-[#F1F5F9]">Notas Fiscais — Faturamento Direto</CardTitle>
                   <Button size="sm" variant="outline" onClick={adicionarNF}>
                     <Plus className="w-3 h-3" />
                     Adicionar NF
@@ -336,7 +340,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                 </CardHeader>
                 <CardContent>
                   {novasNFs.length === 0 ? (
-                    <div className="text-center py-6 text-gray-400">
+                    <div className="text-center py-6 text-[#475569]">
                       <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
                       <p className="text-sm">Nenhuma NF adicionada</p>
                       <Button size="sm" variant="outline" className="mt-3" onClick={adicionarNF}>
@@ -347,28 +351,28 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                   ) : (
                     <div className="space-y-3">
                       {novasNFs.map((nf, idx) => (
-                        <div key={idx} className="grid grid-cols-5 gap-2 p-3 bg-gray-50 rounded-lg">
+                        <div key={idx} className="grid grid-cols-5 gap-2 p-3 bg-[#0D1421] border border-[#1E293B] rounded-lg">
                           <div className="space-y-1">
-                            <Label className="text-xs">Número NF *</Label>
-                            <Input className="h-7 text-xs" placeholder="000000" value={nf.numero}
+                            <Label className="text-xs text-[#475569] font-medium uppercase tracking-wider">Número NF *</Label>
+                            <Input className="h-7 text-xs bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] placeholder:text-[#475569]" placeholder="000000" value={nf.numero}
                               onChange={e => setNovasNFs(prev => prev.map((n, i) => i === idx ? { ...n, numero: e.target.value } : n))} />
                           </div>
                           <div className="col-span-2 space-y-1">
-                            <Label className="text-xs">Emitente *</Label>
-                            <Input className="h-7 text-xs" placeholder="Razão social do fornecedor" value={nf.emitente}
+                            <Label className="text-xs text-[#475569] font-medium uppercase tracking-wider">Emitente *</Label>
+                            <Input className="h-7 text-xs bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] placeholder:text-[#475569]" placeholder="Razão social do fornecedor" value={nf.emitente}
                               onChange={e => setNovasNFs(prev => prev.map((n, i) => i === idx ? { ...n, emitente: e.target.value } : n))} />
                           </div>
                           <div className="space-y-1">
-                            <Label className="text-xs">Valor *</Label>
-                            <Input className="h-7 text-xs" type="number" placeholder="0,00" value={nf.valor}
+                            <Label className="text-xs text-[#475569] font-medium uppercase tracking-wider">Valor *</Label>
+                            <Input className="h-7 text-xs bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] placeholder:text-[#475569]" type="number" placeholder="0,00" value={nf.valor}
                               onChange={e => setNovasNFs(prev => prev.map((n, i) => i === idx ? { ...n, valor: e.target.value } : n))} />
                           </div>
                           <div className="space-y-1">
-                            <Label className="text-xs">Emissão *</Label>
+                            <Label className="text-xs text-[#475569] font-medium uppercase tracking-wider">Emissão *</Label>
                             <div className="flex gap-1">
-                              <Input className="h-7 text-xs" type="date" value={nf.data}
+                              <Input className="h-7 text-xs bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] placeholder:text-[#475569]" type="date" value={nf.data}
                                 onChange={e => setNovasNFs(prev => prev.map((n, i) => i === idx ? { ...n, data: e.target.value } : n))} />
-                              <Button size="icon" variant="ghost" className="h-7 w-7 flex-shrink-0 text-red-400 hover:text-red-600" onClick={() => removerNF(idx)}>
+                              <Button size="icon" variant="ghost" className="h-7 w-7 flex-shrink-0 text-red-400 hover:text-red-300 hover:bg-red-900/20" onClick={() => removerNF(idx)}>
                                 <Trash2 className="w-3.5 h-3.5" />
                               </Button>
                             </div>
@@ -388,37 +392,37 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
           <div className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Resumo da Medição</CardTitle>
+                <CardTitle className="text-sm text-[#F1F5F9]">Resumo da Medição</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 gap-4 text-sm mb-4">
                   <div>
-                    <p className="text-xs text-gray-400 mb-0.5">Período</p>
-                    <p className="font-medium">{periodo}</p>
+                    <p className="text-xs text-[#475569] mb-0.5">Período</p>
+                    <p className="font-medium text-[#F1F5F9]">{periodo}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-400 mb-0.5">Tipo</p>
-                    <p className="font-medium">{tipo ? TIPO_MEDICAO_LABELS[tipo as TipoMedicao] : ''}</p>
+                    <p className="text-xs text-[#475569] mb-0.5">Tipo</p>
+                    <p className="font-medium text-[#F1F5F9]">{tipo ? TIPO_MEDICAO_LABELS[tipo as TipoMedicao] : ''}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-400 mb-0.5">Solicitante</p>
-                    <p className="font-medium">{solicitante}</p>
+                    <p className="text-xs text-[#475569] mb-0.5">Solicitante</p>
+                    <p className="font-medium text-[#F1F5F9]">{solicitante}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-400 mb-0.5">E-mail</p>
-                    <p className="font-medium">{emailSolicitante}</p>
+                    <p className="text-xs text-[#475569] mb-0.5">E-mail</p>
+                    <p className="font-medium text-[#F1F5F9]">{emailSolicitante}</p>
                   </div>
                 </div>
-                <div className="border-t pt-3 flex justify-between items-center">
-                  <span className="font-semibold text-gray-700">Valor Total da Medição</span>
-                  <span className="text-2xl font-bold text-[#1e3a5f]">{formatCurrency(totalMedicao)}</span>
+                <div className="border-t border-[#1E293B] pt-3 flex justify-between items-center">
+                  <span className="font-semibold text-[#F1F5F9]">Valor Total da Medição</span>
+                  <span className="text-2xl font-bold text-blue-400">{formatCurrency(totalMedicao)}</span>
                 </div>
               </CardContent>
             </Card>
 
-            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-yellow-600 flex-shrink-0 mt-0.5" />
-              <div className="text-xs text-yellow-700">
+            <div className="p-4 bg-amber-900/30 border border-amber-800/50 rounded-lg flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+              <div className="text-xs text-amber-400">
                 <p className="font-semibold mb-0.5">Antes de submeter, confirme:</p>
                 <ul className="list-disc list-inside space-y-0.5">
                   <li>Todos os quantitativos estão corretos e comprovados</li>

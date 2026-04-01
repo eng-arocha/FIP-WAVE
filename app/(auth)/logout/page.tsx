@@ -17,9 +17,9 @@ export default function LogoutPage() {
   }, [router])
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="text-center text-gray-400">
-        <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
+    <div className="min-h-screen flex items-center justify-center bg-[#080C14]">
+      <div className="text-center text-[#475569]">
+        <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-blue-400" />
         <p className="text-sm">Saindo do sistema...</p>
       </div>
     </div>
