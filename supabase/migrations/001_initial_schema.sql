@@ -319,8 +319,8 @@ GROUP BY gm.id;
 
 -- Empresas
 INSERT INTO empresas (id, nome, cnpj, tipo, email_contato, responsavel) VALUES
-  ('11111111-1111-1111-1111-111111111111', 'FIP Engenharia', '00.000.000/0001-00', 'contratante', 'financeiro@fipengenharia.com.br', 'Equipe FIP'),
-  ('22222222-2222-2222-2222-222222222222', 'Wave Instalações SPE LTDA', '99.999.999/0001-99', 'contratado', 'medicao@waveinstalacoes.com.br', 'Equipe Wave');
+  ('11111111-1111-1111-1111-111111111111', 'FIP Engenharia', '00.000.000/0001-00', 'contratado', 'financeiro@fipengenharia.com.br', 'Equipe FIP'),
+  ('22222222-2222-2222-2222-222222222222', 'Wave Instalações SPE LTDA', '99.999.999/0001-99', 'contratante', 'medicao@waveinstalacoes.com.br', 'Equipe Wave');
 
 -- Contrato Wave (o contrato em contexto)
 INSERT INTO contratos (

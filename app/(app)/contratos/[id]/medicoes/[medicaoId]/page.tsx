@@ -37,8 +37,8 @@ const MOCK_MEDICAO = {
     id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
     numero: 'WAVE-2025-001',
     descricao: 'Contrato de Instalações - Empreendimento Wave',
-    contratante: { nome: 'FIP Engenharia', email_contato: 'financeiro@fipengenharia.com.br' },
-    contratado: { nome: 'Wave Instalações SPE LTDA', email_contato: 'medicao@waveinstalacoes.com.br' },
+    contratante: { nome: 'Wave Instalações SPE LTDA', email_contato: 'medicao@waveinstalacoes.com.br' },
+    contratado: { nome: 'FIP Engenharia', email_contato: 'financeiro@fipengenharia.com.br' },
   },
   itens: [
     { id: '1', codigo: '1.1.1', descricao: 'QDC - Quadro Distribuição Circuitos', unidade: 'un', qtd_medida: 5, valor_unit: 3200, valor_total: 16000 },
