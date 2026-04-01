@@ -10,12 +10,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ medicao
     await aprovarMedicao(medicaoId, aprovadorNome, aprovadorEmail, comentario)
     // Send email notification
     if (medicao?.contrato) {
-      const html = templateMedicaoAprovada(medicao, aprovadorNome, comentario)
+      const tpl = templateMedicaoAprovada(medicao, medicao.contrato, comentario)
       await sendEmail({
         to: medicao.solicitante_email,
         cc: [medicao.contrato.contratante?.email_contato, medicao.contrato.contratado?.email_contato].filter(Boolean) as string[],
-        subject: `✅ Medição #${String(medicao.numero).padStart(3, '0')} APROVADA — ${medicao.contrato.numero}`,
-        html,
+        subject: tpl.subject,
+        html: tpl.html,
       }).catch(() => null) // don't fail if email fails
     }
     return NextResponse.json({ ok: true })
