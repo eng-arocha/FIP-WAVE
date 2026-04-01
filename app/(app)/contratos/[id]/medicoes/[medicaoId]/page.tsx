@@ -116,6 +116,21 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
   const notas_fiscais: any[] = medicao.notas_fiscais || []
   const aprovacoes: any[] = medicao.aprovacoes || []
 
+  async function downloadPDF() {
+    // Dynamic import to avoid SSR issues
+    const { pdf } = await import('@react-pdf/renderer')
+    const { MedicaoPDF } = await import('@/components/pdf/MedicaoPDF')
+    const blob = await pdf(
+      <MedicaoPDF medicao={medicao} itens={itens} aprovacoes={aprovacoes} />
+    ).toBlob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `medicao-${String(medicao.numero).padStart(3,'0')}-${medicao.periodo_referencia}.pdf`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="flex-1 overflow-auto">
       <Topbar
@@ -129,12 +144,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                 Voltar
               </Button>
             </Link>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => window.print()}
-              className="border-[#1E293B] text-[#94A3B8] hover:text-[#F1F5F9] hover:bg-[#1E293B] print:hidden"
-            >
+            <Button variant="outline" size="sm" onClick={downloadPDF}>
               <Download className="w-4 h-4" />
               Exportar PDF
             </Button>
