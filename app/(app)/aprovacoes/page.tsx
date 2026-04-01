@@ -60,6 +60,7 @@ export default function AprovacoesPage() {
   const [comentario, setComentario] = useState('')
   const [motivo, setMotivo] = useState('')
   const [saving, setSaving] = useState(false)
+  const [quickAprovando, setQuickAprovando] = useState<string | null>(null)
 
   useEffect(() => {
     async function loadAprovacoes() {
@@ -76,6 +77,23 @@ export default function AprovacoesPage() {
     }
     loadAprovacoes()
   }, [])
+
+  async function quickAprovar(m: PendenteMedicao) {
+    setQuickAprovando(m.id)
+    try {
+      const res = await fetch(`/api/contratos/${m.contrato.id}/medicoes/${m.id}/aprovar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aprovadorNome: 'Fiscal FIP', aprovadorEmail: 'fiscal@fipengenharia.com.br', comentario: '', medicao: m }),
+      })
+      if (res.ok) {
+        setPendentes(prev => prev.filter(p => p.id !== m.id))
+        setHistorico(prev => [{ ...m, status: 'aprovado', updated_at: new Date().toISOString(), aprovacoes: [{ aprovador_nome: 'Fiscal FIP' }] }, ...prev])
+      }
+    } finally {
+      setQuickAprovando(null)
+    }
+  }
 
   const medicaoAprovar = pendentes.find(m => m.id === modalAprovar)
   const medicaoRejeitar = pendentes.find(m => m.id === modalRejeitar)
@@ -380,18 +398,26 @@ export default function AprovacoesPage() {
                       </div>
                       <div className="flex gap-2 flex-wrap">
                         <button
-                          onClick={() => setModalAprovar(m.id)}
-                          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-150"
+                          onClick={() => quickAprovar(m)}
+                          disabled={quickAprovando === m.id}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-150 disabled:opacity-70"
                           style={{
-                            background: 'linear-gradient(90deg, #059669, #10B981)',
+                            background: quickAprovando === m.id ? 'rgba(16,185,129,0.40)' : 'linear-gradient(90deg, #059669, #10B981)',
                             color: '#fff',
-                            boxShadow: '0 0 12px rgba(16,185,129,0.25)',
+                            boxShadow: quickAprovando === m.id ? 'none' : '0 0 12px rgba(16,185,129,0.25)',
                           }}
-                          onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 0 20px rgba(16,185,129,0.40)')}
-                          onMouseLeave={e => (e.currentTarget.style.boxShadow = '0 0 12px rgba(16,185,129,0.25)')}
+                          onMouseEnter={e => { if (quickAprovando !== m.id) e.currentTarget.style.boxShadow = '0 0 24px rgba(16,185,129,0.50)' }}
+                          onMouseLeave={e => { if (quickAprovando !== m.id) e.currentTarget.style.boxShadow = '0 0 12px rgba(16,185,129,0.25)' }}
                         >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          Aprovar
+                          {quickAprovando === m.id ? (
+                            <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                            </svg>
+                          ) : (
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                          )}
+                          {quickAprovando === m.id ? 'Aprovando...' : 'Aprovar'}
                         </button>
                         <button
                           onClick={() => setModalRejeitar(m.id)}

@@ -1,4 +1,5 @@
 import { Sidebar } from '@/components/layout/sidebar'
+import { CommandPalette } from '@/components/ui/command-palette'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -7,6 +8,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <main className="flex-1 flex flex-col overflow-hidden">
         {children}
       </main>
+      <CommandPalette />
     </div>
   )
 }

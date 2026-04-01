@@ -38,8 +38,8 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
   const [emailSolicitante, setEmailSolicitante] = useState('')
   const [observacoes, setObservacoes] = useState('')
 
-  // Step 2: Itens
-  const [itensMedicao, setItensMedicao] = useState<Record<string, number>>({})
+  // Step 2: Itens — percentual por detalhamento (0 | 25 | 50 | 100)
+  const [percentualMedicao, setPercentualMedicao] = useState<Record<string, number>>({})
 
   // Step 3: Anexos e NFs
   const [anexos, setAnexos] = useState<AnexoItem[]>([])
@@ -58,8 +58,8 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
     misto: 'Misto (Serviço + Material)',
   }
 
-  function setQtd(detId: string, qtd: number) {
-    setItensMedicao(prev => ({ ...prev, [detId]: qtd }))
+  function setPercentual(detId: string, pct: number) {
+    setPercentualMedicao(prev => ({ ...prev, [detId]: pct }))
   }
 
   function calcularValorTotal() {
@@ -67,7 +67,8 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
     for (const grupo of estrutura) {
       for (const tarefa of (grupo.tarefas || [])) {
         for (const det of (tarefa.detalhamentos || [])) {
-          const qtd = itensMedicao[det.id] || 0
+          const pct = percentualMedicao[det.id] || 0
+          const qtd = (pct / 100) * (det.quantidade_contratada || 0)
           total += qtd * (det.valor_unitario || 0)
         }
       }
@@ -90,8 +91,11 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
       for (const grupo of estrutura) {
         for (const tarefa of (grupo.tarefas || [])) {
           for (const det of (tarefa.detalhamentos || [])) {
-            const qtd = itensMedicao[det.id] || 0
-            if (qtd > 0) itens.push({ detalhamento_id: det.id, quantidade_medida: qtd, valor_unitario: det.valor_unitario })
+            const pct = percentualMedicao[det.id] || 0
+            if (pct > 0) {
+              const qtd = (pct / 100) * (det.quantidade_contratada || 0)
+              itens.push({ detalhamento_id: det.id, quantidade_medida: qtd, valor_unitario: det.valor_unitario })
+            }
           }
         }
       }
@@ -120,7 +124,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
   }
 
   const totalMedicao = calcularValorTotal()
-  const itensFilled = Object.values(itensMedicao).some(v => v > 0)
+  const itensFilled = Object.values(percentualMedicao).some(v => v > 0)
 
   return (
     <div className="flex-1 overflow-auto">
@@ -228,7 +232,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
           <div className="space-y-4">
             <div className="flex items-center gap-2 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg text-xs text-blue-400">
               <Info className="w-4 h-4 flex-shrink-0" />
-              <span>Informe as quantidades medidas neste período para cada item. Apenas os itens com quantidade &gt; 0 serão incluídos na medição.</span>
+              <span>Selecione o percentual executado neste período para cada item: <strong className="text-blue-300">0% · 25% · 50% · 100%</strong>. Itens em 0% não serão incluídos.</span>
             </div>
 
             {loadingEstrutura ? (
@@ -257,33 +261,38 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                         </p>
                         <div className="space-y-2">
                           {(tarefa.detalhamentos || []).map((det: any) => {
-                            const qtd = itensMedicao[det.id] || 0
-                            const qtdAcumulada = det.qtd_acumulada || 0
-                            const saldo = det.quantidade_contratada - qtdAcumulada
-                            const valor = qtd * (det.valor_unitario || 0)
+                            const pct = percentualMedicao[det.id] || 0
+                            const qtdMedida = (pct / 100) * (det.quantidade_contratada || 0)
+                            const valorItem = qtdMedida * (det.valor_unitario || 0)
                             return (
-                              <div key={det.id} className={`grid grid-cols-12 gap-2 p-2 rounded-lg text-xs items-center ${qtd > 0 ? 'bg-blue-500/10 border border-blue-500/20' : 'bg-[#0D1421]'}`}>
+                              <div key={det.id} className={`grid grid-cols-12 gap-2 p-2.5 rounded-lg text-xs items-center transition-all ${pct > 0 ? 'bg-blue-500/10 border border-blue-500/20' : 'bg-[#0D1421] border border-transparent'}`}>
                                 <div className="col-span-1 text-[#475569] font-mono">{det.codigo}</div>
-                                <div className="col-span-4 text-[#F1F5F9] font-medium">{det.descricao}</div>
-                                <div className="col-span-1 text-center text-[#94A3B8]">{det.unidade}</div>
-                                <div className="col-span-2 text-center">
-                                  <span className="text-[#475569]">Saldo: </span>
-                                  <span className="font-medium text-[#94A3B8]">{saldo.toLocaleString('pt-BR')}</span>
+                                <div className="col-span-3 text-[#F1F5F9] font-medium leading-tight">{det.descricao}</div>
+                                <div className="col-span-1 text-center text-[#475569]">{det.unidade}</div>
+                                <div className="col-span-1 text-center text-[#475569]">
+                                  {formatCurrency(det.valor_unitario || 0)}
                                 </div>
-                                <div className="col-span-2">
-                                  <Input
-                                    type="number"
-                                    min="0"
-                                    max={saldo}
-                                    step="0.001"
-                                    className="h-7 text-xs text-center bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] placeholder:text-[#475569]"
-                                    placeholder="0"
-                                    value={qtd || ''}
-                                    onChange={e => setQtd(det.id, parseFloat(e.target.value) || 0)}
-                                  />
+                                {/* 0 / 25 / 50 / 100 % selector */}
+                                <div className="col-span-4 flex gap-1">
+                                  {[0, 25, 50, 100].map(p => (
+                                    <button
+                                      key={p}
+                                      type="button"
+                                      onClick={() => setPercentual(det.id, p)}
+                                      className={`flex-1 py-1.5 rounded-md text-[11px] font-bold transition-all duration-150 ${
+                                        pct === p
+                                          ? p === 0
+                                            ? 'bg-[#1E293B] text-[#475569] ring-1 ring-[#2d3f5c]'
+                                            : 'bg-blue-500 text-white shadow-md shadow-blue-500/40'
+                                          : 'bg-[#1a2236] text-[#475569] hover:bg-[#2d3f5c] hover:text-[#94A3B8]'
+                                      }`}
+                                    >
+                                      {p}%
+                                    </button>
+                                  ))}
                                 </div>
-                                <div className="col-span-2 text-right font-semibold text-blue-400">
-                                  {valor > 0 ? formatCurrency(valor) : '—'}
+                                <div className="col-span-2 text-right font-bold text-blue-400">
+                                  {valorItem > 0 ? formatCurrency(valorItem) : <span className="text-[#475569] font-normal">—</span>}
                                 </div>
                               </div>
                             )

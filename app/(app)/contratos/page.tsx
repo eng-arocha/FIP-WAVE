@@ -153,12 +153,22 @@ export default function ContratosPage() {
               >
                 <div className="p-5">
                   <div className="flex items-start gap-4">
-                    {/* Icon */}
-                    <div
-                      className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
-                      style={{ background: 'rgba(59,130,246,0.10)' }}
-                    >
-                      <FileText className="w-6 h-6" style={{ color: '#3B82F6' }} />
+                    {/* Donut ring progress */}
+                    <div className="w-12 h-12 flex-shrink-0 relative">
+                      <svg viewBox="0 0 44 44" className="w-12 h-12 -rotate-90">
+                        <circle cx="22" cy="22" r="17" fill="none" stroke="#1E293B" strokeWidth="4" />
+                        <circle
+                          cx="22" cy="22" r="17" fill="none"
+                          stroke="#3B82F6"
+                          strokeWidth="4"
+                          strokeLinecap="round"
+                          strokeDasharray={`${(Math.min(contrato.percentual_medido || 0, 100) / 100) * 106.8} 106.8`}
+                          style={{ transition: 'stroke-dasharray 0.8s ease' }}
+                        />
+                      </svg>
+                      <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold" style={{ color: '#94A3B8' }}>
+                        {Math.round(contrato.percentual_medido || 0)}%
+                      </span>
                     </div>
 
                     <div className="flex-1 min-w-0">

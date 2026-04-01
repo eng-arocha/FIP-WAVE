@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
 import { Badge } from '@/components/ui/badge'
@@ -42,6 +42,22 @@ const chartTooltipStyle = {
   fontSize: 12,
 }
 
+function useCountUp(target: number, duration = 1200) {
+  const [val, setVal] = useState(0)
+  useEffect(() => {
+    if (target === 0) return
+    let start = 0
+    const step = target / (duration / 16)
+    const timer = setInterval(() => {
+      start += step
+      if (start >= target) { setVal(target); clearInterval(timer) }
+      else setVal(start)
+    }, 16)
+    return () => clearInterval(timer)
+  }, [target, duration])
+  return val
+}
+
 export default function DashboardPage() {
   const [contratos, setContratos] = useState<any[]>([])
   const [medicoesRecentes, setMedicoesRecentes] = useState<any[]>([])
@@ -69,6 +85,61 @@ export default function DashboardPage() {
   const totalMedido = contratos.reduce((a, c) => a + (c.valor_medido || 0), 0)
   const totalSaldo = contratos.reduce((a, c) => a + (c.saldo_restante || 0), 0)
   const pendentesAprovacao = contratos.reduce((a, c) => a + (c.qtd_medicoes_pendentes || 0), 0)
+
+  const animatedTotalMedido = useCountUp(totalMedido)
+  const animatedTotalContratos = useCountUp(contratos.length)
+  const animatedPendentes = useCountUp(pendentesAprovacao)
+
+  const alertas = useMemo(() => {
+    const list: { type: 'warning' | 'danger' | 'info'; msg: string }[] = []
+    const pendentes = medicoesRecentes.filter((m: any) => m.status === 'submetido' || m.status === 'em_analise')
+    if (pendentes.length > 0)
+      list.push({ type: 'warning', msg: `${pendentes.length} medição(ões) aguardando aprovação` })
+    const hoje = new Date()
+    contratos.forEach((c: any) => {
+      if (!c.data_fim) return
+      const fim = new Date(c.data_fim)
+      const diasRestantes = Math.ceil((fim.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24))
+      if (diasRestantes > 0 && diasRestantes <= 30 && c.status === 'ativo')
+        list.push({ type: 'danger', msg: `${c.numero}: vence em ${diasRestantes} dia(s)` })
+    })
+    const baixoAvanco = contratos.filter((c: any) => c.status === 'ativo' && (c.percentual_medido || 0) < 10)
+    if (baixoAvanco.length > 0)
+      list.push({ type: 'info', msg: `${baixoAvanco.length} contrato(s) com avanço abaixo de 10%` })
+    return list
+  }, [contratos, medicoesRecentes])
+
+  // Build dynamic S-curve by overlaying real measurement totals onto the static scaffold.
+  // medicoesRecentes items with status 'aprovado' contribute to the realizado line.
+  const curvaSData = useMemo(() => {
+    // Accumulate approved measurement values per period label (e.g. "Jan/26")
+    const realByPeriod: Record<string, number> = {}
+    medicoesRecentes.forEach((m: any) => {
+      if (m.status !== 'aprovado' || !m.periodo_referencia || !m.valor_total) return
+      const key = m.periodo_referencia as string
+      realByPeriod[key] = (realByPeriod[key] || 0) + (m.valor_total as number)
+    })
+    const hasRealData = Object.keys(realByPeriod).length > 0
+    if (!hasRealData) return CURVA_S_DATA
+
+    // Compute a running acumulado for realizado, replacing static values where real data exists
+    let acumuladoReal = 0
+    return CURVA_S_DATA.map((row) => {
+      if (realByPeriod[row.mes] !== undefined) {
+        // Use real value — express as a % of totalContratado if available
+        const realPct = totalContratado > 0
+          ? (realByPeriod[row.mes] / totalContratado) * 100
+          : row.realizado ?? 0
+        acumuladoReal += realPct
+        return { ...row, realizado: realPct, acumulado_real: acumuladoReal }
+      }
+      // No real data for this month — propagate accumulated or leave null
+      if (acumuladoReal > 0) {
+        return { ...row, realizado: null, acumulado_real: acumuladoReal }
+      }
+      return row
+    })
+  }, [medicoesRecentes, totalContratado])
 
   const gruposData = grupos.map((g: any) => ({
     nome: g.grupo_nome,
@@ -122,7 +193,7 @@ export default function DashboardPage() {
                   {formatCurrency(totalContratado)}
                 </p>
                 <p className="text-xs mt-1" style={{ color: '#475569' }}>
-                  {contratos.length} contrato(s) ativo(s)
+                  {Math.round(animatedTotalContratos)} contrato(s) ativo(s)
                 </p>
               </div>
               <div
@@ -151,7 +222,7 @@ export default function DashboardPage() {
                   Total Medido
                 </p>
                 <p className="text-2xl font-bold" style={{ color: '#10B981' }}>
-                  {formatCurrency(totalMedido)}
+                  {formatCurrency(animatedTotalMedido)}
                 </p>
                 <p className="text-xs mt-1" style={{ color: '#475569' }}>
                   {totalContratado > 0 ? formatPercent(totalMedido / totalContratado * 100) : '0%'} do total
@@ -216,7 +287,7 @@ export default function DashboardPage() {
                   className="text-2xl font-bold mt-1"
                   style={{ color: pendentesAprovacao > 0 ? '#F59E0B' : '#F1F5F9' }}
                 >
-                  {pendentesAprovacao}
+                  {Math.round(animatedPendentes)}
                 </p>
                 <Link
                   href="/aprovacoes"
@@ -242,6 +313,24 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* Smart Alerts */}
+        {alertas.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-6">
+            {alertas.map((a, i) => (
+              <div key={i} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border ${
+                a.type === 'danger' ? 'bg-red-900/20 border-red-800/40 text-red-400' :
+                a.type === 'warning' ? 'bg-amber-900/20 border-amber-800/40 text-amber-400' :
+                'bg-blue-500/10 border-blue-500/20 text-blue-400'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                  a.type === 'danger' ? 'bg-red-400' : a.type === 'warning' ? 'bg-amber-400' : 'bg-blue-400'
+                }`} />
+                {a.msg}
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Charts row */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {/* Curva S */}
@@ -256,7 +345,7 @@ export default function DashboardPage() {
             </div>
             <div className="px-4 pb-5" style={{ background: '#0D1421', margin: '0 12px 12px', borderRadius: '10px' }}>
               <ResponsiveContainer width="100%" height={260}>
-                <AreaChart data={CURVA_S_DATA} margin={{ top: 12, right: 10, left: 0, bottom: 5 }}>
+                <AreaChart data={curvaSData} margin={{ top: 12, right: 10, left: 0, bottom: 5 }}>
                   <defs>
                     <linearGradient id="gradPrev" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#2d3f5c" stopOpacity={0.4} />

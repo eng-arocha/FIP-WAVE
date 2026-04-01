@@ -1,6 +1,6 @@
 'use client'
 
-import { Bell, User } from 'lucide-react'
+import { Bell, User, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface TopbarProps {
@@ -22,6 +22,14 @@ export function Topbar({ title, subtitle, actions }: TopbarProps) {
       </div>
       <div className="flex items-center gap-2">
         {actions}
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}
+          className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-[#475569] border border-[#1E293B] hover:border-[#2d3f5c] hover:text-[#94A3B8] transition-all"
+        >
+          <Search className="w-3.5 h-3.5" />
+          <span>Buscar</span>
+          <kbd className="ml-1 px-1.5 py-0.5 text-[10px] bg-[#1a2236] rounded border border-[#2d3f5c]">⌘K</kbd>
+        </button>
         <Button variant="ghost" size="icon" className="relative text-[#475569] hover:text-[#94A3B8]">
           <Bell className="w-4 h-4" />
         </Button>
