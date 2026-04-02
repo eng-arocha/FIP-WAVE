@@ -195,8 +195,14 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
     return list
   }, [grupos, sortBy, filterTipo])
 
-  const gruposChart = grupos.map(g => ({
-    nome: g.nome.replace('Instalações ', 'Inst. ').replace('Ar-Condicionado e Ventilação', 'Ar-Cond.').replace('Gestão e Supervisão', 'Gestão'),
+  // Gráfico sempre em ordem 1.0→19.0 e sem filtro de tipo (mostra tudo)
+  const gruposOrdenados = useMemo(() =>
+    [...grupos].sort((a, b) => parseFloat(a.codigo) - parseFloat(b.codigo)),
+    [grupos]
+  )
+
+  const gruposChart = gruposOrdenados.map(g => ({
+    nome: g.nome.length > 18 ? g.nome.slice(0, 16) + '…' : g.nome,
     contratado: g.valor_contratado,
     medido: g.valor_medido,
     saldo: g.valor_contratado - g.valor_medido,
@@ -302,28 +308,66 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
 
               {/* Grupos progress */}
               <Card>
-                <CardHeader>
+                <CardHeader className="pb-2">
                   <CardTitle className="text-sm text-[#94A3B8]">Avanço por Grupo Macro</CardTitle>
+                  {/* Filtros inline */}
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    <Select value={sortBy} onValueChange={v => setSortBy(v as typeof sortBy)}>
+                      <SelectTrigger className="h-7 text-[11px] w-48 bg-[#0D1421] border-[#1E293B] text-[#F1F5F9]">
+                        <ArrowUpDown className="w-3 h-3 mr-1 flex-shrink-0" />
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="padrao">Padrão (1.0 → 19.0)</SelectItem>
+                        <SelectItem value="valor_global_desc">Valor Global ↓</SelectItem>
+                        <SelectItem value="valor_global_asc">Valor Global ↑</SelectItem>
+                        <SelectItem value="valor_medido_desc">Valor Medido ↓</SelectItem>
+                        <SelectItem value="valor_medido_asc">Valor Medido ↑</SelectItem>
+                        <SelectItem value="saldo_desc">Saldo ↓</SelectItem>
+                        <SelectItem value="saldo_asc">Saldo ↑</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select value={filterTipo} onValueChange={v => setFilterTipo(v as typeof filterTipo)}>
+                      <SelectTrigger className="h-7 text-[11px] w-40 bg-[#0D1421] border-[#1E293B] text-[#F1F5F9]">
+                        <Filter className="w-3 h-3 mr-1 flex-shrink-0" />
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todos">Todos</SelectItem>
+                        <SelectItem value="misto">Misto</SelectItem>
+                        <SelectItem value="servico">Serviço</SelectItem>
+                        <SelectItem value="faturamento_direto">Fat. Direto</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {(sortBy !== 'padrao' || filterTipo !== 'todos') && (
+                      <button
+                        onClick={() => { setSortBy('padrao'); setFilterTipo('todos') }}
+                        className="text-[11px] text-[#475569] hover:text-[#94A3B8] px-2"
+                      >
+                        Limpar
+                      </button>
+                    )}
+                  </div>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  {grupos.map(g => {
+                <CardContent className="space-y-3 max-h-[360px] overflow-y-auto">
+                  {gruposExibidos.map(g => {
                     const pct = g.valor_contratado > 0 ? (g.valor_medido / g.valor_contratado) * 100 : 0
                     return (
                       <div key={g.id}>
                         <div className="flex justify-between mb-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium text-[#475569]">{g.codigo}</span>
-                            <span className="text-xs font-medium text-[#94A3B8]">{g.nome}</span>
-                            <Badge className={`${TIPO_MEDICAO_COLORS[g.tipo_medicao]} text-[10px]`}>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-xs font-bold text-[#475569] flex-shrink-0">{g.codigo}</span>
+                            <span className="text-xs font-medium text-[#94A3B8] truncate">{g.nome}</span>
+                            <Badge className={`${TIPO_MEDICAO_COLORS[g.tipo_medicao]} text-[10px] flex-shrink-0`}>
                               {TIPO_MEDICAO_LABELS[g.tipo_medicao]}
                             </Badge>
                           </div>
-                          <span className="text-xs font-bold text-blue-400">{formatPercent(pct)}</span>
+                          <span className="text-xs font-bold text-blue-400 flex-shrink-0 ml-2">{formatPercent(pct)}</span>
                         </div>
                         <Progress value={pct} className="h-1.5" />
                         <div className="flex justify-between text-[10px] text-[#475569] mt-0.5">
-                          <span>Medido: {formatCurrency(g.valor_medido)}</span>
-                          <span>Saldo: {formatCurrency(g.valor_contratado - g.valor_medido)}</span>
+                          <span>Medido: {formatCurrency(g.valor_medido ?? 0)}</span>
+                          <span>Saldo: {formatCurrency(g.valor_saldo ?? (g.valor_contratado - (g.valor_medido ?? 0)))}</span>
                         </div>
                       </div>
                     )
