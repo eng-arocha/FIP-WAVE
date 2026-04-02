@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listarUsuarios } from '@/lib/db/usuarios'
+import { setPermissoesUsuario, TEMPLATES } from '@/lib/db/permissoes'
 
 async function assertAdmin() {
   const supabase = await createClient()
@@ -48,6 +49,12 @@ export async function POST(req: Request) {
       perfil,
       ativo: true,
     })
+
+    // Aplica template de permissões do perfil automaticamente
+    const templateKey = perfil as keyof typeof TEMPLATES
+    if (TEMPLATES[templateKey]) {
+      await setPermissoesUsuario(authData.user.id, TEMPLATES[templateKey])
+    }
 
     return NextResponse.json({ id: authData.user.id }, { status: 201 })
   } catch (e: any) {

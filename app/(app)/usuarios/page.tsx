@@ -5,7 +5,11 @@ import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Plus, Loader2, UserCheck, UserX, Pencil, X, Eye, EyeOff } from 'lucide-react'
+import { Plus, Loader2, UserCheck, UserX, Pencil, X, Eye, EyeOff, Shield } from 'lucide-react'
+import {
+  MODULOS_CONFIG, MODULOS_LABELS, ACOES_LABELS, ALL_ACOES, TEMPLATES,
+  type Permissao,
+} from '@/lib/permissoes-config'
 
 type Perfil = 'visualizador' | 'engenheiro_fip' | 'admin'
 
@@ -19,29 +23,30 @@ interface Usuario {
 }
 
 const PERFIL_LABELS: Record<Perfil, string> = {
-  visualizador: 'Visualizador',
+  visualizador:   'Visualizador',
   engenheiro_fip: 'Engenheiro FIP',
-  admin: 'Administrador',
+  admin:          'Administrador',
 }
-
 const PERFIL_COLORS: Record<Perfil, string> = {
-  visualizador: 'bg-slate-800/60 text-slate-400 border-slate-700/50',
+  visualizador:   'bg-slate-800/60 text-slate-400 border-slate-700/50',
   engenheiro_fip: 'bg-blue-900/30 text-blue-400 border-blue-800/50',
-  admin: 'bg-amber-900/30 text-amber-400 border-amber-800/50',
+  admin:          'bg-amber-900/30 text-amber-400 border-amber-800/50',
 }
-
 const EMPTY_FORM = { nome: '', email: '', senha: '', perfil: 'engenheiro_fip' as Perfil }
 
 export default function UsuariosPage() {
-  const [usuarios, setUsuarios] = useState<Usuario[]>([])
-  const [loading, setLoading] = useState(true)
-  const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState(EMPTY_FORM)
-  const [showSenha, setShowSenha] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [erro, setErro] = useState('')
-  const [editando, setEditando] = useState<Usuario | null>(null)
-  const [editForm, setEditForm] = useState({ nome: '', perfil: '' as Perfil, nova_senha: '' })
+  const [usuarios, setUsuarios]             = useState<Usuario[]>([])
+  const [loading, setLoading]               = useState(true)
+  const [showForm, setShowForm]             = useState(false)
+  const [form, setForm]                     = useState(EMPTY_FORM)
+  const [showSenha, setShowSenha]           = useState(false)
+  const [saving, setSaving]                 = useState(false)
+  const [erro, setErro]                     = useState('')
+  const [editando, setEditando]             = useState<Usuario | null>(null)
+  const [editForm, setEditForm]             = useState({ nome: '', perfil: '' as Perfil, nova_senha: '' })
+  const [permissaoAberta, setPermissaoAberta] = useState<string | null>(null)
+  const [permissoesMap, setPermissoesMap]   = useState<Record<string, Set<string>>>({})
+  const [salvandoPerm, setSalvandoPerm]     = useState(false)
 
   async function carregar() {
     setLoading(true)
@@ -49,26 +54,18 @@ export default function UsuariosPage() {
     if (res.ok) setUsuarios(await res.json())
     setLoading(false)
   }
-
   useEffect(() => { carregar() }, [])
 
   async function criarUsuario(e: React.FormEvent) {
     e.preventDefault()
-    setSaving(true)
-    setErro('')
+    setSaving(true); setErro('')
     const res = await fetch('/api/usuarios', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(form),
     })
-    if (res.ok) {
-      setForm(EMPTY_FORM)
-      setShowForm(false)
-      await carregar()
-    } else {
-      const data = await res.json()
-      setErro(data.error || 'Erro ao criar usuário')
-    }
+    if (res.ok) { setForm(EMPTY_FORM); setShowForm(false); await carregar() }
+    else { const d = await res.json(); setErro(d.error || 'Erro ao criar usuário') }
     setSaving(false)
   }
 
@@ -84,8 +81,7 @@ export default function UsuariosPage() {
   async function salvarEdicao(e: React.FormEvent) {
     e.preventDefault()
     if (!editando) return
-    setSaving(true)
-    setErro('')
+    setSaving(true); setErro('')
     const body: Record<string, unknown> = { nome: editForm.nome, perfil: editForm.perfil }
     if (editForm.nova_senha) body.nova_senha = editForm.nova_senha
     const res = await fetch(`/api/usuarios/${editando.id}`, {
@@ -93,23 +89,55 @@ export default function UsuariosPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
-    if (res.ok) {
-      setEditando(null)
-      await carregar()
-    } else {
-      const data = await res.json()
-      setErro(data.error || 'Erro ao salvar')
-    }
+    if (res.ok) { setEditando(null); await carregar() }
+    else { const d = await res.json(); setErro(d.error || 'Erro ao salvar') }
     setSaving(false)
   }
 
-  function abrirEdicao(u: Usuario) {
-    setEditando(u)
-    setEditForm({ nome: u.nome, perfil: u.perfil, nova_senha: '' })
-    setErro('')
+  async function abrirPermissoes(userId: string) {
+    setPermissaoAberta(permissaoAberta === userId ? null : userId)
+    if (permissoesMap[userId]) return
+    const res = await fetch(`/api/usuarios/${userId}/permissoes`)
+    if (res.ok) {
+      const data: Permissao[] = await res.json()
+      setPermissoesMap(prev => ({ ...prev, [userId]: new Set(data.map(p => `${p.modulo}:${p.acao}`)) }))
+    }
+  }
+
+  function togglePerm(userId: string, modulo: string, acao: string) {
+    const key = `${modulo}:${acao}`
+    setPermissoesMap(prev => {
+      const s = new Set(prev[userId] || [])
+      s.has(key) ? s.delete(key) : s.add(key)
+      return { ...prev, [userId]: s }
+    })
+  }
+
+  function aplicarTemplate(userId: string, tpl: keyof typeof TEMPLATES) {
+    setPermissoesMap(prev => ({
+      ...prev,
+      [userId]: new Set(TEMPLATES[tpl].map(p => `${p.modulo}:${p.acao}`)),
+    }))
+  }
+
+  async function salvarPermissoes(userId: string) {
+    setSalvandoPerm(true)
+    const set = permissoesMap[userId] || new Set<string>()
+    const permissoes = Array.from(set).map(k => {
+      const [modulo, acao] = k.split(':')
+      return { modulo, acao }
+    })
+    await fetch(`/api/usuarios/${userId}/permissoes`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ permissoes }),
+    })
+    setSalvandoPerm(false)
+    setPermissaoAberta(null)
   }
 
   const ativos = usuarios.filter(u => u.ativo).length
+  const modulos = Object.keys(MODULOS_CONFIG) as Array<keyof typeof MODULOS_CONFIG>
 
   return (
     <div className="flex-1 overflow-auto">
@@ -147,41 +175,28 @@ export default function UsuariosPage() {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm text-[#94A3B8]">Novo Usuário</CardTitle>
-                <button onClick={() => setShowForm(false)} className="text-[#475569] hover:text-[#94A3B8]">
-                  <X className="w-4 h-4" />
-                </button>
+                <button onClick={() => setShowForm(false)} className="text-[#475569] hover:text-[#94A3B8]"><X className="w-4 h-4" /></button>
               </div>
             </CardHeader>
             <CardContent>
               <form onSubmit={criarUsuario} className="grid grid-cols-2 gap-4">
-                {erro && (
-                  <div className="col-span-2 p-3 rounded-lg bg-red-900/20 border border-red-800/50 text-sm text-red-400">{erro}</div>
-                )}
+                {erro && <div className="col-span-2 p-3 rounded-lg bg-red-900/20 border border-red-800/50 text-sm text-red-400">{erro}</div>}
                 <div className="space-y-1.5">
                   <label className="text-xs text-[#475569] uppercase tracking-wide font-medium">Nome completo</label>
-                  <input
-                    required value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))}
-                    placeholder="Ex: João Silva"
-                    className="w-full px-3 py-2 rounded-lg text-sm bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] outline-none focus:border-blue-500"
-                  />
+                  <input required value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} placeholder="Ex: João Silva"
+                    className="w-full px-3 py-2 rounded-lg text-sm bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] outline-none focus:border-blue-500" />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs text-[#475569] uppercase tracking-wide font-medium">E-mail</label>
-                  <input
-                    required type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                    placeholder="joao@fip.com.br"
-                    className="w-full px-3 py-2 rounded-lg text-sm bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] outline-none focus:border-blue-500"
-                  />
+                  <input required type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="joao@fip.com.br"
+                    className="w-full px-3 py-2 rounded-lg text-sm bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] outline-none focus:border-blue-500" />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs text-[#475569] uppercase tracking-wide font-medium">Senha inicial</label>
                   <div className="relative">
-                    <input
-                      required type={showSenha ? 'text' : 'password'} value={form.senha} minLength={8}
-                      onChange={e => setForm(f => ({ ...f, senha: e.target.value }))}
-                      placeholder="Mínimo 8 caracteres"
-                      className="w-full px-3 py-2 pr-10 rounded-lg text-sm bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] outline-none focus:border-blue-500"
-                    />
+                    <input required type={showSenha ? 'text' : 'password'} value={form.senha} minLength={8}
+                      onChange={e => setForm(f => ({ ...f, senha: e.target.value }))} placeholder="Mínimo 8 caracteres"
+                      className="w-full px-3 py-2 pr-10 rounded-lg text-sm bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] outline-none focus:border-blue-500" />
                     <button type="button" onClick={() => setShowSenha(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#475569]">
                       {showSenha ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -189,10 +204,8 @@ export default function UsuariosPage() {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs text-[#475569] uppercase tracking-wide font-medium">Perfil de acesso</label>
-                  <select
-                    value={form.perfil} onChange={e => setForm(f => ({ ...f, perfil: e.target.value as Perfil }))}
-                    className="w-full px-3 py-2 rounded-lg text-sm bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] outline-none focus:border-blue-500"
-                  >
+                  <select value={form.perfil} onChange={e => setForm(f => ({ ...f, perfil: e.target.value as Perfil }))}
+                    className="w-full px-3 py-2 rounded-lg text-sm bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] outline-none focus:border-blue-500">
                     <option value="visualizador">Visualizador</option>
                     <option value="engenheiro_fip">Engenheiro FIP</option>
                     <option value="admin">Administrador</option>
@@ -215,29 +228,21 @@ export default function UsuariosPage() {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm text-[#94A3B8]">Editar — {editando.email}</CardTitle>
-                <button onClick={() => setEditando(null)} className="text-[#475569] hover:text-[#94A3B8]">
-                  <X className="w-4 h-4" />
-                </button>
+                <button onClick={() => setEditando(null)} className="text-[#475569] hover:text-[#94A3B8]"><X className="w-4 h-4" /></button>
               </div>
             </CardHeader>
             <CardContent>
               <form onSubmit={salvarEdicao} className="grid grid-cols-2 gap-4">
-                {erro && (
-                  <div className="col-span-2 p-3 rounded-lg bg-red-900/20 border border-red-800/50 text-sm text-red-400">{erro}</div>
-                )}
+                {erro && <div className="col-span-2 p-3 rounded-lg bg-red-900/20 border border-red-800/50 text-sm text-red-400">{erro}</div>}
                 <div className="space-y-1.5">
                   <label className="text-xs text-[#475569] uppercase tracking-wide font-medium">Nome</label>
-                  <input
-                    required value={editForm.nome} onChange={e => setEditForm(f => ({ ...f, nome: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg text-sm bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] outline-none focus:border-blue-500"
-                  />
+                  <input required value={editForm.nome} onChange={e => setEditForm(f => ({ ...f, nome: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg text-sm bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] outline-none focus:border-blue-500" />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs text-[#475569] uppercase tracking-wide font-medium">Perfil</label>
-                  <select
-                    value={editForm.perfil} onChange={e => setEditForm(f => ({ ...f, perfil: e.target.value as Perfil }))}
-                    className="w-full px-3 py-2 rounded-lg text-sm bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] outline-none focus:border-blue-500"
-                  >
+                  <select value={editForm.perfil} onChange={e => setEditForm(f => ({ ...f, perfil: e.target.value as Perfil }))}
+                    className="w-full px-3 py-2 rounded-lg text-sm bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] outline-none focus:border-blue-500">
                     <option value="visualizador">Visualizador</option>
                     <option value="engenheiro_fip">Engenheiro FIP</option>
                     <option value="admin">Administrador</option>
@@ -245,12 +250,9 @@ export default function UsuariosPage() {
                 </div>
                 <div className="col-span-2 space-y-1.5">
                   <label className="text-xs text-[#475569] uppercase tracking-wide font-medium">Nova senha (deixe em branco para não alterar)</label>
-                  <input
-                    type="password" value={editForm.nova_senha} minLength={8}
-                    onChange={e => setEditForm(f => ({ ...f, nova_senha: e.target.value }))}
+                  <input type="password" value={editForm.nova_senha} minLength={8} onChange={e => setEditForm(f => ({ ...f, nova_senha: e.target.value }))}
                     placeholder="Nova senha (mínimo 8 caracteres)"
-                    className="w-full px-3 py-2 rounded-lg text-sm bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] outline-none focus:border-blue-500"
-                  />
+                    className="w-full px-3 py-2 rounded-lg text-sm bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] outline-none focus:border-blue-500" />
                 </div>
                 <div className="col-span-2 flex justify-end gap-3 pt-2">
                   <Button type="button" variant="outline" size="sm" onClick={() => setEditando(null)}>Cancelar</Button>
@@ -263,64 +265,114 @@ export default function UsuariosPage() {
           </Card>
         )}
 
-        {/* Tabela de usuários */}
+        {/* Tabela */}
         <Card>
           <CardHeader>
             <CardTitle className="text-sm text-[#94A3B8]">Usuários cadastrados</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             {loading ? (
-              <div className="flex justify-center py-12">
-                <Loader2 className="w-6 h-6 animate-spin text-blue-400" />
-              </div>
+              <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-blue-400" /></div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-[#1E293B]">
-                      <th className="text-left px-6 py-3 text-xs text-[#475569] uppercase tracking-wide font-medium">Nome</th>
-                      <th className="text-left px-6 py-3 text-xs text-[#475569] uppercase tracking-wide font-medium">E-mail</th>
-                      <th className="text-left px-6 py-3 text-xs text-[#475569] uppercase tracking-wide font-medium">Perfil</th>
-                      <th className="text-left px-6 py-3 text-xs text-[#475569] uppercase tracking-wide font-medium">Status</th>
-                      <th className="text-right px-6 py-3 text-xs text-[#475569] uppercase tracking-wide font-medium">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#1E293B]">
-                    {usuarios.map(u => (
-                      <tr key={u.id} className="hover:bg-[#111827]/50 transition-colors">
-                        <td className="px-6 py-4 font-medium text-[#F1F5F9]">{u.nome}</td>
-                        <td className="px-6 py-4 text-[#475569]">{u.email}</td>
-                        <td className="px-6 py-4">
-                          <Badge className={PERFIL_COLORS[u.perfil]}>{PERFIL_LABELS[u.perfil]}</Badge>
-                        </td>
-                        <td className="px-6 py-4">
-                          {u.ativo
-                            ? <span className="flex items-center gap-1.5 text-emerald-400 text-xs"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />Ativo</span>
-                            : <span className="flex items-center gap-1.5 text-[#475569] text-xs"><span className="w-1.5 h-1.5 rounded-full bg-[#475569]" />Inativo</span>
-                          }
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => abrirEdicao(u)}
-                              className="p-1.5 rounded-lg text-[#475569] hover:text-[#94A3B8] hover:bg-[#1E293B] transition-colors"
-                              title="Editar"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => toggleAtivo(u)}
-                              className={`p-1.5 rounded-lg transition-colors ${u.ativo ? 'text-[#475569] hover:text-red-400 hover:bg-red-900/20' : 'text-[#475569] hover:text-emerald-400 hover:bg-emerald-900/20'}`}
-                              title={u.ativo ? 'Desativar' : 'Reativar'}
-                            >
-                              {u.ativo ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
-                            </button>
+              <div>
+                {usuarios.map(u => (
+                  <div key={u.id}>
+                    {/* Linha do usuário */}
+                    <div className="flex items-center gap-4 px-6 py-4 border-b border-[#1E293B] hover:bg-[#111827]/50 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm text-[#F1F5F9]">{u.nome}</p>
+                        <p className="text-xs text-[#475569]">{u.email}</p>
+                      </div>
+                      <Badge className={PERFIL_COLORS[u.perfil]}>{PERFIL_LABELS[u.perfil]}</Badge>
+                      {u.ativo
+                        ? <span className="flex items-center gap-1.5 text-emerald-400 text-xs w-16"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />Ativo</span>
+                        : <span className="flex items-center gap-1.5 text-[#475569] text-xs w-16"><span className="w-1.5 h-1.5 rounded-full bg-[#475569] flex-shrink-0" />Inativo</span>
+                      }
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => abrirPermissoes(u.id)} title="Permissões"
+                          className={`p-1.5 rounded-lg transition-colors ${permissaoAberta === u.id ? 'text-blue-400 bg-blue-900/20' : 'text-[#475569] hover:text-blue-400 hover:bg-blue-900/20'}`}>
+                          <Shield className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => { setEditando(u); setEditForm({ nome: u.nome, perfil: u.perfil, nova_senha: '' }); setErro('') }} title="Editar"
+                          className="p-1.5 rounded-lg text-[#475569] hover:text-[#94A3B8] hover:bg-[#1E293B] transition-colors">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => toggleAtivo(u)} title={u.ativo ? 'Desativar' : 'Reativar'}
+                          className={`p-1.5 rounded-lg transition-colors ${u.ativo ? 'text-[#475569] hover:text-red-400 hover:bg-red-900/20' : 'text-[#475569] hover:text-emerald-400 hover:bg-emerald-900/20'}`}>
+                          {u.ativo ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Painel de permissões */}
+                    {permissaoAberta === u.id && (
+                      <div className="bg-[#080C14] border-b border-[#1E293B] px-6 py-5">
+                        <div className="flex items-center justify-between mb-4">
+                          <p className="text-xs font-semibold text-[#94A3B8] uppercase tracking-wide">Permissões — {u.nome}</p>
+                          <div className="flex gap-2">
+                            <span className="text-xs text-[#475569]">Templates:</span>
+                            {(['admin', 'engenheiro_fip', 'visualizador'] as const).map(tpl => (
+                              <button key={tpl} onClick={() => aplicarTemplate(u.id, tpl)}
+                                className="text-[11px] px-2 py-1 rounded border border-[#1E293B] text-[#475569] hover:text-[#94A3B8] hover:border-[#475569] transition-colors">
+                                {tpl === 'admin' ? 'Administrador' : tpl === 'engenheiro_fip' ? 'Engenheiro FIP' : 'Visualizador'}
+                              </button>
+                            ))}
                           </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        </div>
+
+                        {/* Matriz */}
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr>
+                                <th className="text-left py-2 pr-4 text-[#475569] font-medium w-32">Módulo</th>
+                                {ALL_ACOES.map(acao => (
+                                  <th key={acao} className="text-center py-2 px-3 text-[#475569] font-medium w-24">{ACOES_LABELS[acao]}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[#1E293B]/50">
+                              {modulos.map(modulo => {
+                                const acoesPossiveis = MODULOS_CONFIG[modulo]
+                                const set = permissoesMap[u.id]
+                                return (
+                                  <tr key={modulo} className="hover:bg-[#111827]/30">
+                                    <td className="py-2.5 pr-4 font-medium text-[#94A3B8]">{MODULOS_LABELS[modulo]}</td>
+                                    {ALL_ACOES.map(acao => {
+                                      const suporta = acoesPossiveis.includes(acao)
+                                      const marcado  = set?.has(`${modulo}:${acao}`) ?? false
+                                      return (
+                                        <td key={acao} className="py-2.5 px-3 text-center">
+                                          {suporta ? (
+                                            <input
+                                              type="checkbox"
+                                              checked={marcado}
+                                              onChange={() => togglePerm(u.id, modulo, acao)}
+                                              className="w-4 h-4 accent-blue-500 cursor-pointer"
+                                            />
+                                          ) : (
+                                            <span className="text-[#1E293B]">—</span>
+                                          )}
+                                        </td>
+                                      )
+                                    })}
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <div className="flex justify-end gap-3 mt-4">
+                          <Button variant="outline" size="sm" onClick={() => setPermissaoAberta(null)}>Cancelar</Button>
+                          <Button size="sm" disabled={salvandoPerm} onClick={() => salvarPermissoes(u.id)}>
+                            {salvandoPerm ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Salvar permissões'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>
