@@ -1,16 +1,8 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listarUsuarios } from '@/lib/db/usuarios'
 import { setPermissoesUsuario, TEMPLATES } from '@/lib/db/permissoes'
-
-async function assertAdmin() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return false
-  const { data } = await supabase.from('perfis').select('perfil').eq('id', user.id).single()
-  return data?.perfil === 'admin'
-}
+import { assertAdmin } from '@/lib/api/auth'
 
 export async function GET() {
   if (!(await assertAdmin())) return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
