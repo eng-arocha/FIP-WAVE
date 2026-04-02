@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import {
@@ -71,17 +72,15 @@ export function Sidebar() {
       </button>
 
       {/* Logo */}
-      <div className="px-5 pt-7 pb-5 border-b border-[#1E293B]">
-        <div className="flex items-center gap-3">
-          {/* Logo placeholder — swap for <Image> when asset arrives */}
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-900/40">
-            <span className="text-white font-bold text-sm leading-none">FW</span>
-          </div>
-          <div>
-            <h1 className="font-bold text-base leading-tight gradient-text">FIP-WAVE</h1>
-            <p className="text-[10px] text-[#475569] leading-tight tracking-widest uppercase">Mission Control</p>
-          </div>
-        </div>
+      <div className="px-4 pt-6 pb-4 border-b border-[#1E293B] flex items-center justify-center">
+        <Image
+          src="/logos/wave-logo.svg"
+          alt="WAVE Beira-Mar"
+          width={160}
+          height={90}
+          priority
+          className="object-contain"
+        />
       </div>
 
       {/* Navigation */}
