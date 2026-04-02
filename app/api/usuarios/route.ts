@@ -7,8 +7,13 @@ import { assertAdmin } from '@/lib/api/auth'
 export async function GET() {
   if (!(await assertAdmin())) return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
   try {
-    const data = await listarUsuarios()
-    return NextResponse.json(data)
+    const admin = createAdminClient()
+    const { data, error } = await admin
+      .from('perfis')
+      .select('id, nome, email, perfil, ativo, criado_em')
+      .order('criado_em', { ascending: false })
+    if (error) throw error
+    return NextResponse.json(data || [])
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
