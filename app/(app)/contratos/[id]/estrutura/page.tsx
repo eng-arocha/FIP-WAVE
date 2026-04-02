@@ -22,8 +22,8 @@ type FilterTipo = 'todos' | TipoMedicao
 
 const TIPO_MEDICAO_LABELS: Record<TipoMedicao, string> = {
   servico: 'Serviço',
-  faturamento_direto: 'Fat. Direto',
-  misto: 'Misto',
+  faturamento_direto: 'Material',
+  misto: 'Total',
 }
 const TIPO_MEDICAO_COLORS: Record<TipoMedicao, string> = {
   servico: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
@@ -217,9 +217,9 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todos os tipos</SelectItem>
-              <SelectItem value="misto">Contrato Global (Misto)</SelectItem>
+              <SelectItem value="misto">Total (Mat. + Serviço)</SelectItem>
               <SelectItem value="servico">Serviço</SelectItem>
-              <SelectItem value="faturamento_direto">Faturamento Direto</SelectItem>
+              <SelectItem value="faturamento_direto">Material (Fat. Direto)</SelectItem>
             </SelectContent>
           </Select>
 
@@ -373,8 +373,8 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="servico">Serviço</SelectItem>
-                    <SelectItem value="faturamento_direto">Faturamento Direto</SelectItem>
-                    <SelectItem value="misto">Misto</SelectItem>
+                    <SelectItem value="faturamento_direto">Material (Fat. Direto)</SelectItem>
+                    <SelectItem value="misto">Total (Mat. + Serviço)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

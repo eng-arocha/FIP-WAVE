@@ -140,8 +140,8 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   }
   const TIPO_MEDICAO_LABELS: Record<string, string> = {
     servico: 'Serviço',
-    faturamento_direto: 'Fat. Direto',
-    misto: 'Misto',
+    faturamento_direto: 'Material',
+    misto: 'Total',
   }
 
   const gruposExibidos = useMemo(() => {
@@ -335,9 +335,9 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="todos">Todos</SelectItem>
-                        <SelectItem value="misto">Misto</SelectItem>
+                        <SelectItem value="misto">Total</SelectItem>
                         <SelectItem value="servico">Serviço</SelectItem>
-                        <SelectItem value="faturamento_direto">Fat. Direto</SelectItem>
+                        <SelectItem value="faturamento_direto">Material (Fat. Direto)</SelectItem>
                       </SelectContent>
                     </Select>
                     {(sortBy !== 'padrao' || filterTipo !== 'todos') && (
@@ -464,9 +464,9 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos os tipos</SelectItem>
-                  <SelectItem value="misto">Contrato Global (Misto)</SelectItem>
+                  <SelectItem value="misto">Total (Mat. + Serviço)</SelectItem>
                   <SelectItem value="servico">Serviço</SelectItem>
-                  <SelectItem value="faturamento_direto">Faturamento Direto</SelectItem>
+                  <SelectItem value="faturamento_direto">Material (Fat. Direto)</SelectItem>
                 </SelectContent>
               </Select>
 
