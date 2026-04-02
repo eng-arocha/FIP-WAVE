@@ -74,12 +74,12 @@ export function Sidebar() {
       {/* Logo */}
       <div className="px-4 pt-6 pb-4 border-b border-[#1E293B] flex items-center justify-center">
         <Image
-          src="/logos/Wave.png"
+          src="/logos/Wave - Branco.png"
           alt="WAVE Beira-Mar"
           width={160}
           height={90}
           priority
-          className="object-contain"
+          className="object-contain rounded-lg"
         />
       </div>
 
