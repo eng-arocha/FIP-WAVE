@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useState, useEffect } from 'react'
+import { use, useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,7 +13,7 @@ import {
 } from 'recharts'
 import {
   ArrowLeft, Plus, FileText, Loader2,
-  ChevronRight, Layers
+  ChevronRight, Layers, ArrowUpDown, Filter
 } from 'lucide-react'
 import {
   formatCurrency, formatPercent, formatDate,
@@ -81,6 +81,8 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   const [grupos, setGrupos] = useState<Grupo[]>([])
   const [medicoes, setMedicoes] = useState<Medicao[]>([])
   const [aditivos, setAditivos] = useState<Aditivo[]>([])
+  const [sortBy, setSortBy] = useState<'padrao' | 'valor_global_desc' | 'valor_global_asc' | 'valor_medido_desc' | 'valor_medido_asc' | 'saldo_desc' | 'saldo_asc'>('padrao')
+  const [filterTipo, setFilterTipo] = useState<'todos' | 'misto' | 'servico' | 'faturamento_direto'>('todos')
 
   useEffect(() => {
     async function loadContrato() {
@@ -174,6 +176,24 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   const percentualMedido = contrato.percentual_medido ?? 0
   const qtdAprovadas = contrato.qtd_medicoes_aprovadas ?? 0
   const qtdPendentes = contrato.qtd_medicoes_pendentes ?? 0
+
+  const gruposExibidos = useMemo(() => {
+    let list = [...grupos]
+    if (filterTipo !== 'todos') list = list.filter(g => g.tipo_medicao === filterTipo)
+    list.sort((a, b) => {
+      switch (sortBy) {
+        case 'padrao': return parseFloat(a.codigo) - parseFloat(b.codigo)
+        case 'valor_global_desc': return b.valor_contratado - a.valor_contratado
+        case 'valor_global_asc': return a.valor_contratado - b.valor_contratado
+        case 'valor_medido_desc': return (b.valor_medido ?? 0) - (a.valor_medido ?? 0)
+        case 'valor_medido_asc': return (a.valor_medido ?? 0) - (b.valor_medido ?? 0)
+        case 'saldo_desc': return (b.valor_saldo ?? b.valor_contratado) - (a.valor_saldo ?? a.valor_contratado)
+        case 'saldo_asc': return (a.valor_saldo ?? a.valor_contratado) - (b.valor_saldo ?? b.valor_contratado)
+        default: return parseFloat(a.codigo) - parseFloat(b.codigo)
+      }
+    })
+    return list
+  }, [grupos, sortBy, filterTipo])
 
   const gruposChart = grupos.map(g => ({
     nome: g.nome.replace('Instalações ', 'Inst. ').replace('Ar-Condicionado e Ventilação', 'Ar-Cond.').replace('Gestão e Supervisão', 'Gestão'),
@@ -368,17 +388,67 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
 
           {/* Estrutura */}
           <TabsContent value="estrutura">
-            <div className="flex justify-between items-center mb-4">
-              <p className="text-sm text-[#94A3B8]">Estrutura hierárquica do contrato</p>
+            {/* Cabeçalho com filtros */}
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <div className="flex items-center gap-1.5 text-xs text-[#475569]">
+                <ArrowUpDown className="w-3.5 h-3.5" />
+                <span>Ordenar:</span>
+              </div>
+              <Select value={sortBy} onValueChange={v => setSortBy(v as typeof sortBy)}>
+                <SelectTrigger className="h-8 text-xs w-52 bg-[#0D1421] border-[#1E293B] text-[#F1F5F9]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="padrao">Padrão (1.0 → 19.0)</SelectItem>
+                  <SelectItem value="valor_global_desc">Valor Global — Maior primeiro</SelectItem>
+                  <SelectItem value="valor_global_asc">Valor Global — Menor primeiro</SelectItem>
+                  <SelectItem value="valor_medido_desc">Valor Medido — Maior primeiro</SelectItem>
+                  <SelectItem value="valor_medido_asc">Valor Medido — Menor primeiro</SelectItem>
+                  <SelectItem value="saldo_desc">Saldo a Medir — Maior primeiro</SelectItem>
+                  <SelectItem value="saldo_asc">Saldo a Medir — Menor primeiro</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <div className="flex items-center gap-1.5 text-xs text-[#475569] ml-2">
+                <Filter className="w-3.5 h-3.5" />
+                <span>Tipo:</span>
+              </div>
+              <Select value={filterTipo} onValueChange={v => setFilterTipo(v as typeof filterTipo)}>
+                <SelectTrigger className="h-8 text-xs w-44 bg-[#0D1421] border-[#1E293B] text-[#F1F5F9]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os tipos</SelectItem>
+                  <SelectItem value="misto">Contrato Global (Misto)</SelectItem>
+                  <SelectItem value="servico">Serviço</SelectItem>
+                  <SelectItem value="faturamento_direto">Faturamento Direto</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {(sortBy !== 'padrao' || filterTipo !== 'todos') && (
+                <Button
+                  variant="ghost" size="sm"
+                  className="h-8 text-xs text-[#475569] hover:text-[#F1F5F9]"
+                  onClick={() => { setSortBy('padrao'); setFilterTipo('todos') }}
+                >
+                  Limpar filtros
+                </Button>
+              )}
+
+              <span className="ml-auto text-xs text-[#475569]">
+                {gruposExibidos.length} de {grupos.length} grupos
+              </span>
+
               <Link href={`/contratos/${id}/estrutura`}>
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" className="h-8">
                   <Layers className="w-4 h-4" />
                   Gerenciar Estrutura
                 </Button>
               </Link>
             </div>
+
             <div className="space-y-2">
-              {grupos.map(g => (
+              {gruposExibidos.map(g => (
                 <Card key={g.id}>
                   <CardContent className="p-4">
                     <div className="flex items-center gap-3">
@@ -395,9 +465,10 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                           className="h-1 mt-2 max-w-xs"
                         />
                       </div>
-                      <div className="text-right text-xs">
+                      <div className="text-right text-xs min-w-[150px]">
                         <p className="font-semibold text-[#F1F5F9]">{formatCurrency(g.valor_contratado)}</p>
-                        <p className="text-[#475569]">Medido: {formatCurrency(g.valor_medido)}</p>
+                        <p className="text-[#475569]">Medido: {formatCurrency(g.valor_medido ?? 0)}</p>
+                        <p className="text-emerald-500/80">Saldo: {formatCurrency(g.valor_saldo ?? (g.valor_contratado - (g.valor_medido ?? 0)))}</p>
                       </div>
                     </div>
                   </CardContent>
