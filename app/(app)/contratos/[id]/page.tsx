@@ -54,6 +54,8 @@ interface Grupo {
   nome: string
   tipo_medicao: string
   valor_contratado: number
+  valor_material: number
+  valor_servico: number
   valor_medido: number
   valor_saldo?: number
   percentual_medido?: number
@@ -83,7 +85,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   const [medicoes, setMedicoes] = useState<Medicao[]>([])
   const [aditivos, setAditivos] = useState<Aditivo[]>([])
   const [sortBy, setSortBy] = useState<'padrao' | 'valor_global_desc' | 'valor_global_asc' | 'valor_medido_desc' | 'valor_medido_asc' | 'saldo_desc' | 'saldo_asc'>('padrao')
-  const [filterTipo, setFilterTipo] = useState<'todos' | 'misto' | 'servico' | 'faturamento_direto'>('todos')
+  const [viewMode, setViewMode] = useState<'total' | 'material' | 'servico'>('total')
 
   useEffect(() => {
     async function loadContrato() {
@@ -144,23 +146,27 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
     misto: 'Total',
   }
 
+  // Retorna o valor contratado do grupo conforme modo de visualização
+  const getValorView = (g: Grupo) => viewMode === 'material' ? (g.valor_material ?? 0) : viewMode === 'servico' ? (g.valor_servico ?? 0) : g.valor_contratado
+
   const gruposExibidos = useMemo(() => {
-    let list = [...grupos]
-    if (filterTipo !== 'todos') list = list.filter(g => g.tipo_medicao === filterTipo)
+    const list = [...grupos]
     list.sort((a, b) => {
+      const va = viewMode === 'material' ? (a.valor_material ?? 0) : viewMode === 'servico' ? (a.valor_servico ?? 0) : a.valor_contratado
+      const vb = viewMode === 'material' ? (b.valor_material ?? 0) : viewMode === 'servico' ? (b.valor_servico ?? 0) : b.valor_contratado
       switch (sortBy) {
         case 'padrao': return parseFloat(a.codigo) - parseFloat(b.codigo)
-        case 'valor_global_desc': return b.valor_contratado - a.valor_contratado
-        case 'valor_global_asc': return a.valor_contratado - b.valor_contratado
+        case 'valor_global_desc': return vb - va
+        case 'valor_global_asc': return va - vb
         case 'valor_medido_desc': return (b.valor_medido ?? 0) - (a.valor_medido ?? 0)
         case 'valor_medido_asc': return (a.valor_medido ?? 0) - (b.valor_medido ?? 0)
-        case 'saldo_desc': return (b.valor_saldo ?? b.valor_contratado) - (a.valor_saldo ?? a.valor_contratado)
-        case 'saldo_asc': return (a.valor_saldo ?? a.valor_contratado) - (b.valor_saldo ?? b.valor_contratado)
+        case 'saldo_desc': return (vb - (b.valor_medido ?? 0)) - (va - (a.valor_medido ?? 0))
+        case 'saldo_asc': return (va - (a.valor_medido ?? 0)) - (vb - (b.valor_medido ?? 0))
         default: return parseFloat(a.codigo) - parseFloat(b.codigo)
       }
     })
     return list
-  }, [grupos, sortBy, filterTipo])
+  }, [grupos, sortBy, viewMode])
 
   // Gráfico sempre em ordem 1.0→19.0 e sem filtro de tipo (mostra tudo)
   const gruposOrdenados = useMemo(() =>
@@ -202,12 +208,16 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   const qtdAprovadas = contrato.qtd_medicoes_aprovadas ?? 0
   const qtdPendentes = contrato.qtd_medicoes_pendentes ?? 0
 
-  const gruposChart = gruposOrdenados.map(g => ({
-    nome: g.nome.length > 18 ? g.nome.slice(0, 16) + '…' : g.nome,
-    contratado: g.valor_contratado,
-    medido: g.valor_medido,
-    saldo: g.valor_contratado - g.valor_medido,
-  }))
+  const VIEW_MODE_LABELS: Record<string, string> = { total: 'Total', material: 'Material', servico: 'Serviço' }
+  const gruposChart = gruposOrdenados.map(g => {
+    const vContratado = getValorView(g)
+    return {
+      nome: g.nome.length > 18 ? g.nome.slice(0, 16) + '…' : g.nome,
+      contratado: vContratado,
+      medido: g.valor_medido,
+      saldo: vContratado - g.valor_medido,
+    }
+  })
 
   return (
     <div className="flex-1 overflow-auto">
@@ -311,7 +321,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm text-[#94A3B8]">Avanço por Grupo Macro</CardTitle>
-                  {/* Filtros inline */}
+                  {/* Controles inline */}
                   <div className="flex flex-wrap gap-2 pt-2">
                     <Select value={sortBy} onValueChange={v => setSortBy(v as typeof sortBy)}>
                       <SelectTrigger className="h-7 text-[11px] w-48 bg-[#0D1421] border-[#1E293B] text-[#F1F5F9]">
@@ -320,29 +330,28 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="padrao">Padrão (1.0 → 19.0)</SelectItem>
-                        <SelectItem value="valor_global_desc">Valor Global ↓</SelectItem>
-                        <SelectItem value="valor_global_asc">Valor Global ↑</SelectItem>
-                        <SelectItem value="valor_medido_desc">Valor Medido ↓</SelectItem>
-                        <SelectItem value="valor_medido_asc">Valor Medido ↑</SelectItem>
+                        <SelectItem value="valor_global_desc">Valor ↓</SelectItem>
+                        <SelectItem value="valor_global_asc">Valor ↑</SelectItem>
+                        <SelectItem value="valor_medido_desc">Medido ↓</SelectItem>
+                        <SelectItem value="valor_medido_asc">Medido ↑</SelectItem>
                         <SelectItem value="saldo_desc">Saldo ↓</SelectItem>
                         <SelectItem value="saldo_asc">Saldo ↑</SelectItem>
                       </SelectContent>
                     </Select>
-                    <Select value={filterTipo} onValueChange={v => setFilterTipo(v as typeof filterTipo)}>
-                      <SelectTrigger className="h-7 text-[11px] w-40 bg-[#0D1421] border-[#1E293B] text-[#F1F5F9]">
+                    <Select value={viewMode} onValueChange={v => setViewMode(v as typeof viewMode)}>
+                      <SelectTrigger className="h-7 text-[11px] w-36 bg-[#0D1421] border-[#1E293B] text-[#F1F5F9]">
                         <Filter className="w-3 h-3 mr-1 flex-shrink-0" />
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="todos">Todos</SelectItem>
-                        <SelectItem value="misto">Total</SelectItem>
+                        <SelectItem value="total">Total</SelectItem>
+                        <SelectItem value="material">Material</SelectItem>
                         <SelectItem value="servico">Serviço</SelectItem>
-                        <SelectItem value="faturamento_direto">Material (Fat. Direto)</SelectItem>
                       </SelectContent>
                     </Select>
-                    {(sortBy !== 'padrao' || filterTipo !== 'todos') && (
+                    {(sortBy !== 'padrao' || viewMode !== 'total') && (
                       <button
-                        onClick={() => { setSortBy('padrao'); setFilterTipo('todos') }}
+                        onClick={() => { setSortBy('padrao'); setViewMode('total') }}
                         className="text-[11px] text-[#475569] hover:text-[#94A3B8] px-2"
                       >
                         Limpar
@@ -352,23 +361,22 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                 </CardHeader>
                 <CardContent className="space-y-3 max-h-[360px] overflow-y-auto">
                   {gruposExibidos.map(g => {
-                    const pct = g.valor_contratado > 0 ? (g.valor_medido / g.valor_contratado) * 100 : 0
+                    const vBase = getValorView(g)
+                    const pct = vBase > 0 ? (g.valor_medido / vBase) * 100 : 0
                     return (
                       <div key={g.id}>
                         <div className="flex justify-between mb-1">
                           <div className="flex items-center gap-2 min-w-0">
                             <span className="text-xs font-bold text-[#475569] flex-shrink-0">{g.codigo}</span>
                             <span className="text-xs font-medium text-[#94A3B8] truncate">{g.nome}</span>
-                            <Badge className={`${TIPO_MEDICAO_COLORS[g.tipo_medicao]} text-[10px] flex-shrink-0`}>
-                              {TIPO_MEDICAO_LABELS[g.tipo_medicao]}
-                            </Badge>
                           </div>
                           <span className="text-xs font-bold text-blue-400 flex-shrink-0 ml-2">{formatPercent(pct)}</span>
                         </div>
                         <Progress value={pct} className="h-1.5" />
                         <div className="flex justify-between text-[10px] text-[#475569] mt-0.5">
+                          <span>{VIEW_MODE_LABELS[viewMode]}: {formatCurrency(vBase)}</span>
                           <span>Medido: {formatCurrency(g.valor_medido ?? 0)}</span>
-                          <span>Saldo: {formatCurrency(g.valor_saldo ?? (g.valor_contratado - (g.valor_medido ?? 0)))}</span>
+                          <span>Saldo: {formatCurrency(vBase - (g.valor_medido ?? 0))}</span>
                         </div>
                       </div>
                     )
@@ -445,43 +453,42 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="padrao">Padrão (1.0 → 19.0)</SelectItem>
-                  <SelectItem value="valor_global_desc">Valor Global — Maior primeiro</SelectItem>
-                  <SelectItem value="valor_global_asc">Valor Global — Menor primeiro</SelectItem>
-                  <SelectItem value="valor_medido_desc">Valor Medido — Maior primeiro</SelectItem>
-                  <SelectItem value="valor_medido_asc">Valor Medido — Menor primeiro</SelectItem>
-                  <SelectItem value="saldo_desc">Saldo a Medir — Maior primeiro</SelectItem>
-                  <SelectItem value="saldo_asc">Saldo a Medir — Menor primeiro</SelectItem>
+                  <SelectItem value="valor_global_desc">Valor — Maior primeiro</SelectItem>
+                  <SelectItem value="valor_global_asc">Valor — Menor primeiro</SelectItem>
+                  <SelectItem value="valor_medido_desc">Medido — Maior primeiro</SelectItem>
+                  <SelectItem value="valor_medido_asc">Medido — Menor primeiro</SelectItem>
+                  <SelectItem value="saldo_desc">Saldo — Maior primeiro</SelectItem>
+                  <SelectItem value="saldo_asc">Saldo — Menor primeiro</SelectItem>
                 </SelectContent>
               </Select>
 
               <div className="flex items-center gap-1.5 text-xs text-[#475569] ml-2">
                 <Filter className="w-3.5 h-3.5" />
-                <span>Tipo:</span>
+                <span>Exibir:</span>
               </div>
-              <Select value={filterTipo} onValueChange={v => setFilterTipo(v as typeof filterTipo)}>
-                <SelectTrigger className="h-8 text-xs w-44 bg-[#0D1421] border-[#1E293B] text-[#F1F5F9]">
+              <Select value={viewMode} onValueChange={v => setViewMode(v as typeof viewMode)}>
+                <SelectTrigger className="h-8 text-xs w-36 bg-[#0D1421] border-[#1E293B] text-[#F1F5F9]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="todos">Todos os tipos</SelectItem>
-                  <SelectItem value="misto">Total (Mat. + Serviço)</SelectItem>
+                  <SelectItem value="total">Total</SelectItem>
+                  <SelectItem value="material">Material</SelectItem>
                   <SelectItem value="servico">Serviço</SelectItem>
-                  <SelectItem value="faturamento_direto">Material (Fat. Direto)</SelectItem>
                 </SelectContent>
               </Select>
 
-              {(sortBy !== 'padrao' || filterTipo !== 'todos') && (
+              {(sortBy !== 'padrao' || viewMode !== 'total') && (
                 <Button
                   variant="ghost" size="sm"
                   className="h-8 text-xs text-[#475569] hover:text-[#F1F5F9]"
-                  onClick={() => { setSortBy('padrao'); setFilterTipo('todos') }}
+                  onClick={() => { setSortBy('padrao'); setViewMode('total') }}
                 >
-                  Limpar filtros
+                  Limpar
                 </Button>
               )}
 
               <span className="ml-auto text-xs text-[#475569]">
-                {gruposExibidos.length} de {grupos.length} grupos
+                {gruposExibidos.length} grupos
               </span>
 
               <Link href={`/contratos/${id}/estrutura`}>
@@ -493,7 +500,9 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
             </div>
 
             <div className="space-y-2">
-              {gruposExibidos.map(g => (
+              {gruposExibidos.map(g => {
+                const vBase = getValorView(g)
+                return (
                 <Card key={g.id}>
                   <CardContent className="p-4">
                     <div className="flex items-center gap-3">
@@ -501,24 +510,22 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-sm text-[#F1F5F9]">{g.nome}</span>
-                          <Badge className={TIPO_MEDICAO_COLORS[g.tipo_medicao]}>
-                            {TIPO_MEDICAO_LABELS[g.tipo_medicao]}
-                          </Badge>
                         </div>
                         <Progress
-                          value={g.valor_contratado > 0 ? (g.valor_medido / g.valor_contratado) * 100 : 0}
+                          value={vBase > 0 ? (g.valor_medido / vBase) * 100 : 0}
                           className="h-1 mt-2 max-w-xs"
                         />
                       </div>
-                      <div className="text-right text-xs min-w-[150px]">
-                        <p className="font-semibold text-[#F1F5F9]">{formatCurrency(g.valor_contratado)}</p>
+                      <div className="text-right text-xs min-w-[180px]">
+                        <p className="font-semibold text-[#F1F5F9]">{VIEW_MODE_LABELS[viewMode]}: {formatCurrency(vBase)}</p>
                         <p className="text-[#475569]">Medido: {formatCurrency(g.valor_medido ?? 0)}</p>
-                        <p className="text-emerald-500/80">Saldo: {formatCurrency(g.valor_saldo ?? (g.valor_contratado - (g.valor_medido ?? 0)))}</p>
+                        <p className="text-emerald-500/80">Saldo: {formatCurrency(vBase - (g.valor_medido ?? 0))}</p>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
-              ))}
+                )
+              })}
             </div>
           </TabsContent>
 
