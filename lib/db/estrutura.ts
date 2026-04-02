@@ -2,19 +2,28 @@ import { createClient } from '@/lib/supabase/server'
 
 export async function getGruposMacro(contratoId: string) {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('grupos_macro')
-    .select(`
-      *,
-      tarefas(
-        *,
-        detalhamentos(*)
-      )
-    `)
-    .eq('contrato_id', contratoId)
-    .order('ordem')
+
+  const [{ data, error }, { data: saldos }] = await Promise.all([
+    supabase
+      .from('grupos_macro')
+      .select(`*, tarefas(*, detalhamentos(*))`)
+      .eq('contrato_id', contratoId)
+      .order('ordem'),
+    supabase
+      .from('vw_medicao_grupo')
+      .select('grupo_id, valor_medido, saldo')
+      .eq('contrato_id', contratoId),
+  ])
+
   if (error) throw error
-  return data || []
+
+  const saldoMap = Object.fromEntries((saldos || []).map(s => [s.grupo_id, s]))
+
+  return (data || []).map(g => ({
+    ...g,
+    valor_medido: saldoMap[g.id]?.valor_medido ?? 0,
+    saldo: saldoMap[g.id]?.saldo ?? g.valor_contratado,
+  }))
 }
 
 export async function getGruposMacroComSaldo(contratoId: string) {

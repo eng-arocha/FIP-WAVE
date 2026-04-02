@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useState, useEffect } from 'react'
+import { use, useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent } from '@/components/ui/card'
@@ -13,9 +13,12 @@ import { Progress } from '@/components/ui/progress'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
 } from '@/components/ui/dialog'
-import { ArrowLeft, Plus, ChevronDown, ChevronRight, Pencil, Layers, Loader2 } from 'lucide-react'
+import { ArrowLeft, Plus, ChevronDown, ChevronRight, Pencil, Layers, Loader2, ArrowUpDown, Filter } from 'lucide-react'
 import { formatCurrency, formatPercent } from '@/lib/utils'
 import { TipoMedicao } from '@/types'
+
+type SortKey = 'padrao' | 'valor_global_desc' | 'valor_global_asc' | 'valor_medido_desc' | 'valor_medido_asc' | 'saldo_desc' | 'saldo_asc'
+type FilterTipo = 'todos' | TipoMedicao
 
 const TIPO_MEDICAO_LABELS: Record<TipoMedicao, string> = {
   servico: 'Serviço',
@@ -33,6 +36,8 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
   const [estrutura, setEstrutura] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [sortBy, setSortBy] = useState<SortKey>('padrao')
+  const [filterTipo, setFilterTipo] = useState<FilterTipo>('todos')
   const [modalGrupo, setModalGrupo] = useState(false)
   const [modalTarefa, setModalTarefa] = useState<string | null>(null)
   const [modalDetalhe, setModalDetalhe] = useState<string | null>(null)
@@ -41,6 +46,39 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
   const [formGrupo, setFormGrupo] = useState({ codigo: '', nome: '', tipo_medicao: 'misto' as TipoMedicao, valor_contratado: '' })
   const [formTarefa, setFormTarefa] = useState({ codigo: '', nome: '', valor_total: '' })
   const [formDetalhe, setFormDetalhe] = useState({ codigo: '', descricao: '', unidade: '', qtd_contratada: '', valor_unitario: '' })
+
+  const gruposExibidos = useMemo(() => {
+    let list = [...estrutura]
+
+    // Filtro por tipo
+    if (filterTipo !== 'todos') {
+      list = list.filter(g => g.tipo_medicao === filterTipo)
+    }
+
+    // Ordenação
+    list.sort((a, b) => {
+      switch (sortBy) {
+        case 'padrao':
+          return parseFloat(a.codigo) - parseFloat(b.codigo)
+        case 'valor_global_desc':
+          return b.valor_contratado - a.valor_contratado
+        case 'valor_global_asc':
+          return a.valor_contratado - b.valor_contratado
+        case 'valor_medido_desc':
+          return (b.valor_medido ?? 0) - (a.valor_medido ?? 0)
+        case 'valor_medido_asc':
+          return (a.valor_medido ?? 0) - (b.valor_medido ?? 0)
+        case 'saldo_desc':
+          return (b.saldo ?? b.valor_contratado) - (a.saldo ?? a.valor_contratado)
+        case 'saldo_asc':
+          return (a.saldo ?? a.valor_contratado) - (b.saldo ?? b.valor_contratado)
+        default:
+          return parseFloat(a.codigo) - parseFloat(b.codigo)
+      }
+    })
+
+    return list
+  }, [estrutura, sortBy, filterTipo])
 
   async function loadEstrutura() {
     try {
@@ -148,13 +186,66 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
       />
 
       <div className="p-6 space-y-3">
+        {/* Barra de filtros e ordenação */}
+        <div className="flex flex-wrap items-center gap-2 pb-1">
+          <div className="flex items-center gap-1.5 text-xs text-[#475569]">
+            <ArrowUpDown className="w-3.5 h-3.5" />
+            <span>Ordenar:</span>
+          </div>
+          <Select value={sortBy} onValueChange={v => setSortBy(v as SortKey)}>
+            <SelectTrigger className="h-8 text-xs w-52 bg-[#0D1421] border-[#1E293B] text-[#F1F5F9]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="padrao">Padrão (1.0 → 19.0)</SelectItem>
+              <SelectItem value="valor_global_desc">Valor Global — Maior primeiro</SelectItem>
+              <SelectItem value="valor_global_asc">Valor Global — Menor primeiro</SelectItem>
+              <SelectItem value="valor_medido_desc">Valor Medido — Maior primeiro</SelectItem>
+              <SelectItem value="valor_medido_asc">Valor Medido — Menor primeiro</SelectItem>
+              <SelectItem value="saldo_desc">Saldo a Medir — Maior primeiro</SelectItem>
+              <SelectItem value="saldo_asc">Saldo a Medir — Menor primeiro</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <div className="flex items-center gap-1.5 text-xs text-[#475569] ml-2">
+            <Filter className="w-3.5 h-3.5" />
+            <span>Tipo:</span>
+          </div>
+          <Select value={filterTipo} onValueChange={v => setFilterTipo(v as FilterTipo)}>
+            <SelectTrigger className="h-8 text-xs w-44 bg-[#0D1421] border-[#1E293B] text-[#F1F5F9]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos os tipos</SelectItem>
+              <SelectItem value="misto">Contrato Global (Misto)</SelectItem>
+              <SelectItem value="servico">Serviço</SelectItem>
+              <SelectItem value="faturamento_direto">Faturamento Direto</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {(sortBy !== 'padrao' || filterTipo !== 'todos') && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 text-xs text-[#475569] hover:text-[#F1F5F9]"
+              onClick={() => { setSortBy('padrao'); setFilterTipo('todos') }}
+            >
+              Limpar filtros
+            </Button>
+          )}
+
+          <span className="ml-auto text-xs text-[#475569]">
+            {gruposExibidos.length} de {estrutura.length} grupos
+          </span>
+        </div>
+
         {loading ? (
           <div className="flex items-center justify-center py-16 text-blue-400">
             <Loader2 className="w-6 h-6 animate-spin mr-2" />
             <span>Carregando estrutura...</span>
           </div>
         ) : (
-          estrutura.map(grupo => (
+          gruposExibidos.map(grupo => (
             <Card key={grupo.id}>
               {/* Grupo Macro Header */}
               <CardContent className="p-0">
@@ -185,9 +276,10 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
                       </span>
                     </div>
                   </div>
-                  <div className="text-right text-sm">
+                  <div className="text-right text-sm min-w-[160px]">
                     <p className="font-bold text-[#F1F5F9]">{formatCurrency(grupo.valor_contratado)}</p>
-                    <p className="text-xs text-[#475569]">{(grupo.tarefas || []).length} tarefa(s)</p>
+                    <p className="text-xs text-[#475569]">Medido: {formatCurrency(grupo.valor_medido ?? 0)}</p>
+                    <p className="text-xs text-emerald-500/80">Saldo: {formatCurrency(grupo.saldo ?? grupo.valor_contratado)}</p>
                   </div>
                   <Button variant="ghost" size="icon" className="w-7 h-7" onClick={e => { e.stopPropagation() }}>
                     <Pencil className="w-3.5 h-3.5" />
