@@ -144,6 +144,30 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
     misto: 'Misto',
   }
 
+  const gruposExibidos = useMemo(() => {
+    let list = [...grupos]
+    if (filterTipo !== 'todos') list = list.filter(g => g.tipo_medicao === filterTipo)
+    list.sort((a, b) => {
+      switch (sortBy) {
+        case 'padrao': return parseFloat(a.codigo) - parseFloat(b.codigo)
+        case 'valor_global_desc': return b.valor_contratado - a.valor_contratado
+        case 'valor_global_asc': return a.valor_contratado - b.valor_contratado
+        case 'valor_medido_desc': return (b.valor_medido ?? 0) - (a.valor_medido ?? 0)
+        case 'valor_medido_asc': return (a.valor_medido ?? 0) - (b.valor_medido ?? 0)
+        case 'saldo_desc': return (b.valor_saldo ?? b.valor_contratado) - (a.valor_saldo ?? a.valor_contratado)
+        case 'saldo_asc': return (a.valor_saldo ?? a.valor_contratado) - (b.valor_saldo ?? b.valor_contratado)
+        default: return parseFloat(a.codigo) - parseFloat(b.codigo)
+      }
+    })
+    return list
+  }, [grupos, sortBy, filterTipo])
+
+  // Gráfico sempre em ordem 1.0→19.0 e sem filtro de tipo (mostra tudo)
+  const gruposOrdenados = useMemo(() =>
+    [...grupos].sort((a, b) => parseFloat(a.codigo) - parseFloat(b.codigo)),
+    [grupos]
+  )
+
   if (loading) {
     return (
       <div className="flex-1 overflow-auto">
@@ -177,30 +201,6 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   const percentualMedido = contrato.percentual_medido ?? 0
   const qtdAprovadas = contrato.qtd_medicoes_aprovadas ?? 0
   const qtdPendentes = contrato.qtd_medicoes_pendentes ?? 0
-
-  const gruposExibidos = useMemo(() => {
-    let list = [...grupos]
-    if (filterTipo !== 'todos') list = list.filter(g => g.tipo_medicao === filterTipo)
-    list.sort((a, b) => {
-      switch (sortBy) {
-        case 'padrao': return parseFloat(a.codigo) - parseFloat(b.codigo)
-        case 'valor_global_desc': return b.valor_contratado - a.valor_contratado
-        case 'valor_global_asc': return a.valor_contratado - b.valor_contratado
-        case 'valor_medido_desc': return (b.valor_medido ?? 0) - (a.valor_medido ?? 0)
-        case 'valor_medido_asc': return (a.valor_medido ?? 0) - (b.valor_medido ?? 0)
-        case 'saldo_desc': return (b.valor_saldo ?? b.valor_contratado) - (a.valor_saldo ?? a.valor_contratado)
-        case 'saldo_asc': return (a.valor_saldo ?? a.valor_contratado) - (b.valor_saldo ?? b.valor_contratado)
-        default: return parseFloat(a.codigo) - parseFloat(b.codigo)
-      }
-    })
-    return list
-  }, [grupos, sortBy, filterTipo])
-
-  // Gráfico sempre em ordem 1.0→19.0 e sem filtro de tipo (mostra tudo)
-  const gruposOrdenados = useMemo(() =>
-    [...grupos].sort((a, b) => parseFloat(a.codigo) - parseFloat(b.codigo)),
-    [grupos]
-  )
 
   const gruposChart = gruposOrdenados.map(g => ({
     nome: g.nome.length > 18 ? g.nome.slice(0, 16) + '…' : g.nome,
