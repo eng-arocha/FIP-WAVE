@@ -11,34 +11,31 @@ import {
   CheckSquare,
   LogOut,
   X,
+  Users,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
+type Perfil = 'visualizador' | 'engenheiro_fip' | 'admin'
+
+const PERFIL_LABELS: Record<Perfil, string> = {
+  visualizador: 'Visualizador',
+  engenheiro_fip: 'Engenheiro FIP',
+  admin: 'Administrador',
+}
+
 const navItems = [
-  {
-    label: 'Dashboard',
-    href: '/dashboard',
-    icon: LayoutDashboard,
-  },
-  {
-    label: 'Contratos',
-    href: '/contratos',
-    icon: FileText,
-  },
-  {
-    label: 'Aprovações',
-    href: '/aprovacoes',
-    icon: CheckSquare,
-    badge: true,
-  },
-  {
-    label: 'Empresas',
-    href: '/empresas',
-    icon: Building2,
-  },
+  { label: 'Dashboard',  href: '/dashboard',  icon: LayoutDashboard },
+  { label: 'Contratos',  href: '/contratos',  icon: FileText },
+  { label: 'Aprovações', href: '/aprovacoes', icon: CheckSquare, badge: true },
+  { label: 'Empresas',   href: '/empresas',   icon: Building2 },
 ]
 
-export function Sidebar() {
+interface SidebarProps {
+  perfilAtual: Perfil
+  nomeAtual: string
+}
+
+export function Sidebar({ perfilAtual, nomeAtual }: SidebarProps) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -47,6 +44,14 @@ export function Sidebar() {
     window.addEventListener('open-mobile-sidebar', handler)
     return () => window.removeEventListener('open-mobile-sidebar', handler)
   }, [])
+
+  const allNavItems = [
+    ...navItems,
+    ...(perfilAtual === 'admin'
+      ? [{ label: 'Usuários', href: '/usuarios', icon: Users, badge: false }]
+      : []
+    ),
+  ]
 
   return (
     <>
@@ -85,7 +90,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 py-4 px-3 space-y-0.5">
-        {navItems.map((item) => {
+        {allNavItems.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
           return (
             <Link
@@ -116,8 +121,23 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="px-3 pb-5 border-t border-[#1E293B] pt-4 space-y-1">
-        {/* Status dot */}
-        <div className="flex items-center gap-2.5 px-3 py-2 mb-1">
+        {/* Usuário logado */}
+        {nomeAtual && (
+          <div className="flex items-center gap-2.5 px-3 py-2 mb-1 rounded-lg bg-[#111827]">
+            <div className="w-7 h-7 rounded-full bg-blue-500/20 border border-blue-500/30 flex items-center justify-center flex-shrink-0">
+              <span className="text-[10px] font-bold text-blue-400">
+                {nomeAtual.charAt(0).toUpperCase()}
+              </span>
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-[#94A3B8] truncate">{nomeAtual}</p>
+              <p className="text-[10px] text-[#475569]">{PERFIL_LABELS[perfilAtual]}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Status */}
+        <div className="flex items-center gap-2.5 px-3 py-2">
           <span
             className="w-2 h-2 rounded-full bg-[#10B981] flex-shrink-0"
             style={{ animation: 'pulse-glow 2s ease-in-out infinite' }}
