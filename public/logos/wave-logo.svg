@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180" fill="none">
+  <!-- Onda 1 — azul escuro navy -->
+  <path
+    d="M10 90 C40 50, 70 40, 100 65 C130 90, 160 110, 190 85 C220 60, 250 45, 280 70 C295 82, 308 92, 315 95"
+    stroke="#2c4a6e"
+    stroke-width="5"
+    stroke-linecap="round"
+    fill="none"
+  />
+  <!-- Onda 2 — azul claro médio -->
+  <path
+    d="M10 100 C50 130, 80 138, 115 115 C145 95, 170 70, 205 88 C235 105, 265 125, 310 105"
+    stroke="#6b9ab8"
+    stroke-width="4.5"
+    stroke-linecap="round"
+    fill="none"
+  />
+  <!-- Onda 3 — azul navy mais fino acima -->
+  <path
+    d="M10 80 C35 55, 60 48, 90 62 C120 78, 148 100, 178 78 C208 56, 240 42, 280 58 C296 65, 308 74, 315 78"
+    stroke="#1a3556"
+    stroke-width="3"
+    stroke-linecap="round"
+    fill="none"
+    opacity="0.6"
+  />
+
+  <!-- Texto WAVE -->
+  <text
+    x="160"
+    y="152"
+    text-anchor="middle"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-size="52"
+    font-weight="700"
+    letter-spacing="6"
+    fill="#1e5f6b"
+  >WAVE</text>
+
+  <!-- Texto BEIRA-MAR -->
+  <text
+    x="160"
+    y="172"
+    text-anchor="middle"
+    font-family="Arial, Helvetica, sans-serif"
+    font-size="13"
+    font-weight="400"
+    letter-spacing="7"
+    fill="#4a8fa0"
+  >BEIRA-MAR</text>
+</svg>
