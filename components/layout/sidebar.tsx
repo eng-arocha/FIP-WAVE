@@ -74,7 +74,7 @@ export function Sidebar() {
       {/* Logo */}
       <div className="px-4 pt-6 pb-4 border-b border-[#1E293B] flex items-center justify-center">
         <Image
-          src="/logos/wave-logo.png"
+          src="/logos/Wave.png"
           alt="WAVE Beira-Mar"
           width={160}
           height={90}
