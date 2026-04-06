@@ -17,23 +17,37 @@ import {
 import { formatCurrency, formatPercent, getContratoStatusColor, getMedicaoStatusColor } from '@/lib/utils'
 import { CONTRATO_STATUS_LABELS, MEDICAO_STATUS_LABELS, type MedicaoStatus } from '@/types'
 
+// Dados extraídos do Excel: Cronograma Físico Financeiro WAVE - FIP rev 07
+// Linha ACUMULADO (%) — mar/26 a out/27
 const CURVA_S_DATA = [
-  { mes: 'Jan/25', previsto: 5, realizado: 0, acumulado_prev: 5, acumulado_real: 0 },
-  { mes: 'Fev/25', previsto: 8, realizado: 0, acumulado_prev: 13, acumulado_real: 0 },
-  { mes: 'Mar/25', previsto: 10, realizado: 0, acumulado_prev: 23, acumulado_real: 0 },
-  { mes: 'Abr/25', previsto: 12, realizado: 0, acumulado_prev: 35, acumulado_real: 0 },
-  { mes: 'Mai/25', previsto: 10, realizado: 0, acumulado_prev: 45, acumulado_real: 0 },
-  { mes: 'Jun/25', previsto: 8, realizado: 0, acumulado_prev: 53, acumulado_real: 0 },
-  { mes: 'Jul/25', previsto: 7, realizado: 0, acumulado_prev: 60, acumulado_real: 0 },
-  { mes: 'Ago/25', previsto: 7, realizado: 0, acumulado_prev: 67, acumulado_real: 0 },
-  { mes: 'Set/25', previsto: 6, realizado: 0, acumulado_prev: 73, acumulado_real: 0 },
-  { mes: 'Out/25', previsto: 6, realizado: 0, acumulado_prev: 79, acumulado_real: 0 },
-  { mes: 'Nov/25', previsto: 5, realizado: 0, acumulado_prev: 84, acumulado_real: 0 },
-  { mes: 'Dez/25', previsto: 4, realizado: 7.89, acumulado_prev: 88, acumulado_real: 7.89 },
-  { mes: 'Jan/26', previsto: 4, realizado: 6.67, acumulado_prev: 92, acumulado_real: 14.56 },
-  { mes: 'Fev/26', previsto: 4, realizado: 3.44, acumulado_prev: 96, acumulado_real: 18.0 },
-  { mes: 'Mar/26', previsto: 4, realizado: null, acumulado_prev: 100, acumulado_real: null },
+  { mes: 'Mar/26', previsto: 0.3008,  acumulado_prev: 0.30,   acumulado_real: null },
+  { mes: 'Abr/26', previsto: 0.1284,  acumulado_prev: 0.43,   acumulado_real: null },
+  { mes: 'Mai/26', previsto: 3.8435,  acumulado_prev: 4.27,   acumulado_real: null },
+  { mes: 'Jun/26', previsto: 5.2701,  acumulado_prev: 9.54,   acumulado_real: null },
+  { mes: 'Jul/26', previsto: 7.1240,  acumulado_prev: 16.67,  acumulado_real: null },
+  { mes: 'Ago/26', previsto: 19.5946, acumulado_prev: 36.26,  acumulado_real: null },
+  { mes: 'Set/26', previsto: 10.6101, acumulado_prev: 46.87,  acumulado_real: null },
+  { mes: 'Out/26', previsto: 6.3746,  acumulado_prev: 53.25,  acumulado_real: null },
+  { mes: 'Nov/26', previsto: 6.0131,  acumulado_prev: 59.26,  acumulado_real: null },
+  { mes: 'Dez/26', previsto: 5.1064,  acumulado_prev: 64.37,  acumulado_real: null },
+  { mes: 'Jan/27', previsto: 4.5891,  acumulado_prev: 68.95,  acumulado_real: null },
+  { mes: 'Fev/27', previsto: 3.9572,  acumulado_prev: 72.91,  acumulado_real: null },
+  { mes: 'Mar/27', previsto: 3.9805,  acumulado_prev: 76.89,  acumulado_real: null },
+  { mes: 'Abr/27', previsto: 3.6255,  acumulado_prev: 80.52,  acumulado_real: null },
+  { mes: 'Mai/27', previsto: 4.8520,  acumulado_prev: 85.37,  acumulado_real: null },
+  { mes: 'Jun/27', previsto: 5.6966,  acumulado_prev: 91.07,  acumulado_real: null },
+  { mes: 'Jul/27', previsto: 4.5873,  acumulado_prev: 95.65,  acumulado_real: null },
+  { mes: 'Ago/27', previsto: 3.5201,  acumulado_prev: 99.17,  acumulado_real: null },
+  { mes: 'Set/27', previsto: 0.8166,  acumulado_prev: 99.99,  acumulado_real: null },
+  { mes: 'Out/27', previsto: 0.0077,  acumulado_prev: 100.00, acumulado_real: null },
 ]
+
+// Converte "2026-03" → "Mar/26" para cruzar com CURVA_S_DATA
+function periodoToMesLabel(periodo: string): string {
+  const [year, month] = periodo.split('-')
+  const meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+  return `${meses[parseInt(month, 10) - 1]}/${year.slice(2)}`
+}
 
 const chartTooltipStyle = {
   backgroundColor: '#0D1421',
@@ -63,17 +77,30 @@ export default function DashboardPage() {
   const [contratos, setContratos] = useState<any[]>([])
   const [medicoesRecentes, setMedicoesRecentes] = useState<any[]>([])
   const [grupos, setGrupos] = useState<any[]>([])
+  const [hierarquia, setHierarquia] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [rtConnected, setRtConnected] = useState(false)
 
+  // Filtros cascata do gráfico de acompanhamento
+  const [filtroN1, setFiltroN1] = useState<string>('')
+  const [filtroN2, setFiltroN2] = useState<string>('')
+  const [filtroN3, setFiltroN3] = useState<string>('')
+
   async function fetchDashboard(initial = false) {
     try {
-      const res = await fetch('/api/dashboard')
-      if (res.ok) {
-        const data = await res.json()
+      const [dashRes, hierRes] = await Promise.all([
+        fetch('/api/dashboard'),
+        fetch('/api/dashboard/hierarquia'),
+      ])
+      if (dashRes.ok) {
+        const data = await dashRes.json()
         setContratos(data.contratos || [])
         setMedicoesRecentes(data.medicoes_recentes || [])
         setGrupos(data.grupos || [])
+      }
+      if (hierRes.ok) {
+        const data = await hierRes.json()
+        setHierarquia(data.hierarquia || [])
       }
     } finally {
       if (initial) setLoading(false)
@@ -127,43 +154,65 @@ export default function DashboardPage() {
     return list
   }, [contratos, medicoesRecentes])
 
-  // Build dynamic S-curve by overlaying real measurement totals onto the static scaffold.
-  // medicoesRecentes items with status 'aprovado' contribute to the realizado line.
+  // Curva S: sobrepõe medições aprovadas ao cronograma base do Excel
   const curvaSData = useMemo(() => {
-    // Accumulate approved measurement values per period label (e.g. "Jan/26")
+    // Acumula por período (converte YYYY-MM → Mes/AA para cruzar com CURVA_S_DATA)
     const realByPeriod: Record<string, number> = {}
     medicoesRecentes.forEach((m: any) => {
       if (m.status !== 'aprovado' || !m.periodo_referencia || !m.valor_total) return
-      const key = m.periodo_referencia as string
-      realByPeriod[key] = (realByPeriod[key] || 0) + (m.valor_total as number)
+      const label = periodoToMesLabel(m.periodo_referencia)
+      realByPeriod[label] = (realByPeriod[label] || 0) + (m.valor_total as number)
     })
     const hasRealData = Object.keys(realByPeriod).length > 0
     if (!hasRealData) return CURVA_S_DATA
 
-    // Compute a running acumulado for realizado, replacing static values where real data exists
     let acumuladoReal = 0
     return CURVA_S_DATA.map((row) => {
       if (realByPeriod[row.mes] !== undefined) {
-        // Use real value — express as a % of totalContratado if available
         const realPct = totalContratado > 0
           ? (realByPeriod[row.mes] / totalContratado) * 100
-          : row.realizado ?? 0
+          : 0
         acumuladoReal += realPct
-        return { ...row, realizado: realPct, acumulado_real: acumuladoReal }
+        return { ...row, acumulado_real: acumuladoReal }
       }
-      // No real data for this month — propagate accumulated or leave null
-      if (acumuladoReal > 0) {
-        return { ...row, realizado: null, acumulado_real: acumuladoReal }
-      }
-      return row
+      return acumuladoReal > 0
+        ? { ...row, acumulado_real: acumuladoReal }
+        : row
     })
   }, [medicoesRecentes, totalContratado])
 
-  const gruposData = grupos.map((g: any) => ({
-    nome: g.grupo_nome,
-    contratado: g.valor_contratado,
-    medido: g.valor_medido,
-  }))
+  // Opções dos filtros cascata (dependentes entre si)
+  const opcoesN1 = hierarquia
+  const grupoSelecionado = opcoesN1.find((g: any) => g.id === filtroN1)
+  const opcoesN2: any[] = grupoSelecionado?.tarefas ?? []
+  const tarefaSelecionada = opcoesN2.find((t: any) => t.id === filtroN2)
+  const opcoesN3: any[] = tarefaSelecionada?.detalhamentos ?? []
+
+  // Dados do gráfico conforme filtro ativo
+  const chartAcompData = useMemo(() => {
+    if (filtroN2 && tarefaSelecionada) {
+      // Nível 3: detalhamentos da tarefa selecionada
+      return (tarefaSelecionada.detalhamentos || []).map((d: any) => ({
+        nome: `${d.codigo} ${d.descricao}`.substring(0, 40),
+        contratado: d.valor_total,
+        medido: d.valor_medido,
+      }))
+    }
+    if (filtroN1 && grupoSelecionado) {
+      // Nível 2: tarefas do grupo selecionado
+      return (grupoSelecionado.tarefas || []).map((t: any) => ({
+        nome: `${t.codigo} ${t.nome}`.substring(0, 40),
+        contratado: t.valor_total,
+        medido: t.valor_medido,
+      }))
+    }
+    // Nível 1 (Global): todos os grupos
+    return hierarquia.map((g: any) => ({
+      nome: g.nome.substring(0, 40),
+      contratado: g.valor_contratado,
+      medido: g.valor_medido,
+    }))
+  }, [hierarquia, filtroN1, filtroN2, grupoSelecionado, tarefaSelecionada])
 
   if (loading) {
     return (
@@ -430,19 +479,95 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Grupos Macro */}
+          {/* Acompanhamento Medição Serviço */}
           <div
             className="rounded-xl overflow-hidden"
             style={{ background: '#111827', border: '1px solid #1E293B' }}
           >
-            <div className="px-5 pt-5 pb-3">
-              <h3 className="text-sm font-semibold" style={{ color: '#F1F5F9' }}>
-                Medido por Grupo Macro (R$)
-              </h3>
+            {/* Cabeçalho + filtros */}
+            <div className="px-5 pt-5 pb-4" style={{ borderBottom: '1px solid #1E293B' }}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold" style={{ color: '#F1F5F9' }}>
+                  Acompanhamento Medição Serviço
+                </h3>
+                {(filtroN1 || filtroN2 || filtroN3) && (
+                  <button
+                    onClick={() => { setFiltroN1(''); setFiltroN2(''); setFiltroN3('') }}
+                    className="text-xs px-2.5 py-1 rounded-lg transition-colors"
+                    style={{ color: '#94A3B8', border: '1px solid #1E293B' }}
+                    onMouseEnter={e => { e.currentTarget.style.color = '#F1F5F9'; e.currentTarget.style.borderColor = '#3B82F6' }}
+                    onMouseLeave={e => { e.currentTarget.style.color = '#94A3B8'; e.currentTarget.style.borderColor = '#1E293B' }}
+                  >
+                    Limpar filtros
+                  </button>
+                )}
+              </div>
+              {/* 3 selects cascata */}
+              <div className="grid grid-cols-3 gap-2">
+                {/* Filtro 1 — Nível 1 (Grupos) */}
+                <select
+                  value={filtroN1}
+                  onChange={e => { setFiltroN1(e.target.value); setFiltroN2(''); setFiltroN3('') }}
+                  className="text-xs rounded-lg px-2.5 py-1.5 w-full"
+                  style={{
+                    background: '#0D1421',
+                    border: `1px solid ${filtroN1 ? '#3B82F6' : '#1E293B'}`,
+                    color: filtroN1 ? '#F1F5F9' : '#475569',
+                    outline: 'none',
+                  }}
+                >
+                  <option value="">Global (todos)</option>
+                  {opcoesN1.map((g: any) => (
+                    <option key={g.id} value={g.id}>{g.codigo} — {g.nome}</option>
+                  ))}
+                </select>
+
+                {/* Filtro 2 — Nível 2 (Tarefas) */}
+                <select
+                  value={filtroN2}
+                  onChange={e => { setFiltroN2(e.target.value); setFiltroN3('') }}
+                  disabled={!filtroN1}
+                  className="text-xs rounded-lg px-2.5 py-1.5 w-full"
+                  style={{
+                    background: '#0D1421',
+                    border: `1px solid ${filtroN2 ? '#3B82F6' : '#1E293B'}`,
+                    color: !filtroN1 ? '#2d3f5c' : filtroN2 ? '#F1F5F9' : '#475569',
+                    outline: 'none',
+                    cursor: !filtroN1 ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <option value="">Todos (nível 2)</option>
+                  {opcoesN2.map((t: any) => (
+                    <option key={t.id} value={t.id}>{t.codigo} — {t.nome}</option>
+                  ))}
+                </select>
+
+                {/* Filtro 3 — Nível 3 (Detalhamentos) */}
+                <select
+                  value={filtroN3}
+                  onChange={e => setFiltroN3(e.target.value)}
+                  disabled={!filtroN2}
+                  className="text-xs rounded-lg px-2.5 py-1.5 w-full"
+                  style={{
+                    background: '#0D1421',
+                    border: `1px solid ${filtroN3 ? '#3B82F6' : '#1E293B'}`,
+                    color: !filtroN2 ? '#2d3f5c' : filtroN3 ? '#F1F5F9' : '#475569',
+                    outline: 'none',
+                    cursor: !filtroN2 ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <option value="">Todos (nível 3)</option>
+                  {opcoesN3.map((d: any) => (
+                    <option key={d.id} value={d.id}>{d.codigo} — {d.descricao}</option>
+                  ))}
+                </select>
+              </div>
             </div>
-            <div className="px-4 pb-5" style={{ background: '#0D1421', margin: '0 12px 12px', borderRadius: '10px' }}>
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={gruposData} layout="vertical" margin={{ top: 12, right: 20, left: 10, bottom: 5 }}>
+
+            {/* Gráfico */}
+            <div className="px-4 pb-5 pt-3" style={{ background: '#0D1421', margin: '0 12px 12px', borderRadius: '10px' }}>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={chartAcompData} layout="vertical" margin={{ top: 8, right: 20, left: 10, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" horizontal={false} />
                   <XAxis
                     type="number"
@@ -454,8 +579,8 @@ export default function DashboardPage() {
                   <YAxis
                     type="category"
                     dataKey="nome"
-                    tick={{ fontSize: 10, fill: '#475569' }}
-                    width={90}
+                    tick={{ fontSize: 9, fill: '#475569' }}
+                    width={110}
                     axisLine={{ stroke: '#1E293B' }}
                     tickLine={false}
                   />
