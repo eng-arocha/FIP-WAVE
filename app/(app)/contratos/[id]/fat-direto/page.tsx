@@ -17,6 +17,8 @@ interface Solicitacao {
   data_aprovacao?: string
   valor_total: number
   observacoes?: string
+  fornecedor_razao_social?: string
+  fornecedor_cnpj?: string
   solicitante?: { nome: string }
   itens?: Array<{ id: string; descricao: string; qtde_solicitada: number; valor_total: number }>
   notas_fiscais?: Array<{ id: string; valor: number; status: string }>
@@ -39,8 +41,10 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
   useEffect(() => {
     Promise.all([
       fetch(`/api/contratos/${id}/fat-direto/solicitacoes`).then(r => r.json()),
-    ]).then(([sols]) => {
+      fetch(`/api/contratos/${id}`).then(r => r.json()),
+    ]).then(([sols, contrato]) => {
       setSolicitacoes(Array.isArray(sols) ? sols : [])
+      setResumo(contrato)
       setLoading(false)
     })
   }, [id])
@@ -48,6 +52,9 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
   const totalAprovado = solicitacoes.filter(s => s.status === 'aprovado').reduce((sum, s) => sum + s.valor_total, 0)
   const totalPendente = solicitacoes.filter(s => s.status === 'aguardando_aprovacao').reduce((sum, s) => sum + s.valor_total, 0)
   const totalNFs = solicitacoes.reduce((sum, s) => sum + (s.notas_fiscais?.filter(n => n.status !== 'rejeitada').reduce((a, n) => a + n.valor, 0) || 0), 0)
+  const teto = resumo?.valor_material_direto ?? 0
+  const saldoDisponivel = teto - totalAprovado
+  const pctUsado = teto > 0 ? Math.round((totalAprovado / teto) * 100) : 0
 
   return (
     <div className="flex flex-col min-h-screen bg-[#080C14]">
@@ -75,6 +82,33 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
             </Button>
           </Link>
         </div>
+
+        {/* Teto consumption bar */}
+        {teto > 0 && (
+          <Card style={{ background: '#0D1421', border: '1px solid #1E293B' }}>
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <span className="text-xs text-[#475569] uppercase tracking-wide font-medium">Consumo do Teto de Material</span>
+                  <span className="ml-2 text-xs font-bold" style={{ color: pctUsado > 90 ? '#EF4444' : pctUsado > 70 ? '#F59E0B' : '#10B981' }}>
+                    {pctUsado}% usado
+                  </span>
+                </div>
+                <span className="text-xs text-[#475569]">Saldo: <span className="font-bold" style={{ color: saldoDisponivel < 0 ? '#EF4444' : '#10B981' }}>{formatCurrency(saldoDisponivel)}</span></span>
+              </div>
+              <div className="h-2.5 rounded-full overflow-hidden" style={{ background: '#1E293B' }}>
+                <div className="h-full rounded-full transition-all duration-500" style={{
+                  width: `${Math.min(pctUsado, 100)}%`,
+                  background: pctUsado > 90 ? '#EF4444' : pctUsado > 70 ? '#F59E0B' : 'linear-gradient(90deg, #10B981, #06B6D4)',
+                }} />
+              </div>
+              <div className="flex justify-between text-[10px] text-[#475569] mt-1">
+                <span>Aprovado: {formatCurrency(totalAprovado)}</span>
+                <span>Teto: {formatCurrency(teto)}</span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* KPI Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -141,7 +175,11 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
                               </span>
                             </div>
                             <p className="text-xs text-[#475569] mt-0.5">
-                              {sol.solicitante?.nome} · {formatDate(sol.data_solicitacao)}
+                              {sol.fornecedor_razao_social
+                                ? <span className="text-[#94A3B8]">{sol.fornecedor_razao_social}</span>
+                                : sol.solicitante?.nome
+                              }
+                              {' · '}{formatDate(sol.data_solicitacao)}
                               {sol.itens && ` · ${sol.itens.length} item(s)`}
                             </p>
                           </div>

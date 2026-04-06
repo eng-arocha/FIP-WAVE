@@ -18,6 +18,9 @@ interface Solicitacao {
   valor_total: number
   observacoes?: string
   motivo_rejeicao?: string
+  fornecedor_razao_social?: string
+  fornecedor_cnpj?: string
+  fornecedor_contato?: string
   solicitante?: { nome: string; email: string }
   aprovador?: { nome: string; email: string }
   itens?: Array<{
@@ -155,6 +158,20 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
             <p className="text-2xl font-black text-white">{formatCurrency(sol.valor_total)}</p>
           </div>
         </div>
+
+        {/* Supplier info */}
+        {sol.fornecedor_razao_social && (
+          <Card style={{ background: '#0D1421', border: '1px solid #1E293B' }}>
+            <CardContent className="pt-4 pb-4">
+              <p className="text-xs text-[#475569] uppercase tracking-wide font-medium mb-2">Dados do Fornecedor</p>
+              <div className="grid grid-cols-3 gap-3 text-sm">
+                <div><span className="text-[#475569] text-xs">Razão Social</span><p className="text-[#F1F5F9] font-medium">{sol.fornecedor_razao_social}</p></div>
+                {sol.fornecedor_cnpj && <div><span className="text-[#475569] text-xs">CNPJ</span><p className="text-[#94A3B8]">{sol.fornecedor_cnpj}</p></div>}
+                {sol.fornecedor_contato && <div><span className="text-[#475569] text-xs">Contato</span><p className="text-[#94A3B8]">{sol.fornecedor_contato}</p></div>}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {erro && (
           <div className="p-3 rounded-xl text-sm" style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.30)', color: '#FCA5A5' }}>

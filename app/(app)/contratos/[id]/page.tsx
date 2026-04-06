@@ -10,7 +10,7 @@ import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell, LabelList
 } from 'recharts'
 import {
   ArrowLeft, Plus, FileText, Loader2,
@@ -87,11 +87,14 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   const [sortBy, setSortBy] = useState<'padrao' | 'valor_global_desc' | 'valor_global_asc' | 'valor_medido_desc' | 'valor_medido_asc' | 'saldo_desc' | 'saldo_asc'>('padrao')
   const [viewMode, setViewMode] = useState<'total' | 'material' | 'servico'>('total')
 
-  // Acompanhamento data + cascade filter state
+  // Acompanhamento data + INDEPENDENT cascade filter state per chart
   const [acomp, setAcomp] = useState<any>(null)
-  const [n1, setN1] = useState('') // grupo_id or ''
-  const [n2, setN2] = useState('') // tarefa_id or ''
-  const [n3, setN3] = useState('') // detalhamento_id or ''
+  // Chart 1 — Serviço
+  const [s1, setS1] = useState(''); const [s2, setS2] = useState(''); const [s3, setS3] = useState('')
+  // Chart 2 — Fat. Direto Aprovação
+  const [f1, setF1] = useState(''); const [f2, setF2] = useState(''); const [f3, setF3] = useState('')
+  // Chart 3 — Fat. Direto NFs
+  const [n1, setN1] = useState(''); const [n2, setN2] = useState(''); const [n3, setN3] = useState('')
 
   useEffect(() => {
     async function loadContrato() {
@@ -269,43 +272,51 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
       <div className="p-6 space-y-6">
         {/* KPI Row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="pt-5">
-              <p className="text-xs text-[#475569] uppercase tracking-wide font-medium">Valor Total</p>
-              <p className="text-xl font-bold text-[#F1F5F9] mt-1">{formatCurrency(valorTotal)}</p>
-              <div className="flex gap-3 mt-2 text-xs text-[#475569]">
-                <span>Serv: {formatCurrency(contrato.valor_servicos ?? 0)}</span>
-                <span>Mat: {formatCurrency(contrato.valor_material_direto ?? 0)}</span>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-5">
-              <p className="text-xs text-[#475569] uppercase tracking-wide font-medium">Medido</p>
-              <p className="text-xl font-bold text-emerald-400 mt-1">{formatCurrency(valorMedido)}</p>
-              <p className="text-xs text-[#475569] mt-1">{formatPercent(percentualMedido)} do total</p>
-              <Progress value={percentualMedido} className="h-1 mt-2" indicatorClassName="bg-green-600" />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-5">
-              <p className="text-xs text-[#475569] uppercase tracking-wide font-medium">Saldo</p>
-              <p className="text-xl font-bold text-[#F1F5F9] mt-1">{formatCurrency(saldo)}</p>
-              <p className="text-xs text-[#475569] mt-1">{formatPercent(100 - percentualMedido)} restante</p>
-            </CardContent>
-          </Card>
-          <Card className={qtdPendentes > 0 ? 'border-amber-500/50' : ''}>
-            <CardContent className="pt-5">
-              <p className="text-xs text-[#475569] uppercase tracking-wide font-medium">Medições</p>
-              <div className="flex items-end gap-2 mt-1">
-                <p className="text-xl font-bold text-[#F1F5F9]">{qtdAprovadas}</p>
-                <p className="text-xs text-[#475569] mb-0.5">aprovadas</p>
-              </div>
-              {qtdPendentes > 0 && (
-                <p className="text-xs text-amber-400 mt-1 font-medium">{qtdPendentes} aguardando aprovação</p>
-              )}
-            </CardContent>
-          </Card>
+          <Link href={`/contratos/${id}/cronograma`}>
+            <Card className="cursor-pointer hover:border-blue-500/40 transition-colors">
+              <CardContent className="pt-5">
+                <p className="text-xs text-[#475569] uppercase tracking-wide font-medium">Valor Total</p>
+                <p className="text-xl font-bold text-[#F1F5F9] mt-1">{formatCurrency(valorTotal)}</p>
+                <div className="flex gap-3 mt-2 text-xs text-[#475569]">
+                  <span>Serv: {formatCurrency(contrato.valor_servicos ?? 0)}</span>
+                  <span>Mat: {formatCurrency(contrato.valor_material_direto ?? 0)}</span>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href={`/contratos/${id}/medicoes`}>
+            <Card className="cursor-pointer hover:border-emerald-500/40 transition-colors">
+              <CardContent className="pt-5">
+                <p className="text-xs text-[#475569] uppercase tracking-wide font-medium">Medido</p>
+                <p className="text-xl font-bold text-emerald-400 mt-1">{formatCurrency(valorMedido)}</p>
+                <p className="text-xs text-[#475569] mt-1">{formatPercent(percentualMedido)} do total</p>
+                <Progress value={percentualMedido} className="h-1 mt-2" indicatorClassName="bg-green-600" />
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href={`/contratos/${id}/cronograma`}>
+            <Card className="cursor-pointer hover:border-blue-500/40 transition-colors">
+              <CardContent className="pt-5">
+                <p className="text-xs text-[#475569] uppercase tracking-wide font-medium">Saldo</p>
+                <p className="text-xl font-bold text-[#F1F5F9] mt-1">{formatCurrency(saldo)}</p>
+                <p className="text-xs text-[#475569] mt-1">{formatPercent(100 - percentualMedido)} restante</p>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href={`/contratos/${id}/fat-direto`}>
+            <Card className={`cursor-pointer hover:border-cyan-500/40 transition-colors ${qtdPendentes > 0 ? 'border-amber-500/50' : ''}`}>
+              <CardContent className="pt-5">
+                <p className="text-xs text-[#475569] uppercase tracking-wide font-medium">Medições</p>
+                <div className="flex items-end gap-2 mt-1">
+                  <p className="text-xl font-bold text-[#F1F5F9]">{qtdAprovadas}</p>
+                  <p className="text-xs text-[#475569] mb-0.5">aprovadas</p>
+                </div>
+                {qtdPendentes > 0 && (
+                  <p className="text-xs text-amber-400 mt-1 font-medium">{qtdPendentes} aguardando aprovação</p>
+                )}
+              </CardContent>
+            </Card>
+          </Link>
         </div>
 
         {/* Tabs */}
@@ -327,7 +338,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                   <CardTitle className="text-sm text-[#94A3B8]">Medido vs Contratado por Grupo (R$)</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={250}>
+                  <ResponsiveContainer width="100%" height={Math.max(320, gruposChart.length * 28)}>
                     <BarChart data={gruposChart} layout="vertical" margin={{ top: 0, right: 20, left: 20, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" horizontal={false} />
                       <XAxis type="number" tick={{ fontSize: 10, fill: '#475569' }} tickFormatter={v => `${(v / 1000000).toFixed(1)}M`} />
@@ -409,171 +420,132 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
               </Card>
             </div>
 
-            {/* ── 3 Acompanhamento Charts ─────────────────────────────── */}
+            {/* ── 3 Acompanhamento Charts — each with independent filters ── */}
             {acomp && (() => {
-              // Cascade filter helpers
-              const selectedGrupo = acomp.grupos.find((g: any) => g.id === n1) ?? null
-              const tarefasN2 = selectedGrupo?.tarefas ?? []
-              const selectedTarefa = tarefasN2.find((t: any) => t.id === n2) ?? null
-              const detsN3 = selectedTarefa?.detalhamentos ?? []
-
-              function buildChartRows(
-                key_contratado: string,
-                key_medido: string,
-              ) {
-                // Level 0 — global single bar when nothing selected
-                if (!n1) {
-                  return [{
-                    nome: 'WAVE (Obra)',
-                    contratado: acomp.total[key_contratado],
-                    medido: acomp.total[key_medido],
-                  }]
-                }
-                // Level 1 — tarefas of selected group
-                if (!n2) {
-                  return tarefasN2.map((t: any) => ({
-                    nome: t.codigo,
-                    nomeFull: t.nome,
-                    contratado: t[key_contratado] ?? 0,
-                    medido: t[key_medido] ?? 0,
-                  }))
-                }
-                // Level 2 — detalhamentos of selected tarefa
-                return detsN3.map((d: any) => ({
-                  nome: d.local ?? d.codigo,
-                  nomeFull: d.nome,
-                  contratado: d[key_contratado] ?? 0,
-                  medido: d[key_medido] ?? 0,
-                }))
-              }
-
               const chartTooltipStyle = {
                 background: '#0D1421', border: '1px solid #1E293B',
                 borderRadius: 10, color: '#F1F5F9', fontSize: 12,
               }
 
-              const chartHeight = !n1 ? 100 : !n2 ? Math.max(180, tarefasN2.length * 28) : Math.max(180, detsN3.length * 28)
+              function buildRows(
+                key_contratado: string, key_medido: string,
+                cx1: string, cx2: string,
+              ) {
+                const toRow = (nome: string, nomeFull: string | undefined, contratado: number, medido: number) => ({
+                  nome, nomeFull, contratado, medido,
+                  pct: contratado > 0 ? Math.round((medido / contratado) * 100) : 0,
+                })
+                const selGrupo = acomp.grupos.find((g: any) => g.id === cx1) ?? null
+                const tars = selGrupo?.tarefas ?? []
+                const selTar = tars.find((t: any) => t.id === cx2) ?? null
+                const dets = selTar?.detalhamentos ?? []
+                if (!cx1) return [toRow('WAVE (Obra)', undefined, acomp.total[key_contratado], acomp.total[key_medido])]
+                if (!cx2) return tars
+                  .filter((t: any) => (t[key_contratado] ?? 0) > 0 || (t[key_medido] ?? 0) > 0)
+                  .map((t: any) => toRow(t.codigo, t.nome, t[key_contratado] ?? 0, t[key_medido] ?? 0))
+                return dets
+                  .filter((d: any) => (d[key_contratado] ?? 0) > 0 || (d[key_medido] ?? 0) > 0)
+                  .map((d: any) => toRow(d.local ?? d.codigo, d.nome, d[key_contratado] ?? 0, d[key_medido] ?? 0))
+              }
 
-              const rowsServico = buildChartRows('valor_servico', 'valor_medido_servico')
-              const rowsFatDAprov = buildChartRows('valor_material', 'valor_aprovado_fatd')
-              const rowsFatDNF = buildChartRows('valor_aprovado_fatd', 'valor_nf_fatd')
-
-              // Cascade filter UI
-              const FilterBar = () => (
-                <div className="flex flex-wrap gap-2 mb-4">
-                  <select
-                    value={n1}
-                    onChange={e => { setN1(e.target.value); setN2(''); setN3('') }}
-                    className="rounded-xl px-3 py-1.5 text-xs outline-none"
-                    style={{ background: '#080C14', border: '1px solid #1E293B', color: n1 ? '#F1F5F9' : '#475569' }}
-                  >
-                    <option value="">Global (todos)</option>
-                    {acomp.grupos.map((g: any) => (
-                      <option key={g.id} value={g.id}>{g.codigo} — {g.nome.substring(0, 35)}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={n2}
-                    onChange={e => { setN2(e.target.value); setN3('') }}
-                    disabled={!n1}
-                    className="rounded-xl px-3 py-1.5 text-xs outline-none disabled:opacity-40"
-                    style={{ background: '#080C14', border: '1px solid #1E293B', color: n2 ? '#F1F5F9' : '#475569' }}
-                  >
-                    <option value="">Todos (nível 2)</option>
-                    {tarefasN2.map((t: any) => (
-                      <option key={t.id} value={t.id}>{t.codigo} — {t.nome.substring(0, 30)}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={n3}
-                    onChange={e => setN3(e.target.value)}
-                    disabled={!n2}
-                    className="rounded-xl px-3 py-1.5 text-xs outline-none disabled:opacity-40"
-                    style={{ background: '#080C14', border: '1px solid #1E293B', color: n3 ? '#F1F5F9' : '#475569' }}
-                  >
-                    <option value="">Todos (nível 3)</option>
-                    {detsN3.map((d: any) => (
-                      <option key={d.id} value={d.id}>{d.local ?? d.codigo} — {(d.nome ?? '').substring(0, 25)}</option>
-                    ))}
-                  </select>
-                  {(n1 || n2 || n3) && (
-                    <button
-                      onClick={() => { setN1(''); setN2(''); setN3('') }}
-                      className="px-3 py-1.5 text-xs rounded-xl transition-colors"
-                      style={{ color: '#475569', border: '1px solid #1E293B' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#94A3B8' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#475569' }}
-                    >
-                      Limpar filtros
-                    </button>
-                  )}
-                </div>
-              )
-
-              function AcompChart({
-                title, rows, keyContratado, keyMedido, colorContratado, colorMedido,
-                labelContratado, labelMedido, accentColor,
-              }: {
-                title: string; rows: any[]; keyContratado: string; keyMedido: string
-                colorContratado: string; colorMedido: string
-                labelContratado: string; labelMedido: string; accentColor: string
+              function ChartFilter({ cx1, cx2, cx3, setCx1, setCx2, setCx3 }: {
+                cx1: string; cx2: string; cx3: string
+                setCx1: (v: string) => void; setCx2: (v: string) => void; setCx3: (v: string) => void
               }) {
+                const selGrupo = acomp.grupos.find((g: any) => g.id === cx1) ?? null
+                const tars = selGrupo?.tarefas ?? []
+                const selTar = tars.find((t: any) => t.id === cx2) ?? null
+                const dets = selTar?.detalhamentos ?? []
                 return (
-                  <Card style={{ borderTop: `2px solid ${accentColor}` }}>
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    <select value={cx1} onChange={e => { setCx1(e.target.value); setCx2(''); setCx3('') }}
+                      className="rounded-xl px-3 py-1.5 text-xs outline-none"
+                      style={{ background: '#080C14', border: '1px solid #1E293B', color: cx1 ? '#F1F5F9' : '#475569' }}>
+                      <option value="">Global (todos)</option>
+                      {acomp.grupos.map((g: any) => <option key={g.id} value={g.id}>{g.codigo} — {g.nome.substring(0, 35)}</option>)}
+                    </select>
+                    <select value={cx2} onChange={e => { setCx2(e.target.value); setCx3('') }} disabled={!cx1}
+                      className="rounded-xl px-3 py-1.5 text-xs outline-none disabled:opacity-40"
+                      style={{ background: '#080C14', border: '1px solid #1E293B', color: cx2 ? '#F1F5F9' : '#475569' }}>
+                      <option value="">Todos (nível 2)</option>
+                      {tars.map((t: any) => <option key={t.id} value={t.id}>{t.codigo} — {t.nome.substring(0, 30)}</option>)}
+                    </select>
+                    <select value={cx3} onChange={e => setCx3(e.target.value)} disabled={!cx2}
+                      className="rounded-xl px-3 py-1.5 text-xs outline-none disabled:opacity-40"
+                      style={{ background: '#080C14', border: '1px solid #1E293B', color: cx3 ? '#F1F5F9' : '#475569' }}>
+                      <option value="">Todos (nível 3)</option>
+                      {dets.map((d: any) => <option key={d.id} value={d.id}>{d.local ?? d.codigo} — {(d.nome ?? '').substring(0, 25)}</option>)}
+                    </select>
+                    {(cx1 || cx2 || cx3) && (
+                      <button onClick={() => { setCx1(''); setCx2(''); setCx3('') }}
+                        className="px-3 py-1.5 text-xs rounded-xl transition-colors"
+                        style={{ color: '#475569', border: '1px solid #1E293B' }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#94A3B8' }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#475569' }}>
+                        Limpar
+                      </button>
+                    )}
+                  </div>
+                )
+              }
+
+              function AcompChart({ title, rows, cx1, cx2, colorC, colorM, labelC, labelM, accent, setCx1, setCx2, setCx3, cx3 }: any) {
+                const h = !cx1 ? 100 : !cx2
+                  ? Math.max(200, rows.length * 32)
+                  : Math.max(200, rows.length * 32)
+                // Summary stats
+                const totalC = rows.reduce((s: number, r: any) => s + r.contratado, 0)
+                const totalM = rows.reduce((s: number, r: any) => s + r.medido, 0)
+                const totalPct = totalC > 0 ? Math.round((totalM / totalC) * 100) : 0
+                return (
+                  <Card style={{ borderTop: `2px solid ${accent}` }}>
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-sm" style={{ color: '#94A3B8' }}>{title}</CardTitle>
-                      <FilterBar />
+                      <div className="flex items-center justify-between mb-1">
+                        <CardTitle className="text-sm" style={{ color: '#94A3B8' }}>{title}</CardTitle>
+                        <div className="flex items-center gap-3 text-xs">
+                          <span style={{ color: '#475569' }}>{formatCurrency(totalM)}</span>
+                          <span className="font-bold px-2 py-0.5 rounded-md" style={{
+                            background: totalPct > 100 ? 'rgba(239,68,68,0.15)' : totalPct > 70 ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.12)',
+                            color: totalPct > 100 ? '#EF4444' : totalPct > 70 ? '#F59E0B' : accent,
+                          }}>{totalPct}%</span>
+                        </div>
+                      </div>
+                      <ChartFilter cx1={cx1} cx2={cx2} cx3={cx3} setCx1={setCx1} setCx2={setCx2} setCx3={setCx3} />
                     </CardHeader>
                     <CardContent>
-                      <ResponsiveContainer width="100%" height={chartHeight}>
-                        <BarChart
-                          data={rows}
-                          layout="vertical"
-                          margin={{ top: 0, right: 16, left: 8, bottom: 0 }}
-                        >
+                      <ResponsiveContainer width="100%" height={h}>
+                        <BarChart data={rows} layout="vertical" margin={{ top: 0, right: 60, left: 8, bottom: 0 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" horizontal={false} />
-                          <XAxis
-                            type="number"
-                            tick={{ fontSize: 10, fill: '#475569' }}
-                            tickFormatter={v => `${(v / 1e6).toFixed(1)}M`}
-                            axisLine={false} tickLine={false}
-                          />
-                          <YAxis
-                            type="category"
-                            dataKey="nome"
-                            tick={{ fontSize: 10, fill: '#94A3B8' }}
-                            width={!n1 ? 80 : 55}
-                            axisLine={false} tickLine={false}
-                          />
-                          <Tooltip
-                            contentStyle={chartTooltipStyle}
-                            formatter={(v: any, name: any) => [
-                              formatCurrency(v),
-                              name,
-                            ]}
+                          <XAxis type="number" tick={{ fontSize: 10, fill: '#475569' }} tickFormatter={v => `${(v / 1e6).toFixed(1)}M`} axisLine={false} tickLine={false} />
+                          <YAxis type="category" dataKey="nome" tick={{ fontSize: 10, fill: '#94A3B8' }} width={!cx1 ? 90 : 55} axisLine={false} tickLine={false} />
+                          <Tooltip contentStyle={chartTooltipStyle}
+                            formatter={(v: any, name: any, props: any) => {
+                              const row = props?.payload
+                              const pct = row?.pct ?? 0
+                              return [
+                                `${formatCurrency(v)}${name === labelM ? ` (${pct}%)` : ''}`,
+                                name,
+                              ]
+                            }}
                             labelFormatter={(label: any, payload: any) => {
                               const row = payload?.[0]?.payload
                               return row?.nomeFull ? `${label} — ${row.nomeFull.substring(0, 45)}` : label
-                            }}
-                          />
-                          <Legend
-                            iconSize={8}
-                            wrapperStyle={{ fontSize: 11, color: '#94A3B8', paddingTop: 8 }}
-                          />
-                          <Bar
-                            dataKey="contratado"
-                            name={labelContratado}
-                            fill={colorContratado}
-                            radius={[0, 3, 3, 0]}
-                            maxBarSize={14}
-                          />
-                          <Bar
-                            dataKey="medido"
-                            name={labelMedido}
-                            fill={colorMedido}
-                            radius={[0, 3, 3, 0]}
-                            maxBarSize={14}
-                          />
+                            }} />
+                          <Legend iconSize={8} wrapperStyle={{ fontSize: 11, color: '#94A3B8', paddingTop: 8 }} />
+                          <Bar dataKey="contratado" name={labelC} fill={colorC} radius={[0, 3, 3, 0]} maxBarSize={14} />
+                          <Bar dataKey="medido" name={labelM} radius={[0, 3, 3, 0]} maxBarSize={14}>
+                            {rows.map((row: any, i: number) => (
+                              <Cell key={i} fill={
+                                row.pct > 100 ? '#EF4444' :
+                                row.pct > 80 ? '#F59E0B' :
+                                colorM
+                              } />
+                            ))}
+                            <LabelList dataKey="pct" position="right"
+                              formatter={(v: any) => v > 0 ? `${v}%` : ''}
+                              style={{ fill: '#94A3B8', fontSize: 10 }}
+                            />
+                          </Bar>
                         </BarChart>
                       </ResponsiveContainer>
                     </CardContent>
@@ -583,42 +555,18 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
 
               return (
                 <div className="mt-6 space-y-4">
-                  {/* Chart 1 — Service measurement */}
-                  <AcompChart
-                    title="Acompanhamento Medição Serviço"
-                    rows={rowsServico}
-                    keyContratado="valor_servico"
-                    keyMedido="valor_medido_servico"
-                    colorContratado="#1E3A5F"
-                    colorMedido="#3B82F6"
-                    labelContratado="Contratado (Serviço)"
-                    labelMedido="Medido"
-                    accentColor="#3B82F6"
-                  />
-                  {/* Chart 2 — Fat direto approvals */}
-                  <AcompChart
-                    title="Aprovação Pedidos Fat. Direto"
-                    rows={rowsFatDAprov}
-                    keyContratado="valor_material"
-                    keyMedido="valor_aprovado_fatd"
-                    colorContratado="#064E3B"
-                    colorMedido="#10B981"
-                    labelContratado="Disponível (Material)"
-                    labelMedido="Aprovado"
-                    accentColor="#10B981"
-                  />
-                  {/* Chart 3 — Fat direto NFs */}
-                  <AcompChart
-                    title="Faturamento Direto — NFs Recebidas"
-                    rows={rowsFatDNF}
-                    keyContratado="valor_aprovado_fatd"
-                    keyMedido="valor_nf_fatd"
-                    colorContratado="#0C4A6E"
-                    colorMedido="#06B6D4"
-                    labelContratado="Aprovado (Pedidos)"
-                    labelMedido="NFs Recebidas"
-                    accentColor="#06B6D4"
-                  />
+                  <AcompChart title="Acompanhamento Medição Serviço"
+                    rows={buildRows('valor_servico', 'valor_medido_servico', s1, s2)}
+                    cx1={s1} cx2={s2} cx3={s3} setCx1={setS1} setCx2={setS2} setCx3={setS3}
+                    colorC="#1E3A5F" colorM="#3B82F6" labelC="Contratado (Serviço)" labelM="Medido" accent="#3B82F6" />
+                  <AcompChart title="Aprovação Pedidos Fat. Direto"
+                    rows={buildRows('valor_material', 'valor_aprovado_fatd', f1, f2)}
+                    cx1={f1} cx2={f2} cx3={f3} setCx1={setF1} setCx2={setF2} setCx3={setF3}
+                    colorC="#064E3B" colorM="#10B981" labelC="Disponível (Material)" labelM="Aprovado" accent="#10B981" />
+                  <AcompChart title="Faturamento Direto — NFs Recebidas"
+                    rows={buildRows('valor_aprovado_fatd', 'valor_nf_fatd', n1, n2)}
+                    cx1={n1} cx2={n2} cx3={n3} setCx1={setN1} setCx2={setN2} setCx3={setN3}
+                    colorC="#0C4A6E" colorM="#06B6D4" labelC="Aprovado (Pedidos)" labelM="NFs Recebidas" accent="#06B6D4" />
                 </div>
               )
             })()}

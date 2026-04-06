@@ -27,6 +27,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       contrato_id: id,
       solicitante_id: user.id,
       observacoes: body.observacoes,
+      fornecedor_razao_social: body.fornecedor_razao_social,
+      fornecedor_cnpj: body.fornecedor_cnpj,
+      fornecedor_contato: body.fornecedor_contato,
       itens: body.itens,
     })
     return NextResponse.json(sol, { status: 201 })

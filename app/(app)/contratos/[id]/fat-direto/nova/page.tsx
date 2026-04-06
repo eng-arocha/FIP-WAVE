@@ -7,7 +7,7 @@ import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { formatCurrency } from '@/lib/utils'
-import { ArrowLeft, Plus, Trash2, Package, Save, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Package, Save, AlertTriangle, Building2 } from 'lucide-react'
 
 interface Tarefa {
   id: string
@@ -22,17 +22,22 @@ interface ItemForm {
   tarefa_id: string
   descricao: string
   local: string
-  qtde_solicitada: string
-  valor_unitario: string
+  valor_total: string
 }
 
 export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
   const [tarefas, setTarefas] = useState<Tarefa[]>([])
+
+  // Supplier info
+  const [fornRazaoSocial, setFornRazaoSocial] = useState('')
+  const [fornCnpj, setFornCnpj] = useState('')
+  const [fornContato, setFornContato] = useState('')
+
   const [observacoes, setObservacoes] = useState('')
   const [itens, setItens] = useState<ItemForm[]>([
-    { tarefa_id: '', descricao: '', local: 'TORRE', qtde_solicitada: '1', valor_unitario: '0' },
+    { tarefa_id: '', descricao: '', local: 'TORRE', valor_total: '' },
   ])
   const [saving, setSaving] = useState(false)
   const [erro, setErro] = useState('')
@@ -45,7 +50,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
   }, [id])
 
   function addItem() {
-    setItens(prev => [...prev, { tarefa_id: '', descricao: '', local: 'TORRE', qtde_solicitada: '1', valor_unitario: '0' }])
+    setItens(prev => [...prev, { tarefa_id: '', descricao: '', local: 'TORRE', valor_total: '' }])
   }
 
   function removeItem(i: number) {
@@ -58,38 +63,38 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
 
   function onTarefaChange(i: number, tarefaId: string) {
     const t = tarefas.find(t => t.id === tarefaId)
-    updateItem(i, 'tarefa_id', tarefaId)
-    if (t) {
-      setItens(prev => prev.map((item, idx) =>
-        idx === i ? { ...item, tarefa_id: tarefaId, descricao: t.nome, valor_unitario: String(t.valor_material || 0) } : item
-      ))
-    }
+    setItens(prev => prev.map((item, idx) =>
+      idx === i ? { ...item, tarefa_id: tarefaId, descricao: t ? t.nome.substring(0, 80) : item.descricao } : item
+    ))
   }
 
-  const total = itens.reduce((s, it) => {
-    const qtde = parseFloat(it.qtde_solicitada) || 0
-    const vunit = parseFloat(it.valor_unitario) || 0
-    return s + qtde * vunit
-  }, 0)
+  const total = itens.reduce((s, it) => s + (parseFloat(it.valor_total) || 0), 0)
 
   async function salvar() {
     setErro('')
+    if (!fornRazaoSocial.trim()) { setErro('Informe a Razão Social do fornecedor.'); return }
     for (const it of itens) {
       if (!it.tarefa_id || !it.descricao || !it.local) {
         setErro('Preencha todos os campos de cada item.')
+        return
+      }
+      if (!it.valor_total || parseFloat(it.valor_total) <= 0) {
+        setErro('Informe o valor de cada item.')
         return
       }
     }
     setSaving(true)
     try {
       const payload = {
+        fornecedor_razao_social: fornRazaoSocial,
+        fornecedor_cnpj: fornCnpj,
+        fornecedor_contato: fornContato,
         observacoes,
         itens: itens.map(it => ({
           tarefa_id: it.tarefa_id,
           descricao: it.descricao,
           local: it.local,
-          qtde_solicitada: parseFloat(it.qtde_solicitada) || 1,
-          valor_unitario: parseFloat(it.valor_unitario) || 0,
+          valor_total: parseFloat(it.valor_total) || 0,
         })),
       }
       const res = await fetch(`/api/contratos/${id}/fat-direto/solicitacoes`, {
@@ -110,9 +115,6 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
       setSaving(false)
     }
   }
-
-  // Group tarefas by grupo
-  const grupos = Array.from(new Set(tarefas.map(t => t.grupo_macro?.nome ?? 'Sem grupo')))
 
   return (
     <div className="flex flex-col min-h-screen bg-[#080C14]">
@@ -152,7 +154,6 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
                 </p>
               </div>
             </div>
-
             <div className="grid grid-cols-3 gap-3">
               {[
                 { label: 'Teto do Contrato', value: tetoViolation.teto, color: '#94A3B8' },
@@ -165,19 +166,15 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
                 </div>
               ))}
             </div>
-
             {tetoViolation.pedidos_bloqueantes?.length > 0 && (
               <div>
-                <p className="text-xs text-[#475569] font-semibold uppercase tracking-wide mb-2">
-                  Pedidos Aprovados que Comprometem o Saldo
-                </p>
+                <p className="text-xs text-[#475569] font-semibold uppercase tracking-wide mb-2">Pedidos Aprovados que Comprometem o Saldo</p>
                 <div className="space-y-1.5">
                   {tetoViolation.pedidos_bloqueantes.map((p: any) => (
                     <div key={p.id} className="flex items-center justify-between px-3 py-2 rounded-lg"
                       style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.20)' }}>
                       <span className="text-xs text-[#94A3B8]">
-                        SOL-{String(p.numero).padStart(3, '0')} ·{' '}
-                        {new Date(p.data_solicitacao).toLocaleDateString('pt-BR')}
+                        SOL-{String(p.numero).padStart(3, '0')} · {new Date(p.data_solicitacao).toLocaleDateString('pt-BR')}
                       </span>
                       <span className="text-xs font-bold text-red-400">{formatCurrency(p.valor_total)}</span>
                     </div>
@@ -185,15 +182,64 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
                 </div>
               </div>
             )}
-
-            <button
-              onClick={() => setTetoViolation(null)}
-              className="text-xs text-[#475569] hover:text-[#94A3B8] transition-colors"
-            >
+            <button onClick={() => setTetoViolation(null)} className="text-xs text-[#475569] hover:text-[#94A3B8] transition-colors">
               Fechar alerta
             </button>
           </div>
         )}
+
+        {/* ── STEP 1: Dados do Fornecedor ── */}
+        <Card style={{ background: '#0D1421', border: '1px solid #1E293B' }}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-white text-sm flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-blue-400" />
+              Dados do Fornecedor
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="md:col-span-2">
+                <label className="block text-xs text-[#475569] mb-1">Razão Social *</label>
+                <input
+                  type="text"
+                  value={fornRazaoSocial}
+                  onChange={e => setFornRazaoSocial(e.target.value)}
+                  placeholder="Nome completo da empresa fornecedora"
+                  className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                  style={{ background: '#080C14', border: '1px solid #1E293B', color: '#F1F5F9' }}
+                  onFocus={e => { e.currentTarget.style.borderColor = '#3B82F6' }}
+                  onBlur={e => { e.currentTarget.style.borderColor = '#1E293B' }}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-[#475569] mb-1">CNPJ</label>
+                <input
+                  type="text"
+                  value={fornCnpj}
+                  onChange={e => setFornCnpj(e.target.value)}
+                  placeholder="00.000.000/0001-00"
+                  className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                  style={{ background: '#080C14', border: '1px solid #1E293B', color: '#F1F5F9' }}
+                  onFocus={e => { e.currentTarget.style.borderColor = '#3B82F6' }}
+                  onBlur={e => { e.currentTarget.style.borderColor = '#1E293B' }}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-[#475569] mb-1">Contato (nome/telefone)</label>
+                <input
+                  type="text"
+                  value={fornContato}
+                  onChange={e => setFornContato(e.target.value)}
+                  placeholder="Nome e telefone do responsável"
+                  className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                  style={{ background: '#080C14', border: '1px solid #1E293B', color: '#F1F5F9' }}
+                  onFocus={e => { e.currentTarget.style.borderColor = '#3B82F6' }}
+                  onBlur={e => { e.currentTarget.style.borderColor = '#1E293B' }}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Observações */}
         <Card style={{ background: '#0D1421', border: '1px solid #1E293B' }}>
@@ -236,17 +282,17 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-[#475569] mb-1">Tarefa / Serviço</label>
+                    <label className="block text-xs text-[#475569] mb-1">Disciplina / Tarefa</label>
                     <select
                       value={item.tarefa_id}
                       onChange={e => onTarefaChange(i, e.target.value)}
                       className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-                      style={{ background: '#0D1421', border: '1px solid #1E293B', color: '#F1F5F9' }}
+                      style={{ background: '#0D1421', border: '1px solid #1E293B', color: item.tarefa_id ? '#F1F5F9' : '#475569' }}
                     >
-                      <option value="">Selecione...</option>
+                      <option value="">Selecione a disciplina...</option>
                       {tarefas.map(t => (
                         <option key={t.id} value={t.id}>
-                          {t.codigo} — {t.nome.substring(0, 50)}
+                          {t.codigo} — {t.nome.substring(0, 55)}
                         </option>
                       ))}
                     </select>
@@ -277,36 +323,25 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
                   />
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-[#475569] mb-1">Quantidade</label>
+                    <label className="block text-xs text-[#475569] mb-1">Valor Total do Item (R$)</label>
                     <input
                       type="number"
-                      value={item.qtde_solicitada}
-                      onChange={e => updateItem(i, 'qtde_solicitada', e.target.value)}
-                      min="0"
-                      step="any"
-                      className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-                      style={{ background: '#0D1421', border: '1px solid #1E293B', color: '#F1F5F9' }}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-[#475569] mb-1">Valor Unitário (R$)</label>
-                    <input
-                      type="number"
-                      value={item.valor_unitario}
-                      onChange={e => updateItem(i, 'valor_unitario', e.target.value)}
+                      value={item.valor_total}
+                      onChange={e => updateItem(i, 'valor_total', e.target.value)}
                       min="0"
                       step="0.01"
+                      placeholder="0,00"
                       className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
                       style={{ background: '#0D1421', border: '1px solid #1E293B', color: '#F1F5F9' }}
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-[#475569] mb-1">Total do Item</label>
+                    <label className="block text-xs text-[#475569] mb-1">Valor</label>
                     <div className="rounded-xl px-3 py-2.5 text-sm font-bold text-blue-400"
                       style={{ background: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.15)' }}>
-                      {formatCurrency((parseFloat(item.qtde_solicitada) || 0) * (parseFloat(item.valor_unitario) || 0))}
+                      {formatCurrency(parseFloat(item.valor_total) || 0)}
                     </div>
                   </div>
                 </div>

@@ -11,15 +11,20 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Upload, Trash2, Plus, FileText, AlertCircle, Info, Loader2 } from 'lucide-react'
+import { ArrowLeft, Upload, Trash2, Plus, FileText, AlertCircle, Info, Loader2, User } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { TipoMedicao, TipoAnexo } from '@/types'
+import { createClient } from '@/lib/supabase/client'
 
 type AnexoItem = {
   id: string
   nome: string
   tipo: TipoAnexo
   tamanho: string
+}
+
+const TIPO_MEDICAO_LABELS: Record<string, string> = {
+  servico: 'Serviço (Mão de Obra)',
 }
 
 export default function NovaMedicaoPage({ params }: { params: Promise<{ id: string }> }) {
@@ -31,19 +36,37 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
   const [estrutura, setEstrutura] = useState<any[]>([])
   const [loadingEstrutura, setLoadingEstrutura] = useState(true)
 
+  // Auto-fill user info
+  const [userNome, setUserNome] = useState('')
+  const [userEmail, setUserEmail] = useState('')
+
   // Step 1: Dados gerais
+  const [tipo, setTipo] = useState<string>('servico')
   const [periodo, setPeriodo] = useState('')
-  const [tipo, setTipo] = useState<TipoMedicao | ''>('')
-  const [solicitante, setSolicitante] = useState('')
-  const [emailSolicitante, setEmailSolicitante] = useState('')
   const [observacoes, setObservacoes] = useState('')
 
-  // Step 2: Itens — percentual por detalhamento (0 | 25 | 50 | 100)
+  // Step 2: Itens — percentual por detalhamento (0 | 25 | 50 | 75 | 100)
   const [percentualMedicao, setPercentualMedicao] = useState<Record<string, number>>({})
 
   // Step 3: Anexos e NFs
   const [anexos, setAnexos] = useState<AnexoItem[]>([])
   const [novasNFs, setNovasNFs] = useState<{ numero: string; emitente: string; valor: string; data: string }[]>([])
+
+  useEffect(() => {
+    // Load authenticated user
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data }) => {
+      if (data?.user) {
+        setUserEmail(data.user.email ?? '')
+        setUserNome(
+          data.user.user_metadata?.full_name ||
+          data.user.user_metadata?.nome ||
+          data.user.email?.split('@')[0] ||
+          ''
+        )
+      }
+    })
+  }, [])
 
   useEffect(() => {
     fetch(`/api/contratos/${contratoId}/estrutura`)
@@ -52,11 +75,8 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
       .finally(() => setLoadingEstrutura(false))
   }, [contratoId])
 
-  const TIPO_MEDICAO_LABELS: Record<TipoMedicao, string> = {
-    servico: 'Serviço (Mão de Obra)',
-    faturamento_direto: 'Faturamento Direto (Material)',
-    misto: 'Misto (Serviço + Material)',
-  }
+  // Only show service groups in step 2
+  const estruturaServico = estrutura.filter(g => g.tipo_medicao !== 'faturamento_direto')
 
   function setPercentual(detId: string, pct: number) {
     setPercentualMedicao(prev => ({ ...prev, [detId]: pct }))
@@ -64,7 +84,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
 
   function calcularValorTotal() {
     let total = 0
-    for (const grupo of estrutura) {
+    for (const grupo of estruturaServico) {
       for (const tarefa of (grupo.tarefas || [])) {
         for (const det of (tarefa.detalhamentos || [])) {
           const pct = percentualMedicao[det.id] || 0
@@ -88,7 +108,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
     setSaving(true)
     try {
       const itens = []
-      for (const grupo of estrutura) {
+      for (const grupo of estruturaServico) {
         for (const tarefa of (grupo.tarefas || [])) {
           for (const det of (tarefa.detalhamentos || [])) {
             const pct = percentualMedicao[det.id] || 0
@@ -108,8 +128,8 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
         body: JSON.stringify({
           periodo_referencia: periodo,
           tipo,
-          solicitante_nome: solicitante,
-          solicitante_email: emailSolicitante,
+          solicitante_nome: userNome,
+          solicitante_email: userEmail,
           observacoes,
           itens,
           notas_fiscais: nfs,
@@ -147,7 +167,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
           {[
             { n: 1, label: 'Dados Gerais' },
             { n: 2, label: 'Itens da Medição' },
-            { n: 3, label: 'Anexos e NFs' },
+            { n: 3, label: 'Anexos' },
             { n: 4, label: 'Revisão' },
           ].map((s, i) => (
             <div key={s.n} className="flex items-center">
@@ -172,18 +192,10 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-[#475569] font-medium uppercase tracking-wider">Período de Referência *</Label>
-                  <Input
-                    type="month"
-                    value={periodo}
-                    onChange={e => setPeriodo(e.target.value)}
-                    className="bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] placeholder:text-[#475569]"
-                  />
-                </div>
+                {/* Tipo FIRST */}
                 <div className="space-y-1.5">
                   <Label className="text-xs text-[#475569] font-medium uppercase tracking-wider">Tipo de Medição *</Label>
-                  <Select value={tipo} onValueChange={v => setTipo(v as TipoMedicao)}>
+                  <Select value={tipo} onValueChange={v => setTipo(v)}>
                     <SelectTrigger className="bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9]">
                       <SelectValue placeholder="Selecione o tipo" />
                     </SelectTrigger>
@@ -194,25 +206,30 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Período SECOND */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#475569] font-medium uppercase tracking-wider">Nome do Solicitante *</Label>
+                  <Label className="text-xs text-[#475569] font-medium uppercase tracking-wider">Período de Referência *</Label>
                   <Input
-                    placeholder="Nome completo"
-                    value={solicitante}
-                    onChange={e => setSolicitante(e.target.value)}
+                    type="month"
+                    value={periodo}
+                    onChange={e => setPeriodo(e.target.value)}
                     className="bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] placeholder:text-[#475569]"
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-[#475569] font-medium uppercase tracking-wider">E-mail do Solicitante *</Label>
-                  <Input
-                    type="email"
-                    placeholder="email@empresa.com.br"
-                    value={emailSolicitante}
-                    onChange={e => setEmailSolicitante(e.target.value)}
-                    className="bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] placeholder:text-[#475569]"
-                  />
+
+                {/* Auto-filled user info */}
+                <div className="col-span-2">
+                  <div className="flex items-center gap-2 p-3 rounded-xl" style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.15)' }}>
+                    <User className="w-4 h-4 text-blue-400 flex-shrink-0" />
+                    <div className="text-xs">
+                      <span className="text-[#475569]">Solicitado por: </span>
+                      <span className="text-[#F1F5F9] font-medium">{userNome || '—'}</span>
+                      {userEmail && <span className="text-[#475569] ml-1">({userEmail})</span>}
+                    </div>
+                  </div>
                 </div>
+
                 <div className="col-span-2 space-y-1.5">
                   <Label className="text-xs text-[#475569] font-medium uppercase tracking-wider">Observações</Label>
                   <Textarea
@@ -232,7 +249,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
           <div className="space-y-4">
             <div className="flex items-center gap-2 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg text-xs text-blue-400">
               <Info className="w-4 h-4 flex-shrink-0" />
-              <span>Selecione o percentual executado neste período para cada item: <strong className="text-blue-300">0% · 25% · 50% · 100%</strong>. Itens em 0% não serão incluídos.</span>
+              <span>Selecione o percentual executado neste período para cada item: <strong className="text-blue-300">0% · 25% · 50% · 75% · 100%</strong>. Itens em 0% não serão incluídos.</span>
             </div>
 
             {loadingEstrutura ? (
@@ -241,14 +258,14 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                 <span>Carregando estrutura...</span>
               </div>
             ) : (
-              estrutura.map(grupo => (
+              estruturaServico.map(grupo => (
                 <Card key={grupo.id}>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm flex items-center gap-2 text-[#F1F5F9]">
                       <span className="text-[#475569] font-mono">{grupo.codigo}</span>
                       {grupo.nome}
-                      <Badge className="bg-blue-500/10 text-blue-400 border-blue-500/20 text-[10px]">
-                        {grupo.tipo_medicao === 'misto' ? 'Misto' : grupo.tipo_medicao}
+                      <Badge className="bg-purple-500/10 text-purple-400 border-purple-500/20 text-[10px]">
+                        Serviço
                       </Badge>
                     </CardTitle>
                   </CardHeader>
@@ -272,9 +289,9 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                 <div className="col-span-1 text-center text-[#475569]">
                                   {formatCurrency(det.valor_unitario || 0)}
                                 </div>
-                                {/* 0 / 25 / 50 / 100 % selector */}
+                                {/* 0 / 25 / 50 / 75 / 100 % selector */}
                                 <div className="col-span-4 flex gap-1">
-                                  {[0, 25, 50, 100].map(p => (
+                                  {[0, 25, 50, 75, 100].map(p => (
                                     <button
                                       key={p}
                                       type="button"
@@ -318,7 +335,6 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
         {/* Step 3: Anexos */}
         {step === 3 && (
           <div className="space-y-4">
-            {/* Upload */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm text-[#F1F5F9]">Documentos e Comprovantes</CardTitle>
@@ -329,70 +345,13 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                   <p className="text-sm text-[#94A3B8] font-medium">Clique para fazer upload ou arraste arquivos</p>
                   <p className="text-xs text-[#475569] mt-1">PDF, PNG, JPG, XLS • Máximo 10MB por arquivo</p>
                   <div className="flex justify-center gap-2 mt-3 flex-wrap">
-                    {(['nota_fiscal', 'boleto', 'relatorio_fotos', 'medicao_assinada', 'outro'] as TipoAnexo[]).map(t => (
+                    {(['boleto', 'relatorio_fotos', 'medicao_assinada', 'outro'] as TipoAnexo[]).map(t => (
                       <Badge key={t} className="bg-[#1E293B] text-[#94A3B8] border-[#1E293B] text-[10px]">{t.replace('_', ' ')}</Badge>
                     ))}
                   </div>
                 </div>
               </CardContent>
             </Card>
-
-            {/* NFs - Faturamento Direto */}
-            {(tipo === 'faturamento_direto' || tipo === 'misto') && (
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle className="text-sm text-[#F1F5F9]">Notas Fiscais — Faturamento Direto</CardTitle>
-                  <Button size="sm" variant="outline" onClick={adicionarNF}>
-                    <Plus className="w-3 h-3" />
-                    Adicionar NF
-                  </Button>
-                </CardHeader>
-                <CardContent>
-                  {novasNFs.length === 0 ? (
-                    <div className="text-center py-6 text-[#475569]">
-                      <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                      <p className="text-sm">Nenhuma NF adicionada</p>
-                      <Button size="sm" variant="outline" className="mt-3" onClick={adicionarNF}>
-                        <Plus className="w-3 h-3" />
-                        Adicionar primeira NF
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {novasNFs.map((nf, idx) => (
-                        <div key={idx} className="grid grid-cols-5 gap-2 p-3 bg-[#0D1421] border border-[#1E293B] rounded-lg">
-                          <div className="space-y-1">
-                            <Label className="text-xs text-[#475569] font-medium uppercase tracking-wider">Número NF *</Label>
-                            <Input className="h-7 text-xs bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] placeholder:text-[#475569]" placeholder="000000" value={nf.numero}
-                              onChange={e => setNovasNFs(prev => prev.map((n, i) => i === idx ? { ...n, numero: e.target.value } : n))} />
-                          </div>
-                          <div className="col-span-2 space-y-1">
-                            <Label className="text-xs text-[#475569] font-medium uppercase tracking-wider">Emitente *</Label>
-                            <Input className="h-7 text-xs bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] placeholder:text-[#475569]" placeholder="Razão social do fornecedor" value={nf.emitente}
-                              onChange={e => setNovasNFs(prev => prev.map((n, i) => i === idx ? { ...n, emitente: e.target.value } : n))} />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs text-[#475569] font-medium uppercase tracking-wider">Valor *</Label>
-                            <Input className="h-7 text-xs bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] placeholder:text-[#475569]" type="number" placeholder="0,00" value={nf.valor}
-                              onChange={e => setNovasNFs(prev => prev.map((n, i) => i === idx ? { ...n, valor: e.target.value } : n))} />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs text-[#475569] font-medium uppercase tracking-wider">Emissão *</Label>
-                            <div className="flex gap-1">
-                              <Input className="h-7 text-xs bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] placeholder:text-[#475569]" type="date" value={nf.data}
-                                onChange={e => setNovasNFs(prev => prev.map((n, i) => i === idx ? { ...n, data: e.target.value } : n))} />
-                              <Button size="icon" variant="ghost" className="h-7 w-7 flex-shrink-0 text-red-400 hover:text-red-300 hover:bg-red-900/20" onClick={() => removerNF(idx)}>
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
           </div>
         )}
 
@@ -406,20 +365,16 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
               <CardContent>
                 <div className="grid grid-cols-2 gap-4 text-sm mb-4">
                   <div>
+                    <p className="text-xs text-[#475569] mb-0.5">Tipo</p>
+                    <p className="font-medium text-[#F1F5F9]">{TIPO_MEDICAO_LABELS[tipo] ?? tipo}</p>
+                  </div>
+                  <div>
                     <p className="text-xs text-[#475569] mb-0.5">Período</p>
                     <p className="font-medium text-[#F1F5F9]">{periodo}</p>
                   </div>
-                  <div>
-                    <p className="text-xs text-[#475569] mb-0.5">Tipo</p>
-                    <p className="font-medium text-[#F1F5F9]">{tipo ? TIPO_MEDICAO_LABELS[tipo as TipoMedicao] : ''}</p>
-                  </div>
-                  <div>
+                  <div className="col-span-2">
                     <p className="text-xs text-[#475569] mb-0.5">Solicitante</p>
-                    <p className="font-medium text-[#F1F5F9]">{solicitante}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-[#475569] mb-0.5">E-mail</p>
-                    <p className="font-medium text-[#F1F5F9]">{emailSolicitante}</p>
+                    <p className="font-medium text-[#F1F5F9]">{userNome} {userEmail && <span className="text-[#475569] text-xs">({userEmail})</span>}</p>
                   </div>
                 </div>
                 <div className="border-t border-[#1E293B] pt-3 flex justify-between items-center">
@@ -435,9 +390,8 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                 <p className="font-semibold mb-0.5">Antes de submeter, confirme:</p>
                 <ul className="list-disc list-inside space-y-0.5">
                   <li>Todos os quantitativos estão corretos e comprovados</li>
-                  <li>Os documentos e NFs estão anexados</li>
+                  <li>Os documentos estão anexados</li>
                   <li>A medição será enviada para aprovação da equipe FIP</li>
-                  <li>Um e-mail será gerado automaticamente para os aprovadores</li>
                 </ul>
               </div>
             </div>
@@ -453,15 +407,15 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
             <Button
               onClick={() => setStep(s => s + 1)}
               disabled={
-                (step === 1 && (!periodo || !tipo || !solicitante || !emailSolicitante)) ||
+                (step === 1 && (!periodo || !tipo)) ||
                 (step === 2 && !itensFilled)
               }
             >
               Próximo →
             </Button>
           ) : (
-            <Button onClick={submeter} loading={saving} variant="success">
-              Submeter para Aprovação
+            <Button onClick={submeter} disabled={saving} className="bg-emerald-600 hover:bg-emerald-500 text-white">
+              {saving ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Enviando...</> : 'Submeter para Aprovação'}
             </Button>
           )}
         </div>

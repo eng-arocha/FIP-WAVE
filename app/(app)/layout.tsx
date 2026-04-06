@@ -1,5 +1,6 @@
 import { Sidebar } from '@/components/layout/sidebar'
 import { CommandPalette } from '@/components/ui/command-palette'
+import { EscBack } from '@/components/ui/esc-back'
 import { getPerfilDoUsuarioLogado } from '@/lib/db/usuarios'
 import { getPermissoesDoUsuarioLogado } from '@/lib/db/permissoes'
 import { PermissoesProvider } from '@/lib/context/permissoes-context'
@@ -20,6 +21,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <div className="flex min-h-screen overflow-x-hidden">
         <Sidebar perfilAtual={perfil?.perfil ?? 'visualizador'} nomeAtual={perfil?.nome ?? ''} />
         <main className="flex-1 flex flex-col overflow-hidden">
+          <EscBack />
           {children}
         </main>
         <CommandPalette />

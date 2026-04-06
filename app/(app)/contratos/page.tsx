@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import {
   FileText, Plus, Search, ArrowRight, Calendar, Building2,
@@ -141,9 +140,10 @@ export default function ContratosPage() {
         ) : (
           <div className="space-y-4">
             {filtrados.map(contrato => (
-              <div
+              <Link
                 key={contrato.id}
-                className="rounded-xl transition-all duration-200"
+                href={`/contratos/${contrato.id}`}
+                className="block rounded-xl transition-all duration-200 cursor-pointer"
                 style={{
                   background: '#111827',
                   border: '1px solid #1E293B',
@@ -197,20 +197,12 @@ export default function ContratosPage() {
                             </p>
                           )}
                         </div>
-                        <Link href={`/contratos/${contrato.id}`}>
-                          <button
-                            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium transition-all duration-150 flex-shrink-0"
-                            style={{
-                              background: 'transparent',
-                              border: '1px solid #2d3f5c',
-                              color: '#94A3B8',
-                            }}
-                            onMouseEnter={e => { e.currentTarget.style.borderColor = '#3B82F6'; e.currentTarget.style.color = '#F1F5F9' }}
-                            onMouseLeave={e => { e.currentTarget.style.borderColor = '#2d3f5c'; e.currentTarget.style.color = '#94A3B8' }}
-                          >
-                            Abrir <ArrowRight className="w-3.5 h-3.5" />
-                          </button>
-                        </Link>
+                        <span
+                          className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium flex-shrink-0"
+                          style={{ color: '#475569' }}
+                        >
+                          Abrir <ArrowRight className="w-3.5 h-3.5" />
+                        </span>
                       </div>
 
                       {/* Info grid */}
@@ -300,7 +292,7 @@ export default function ContratosPage() {
                     </div>
                   </div>
                 </div>
-              </div>
+              </Link>
             ))}
 
             {filtrados.length === 0 && (

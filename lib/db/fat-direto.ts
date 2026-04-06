@@ -7,6 +7,7 @@ export async function listarSolicitacoes(contratoId: string) {
     .select(`
       id, numero, status, data_solicitacao, data_aprovacao,
       observacoes, motivo_rejeicao, valor_total, created_at,
+      fornecedor_razao_social, fornecedor_cnpj, fornecedor_contato,
       solicitante:solicitante_id(nome, email),
       aprovador:aprovador_id(nome, email),
       itens:itens_solicitacao_fat_direto(
@@ -27,6 +28,7 @@ export async function getSolicitacao(id: string) {
     .select(`
       id, numero, status, data_solicitacao, data_aprovacao,
       observacoes, motivo_rejeicao, valor_total, contrato_id, created_at,
+      fornecedor_razao_social, fornecedor_cnpj, fornecedor_contato,
       solicitante:solicitante_id(nome, email),
       aprovador:aprovador_id(nome, email),
       itens:itens_solicitacao_fat_direto(
@@ -104,16 +106,18 @@ export async function criarSolicitacao(input: {
   contrato_id: string
   solicitante_id: string
   observacoes?: string
+  fornecedor_razao_social?: string
+  fornecedor_cnpj?: string
+  fornecedor_contato?: string
   itens: Array<{
     tarefa_id: string
     descricao: string
     local: string
-    qtde_solicitada: number
-    valor_unitario: number
+    valor_total: number
   }>
 }) {
   const admin = createAdminClient()
-  const valor_total = input.itens.reduce((s, i) => s + i.qtde_solicitada * i.valor_unitario, 0)
+  const valor_total = input.itens.reduce((s, i) => s + i.valor_total, 0)
 
   // Validate against teto
   const violation = await verificarTeto(input.contrato_id, valor_total)
@@ -129,6 +133,9 @@ export async function criarSolicitacao(input: {
       contrato_id: input.contrato_id,
       solicitante_id: input.solicitante_id,
       observacoes: input.observacoes,
+      fornecedor_razao_social: input.fornecedor_razao_social,
+      fornecedor_cnpj: input.fornecedor_cnpj,
+      fornecedor_contato: input.fornecedor_contato,
       valor_total,
       status: 'aguardando_aprovacao',
     })
@@ -136,7 +143,14 @@ export async function criarSolicitacao(input: {
     .single()
   if (error) throw error
 
-  const itensPayload = input.itens.map(i => ({ ...i, solicitacao_id: sol.id }))
+  const itensPayload = input.itens.map(i => ({
+    solicitacao_id: sol.id,
+    tarefa_id: i.tarefa_id,
+    descricao: i.descricao,
+    local: i.local,
+    qtde_solicitada: 1,
+    valor_unitario: i.valor_total,
+  }))
   const { error: itErr } = await admin.from('itens_solicitacao_fat_direto').insert(itensPayload)
   if (itErr) throw itErr
 
@@ -226,22 +240,19 @@ export async function getResumoFatDireto(contratoId: string) {
 
 export async function listarTarefasParaSolicitacao(contratoId: string) {
   const admin = createAdminClient()
+  const { data: grupos } = await admin
+    .from('grupos_macro')
+    .select('id')
+    .eq('contrato_id', contratoId)
+  const grupoIds = (grupos || []).map((g: any) => g.id)
+  if (grupoIds.length === 0) return []
   const { data, error } = await admin
     .from('tarefas')
     .select(`
       id, codigo, nome, valor_material, valor_servico, valor_total,
       grupo_macro:grupo_macro_id(id, codigo, nome)
     `)
-    .in(
-      'grupo_macro_id',
-      (
-        await admin
-          .from('grupos_macro')
-          .select('id')
-          .eq('contrato_id', contratoId)
-          .in('tipo_medicao', ['faturamento_direto', 'misto'])
-      ).data?.map((g: any) => g.id) || [],
-    )
+    .in('grupo_macro_id', grupoIds)
     .order('codigo')
   if (error) throw error
   return data || []
