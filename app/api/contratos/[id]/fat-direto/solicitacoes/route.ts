@@ -27,9 +27,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       contrato_id: id,
       solicitante_id: user.id,
       observacoes: body.observacoes,
+      numero_pedido_fip: body.numero_pedido_fip ? parseInt(body.numero_pedido_fip, 10) : undefined,
       fornecedor_razao_social: body.fornecedor_razao_social,
       fornecedor_cnpj: body.fornecedor_cnpj,
       fornecedor_contato: body.fornecedor_contato,
+      fornecedor_contato_nome: body.fornecedor_contato_nome,
+      fornecedor_contato_telefone: body.fornecedor_contato_telefone,
       itens: body.itens,
     })
     return NextResponse.json(sol, { status: 201 })

@@ -106,11 +106,15 @@ export async function criarSolicitacao(input: {
   contrato_id: string
   solicitante_id: string
   observacoes?: string
+  numero_pedido_fip?: number
   fornecedor_razao_social?: string
   fornecedor_cnpj?: string
   fornecedor_contato?: string
+  fornecedor_contato_nome?: string
+  fornecedor_contato_telefone?: string
   itens: Array<{
     tarefa_id: string
+    detalhamento_id?: string
     descricao: string
     local: string
     valor_total: number
@@ -119,7 +123,7 @@ export async function criarSolicitacao(input: {
   const admin = createAdminClient()
   const valor_total = input.itens.reduce((s, i) => s + i.valor_total, 0)
 
-  // Validate against teto
+  // Validate against teto global do contrato
   const violation = await verificarTeto(input.contrato_id, valor_total)
   if (violation) {
     const err = new Error('TETO_EXCEDIDO')
@@ -133,9 +137,12 @@ export async function criarSolicitacao(input: {
       contrato_id: input.contrato_id,
       solicitante_id: input.solicitante_id,
       observacoes: input.observacoes,
+      numero_pedido_fip: input.numero_pedido_fip,
       fornecedor_razao_social: input.fornecedor_razao_social,
       fornecedor_cnpj: input.fornecedor_cnpj,
       fornecedor_contato: input.fornecedor_contato,
+      fornecedor_contato_nome: input.fornecedor_contato_nome,
+      fornecedor_contato_telefone: input.fornecedor_contato_telefone,
       valor_total,
       status: 'aguardando_aprovacao',
     })
@@ -146,6 +153,7 @@ export async function criarSolicitacao(input: {
   const itensPayload = input.itens.map(i => ({
     solicitacao_id: sol.id,
     tarefa_id: i.tarefa_id,
+    detalhamento_id: i.detalhamento_id || null,
     descricao: i.descricao,
     local: i.local,
     qtde_solicitada: 1,
@@ -240,6 +248,8 @@ export async function getResumoFatDireto(contratoId: string) {
 
 export async function listarTarefasParaSolicitacao(contratoId: string) {
   const admin = createAdminClient()
+
+  // Grupos do contrato
   const { data: grupos } = await admin
     .from('grupos_macro')
     .select('id')
@@ -247,45 +257,55 @@ export async function listarTarefasParaSolicitacao(contratoId: string) {
   const grupoIds = (grupos || []).map((g: any) => g.id)
   if (grupoIds.length === 0) return []
 
-  const { data, error } = await admin
+  // Tarefas (nivel 2) — apenas para montar o mapa código/nome
+  const { data: tarefas } = await admin
     .from('tarefas')
-    .select(`
-      id, codigo, nome, valor_material, valor_servico, valor_total,
-      grupo_macro:grupo_macro_id(id, codigo, nome)
-    `)
+    .select('id, codigo, nome')
     .in('grupo_macro_id', grupoIds)
+  const tarefaIds = (tarefas || []).map((t: any) => t.id)
+  const tarefaMap: Record<string, any> = {}
+  ;(tarefas || []).forEach((t: any) => { tarefaMap[t.id] = t })
+  if (tarefaIds.length === 0) return []
+
+  // Detalhamentos (nivel 3) — lista completa para o dropdown
+  const { data: dets, error } = await admin
+    .from('detalhamentos')
+    .select('id, tarefa_id, codigo, descricao, local, quantidade_contratada, valor_material_unit, valor_total')
+    .in('tarefa_id', tarefaIds)
     .order('codigo')
   if (error) throw error
-  const tarefas = data || []
-  const tarefaIds = tarefas.map((t: any) => t.id)
+  const detalhamentos = dets || []
+  const detIds = detalhamentos.map((d: any) => d.id)
 
-  // Load distinct locals per tarefa from detalhamentos
-  const { data: dets } = await admin
-    .from('detalhamentos')
-    .select('tarefa_id, local')
-    .in('tarefa_id', tarefaIds)
-  const locaisByTarefa: Record<string, Set<string>> = {}
-  ;(dets || []).forEach((d: any) => {
-    if (d.local) {
-      if (!locaisByTarefa[d.tarefa_id]) locaisByTarefa[d.tarefa_id] = new Set()
-      locaisByTarefa[d.tarefa_id].add(d.local.trim().toUpperCase())
+  // Valores já aprovados por detalhamento (a partir de solicitações aprovadas)
+  const aprovadoByDet: Record<string, number> = {}
+  if (detIds.length > 0) {
+    try {
+      const { data: itensAprov } = await admin
+        .from('itens_solicitacao_fat_direto')
+        .select('detalhamento_id, valor_total, solicitacoes_fat_direto!inner(status)')
+        .in('detalhamento_id', detIds)
+        .eq('solicitacoes_fat_direto.status', 'aprovado')
+      ;(itensAprov || []).forEach((it: any) => {
+        if (it.detalhamento_id) {
+          aprovadoByDet[it.detalhamento_id] = (aprovadoByDet[it.detalhamento_id] || 0) + (it.valor_total || 0)
+        }
+      })
+    } catch {
+      // coluna detalhamento_id ainda não existe — executar migration 009
     }
-  })
+  }
 
-  // Load total already approved per tarefa
-  const { data: itensAprov } = await admin
-    .from('itens_solicitacao_fat_direto')
-    .select('tarefa_id, valor_total, solicitacao_id, solicitacoes_fat_direto!inner(status)')
-    .in('tarefa_id', tarefaIds)
-    .eq('solicitacoes_fat_direto.status', 'aprovado')
-  const aprovadoByTarefa: Record<string, number> = {}
-  ;(itensAprov || []).forEach((it: any) => {
-    aprovadoByTarefa[it.tarefa_id] = (aprovadoByTarefa[it.tarefa_id] || 0) + (it.valor_total || 0)
-  })
-
-  return tarefas.map((t: any) => ({
-    ...t,
-    locais: Array.from(locaisByTarefa[t.id] || []).sort(),
-    valor_aprovado: aprovadoByTarefa[t.id] || 0,
+  return detalhamentos.map((d: any) => ({
+    id: d.id,
+    codigo: d.codigo,
+    descricao: d.descricao || '',
+    local: (d.local || 'TORRE').trim().toUpperCase(),
+    // valor máximo de material para este detalhamento (nivel 3)
+    valor_material: (d.quantidade_contratada || 0) * (d.valor_material_unit || 0),
+    valor_aprovado: aprovadoByDet[d.id] || 0,
+    tarefa_id: d.tarefa_id,
+    tarefa_codigo: tarefaMap[d.tarefa_id]?.codigo || '',
+    tarefa_nome: tarefaMap[d.tarefa_id]?.nome || '',
   }))
 }
