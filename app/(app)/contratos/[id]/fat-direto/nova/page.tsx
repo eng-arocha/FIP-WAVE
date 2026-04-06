@@ -32,7 +32,8 @@ function maskTelefone(v: string): string {
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
 interface Tarefa {
-  id: string
+  id: string         // detalhamento ID
+  tarefa_id: string  // FK real para tarefas
   codigo: string
   nome: string
   valor_material: number
@@ -277,12 +278,16 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
         fornecedor_contato_telefone: telDigits,
         numero_pedido_fip: parseInt(numeroPedidoFip, 10),
         observacoes,
-        itens: itens.map(it => ({
-          tarefa_id: it.tarefa_id,
-          descricao: it.descricao,
-          local: it.local,
-          valor_total: parseFloat(it.valor_total) || 0,
-        })),
+        itens: itens.map(it => {
+          const t = tarefas.find(x => x.id === it.tarefa_id)
+          return {
+            tarefa_id: t?.tarefa_id || it.tarefa_id, // FK real para tarefas
+            detalhamento_id: it.tarefa_id,            // ID do detalhamento (nível 3)
+            descricao: it.descricao,
+            local: it.local,
+            valor_total: parseFloat(it.valor_total) || 0,
+          }
+        }),
       }
       const res = await fetch(`/api/contratos/${id}/fat-direto/solicitacoes`, {
         method: 'POST',

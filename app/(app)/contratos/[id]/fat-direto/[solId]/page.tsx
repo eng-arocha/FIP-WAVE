@@ -7,7 +7,8 @@ import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { ArrowLeft, CheckCircle, XCircle, FileText, Plus, Package } from 'lucide-react'
+import { ArrowLeft, CheckCircle, XCircle, FileText, Plus, Package, Trash2 } from 'lucide-react'
+import { usePermissoes } from '@/lib/context/permissoes-context'
 
 interface Solicitacao {
   id: string
@@ -61,7 +62,10 @@ const STATUS_LABELS: Record<string, string> = {
 export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id: string; solId: string }> }) {
   const { id, solId } = use(params)
   const router = useRouter()
+  const { temPermissao } = usePermissoes()
+  const isAdmin = temPermissao('usuarios', 'criar') // só admin tem esta permissão
   const [sol, setSol] = useState<Solicitacao | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [loading, setLoading] = useState(true)
   const [acting, setActing] = useState(false)
   const [showNFForm, setShowNFForm] = useState(false)
@@ -109,6 +113,19 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
     setActing(false)
   }
 
+  async function deletar() {
+    if (!confirmDelete) { setConfirmDelete(true); return }
+    setActing(true)
+    const res = await fetch(`/api/contratos/${id}/fat-direto/solicitacoes/${solId}`, { method: 'DELETE' })
+    if (res.ok) {
+      router.push(`/contratos/${id}/fat-direto`)
+    } else {
+      setErro((await res.json()).error || 'Erro ao deletar')
+      setActing(false)
+      setConfirmDelete(false)
+    }
+  }
+
   if (loading) return (
     <div className="flex flex-col min-h-screen bg-[var(--background)]">
       <Topbar title="Solicitação" />
@@ -138,6 +155,18 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                 <ArrowLeft className="w-4 h-4" /> Faturamento Direto
               </Button>
             </Link>
+            {isAdmin && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={deletar}
+                disabled={acting}
+                className={confirmDelete ? 'text-white bg-red-600 hover:bg-red-700' : 'text-red-400 hover:text-red-300 hover:bg-red-500/10'}
+              >
+                <Trash2 className="w-4 h-4 mr-1" />
+                {confirmDelete ? 'Confirmar exclusão' : 'Deletar'}
+              </Button>
+            )}
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-bold" style={{ color: 'var(--text-1)' }}>SOL-{String(sol.numero).padStart(3, '0')}</h1>
