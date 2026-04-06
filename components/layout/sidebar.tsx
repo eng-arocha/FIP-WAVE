@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, FileText, Building2, CheckSquare, LogOut, X, Users,
-  Pin, PinOff, ChevronDown, FolderOpen, TrendingUp, Receipt, ClipboardList, FileArchive,
+  Pin, PinOff, ChevronDown, FolderOpen, TrendingUp, Receipt, ClipboardList, FileArchive, BookOpen,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePermissoes } from '@/lib/context/permissoes-context'
@@ -26,8 +26,10 @@ const ICON_COLORS: Record<string, { from: string; to: string }> = {
   '/contratos':    { from: '#8B5CF6', to: '#A855F7' },  // purple
   '/aprovacoes':   { from: '#F59E0B', to: '#EF4444' },  // amber → red
   '/empresas':     { from: '#10B981', to: '#059669' },  // green
-  '/usuarios':     { from: '#6366F1', to: '#8B5CF6' },  // indigo → purple
-  'cadastro':      { from: '#64748B', to: '#475569' },  // slate (group)
+  '/usuarios':              { from: '#6366F1', to: '#8B5CF6' },  // indigo → purple
+  '/documentos/faturamento-direto': { from: '#EF4444', to: '#F97316' },  // red → orange
+  'cadastro':               { from: '#64748B', to: '#475569' },  // slate (group)
+  'docs-group':             { from: '#EF4444', to: '#F97316' },  // red → orange (group)
   'cronograma':    { from: '#059669', to: '#10B981' },  // green
   'fat-direto':    { from: '#F59E0B', to: '#FB923C' },  // amber → orange
   'medicoes':      { from: '#6366F1', to: '#3B82F6' },  // indigo → blue
@@ -53,6 +55,7 @@ export function Sidebar({
   const [mobileOpen, setMobileOpen] = useState(false)
   const [cadastroOpen, setCadastroOpen] = useState(false)
   const [contratoOpen, setContratoOpen] = useState(true)
+  const [docsOpen, setDocsOpen] = useState(false)
 
   // Detect if inside a specific contract (extract UUID from pathname)
   const contratoMatch = pathname.match(/^\/contratos\/([a-f0-9-]{36})/)
@@ -70,6 +73,9 @@ export function Sidebar({
     if (pathname.startsWith('/empresas') || pathname.startsWith('/usuarios')) {
       setCadastroOpen(true)
     }
+    if (pathname.startsWith('/documentos')) {
+      setDocsOpen(true)
+    }
   }, [pathname])
 
   const mainItems = [
@@ -83,7 +89,12 @@ export function Sidebar({
     { label: 'Usuários', href: '/usuarios', icon: Users, modulo: 'usuarios' },
   ].filter(item => temPermissao(item.modulo, 'visualizar'))
 
+  const documentosItems = [
+    { label: 'Pedidos FD', href: '/documentos/faturamento-direto', icon: FileArchive, modulo: 'documentos' },
+  ].filter(item => temPermissao(item.modulo, 'visualizar'))
+
   const isCadastroActive = pathname.startsWith('/empresas') || pathname.startsWith('/usuarios')
+  const isDocsActive = pathname.startsWith('/documentos')
 
   // Contract contextual items (shown when inside /contratos/[id])
   const contratoSubItems = contratoId ? [
@@ -325,6 +336,52 @@ export function Sidebar({
             ) : (
               // Icon-only: show cadastro items directly
               cadastroItems.map(item => renderNavLink(item, showText))
+            )}
+          </>
+        )}
+
+        {/* ── Documentos section ── */}
+        {documentosItems.length > 0 && (
+          <>
+            {showText && (
+              <div className="pt-3 pb-1 px-2">
+                <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>
+                  Documentos
+                </span>
+              </div>
+            )}
+            {!showText && <div className="my-2 mx-2 h-px" style={{ background: 'var(--border)' }} />}
+
+            {showText ? (
+              <div>
+                <button
+                  onClick={() => setDocsOpen(v => !v)}
+                  className="w-full flex items-center gap-2.5 px-2 py-2 rounded-xl text-sm font-medium transition-all duration-150"
+                  style={{ color: isDocsActive ? 'var(--text-1)' : 'var(--text-2)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = '' }}
+                >
+                  <span
+                    className="apple-icon flex-shrink-0"
+                    style={{ background: isDocsActive ? 'linear-gradient(135deg, #EF4444, #F97316)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)') }}
+                  >
+                    <BookOpen className="w-3.5 h-3.5" strokeWidth={1.5} style={{ color: isDocsActive ? 'white' : 'var(--text-3)' }} />
+                  </span>
+                  <span className="flex-1 text-left">Documentos</span>
+                  <ChevronDown
+                    className="w-3.5 h-3.5 transition-transform duration-200"
+                    strokeWidth={1.5}
+                    style={{ transform: docsOpen ? '' : 'rotate(-90deg)', color: 'var(--text-3)' }}
+                  />
+                </button>
+                <div className={cn('overflow-hidden transition-all duration-300 ease-in-out', docsOpen ? 'max-h-24 opacity-100' : 'max-h-0 opacity-0')}>
+                  <div className="pt-0.5 ml-3 pl-2" style={{ borderLeft: '1px solid var(--border)' }}>
+                    {documentosItems.map(item => renderNavLink(item, showText, true))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              documentosItems.map(item => renderNavLink(item, showText))
             )}
           </>
         )}
