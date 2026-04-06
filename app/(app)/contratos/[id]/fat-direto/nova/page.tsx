@@ -8,7 +8,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { formatCurrency } from '@/lib/utils'
 import { ArrowLeft, Plus, Trash2, Package, Save, AlertTriangle } from 'lucide-react'
-import { formatCurrency } from '@/lib/utils'
 
 interface Tarefa {
   id: string

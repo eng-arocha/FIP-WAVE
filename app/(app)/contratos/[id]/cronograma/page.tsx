@@ -190,7 +190,7 @@ export default function CronogramaPage({ params }: { params: Promise<{ id: strin
                   />
                   <Tooltip
                     contentStyle={{ background: '#0D1421', border: '1px solid #1E293B', borderRadius: 12, color: '#F1F5F9' }}
-                    formatter={(value: number) => formatCurrency(value)}
+                    formatter={(value: any) => formatCurrency(Number(value))}
                     labelStyle={{ color: '#94A3B8', marginBottom: 4 }}
                   />
                   <Legend

@@ -547,11 +547,11 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                           />
                           <Tooltip
                             contentStyle={chartTooltipStyle}
-                            formatter={(v: any, name: string, props: any) => [
+                            formatter={(v: any, name: any) => [
                               formatCurrency(v),
                               name,
                             ]}
-                            labelFormatter={(label: string, payload: any[]) => {
+                            labelFormatter={(label: any, payload: any) => {
                               const row = payload?.[0]?.payload
                               return row?.nomeFull ? `${label} — ${row.nomeFull.substring(0, 45)}` : label
                             }}
