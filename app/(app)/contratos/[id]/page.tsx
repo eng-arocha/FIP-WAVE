@@ -14,7 +14,7 @@ import {
 } from 'recharts'
 import {
   ArrowLeft, Plus, FileText, Loader2,
-  ChevronRight, Layers, ArrowUpDown, Filter
+  ChevronRight, Layers, ArrowUpDown, Filter, Package, TrendingUp
 } from 'lucide-react'
 import {
   formatCurrency, formatPercent, formatDate,
@@ -225,11 +225,23 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
         title={contrato.numero}
         subtitle={contrato.descricao}
         actions={
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Link href="/contratos">
               <Button variant="outline" size="sm">
                 <ArrowLeft className="w-4 h-4" />
                 Contratos
+              </Button>
+            </Link>
+            <Link href={`/contratos/${id}/cronograma`}>
+              <Button variant="outline" size="sm" className="gap-1.5 border-blue-500/30 text-blue-400 hover:bg-blue-500/10">
+                <TrendingUp className="w-4 h-4" />
+                Cronograma
+              </Button>
+            </Link>
+            <Link href={`/contratos/${id}/fat-direto`}>
+              <Button variant="outline" size="sm" className="gap-1.5 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10">
+                <Package className="w-4 h-4" />
+                Fat. Direto
               </Button>
             </Link>
             <Link href={`/contratos/${id}/medicoes/nova`}>

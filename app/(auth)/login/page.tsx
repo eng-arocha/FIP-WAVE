@@ -2,7 +2,8 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Waves, Lock, Mail, AlertCircle } from 'lucide-react'
+import { Lock, Mail, AlertCircle } from 'lucide-react'
+import Image from 'next/image'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -97,35 +98,26 @@ export default function LoginPage() {
       <div className="w-full max-w-md relative z-10">
         {/* Logo area */}
         <div className="text-center mb-8">
-          <div
-            className="inline-flex items-center gap-3 mb-5 px-5 py-3 rounded-2xl"
-            style={{
-              background: 'rgba(59,130,246,0.10)',
-              border: '1px solid rgba(59,130,246,0.20)',
-            }}
-          >
-            <Waves className="w-7 h-7" style={{ color: '#06B6D4' }} />
-            <span
-              className="text-2xl font-black tracking-widest"
-              style={{
-                background: 'linear-gradient(90deg, #3B82F6, #06B6D4)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-              }}
-            >
-              WAVE
-            </span>
+          <div className="flex justify-center mb-5">
+            <Image
+              src="/logos/Wave - Branco.png"
+              alt="WAVE Beira-Mar"
+              width={200}
+              height={112}
+              priority
+              className="object-contain"
+            />
           </div>
 
           <h1
-            className="text-4xl font-black tracking-tight mb-2"
+            className="text-3xl font-black tracking-tight mb-2"
             style={{
               background: 'linear-gradient(90deg, #3B82F6 0%, #06B6D4 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
             }}
           >
-            FIP-WAVE
+            INSTALAÇÕES - WAVE
           </h1>
           <p className="text-sm" style={{ color: '#94A3B8' }}>
             Gestão de Contratos &amp; Medições
@@ -256,7 +248,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center mt-6 text-xs" style={{ color: '#475569' }}>
-          Acesso restrito · FIP Engenharia © 2025
+          Acesso Restrito © 2025
         </p>
       </div>
     </div>
