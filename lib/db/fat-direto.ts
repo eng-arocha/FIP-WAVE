@@ -270,9 +270,8 @@ export async function listarTarefasParaSolicitacao(contratoId: string) {
   // Detalhamentos (nivel 3) — lista completa para o dropdown
   const { data: dets, error } = await admin
     .from('detalhamentos')
-    .select('id, tarefa_id, codigo, descricao, local, quantidade_contratada, valor_material_unit, valor_total')
+    .select('id, tarefa_id, codigo, descricao, local, quantidade_contratada, valor_material_unit')
     .in('tarefa_id', tarefaIds)
-    .order('codigo')
   if (error) throw error
   const detalhamentos = dets || []
   const detIds = detalhamentos.map((d: any) => d.id)
@@ -296,10 +295,21 @@ export async function listarTarefasParaSolicitacao(contratoId: string) {
     }
   }
 
-  return detalhamentos.map((d: any) => ({
+  // Ordenação natural pelo código (1.1.1 < 1.2.1 < 1.10.1)
+  const sorted = [...detalhamentos].sort((a: any, b: any) => {
+    const partsA = (a.codigo || '').split('.').map(Number)
+    const partsB = (b.codigo || '').split('.').map(Number)
+    for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
+      const diff = (partsA[i] || 0) - (partsB[i] || 0)
+      if (diff !== 0) return diff
+    }
+    return 0
+  })
+
+  return sorted.map((d: any) => ({
     id: d.id,
     codigo: d.codigo,
-    descricao: d.descricao || '',
+    descricao: (d.descricao || '').trim(),
     local: (d.local || 'TORRE').trim().toUpperCase(),
     // valor máximo de material para este detalhamento (nivel 3)
     valor_material: (d.quantidade_contratada || 0) * (d.valor_material_unit || 0),

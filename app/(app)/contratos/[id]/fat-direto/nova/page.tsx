@@ -281,14 +281,24 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
   const [itens, setItens] = useState<ItemForm[]>([
     { detalhamento_id: '', descricao: '', local: '', valor_total: '' },
   ])
+  const [loadingDets, setLoadingDets] = useState(true)
+  const [erroDets, setErroDets] = useState('')
   const [saving, setSaving] = useState(false)
   const [erro, setErro] = useState('')
   const [tetoViolation, setTetoViolation] = useState<any>(null)
 
   useEffect(() => {
+    setLoadingDets(true)
+    setErroDets('')
     fetch(`/api/contratos/${id}/fat-direto/tarefas`)
-      .then(r => r.json())
-      .then(data => setDetalhamentos(Array.isArray(data) ? data : []))
+      .then(async r => {
+        const data = await r.json()
+        if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`)
+        if (!Array.isArray(data)) throw new Error('Resposta inesperada do servidor')
+        setDetalhamentos(data)
+      })
+      .catch(e => setErroDets(e.message))
+      .finally(() => setLoadingDets(false))
   }, [id])
 
   // Sticky banner
@@ -606,7 +616,30 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
         {/* ── Itens da Solicitação ── */}
         <Card style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
           <CardHeader className="pb-3 flex flex-row items-center justify-between">
-            <CardTitle className="text-sm" style={{ color: 'var(--text-1)' }}>Itens da Solicitação</CardTitle>
+            <div>
+              <CardTitle className="text-sm" style={{ color: 'var(--text-1)' }}>Itens da Solicitação</CardTitle>
+              {loadingDets && (
+                <p className="text-xs mt-0.5 flex items-center gap-1" style={{ color: 'var(--text-3)' }}>
+                  <span className="inline-block w-2.5 h-2.5 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
+                  Carregando disciplinas...
+                </p>
+              )}
+              {!loadingDets && erroDets && (
+                <p className="text-xs mt-0.5" style={{ color: 'var(--red)' }}>
+                  ⚠ Erro ao carregar disciplinas: {erroDets}
+                </p>
+              )}
+              {!loadingDets && !erroDets && detalhamentos.length === 0 && (
+                <p className="text-xs mt-0.5" style={{ color: 'var(--amber, #F59E0B)' }}>
+                  Nenhum detalhamento encontrado para este contrato
+                </p>
+              )}
+              {!loadingDets && !erroDets && detalhamentos.length > 0 && (
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>
+                  {detalhamentos.length} disciplinas disponíveis
+                </p>
+              )}
+            </div>
             <Button onClick={addItem} size="sm" variant="ghost" className="gap-1" style={{ color: 'var(--accent)' }}>
               <Plus className="w-3.5 h-3.5" strokeWidth={1.5} /> Adicionar Item
             </Button>
