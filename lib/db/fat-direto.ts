@@ -270,7 +270,7 @@ export async function listarTarefasParaSolicitacao(contratoId: string) {
   // Detalhamentos (nivel 3) — lista completa para o dropdown
   const { data: dets, error } = await admin
     .from('detalhamentos')
-    .select('id, tarefa_id, codigo, descricao, local, quantidade_contratada, valor_material_unit')
+    .select('id, tarefa_id, codigo, descricao, local, quantidade_contratada, valor_unitario, valor_total, valor_material_unit')
     .in('tarefa_id', tarefaIds)
   if (error) throw error
   const detalhamentos = dets || []
@@ -307,7 +307,10 @@ export async function listarTarefasParaSolicitacao(contratoId: string) {
   })
 
   return sorted.map((d: any) => {
-    const valorMaterial = (d.quantidade_contratada || 0) * (d.valor_material_unit || 0)
+    // Prefer generated column valor_total (qty × valor_unitario, exists since migration 001)
+    // Fallback to qty × valor_material_unit (migration 011) or qty × valor_unitario
+    const valorMaterial = d.valor_total
+      || (d.quantidade_contratada || 0) * (d.valor_material_unit || d.valor_unitario || 0)
     return {
       id: d.id,
       codigo: d.codigo,
