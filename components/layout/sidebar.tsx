@@ -68,7 +68,7 @@ export function Sidebar({ perfilAtual, nomeAtual }: SidebarProps) {
         {/* Logo */}
         <div className="px-4 pt-6 pb-4 border-b border-[#1E293B] flex items-center justify-center">
           <Image
-            src="/logos/Wave - Branco.png"
+            src="/logos/wave-branco.png"
             alt="WAVE Beira-Mar"
             width={160}
             height={90}

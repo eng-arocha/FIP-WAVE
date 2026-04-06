@@ -100,7 +100,7 @@ export default function LoginPage() {
         <div className="text-center mb-8">
           <div className="flex justify-center mb-5">
             <Image
-              src="/logos/Wave - Branco.png"
+              src="/logos/wave-branco.png"
               alt="WAVE Beira-Mar"
               width={200}
               height={112}
