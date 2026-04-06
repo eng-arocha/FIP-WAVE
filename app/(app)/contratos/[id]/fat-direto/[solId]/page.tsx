@@ -110,16 +110,16 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
   }
 
   if (loading) return (
-    <div className="flex flex-col min-h-screen bg-[#080C14]">
+    <div className="flex flex-col min-h-screen bg-[var(--background)]">
       <Topbar title="Solicitação" />
-      <div className="flex-1 flex items-center justify-center text-[#475569]">Carregando...</div>
+      <div className="flex-1 flex items-center justify-center text-[var(--text-3)]">Carregando...</div>
     </div>
   )
 
   if (!sol) return (
-    <div className="flex flex-col min-h-screen bg-[#080C14]">
+    <div className="flex flex-col min-h-screen bg-[var(--background)]">
       <Topbar title="Solicitação" />
-      <div className="flex-1 flex items-center justify-center text-[#475569]">Solicitação não encontrada</div>
+      <div className="flex-1 flex items-center justify-center text-[var(--text-3)]">Solicitação não encontrada</div>
     </div>
   )
 
@@ -127,14 +127,14 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
   const totalNF = (sol.notas_fiscais || []).reduce((s, n) => s + n.valor, 0)
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#080C14]">
+    <div className="flex flex-col min-h-screen bg-[var(--background)]">
       <Topbar title={`SOL-${String(sol.numero).padStart(3, '0')}`} />
       <div className="flex-1 p-6 space-y-6 max-w-4xl mx-auto w-full">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link href={`/contratos/${id}/fat-direto`}>
-              <Button variant="ghost" size="sm" className="text-[#475569] hover:text-white gap-2">
+              <Button variant="ghost" size="sm" className="text-[var(--text-3)] hover:text-white gap-2">
                 <ArrowLeft className="w-4 h-4" /> Faturamento Direto
               </Button>
             </Link>
@@ -148,26 +148,26 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                   {STATUS_LABELS[sol.status]}
                 </span>
               </div>
-              <p className="text-sm text-[#475569]">
+              <p className="text-sm text-[var(--text-3)]">
                 Solicitado por {sol.solicitante?.nome} em {formatDate(sol.data_solicitacao)}
               </p>
             </div>
           </div>
           <div className="text-right">
-            <p className="text-xs text-[#475569] uppercase tracking-wide">Valor Total</p>
+            <p className="text-xs text-[var(--text-3)] uppercase tracking-wide">Valor Total</p>
             <p className="text-2xl font-black text-white">{formatCurrency(sol.valor_total)}</p>
           </div>
         </div>
 
         {/* Supplier info */}
         {sol.fornecedor_razao_social && (
-          <Card style={{ background: '#0D1421', border: '1px solid #1E293B' }}>
+          <Card style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             <CardContent className="pt-4 pb-4">
-              <p className="text-xs text-[#475569] uppercase tracking-wide font-medium mb-2">Dados do Fornecedor</p>
+              <p className="text-xs text-[var(--text-3)] uppercase tracking-wide font-medium mb-2">Dados do Fornecedor</p>
               <div className="grid grid-cols-3 gap-3 text-sm">
-                <div><span className="text-[#475569] text-xs">Razão Social</span><p className="text-[#F1F5F9] font-medium">{sol.fornecedor_razao_social}</p></div>
-                {sol.fornecedor_cnpj && <div><span className="text-[#475569] text-xs">CNPJ</span><p className="text-[#94A3B8]">{sol.fornecedor_cnpj}</p></div>}
-                {sol.fornecedor_contato && <div><span className="text-[#475569] text-xs">Contato</span><p className="text-[#94A3B8]">{sol.fornecedor_contato}</p></div>}
+                <div><span className="text-[var(--text-3)] text-xs">Razão Social</span><p className="text-[var(--text-1)] font-medium">{sol.fornecedor_razao_social}</p></div>
+                {sol.fornecedor_cnpj && <div><span className="text-[var(--text-3)] text-xs">CNPJ</span><p className="text-[var(--text-2)]">{sol.fornecedor_cnpj}</p></div>}
+                {sol.fornecedor_contato && <div><span className="text-[var(--text-3)] text-xs">Contato</span><p className="text-[var(--text-2)]">{sol.fornecedor_contato}</p></div>}
               </div>
             </CardContent>
           </Card>
@@ -181,7 +181,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
 
         {/* Approval actions */}
         {sol.status === 'aguardando_aprovacao' && (
-          <Card style={{ background: '#0D1421', border: '1px solid #F59E0B40' }}>
+          <Card style={{ background: 'var(--surface-1)', border: '1px solid #F59E0B40' }}>
             <CardContent className="pt-4 pb-4">
               <p className="text-sm text-[#F59E0B] font-semibold mb-3">Ação de Aprovação WAVE</p>
               <div className="space-y-2">
@@ -208,7 +208,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                   onChange={e => setMotivo(e.target.value)}
                   placeholder="Motivo da rejeição (obrigatório para rejeitar)..."
                   className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-                  style={{ background: '#080C14', border: '1px solid #1E293B', color: '#F1F5F9' }}
+                  style={{ background: 'var(--background)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
                 />
               </div>
             </CardContent>
@@ -217,16 +217,16 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
 
         {/* Rejection reason */}
         {sol.status === 'rejeitado' && sol.motivo_rejeicao && (
-          <Card style={{ background: '#0D1421', border: '1px solid rgba(239,68,68,0.3)' }}>
+          <Card style={{ background: 'var(--surface-1)', border: '1px solid rgba(239,68,68,0.3)' }}>
             <CardContent className="pt-4 pb-4">
               <p className="text-xs text-red-400 font-semibold uppercase tracking-wide mb-1">Motivo da Rejeição</p>
-              <p className="text-sm text-[#94A3B8]">{sol.motivo_rejeicao}</p>
+              <p className="text-sm text-[var(--text-2)]">{sol.motivo_rejeicao}</p>
             </CardContent>
           </Card>
         )}
 
         {/* Items */}
-        <Card style={{ background: '#0D1421', border: '1px solid #1E293B' }}>
+        <Card style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <CardHeader className="pb-3">
             <CardTitle className="text-white text-sm">Itens Solicitados</CardTitle>
           </CardHeader>
@@ -236,7 +236,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                 <div key={item.id} className="px-5 py-3 flex items-center justify-between">
                   <div>
                     <p className="text-sm text-white font-medium">{item.descricao}</p>
-                    <p className="text-xs text-[#475569] mt-0.5">
+                    <p className="text-xs text-[var(--text-3)] mt-0.5">
                       {item.tarefa?.codigo} · Local: {item.local} · Qtde: {item.qtde_solicitada}
                       {' · '}{formatCurrency(item.valor_unitario)}/un
                     </p>
@@ -249,7 +249,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
         </Card>
 
         {/* Notas Fiscais */}
-        <Card style={{ background: '#0D1421', border: '1px solid #1E293B' }}>
+        <Card style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <CardHeader className="pb-3 flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-white text-sm">Notas Fiscais</CardTitle>
@@ -268,8 +268,8 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
           </CardHeader>
           <CardContent>
             {showNFForm && (
-              <div className="mb-4 p-4 rounded-xl space-y-3" style={{ background: '#080C14', border: '1px solid #1E293B' }}>
-                <p className="text-xs text-[#475569] font-semibold uppercase tracking-wide">Nova Nota Fiscal</p>
+              <div className="mb-4 p-4 rounded-xl space-y-3" style={{ background: 'var(--background)', border: '1px solid var(--border)' }}>
+                <p className="text-xs text-[var(--text-3)] font-semibold uppercase tracking-wide">Nova Nota Fiscal</p>
                 <div className="grid grid-cols-2 gap-3">
                   {[
                     { label: 'Número NF', key: 'numero_nf', type: 'text' },
@@ -280,13 +280,13 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                     { label: 'Descrição', key: 'descricao', type: 'text' },
                   ].map(f => (
                     <div key={f.key}>
-                      <label className="block text-xs text-[#475569] mb-1">{f.label}</label>
+                      <label className="block text-xs text-[var(--text-3)] mb-1">{f.label}</label>
                       <input
                         type={f.type}
                         value={(nfForm as any)[f.key]}
                         onChange={e => setNfForm(prev => ({ ...prev, [f.key]: e.target.value }))}
                         className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-                        style={{ background: '#0D1421', border: '1px solid #1E293B', color: '#F1F5F9' }}
+                        style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
                       />
                     </div>
                   ))}
@@ -295,7 +295,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                   <Button onClick={registrarNF} disabled={acting} size="sm" className="bg-blue-600 hover:bg-blue-500 text-white">
                     Registrar NF
                   </Button>
-                  <Button onClick={() => setShowNFForm(false)} size="sm" variant="ghost" className="text-[#475569]">
+                  <Button onClick={() => setShowNFForm(false)} size="sm" variant="ghost" className="text-[var(--text-3)]">
                     Cancelar
                   </Button>
                 </div>
@@ -303,7 +303,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
             )}
 
             {(sol.notas_fiscais || []).length === 0 ? (
-              <div className="text-center py-6 text-[#475569] text-sm">
+              <div className="text-center py-6 text-[var(--text-3)] text-sm">
                 <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
                 Nenhuma nota fiscal registrada
               </div>
@@ -313,7 +313,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                   <div key={nf.id} className="px-5 py-3 flex items-center justify-between">
                     <div>
                       <p className="text-sm text-white font-medium">NF {nf.numero_nf}</p>
-                      <p className="text-xs text-[#475569]">{nf.emitente} · {formatDate(nf.data_emissao)}</p>
+                      <p className="text-xs text-[var(--text-3)]">{nf.emitente} · {formatDate(nf.data_emissao)}</p>
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-bold text-white">{formatCurrency(nf.valor)}</p>

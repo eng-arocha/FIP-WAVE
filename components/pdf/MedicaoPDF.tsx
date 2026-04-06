@@ -9,7 +9,7 @@ const styles = StyleSheet.create({
   docTitle: { fontSize: 14, fontFamily: 'Helvetica-Bold', color: '#1e3a8a' },
   docNum: { fontSize: 10, color: '#64748b', marginTop: 2 },
   section: { marginBottom: 16 },
-  sectionTitle: { fontSize: 9, fontFamily: 'Helvetica-Bold', color: '#475569', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 },
+  sectionTitle: { fontSize: 9, fontFamily: 'Helvetica-Bold', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 },
   infoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   infoItem: { width: '48%', marginBottom: 6 },
   infoLabel: { fontSize: 7, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -164,7 +164,7 @@ export function MedicaoPDF({ medicao, itens, aprovacoes }: MedicaoPDFProps) {
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#334155' }}>{a.aprovador_nome}</Text>
                   <Text style={{ fontSize: 7, color: '#64748b' }}>{a.acao} · {formatDatePDF(a.created_at)}</Text>
-                  {a.comentario && <Text style={{ fontSize: 7, color: '#475569', marginTop: 2 }}>{a.comentario}</Text>}
+                  {a.comentario && <Text style={{ fontSize: 7, color: 'var(--text-3)', marginTop: 2 }}>{a.comentario}</Text>}
                 </View>
               </View>
             ))}

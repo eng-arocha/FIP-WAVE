@@ -1,7 +1,34 @@
 @import "tailwindcss";
 
-/* ── Design system tokens ─────────────────────────────────── */
+/* ═══════════════════════════════════════════════════
+   DESIGN TOKENS — Light mode (default)
+   ═══════════════════════════════════════════════════ */
 :root {
+  --background:    #F5F5F7;
+  --surface-1:     #FAFAFA;
+  --surface-2:     #FFFFFF;
+  --surface-3:     #F0F0F5;
+  --border:        #D2D2D7;
+  --border-hover:  #C7C7CC;
+  --accent:        #0071E3;
+  --accent-glow:   #34AADC;
+  --green:         #1C9E4E;
+  --amber:         #C77A00;
+  --red:           #D93025;
+  --text-1:        #1D1D1F;
+  --text-2:        #4A4A4F;
+  --text-3:        #6E6E73;
+  --sidebar-bg:    #FFFFFF;
+  --sidebar-border:#E8E8ED;
+  --topbar-bg:     rgba(255,255,255,0.85);
+  --input-bg:      #FFFFFF;
+  --badge-bg:      #F0F0F5;
+}
+
+/* ═══════════════════════════════════════════════════
+   DESIGN TOKENS — Dark mode
+   ═══════════════════════════════════════════════════ */
+.dark {
   --background:    #080C14;
   --surface-1:     #0D1421;
   --surface-2:     #111827;
@@ -16,9 +43,16 @@
   --text-1:        #F1F5F9;
   --text-2:        #94A3B8;
   --text-3:        #475569;
+  --sidebar-bg:    #080C14;
+  --sidebar-border:#1E293B;
+  --topbar-bg:     rgba(10,15,26,0.90);
+  --input-bg:      #111827;
+  --badge-bg:      #1a2236;
 }
 
-/* ── Tailwind v4 theme extension ──────────────────────────── */
+/* ═══════════════════════════════════════════════════
+   Tailwind v4 theme mapping
+   ═══════════════════════════════════════════════════ */
 @theme inline {
   --color-background:   var(--background);
   --color-foreground:   var(--text-1);
@@ -36,61 +70,126 @@
   --color-text-2:       var(--text-2);
   --color-text-3:       var(--text-3);
 
-  /* Animations */
   --animate-pulse-glow: pulse-glow 2s ease-in-out infinite;
   --animate-shimmer:    shimmer 2.5s linear infinite;
   --animate-count-up:   count-up 0.4s ease-out both;
 }
 
-/* ── Base ─────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════
+   Base
+   ═══════════════════════════════════════════════════ */
 body {
-  background: #080C14;
-  color: #F1F5F9;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--background);
+  color: var(--text-1);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background 0.25s ease, color 0.25s ease;
 }
 
-/* ── Scrollbar ────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════
+   Scrollbar
+   ═══════════════════════════════════════════════════ */
 ::-webkit-scrollbar          { width: 5px; height: 5px; }
-::-webkit-scrollbar-track    { background: #0D1421; }
-::-webkit-scrollbar-thumb    { background: #1E293B; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #2d3f5c; }
+::-webkit-scrollbar-track    { background: var(--surface-1); }
+::-webkit-scrollbar-thumb    { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
 
-/* ── Glassmorphism card ───────────────────────────────────── */
+/* ═══════════════════════════════════════════════════
+   Glass card
+   ═══════════════════════════════════════════════════ */
 .glass {
-  background: rgba(17, 24, 39, 0.60);
+  background: var(--surface-2);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid #1E293B;
+  border: 1px solid var(--border);
   border-radius: 0.75rem;
 }
 
-/* ── Glow helpers ─────────────────────────────────────────── */
-.glow-blue {
-  box-shadow: 0 0 18px rgba(59, 130, 246, 0.35), 0 0 40px rgba(59, 130, 246, 0.12);
-}
+/* ═══════════════════════════════════════════════════
+   Glow helpers
+   ═══════════════════════════════════════════════════ */
+.glow-blue  { box-shadow: 0 0 18px rgba(59,130,246,0.35), 0 0 40px rgba(59,130,246,0.12); }
+.glow-green { box-shadow: 0 0 18px rgba(16,185,129,0.35), 0 0 40px rgba(16,185,129,0.12); }
 
-.glow-green {
-  box-shadow: 0 0 18px rgba(16, 185, 129, 0.35), 0 0 40px rgba(16, 185, 129, 0.12);
-}
-
-/* ── Gradient text ────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════
+   Gradient text
+   ═══════════════════════════════════════════════════ */
 .gradient-text {
-  background: linear-gradient(90deg, #3B82F6, #06B6D4);
+  background: linear-gradient(90deg, var(--accent), var(--accent-glow));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-/* ── Keyframes ────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════
+   Theme-aware utility classes
+   ═══════════════════════════════════════════════════ */
+.theme-page {
+  background: var(--background);
+  color: var(--text-1);
+  min-height: 100%;
+}
+
+.theme-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.theme-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+.theme-surface {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.theme-input {
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  color: var(--text-1);
+  border-radius: 0.75rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.theme-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+  outline: none;
+}
+
+.theme-input::placeholder { color: var(--text-3); }
+
+/* Light mode card shadows (Apple style) */
+:root .theme-card {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+}
+:root .theme-card:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.10), 0 2px 4px rgba(0,0,0,0.06);
+}
+
+/* ═══════════════════════════════════════════════════
+   Apple-style icon container
+   ═══════════════════════════════════════════════════ */
+.apple-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════
+   Keyframes
+   ═══════════════════════════════════════════════════ */
 @keyframes pulse-glow {
-  0%, 100% {
-    opacity: 1;
-    box-shadow: 0 0 6px rgba(16, 185, 129, 0.8);
-  }
-  50% {
-    opacity: 0.6;
-    box-shadow: 0 0 14px rgba(16, 185, 129, 0.4);
-  }
+  0%, 100% { opacity: 1;   box-shadow: 0 0 6px rgba(16,185,129,0.8); }
+  50%       { opacity: 0.6; box-shadow: 0 0 14px rgba(16,185,129,0.4); }
 }
 
 @keyframes count-up {
@@ -101,4 +200,13 @@ body {
 @keyframes shimmer {
   0%   { background-position: -200% center; }
   100% { background-position:  200% center; }
+}
+
+@keyframes theme-fade {
+  from { opacity: 0.7; }
+  to   { opacity: 1; }
+}
+
+.theme-transition * {
+  transition: background-color 0.25s ease, border-color 0.25s ease, color 0.2s ease !important;
 }

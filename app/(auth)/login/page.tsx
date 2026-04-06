@@ -27,7 +27,7 @@ export default function LoginPage() {
     <div
       className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
       style={{
-        background: 'linear-gradient(135deg, #080C14 0%, #0D1421 50%, #080C14 100%)',
+        background: 'linear-gradient(135deg, var(--background) 0%, var(--surface-1) 50%, var(--background) 100%)',
       }}
     >
       {/* Grid overlay */}
@@ -119,7 +119,7 @@ export default function LoginPage() {
           >
             INSTALAÇÕES - WAVE
           </h1>
-          <p className="text-sm" style={{ color: '#94A3B8' }}>
+          <p className="text-sm" style={{ color: 'var(--text-2)' }}>
             Gestão de Contratos &amp; Medições
           </p>
         </div>
@@ -130,7 +130,7 @@ export default function LoginPage() {
           style={{
             background: 'rgba(17,24,39,0.80)',
             backdropFilter: 'blur(24px)',
-            border: '1px solid #1E293B',
+            border: '1px solid var(--border)',
             boxShadow: '0 25px 50px rgba(0,0,0,0.5), 0 0 0 1px rgba(59,130,246,0.05) inset',
           }}
         >
@@ -144,7 +144,7 @@ export default function LoginPage() {
                   color: '#FCA5A5',
                 }}
               >
-                <AlertCircle className="w-4 h-4 flex-shrink-0" style={{ color: '#EF4444' }} />
+                <AlertCircle className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--red)' }} />
                 {erro}
               </div>
             )}
@@ -153,14 +153,14 @@ export default function LoginPage() {
               <label
                 htmlFor="email"
                 className="block text-xs font-semibold uppercase tracking-wider"
-                style={{ color: '#94A3B8' }}
+                style={{ color: 'var(--text-2)' }}
               >
                 E-mail
               </label>
               <div className="relative">
                 <Mail
                   className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4"
-                  style={{ color: '#475569' }}
+                  style={{ color: 'var(--text-3)' }}
                 />
                 <input
                   id="email"
@@ -171,12 +171,12 @@ export default function LoginPage() {
                   required
                   className="w-full pl-10 pr-4 py-3 rounded-xl text-sm outline-none transition-all"
                   style={{
-                    background: '#0D1421',
-                    border: '1px solid #1E293B',
-                    color: '#F1F5F9',
+                    background: 'var(--surface-1)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text-1)',
                   }}
                   onFocus={e => { e.currentTarget.style.borderColor = '#3B82F6'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.10)' }}
-                  onBlur={e => { e.currentTarget.style.borderColor = '#1E293B'; e.currentTarget.style.boxShadow = 'none' }}
+                  onBlur={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = 'none' }}
                 />
               </div>
             </div>
@@ -185,14 +185,14 @@ export default function LoginPage() {
               <label
                 htmlFor="senha"
                 className="block text-xs font-semibold uppercase tracking-wider"
-                style={{ color: '#94A3B8' }}
+                style={{ color: 'var(--text-2)' }}
               >
                 Senha
               </label>
               <div className="relative">
                 <Lock
                   className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4"
-                  style={{ color: '#475569' }}
+                  style={{ color: 'var(--text-3)' }}
                 />
                 <input
                   id="senha"
@@ -203,12 +203,12 @@ export default function LoginPage() {
                   required
                   className="w-full pl-10 pr-4 py-3 rounded-xl text-sm outline-none transition-all"
                   style={{
-                    background: '#0D1421',
-                    border: '1px solid #1E293B',
-                    color: '#F1F5F9',
+                    background: 'var(--surface-1)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text-1)',
                   }}
                   onFocus={e => { e.currentTarget.style.borderColor = '#3B82F6'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.10)' }}
-                  onBlur={e => { e.currentTarget.style.borderColor = '#1E293B'; e.currentTarget.style.boxShadow = 'none' }}
+                  onBlur={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = 'none' }}
                 />
               </div>
             </div>
@@ -247,7 +247,7 @@ export default function LoginPage() {
           </form>
         </div>
 
-        <p className="text-center mt-6 text-xs" style={{ color: '#475569' }}>
+        <p className="text-center mt-6 text-xs" style={{ color: 'var(--text-3)' }}>
           Acesso Restrito © 2025
         </p>
       </div>

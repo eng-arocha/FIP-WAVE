@@ -51,9 +51,9 @@ function periodoToMesLabel(periodo: string): string {
 
 const chartTooltipStyle = {
   backgroundColor: '#0D1421',
-  border: '1px solid #1E293B',
+  border: '1px solid var(--border)',
   borderRadius: '8px',
-  color: '#F1F5F9',
+  color: 'var(--text-1)',
   fontSize: 12,
 }
 
@@ -216,14 +216,14 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center" style={{ background: '#080C14' }}>
+      <div className="flex-1 flex items-center justify-center" style={{ background: 'var(--background)' }}>
         <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#3B82F6' }} />
       </div>
     )
   }
 
   return (
-    <div className="flex-1 overflow-auto" style={{ background: '#080C14' }}>
+    <div className="flex-1 overflow-auto" style={{ background: 'var(--background)' }}>
       <Topbar
         title="Dashboard Geral"
         subtitle={
@@ -255,8 +255,8 @@ export default function DashboardPage() {
           <div
             className="rounded-xl p-5 transition-all duration-200 cursor-default"
             style={{
-              background: '#111827',
-              border: '1px solid #1E293B',
+              background: 'var(--surface-2)',
+              border: '1px solid var(--border)',
               borderBottom: '2px solid rgba(59,130,246,0.40)',
             }}
             onMouseEnter={e => (e.currentTarget.style.borderColor = '#2d3f5c')}
@@ -264,13 +264,13 @@ export default function DashboardPage() {
           >
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#475569' }}>
+                <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>
                   Total Contratado
                 </p>
-                <p className="text-2xl font-bold" style={{ color: '#F1F5F9' }}>
+                <p className="text-2xl font-bold" style={{ color: 'var(--text-1)' }}>
                   {formatCurrency(totalContratado)}
                 </p>
-                <p className="text-xs mt-1" style={{ color: '#475569' }}>
+                <p className="text-xs mt-1" style={{ color: 'var(--text-3)' }}>
                   {Math.round(animatedTotalContratos)} contrato(s) ativo(s)
                 </p>
               </div>
@@ -287,8 +287,8 @@ export default function DashboardPage() {
           <div
             className="rounded-xl p-5 transition-all duration-200 cursor-default"
             style={{
-              background: '#111827',
-              border: '1px solid #1E293B',
+              background: 'var(--surface-2)',
+              border: '1px solid var(--border)',
               borderBottom: '2px solid rgba(16,185,129,0.40)',
             }}
             onMouseEnter={e => (e.currentTarget.style.borderColor = '#2d3f5c')}
@@ -296,13 +296,13 @@ export default function DashboardPage() {
           >
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#475569' }}>
+                <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>
                   Total Medido
                 </p>
-                <p className="text-2xl font-bold" style={{ color: '#10B981' }}>
+                <p className="text-2xl font-bold" style={{ color: 'var(--green)' }}>
                   {formatCurrency(animatedTotalMedido)}
                 </p>
-                <p className="text-xs mt-1" style={{ color: '#475569' }}>
+                <p className="text-xs mt-1" style={{ color: 'var(--text-3)' }}>
                   {totalContratado > 0 ? formatPercent(totalMedido / totalContratado * 100) : '0%'} do total
                 </p>
               </div>
@@ -310,7 +310,7 @@ export default function DashboardPage() {
                 className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
                 style={{ background: 'rgba(16,185,129,0.15)' }}
               >
-                <TrendingUp className="w-5 h-5" style={{ color: '#10B981' }} />
+                <TrendingUp className="w-5 h-5" style={{ color: 'var(--green)' }} />
               </div>
             </div>
           </div>
@@ -319,8 +319,8 @@ export default function DashboardPage() {
           <div
             className="rounded-xl p-5 transition-all duration-200 cursor-default"
             style={{
-              background: '#111827',
-              border: '1px solid #1E293B',
+              background: 'var(--surface-2)',
+              border: '1px solid var(--border)',
               borderBottom: '2px solid rgba(71,85,105,0.60)',
             }}
             onMouseEnter={e => (e.currentTarget.style.borderColor = '#2d3f5c')}
@@ -328,13 +328,13 @@ export default function DashboardPage() {
           >
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#475569' }}>
+                <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>
                   Saldo Restante
                 </p>
-                <p className="text-2xl font-bold" style={{ color: '#F1F5F9' }}>
+                <p className="text-2xl font-bold" style={{ color: 'var(--text-1)' }}>
                   {formatCurrency(totalSaldo)}
                 </p>
-                <p className="text-xs mt-1" style={{ color: '#475569' }}>
+                <p className="text-xs mt-1" style={{ color: 'var(--text-3)' }}>
                   {totalContratado > 0 ? formatPercent(totalSaldo / totalContratado * 100) : '0%'} do total
                 </p>
               </div>
@@ -342,7 +342,7 @@ export default function DashboardPage() {
                 className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
                 style={{ background: 'rgba(71,85,105,0.20)' }}
               >
-                <DollarSign className="w-5 h-5" style={{ color: '#94A3B8' }} />
+                <DollarSign className="w-5 h-5" style={{ color: 'var(--text-2)' }} />
               </div>
             </div>
           </div>
@@ -351,14 +351,14 @@ export default function DashboardPage() {
           <div
             className="rounded-xl p-5 transition-all duration-200 cursor-default"
             style={{
-              background: '#111827',
+              background: 'var(--surface-2)',
               border: `1px solid ${pendentesAprovacao > 0 ? 'rgba(245,158,11,0.30)' : '#1E293B'}`,
               borderBottom: `2px solid ${pendentesAprovacao > 0 ? 'rgba(245,158,11,0.50)' : 'rgba(71,85,105,0.40)'}`,
             }}
           >
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#475569' }}>
+                <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>
                   Aguard. Aprovação
                 </p>
                 <p
@@ -382,9 +382,9 @@ export default function DashboardPage() {
                 }}
               >
                 {pendentesAprovacao > 0 ? (
-                  <AlertCircle className="w-5 h-5" style={{ color: '#F59E0B' }} />
+                  <AlertCircle className="w-5 h-5" style={{ color: 'var(--amber)' }} />
                 ) : (
-                  <CheckCircle2 className="w-5 h-5" style={{ color: '#475569' }} />
+                  <CheckCircle2 className="w-5 h-5" style={{ color: 'var(--text-3)' }} />
                 )}
               </div>
             </div>
@@ -414,14 +414,14 @@ export default function DashboardPage() {
           {/* Curva S */}
           <div
             className="rounded-xl overflow-hidden"
-            style={{ background: '#111827', border: '1px solid #1E293B' }}
+            style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
           >
             <div className="px-5 pt-5 pb-3">
-              <h3 className="text-sm font-semibold" style={{ color: '#F1F5F9' }}>
+              <h3 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
                 Curva S — Avanço Físico-Financeiro Acumulado (%)
               </h3>
             </div>
-            <div className="px-4 pb-5" style={{ background: '#0D1421', margin: '0 12px 12px', borderRadius: '10px' }}>
+            <div className="px-4 pb-5" style={{ background: 'var(--surface-1)', margin: '0 12px 12px', borderRadius: '10px' }}>
               <ResponsiveContainer width="100%" height={260}>
                 <AreaChart data={curvaSData} margin={{ top: 12, right: 10, left: 0, bottom: 5 }}>
                   <defs>
@@ -454,7 +454,7 @@ export default function DashboardPage() {
                   />
                   <Legend
                     iconSize={10}
-                    wrapperStyle={{ fontSize: 11, color: '#94A3B8' }}
+                    wrapperStyle={{ fontSize: 11, color: 'var(--text-2)' }}
                   />
                   <Area
                     type="monotone"
@@ -482,19 +482,19 @@ export default function DashboardPage() {
           {/* Acompanhamento Medição Serviço */}
           <div
             className="rounded-xl overflow-hidden"
-            style={{ background: '#111827', border: '1px solid #1E293B' }}
+            style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
           >
             {/* Cabeçalho + filtros */}
             <div className="px-5 pt-5 pb-4" style={{ borderBottom: '1px solid #1E293B' }}>
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold" style={{ color: '#F1F5F9' }}>
+                <h3 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
                   Acompanhamento Medição Serviço
                 </h3>
                 {(filtroN1 || filtroN2 || filtroN3) && (
                   <button
                     onClick={() => { setFiltroN1(''); setFiltroN2(''); setFiltroN3('') }}
                     className="text-xs px-2.5 py-1 rounded-lg transition-colors"
-                    style={{ color: '#94A3B8', border: '1px solid #1E293B' }}
+                    style={{ color: 'var(--text-2)', border: '1px solid var(--border)' }}
                     onMouseEnter={e => { e.currentTarget.style.color = '#F1F5F9'; e.currentTarget.style.borderColor = '#3B82F6' }}
                     onMouseLeave={e => { e.currentTarget.style.color = '#94A3B8'; e.currentTarget.style.borderColor = '#1E293B' }}
                   >
@@ -510,7 +510,7 @@ export default function DashboardPage() {
                   onChange={e => { setFiltroN1(e.target.value); setFiltroN2(''); setFiltroN3('') }}
                   className="text-xs rounded-lg px-2.5 py-1.5 w-full"
                   style={{
-                    background: '#0D1421',
+                    background: 'var(--surface-1)',
                     border: `1px solid ${filtroN1 ? '#3B82F6' : '#1E293B'}`,
                     color: filtroN1 ? '#F1F5F9' : '#475569',
                     outline: 'none',
@@ -529,7 +529,7 @@ export default function DashboardPage() {
                   disabled={!filtroN1}
                   className="text-xs rounded-lg px-2.5 py-1.5 w-full"
                   style={{
-                    background: '#0D1421',
+                    background: 'var(--surface-1)',
                     border: `1px solid ${filtroN2 ? '#3B82F6' : '#1E293B'}`,
                     color: !filtroN1 ? '#2d3f5c' : filtroN2 ? '#F1F5F9' : '#475569',
                     outline: 'none',
@@ -549,7 +549,7 @@ export default function DashboardPage() {
                   disabled={!filtroN2}
                   className="text-xs rounded-lg px-2.5 py-1.5 w-full"
                   style={{
-                    background: '#0D1421',
+                    background: 'var(--surface-1)',
                     border: `1px solid ${filtroN3 ? '#3B82F6' : '#1E293B'}`,
                     color: !filtroN2 ? '#2d3f5c' : filtroN3 ? '#F1F5F9' : '#475569',
                     outline: 'none',
@@ -565,7 +565,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Gráfico */}
-            <div className="px-4 pb-5 pt-3" style={{ background: '#0D1421', margin: '0 12px 12px', borderRadius: '10px' }}>
+            <div className="px-4 pb-5 pt-3" style={{ background: 'var(--surface-1)', margin: '0 12px 12px', borderRadius: '10px' }}>
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={chartAcompData} layout="vertical" margin={{ top: 8, right: 20, left: 10, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" horizontal={false} />
@@ -590,7 +590,7 @@ export default function DashboardPage() {
                   />
                   <Legend
                     iconSize={10}
-                    wrapperStyle={{ fontSize: 11, color: '#94A3B8' }}
+                    wrapperStyle={{ fontSize: 11, color: 'var(--text-2)' }}
                   />
                   <Bar dataKey="contratado" name="Contratado" fill="#1E293B" radius={[0, 3, 3, 0]} />
                   <Bar dataKey="medido" name="Medido" fill="#3B82F6" radius={[0, 3, 3, 0]} />
@@ -605,14 +605,14 @@ export default function DashboardPage() {
           {/* Contratos */}
           <div
             className="rounded-xl overflow-hidden"
-            style={{ background: '#111827', border: '1px solid #1E293B' }}
+            style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
           >
             <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid #1E293B' }}>
-              <h3 className="text-sm font-semibold" style={{ color: '#F1F5F9' }}>Contratos Ativos</h3>
+              <h3 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>Contratos Ativos</h3>
               <Link href="/contratos">
                 <button
                   className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg transition-colors"
-                  style={{ color: '#94A3B8' }}
+                  style={{ color: 'var(--text-2)' }}
                   onMouseEnter={e => { e.currentTarget.style.color = '#F1F5F9'; e.currentTarget.style.background = '#1a2236' }}
                   onMouseLeave={e => { e.currentTarget.style.color = '#94A3B8'; e.currentTarget.style.background = 'transparent' }}
                 >
@@ -626,8 +626,8 @@ export default function DashboardPage() {
                   <div
                     className="p-3 rounded-xl transition-all duration-150 cursor-pointer"
                     style={{
-                      background: '#0D1421',
-                      border: '1px solid #1E293B',
+                      background: 'var(--surface-1)',
+                      border: '1px solid var(--border)',
                     }}
                     onMouseEnter={e => {
                       e.currentTarget.style.borderColor = 'rgba(59,130,246,0.50)'
@@ -640,17 +640,17 @@ export default function DashboardPage() {
                   >
                     <div className="flex items-start justify-between mb-2">
                       <div>
-                        <p className="font-semibold text-sm" style={{ color: '#F1F5F9' }}>{c.numero}</p>
-                        <p className="text-xs line-clamp-1 mt-0.5" style={{ color: '#475569' }}>{c.descricao}</p>
+                        <p className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>{c.numero}</p>
+                        <p className="text-xs line-clamp-1 mt-0.5" style={{ color: 'var(--text-3)' }}>{c.descricao}</p>
                       </div>
                       <Badge className={getContratoStatusColor(c.status)}>
                         {CONTRATO_STATUS_LABELS[c.status as keyof typeof CONTRATO_STATUS_LABELS]}
                       </Badge>
                     </div>
                     <div className="space-y-1.5">
-                      <div className="flex justify-between text-xs" style={{ color: '#475569' }}>
+                      <div className="flex justify-between text-xs" style={{ color: 'var(--text-3)' }}>
                         <span>Avanço financeiro</span>
-                        <span className="font-semibold" style={{ color: '#94A3B8' }}>
+                        <span className="font-semibold" style={{ color: 'var(--text-2)' }}>
                           {formatPercent(c.percentual_medido || 0)}
                         </span>
                       </div>
@@ -665,15 +665,15 @@ export default function DashboardPage() {
                         />
                       </div>
                       <div className="flex justify-between text-xs mt-1">
-                        <span style={{ color: '#475569' }}>
+                        <span style={{ color: 'var(--text-3)' }}>
                           Medido:{' '}
-                          <span className="font-medium" style={{ color: '#94A3B8' }}>
+                          <span className="font-medium" style={{ color: 'var(--text-2)' }}>
                             {formatCurrency(c.valor_medido || 0)}
                           </span>
                         </span>
-                        <span style={{ color: '#475569' }}>
+                        <span style={{ color: 'var(--text-3)' }}>
                           Saldo:{' '}
-                          <span className="font-medium" style={{ color: '#94A3B8' }}>
+                          <span className="font-medium" style={{ color: 'var(--text-2)' }}>
                             {formatCurrency(c.saldo || 0)}
                           </span>
                         </span>
@@ -688,14 +688,14 @@ export default function DashboardPage() {
           {/* Medições Recentes */}
           <div
             className="rounded-xl overflow-hidden"
-            style={{ background: '#111827', border: '1px solid #1E293B' }}
+            style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
           >
             <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid #1E293B' }}>
-              <h3 className="text-sm font-semibold" style={{ color: '#F1F5F9' }}>Medições Recentes</h3>
+              <h3 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>Medições Recentes</h3>
               <Link href="/aprovacoes">
                 <button
                   className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg transition-colors"
-                  style={{ color: '#94A3B8' }}
+                  style={{ color: 'var(--text-2)' }}
                   onMouseEnter={e => { e.currentTarget.style.color = '#F1F5F9'; e.currentTarget.style.background = '#1a2236' }}
                   onMouseLeave={e => { e.currentTarget.style.color = '#94A3B8'; e.currentTarget.style.background = 'transparent' }}
                 >
@@ -736,16 +736,16 @@ export default function DashboardPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium" style={{ color: '#F1F5F9' }}>
+                          <span className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>
                             Medição {m.periodo_referencia}
                           </span>
                           <Badge className={`${getMedicaoStatusColor(m.status as MedicaoStatus)} text-[10px]`}>
                             {MEDICAO_STATUS_LABELS[m.status as MedicaoStatus]}
                           </Badge>
                         </div>
-                        <p className="text-xs" style={{ color: '#475569' }}>{m.contrato?.numero}</p>
+                        <p className="text-xs" style={{ color: 'var(--text-3)' }}>{m.contrato?.numero}</p>
                       </div>
-                      <span className="text-sm font-semibold flex-shrink-0" style={{ color: '#F1F5F9' }}>
+                      <span className="text-sm font-semibold flex-shrink-0" style={{ color: 'var(--text-1)' }}>
                         {formatCurrency(m.valor_total)}
                       </span>
                     </div>

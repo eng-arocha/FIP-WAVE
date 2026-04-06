@@ -66,7 +66,7 @@ export default function ContratosPage() {
   ]
 
   return (
-    <div className="flex-1 overflow-auto" style={{ background: '#080C14' }}>
+    <div className="flex-1 overflow-auto" style={{ background: 'var(--background)' }}>
       <Topbar
         title="Contratos"
         subtitle={`${contratos.length} contrato(s) cadastrado(s)`}
@@ -86,15 +86,15 @@ export default function ContratosPage() {
           <div className="relative">
             <Search
               className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
-              style={{ color: '#475569' }}
+              style={{ color: 'var(--text-3)' }}
             />
             <input
               placeholder="Buscar contrato..."
               className="pl-9 pr-4 py-2 rounded-xl text-sm outline-none transition-all w-64"
               style={{
-                background: '#111827',
-                border: '1px solid #1E293B',
-                color: '#F1F5F9',
+                background: 'var(--surface-2)',
+                border: '1px solid var(--border)',
+                color: 'var(--text-1)',
               }}
               value={busca}
               onChange={e => setBusca(e.target.value)}
@@ -117,9 +117,9 @@ export default function ContratosPage() {
                         boxShadow: '0 0 12px rgba(59,130,246,0.30)',
                       }
                     : {
-                        background: '#111827',
-                        color: '#94A3B8',
-                        border: '1px solid #1E293B',
+                        background: 'var(--surface-2)',
+                        color: 'var(--text-2)',
+                        border: '1px solid var(--border)',
                       }
                 }
                 onMouseEnter={e => {
@@ -142,7 +142,7 @@ export default function ContratosPage() {
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center py-12" style={{ color: '#475569' }}>
+          <div className="flex items-center justify-center py-12" style={{ color: 'var(--text-3)' }}>
             <Loader2 className="w-6 h-6 animate-spin mr-2" style={{ color: '#3B82F6' }} />
             <span>Carregando contratos...</span>
           </div>
@@ -154,8 +154,8 @@ export default function ContratosPage() {
                 href={`/contratos/${contrato.id}`}
                 className="block rounded-xl transition-all duration-200 cursor-pointer"
                 style={{
-                  background: '#111827',
-                  border: '1px solid #1E293B',
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--border)',
                 }}
                 onMouseEnter={e => {
                   e.currentTarget.style.borderColor = 'rgba(59,130,246,0.35)'
@@ -181,7 +181,7 @@ export default function ContratosPage() {
                           style={{ transition: 'stroke-dasharray 0.8s ease' }}
                         />
                       </svg>
-                      <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold" style={{ color: '#94A3B8' }}>
+                      <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold" style={{ color: 'var(--text-2)' }}>
                         {Math.round(contrato.percentual_medido || 0)}%
                       </span>
                     </div>
@@ -205,16 +205,16 @@ export default function ContratosPage() {
                               {CONTRATO_STATUS_LABELS[contrato.status as keyof typeof CONTRATO_STATUS_LABELS]}
                             </Badge>
                           </div>
-                          <p className="text-sm font-medium" style={{ color: '#F1F5F9' }}>{contrato.descricao}</p>
+                          <p className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>{contrato.descricao}</p>
                           {contrato.escopo && (
-                            <p className="text-xs mt-0.5 line-clamp-1" style={{ color: '#475569' }}>
+                            <p className="text-xs mt-0.5 line-clamp-1" style={{ color: 'var(--text-3)' }}>
                               {contrato.escopo}
                             </p>
                           )}
                         </div>
                         <span
                           className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium flex-shrink-0"
-                          style={{ color: '#475569' }}
+                          style={{ color: 'var(--text-3)' }}
                         >
                           Abrir <ArrowRight className="w-3.5 h-3.5" />
                         </span>
@@ -222,21 +222,21 @@ export default function ContratosPage() {
 
                       {/* Info grid */}
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                        <div className="flex items-center gap-2 text-xs" style={{ color: '#94A3B8' }}>
-                          <Building2 className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#475569' }} />
+                        <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-2)' }}>
+                          <Building2 className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-3)' }} />
                           <span className="truncate">{contrato.contratado?.nome}</span>
                         </div>
-                        <div className="flex items-center gap-2 text-xs" style={{ color: '#94A3B8' }}>
-                          <ClipboardList className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#475569' }} />
+                        <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-2)' }}>
+                          <ClipboardList className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-3)' }} />
                           <span>{CONTRATO_TIPO_LABELS[contrato.tipo as keyof typeof CONTRATO_TIPO_LABELS]}</span>
                         </div>
-                        <div className="flex items-center gap-2 text-xs" style={{ color: '#94A3B8' }}>
-                          <Calendar className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#475569' }} />
+                        <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-2)' }}>
+                          <Calendar className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-3)' }} />
                           <span>{formatDate(contrato.data_inicio)} → {formatDate(contrato.data_fim)}</span>
                         </div>
-                        <div className="flex items-center gap-2 text-xs" style={{ color: '#94A3B8' }}>
-                          <DollarSign className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#475569' }} />
-                          <span className="font-semibold" style={{ color: '#F1F5F9' }}>
+                        <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-2)' }}>
+                          <DollarSign className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-3)' }} />
+                          <span className="font-semibold" style={{ color: 'var(--text-1)' }}>
                             {formatCurrency(contrato.valor_total || contrato.valor_contratado)}
                           </span>
                         </div>
@@ -245,10 +245,10 @@ export default function ContratosPage() {
                       {/* Progresso financeiro */}
                       <div
                         className="rounded-xl p-3"
-                        style={{ background: '#0D1421', border: '1px solid #1E293B' }}
+                        style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}
                       >
                         <div className="flex justify-between items-center mb-2">
-                          <span className="text-xs font-medium" style={{ color: '#94A3B8' }}>
+                          <span className="text-xs font-medium" style={{ color: 'var(--text-2)' }}>
                             Avanço Financeiro
                           </span>
                           <span
@@ -274,14 +274,14 @@ export default function ContratosPage() {
                         </div>
                         <div className="grid grid-cols-3 gap-2 text-xs">
                           <div>
-                            <span style={{ color: '#475569' }}>Medido</span>
-                            <p className="font-semibold" style={{ color: '#10B981' }}>
+                            <span style={{ color: 'var(--text-3)' }}>Medido</span>
+                            <p className="font-semibold" style={{ color: 'var(--green)' }}>
                               {formatCurrency(contrato.valor_medido || 0)}
                             </p>
                           </div>
                           <div>
-                            <span style={{ color: '#475569' }}>Saldo</span>
-                            <p className="font-semibold" style={{ color: '#94A3B8' }}>
+                            <span style={{ color: 'var(--text-3)' }}>Saldo</span>
+                            <p className="font-semibold" style={{ color: 'var(--text-2)' }}>
                               {formatCurrency(
                                 contrato.saldo ||
                                 (contrato.valor_total - (contrato.valor_medido || 0))
@@ -292,13 +292,13 @@ export default function ContratosPage() {
                             {(contrato.qtd_medicoes_pendentes || 0) > 0 && (
                               <div
                                 className="flex items-center justify-end gap-1 text-xs"
-                                style={{ color: '#F59E0B' }}
+                                style={{ color: 'var(--amber)' }}
                               >
                                 <AlertCircle className="w-3 h-3" />
                                 <span>{contrato.qtd_medicoes_pendentes} pend.</span>
                               </div>
                             )}
-                            <p style={{ color: '#475569' }}>
+                            <p style={{ color: 'var(--text-3)' }}>
                               {contrato.qtd_medicoes_aprovadas || 0} aprovadas
                             </p>
                           </div>
@@ -313,8 +313,8 @@ export default function ContratosPage() {
             {filtrados.length === 0 && (
               <div className="text-center py-12">
                 <FileText className="w-10 h-10 mx-auto mb-3" style={{ color: '#1E293B' }} />
-                <p className="font-medium" style={{ color: '#94A3B8' }}>Nenhum contrato encontrado</p>
-                <p className="text-sm mt-1" style={{ color: '#475569' }}>
+                <p className="font-medium" style={{ color: 'var(--text-2)' }}>Nenhum contrato encontrado</p>
+                <p className="text-sm mt-1" style={{ color: 'var(--text-3)' }}>
                   Tente ajustar os filtros ou cadastre um novo contrato
                 </p>
               </div>

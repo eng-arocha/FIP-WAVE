@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePermissoes } from '@/lib/context/permissoes-context'
+import { useTheme } from '@/components/ui/theme-provider'
 
 type Perfil = 'visualizador' | 'engenheiro_fip' | 'admin'
 
@@ -17,6 +18,16 @@ const PERFIL_LABELS: Record<Perfil, string> = {
   visualizador: 'Visualizador',
   engenheiro_fip: 'Engenheiro FIP',
   admin: 'Administrador',
+}
+
+// Apple-style icon configs: each nav item has its own gradient color
+const ICON_COLORS = {
+  '/dashboard':  { from: '#3B82F6', to: '#06B6D4' },  // blue → cyan
+  '/contratos':  { from: '#8B5CF6', to: '#A855F7' },  // purple
+  '/aprovacoes': { from: '#F59E0B', to: '#EF4444' },  // amber → red
+  '/empresas':   { from: '#10B981', to: '#059669' },  // green
+  '/usuarios':   { from: '#6366F1', to: '#8B5CF6' },  // indigo → purple
+  'cadastro':    { from: '#64748B', to: '#475569' },  // slate (group)
 }
 
 interface SidebarProps {
@@ -34,6 +45,7 @@ export function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
+  const { isDark } = useTheme()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [cadastroOpen, setCadastroOpen] = useState(false)
   const { temPermissao } = usePermissoes()
@@ -44,7 +56,6 @@ export function Sidebar({
     return () => window.removeEventListener('open-mobile-sidebar', handler)
   }, [])
 
-  // Auto-open Cadastro group when on a sub-route
   useEffect(() => {
     if (pathname.startsWith('/empresas') || pathname.startsWith('/usuarios')) {
       setCadastroOpen(true)
@@ -64,8 +75,24 @@ export function Sidebar({
 
   const isCadastroActive = pathname.startsWith('/empresas') || pathname.startsWith('/usuarios')
 
+  // Apple iOS icon container — active items get a colored gradient pill
+  const AppleIconBg = ({ href, children }: { href: string; children: React.ReactNode }) => {
+    const colors = ICON_COLORS[href as keyof typeof ICON_COLORS]
+    if (!colors) return <>{children}</>
+    return (
+      <span
+        className="apple-icon flex-shrink-0"
+        style={{ background: `linear-gradient(135deg, ${colors.from}, ${colors.to})` }}
+      >
+        {children}
+      </span>
+    )
+  }
+
   const renderNavLink = (item: any, showText: boolean, indent = false) => {
     const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+    const colors = ICON_COLORS[item.href as keyof typeof ICON_COLORS]
+
     return (
       <Link
         key={item.href}
@@ -73,30 +100,60 @@ export function Sidebar({
         onClick={() => setMobileOpen(false)}
         title={!showText ? item.label : undefined}
         className={cn(
-          'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group relative',
-          indent && showText && 'pl-8',
-          !showText && 'justify-center px-0',
-          isActive ? 'text-white' : 'text-[#475569] hover:bg-[#111827] hover:text-[#94A3B8]',
+          'flex items-center gap-2.5 py-2 rounded-xl text-sm font-medium transition-all duration-200 group relative',
+          showText ? (indent ? 'px-2 pl-3' : 'px-2') : 'px-0 justify-center',
         )}
-        style={isActive ? {
-          background: 'linear-gradient(135deg, rgba(59,130,246,0.15) 0%, rgba(6,182,212,0.07) 100%)',
+        style={isActive && showText ? {
+          background: isDark
+            ? `linear-gradient(135deg, ${colors?.from}18, ${colors?.to}0c)`
+            : `linear-gradient(135deg, ${colors?.from}14, ${colors?.to}08)`,
         } : {}}
+        onMouseEnter={e => {
+          if (!isActive) e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'
+        }}
+        onMouseLeave={e => {
+          if (!isActive) e.currentTarget.style.background = ''
+        }}
       >
-        {isActive && showText && (
-          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-4 bg-gradient-to-b from-blue-400 to-cyan-400 rounded-r-full" />
+        {/* Apple-style icon container */}
+        {isActive ? (
+          <AppleIconBg href={item.href}>
+            <item.icon className="w-3.5 h-3.5 text-white" strokeWidth={1.5} />
+          </AppleIconBg>
+        ) : (
+          <span
+            className="apple-icon flex-shrink-0 transition-colors"
+            style={{
+              background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+            }}
+          >
+            <item.icon
+              className="w-3.5 h-3.5 transition-colors"
+              strokeWidth={1.5}
+              style={{ color: 'var(--text-3)' }}
+            />
+          </span>
         )}
-        <item.icon className={cn(
-          'w-4 h-4 flex-shrink-0 transition-colors',
-          isActive ? 'text-blue-400' : 'text-[#475569] group-hover:text-[#64748B]',
-        )} />
-        <span className={cn(
-          'whitespace-nowrap transition-all duration-200 flex-1',
-          showText ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden',
-        )}>
+
+        {/* Label */}
+        <span
+          className={cn('whitespace-nowrap transition-all duration-200 flex-1', showText ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden')}
+          style={{ color: isActive ? 'var(--text-1)' : 'var(--text-2)' }}
+        >
           {item.label}
         </span>
+
+        {/* Badge dot */}
         {'badge' in item && item.badge && showText && (
-          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
+          <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
+        )}
+
+        {/* Active indicator line (only in expanded mode) */}
+        {isActive && showText && (
+          <span
+            className="absolute right-2 w-1.5 h-1.5 rounded-full"
+            style={{ background: colors?.from ?? 'var(--accent)' }}
+          />
         )}
       </Link>
     )
@@ -104,157 +161,180 @@ export function Sidebar({
 
   const renderContent = (showText: boolean) => (
     <>
-      {/* Top accent line */}
-      <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-blue-600 via-cyan-400 to-transparent" />
+      {/* Top gradient accent */}
+      <div
+        className="absolute top-0 left-0 right-0 h-[2px]"
+        style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent-glow), transparent)' }}
+      />
 
-      {/* Header: logo + pin button */}
-      <div className={cn(
-        'border-b border-[#1E293B] flex items-center transition-all duration-300',
-        showText ? 'px-4 py-4 justify-between' : 'px-0 py-4 justify-center',
-      )}>
+      {/* Header: logo + pin */}
+      <div
+        className={cn('border-b flex items-center transition-all duration-300', showText ? 'px-4 py-4 justify-between' : 'px-0 py-4 justify-center')}
+        style={{ borderColor: 'var(--sidebar-border)' }}
+      >
         {showText ? (
           <>
-            <Image
-              src="/logos/wave-branco.png"
-              alt="WAVE Beira-Mar"
-              width={130}
-              height={73}
-              priority
-              className="object-contain rounded-lg"
-              style={{ width: 'auto', height: 'auto', maxWidth: 130, maxHeight: 73 }}
-            />
+            {isDark ? (
+              <Image src="/logos/wave-branco.png" alt="WAVE" width={120} height={67} priority className="object-contain rounded-lg" style={{ width: 'auto', height: 'auto', maxWidth: 120 }} />
+            ) : (
+              <div
+                className="font-bold text-xl tracking-tight"
+                style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent-glow))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
+              >
+                WAVE
+              </div>
+            )}
             <button
               onClick={(e) => { e.stopPropagation(); onTogglePin() }}
               title={pinned ? 'Desafixar sidebar' : 'Fixar sidebar'}
-              className="p-1.5 rounded-lg text-[#475569] hover:text-[#94A3B8] hover:bg-[#111827] transition-all flex-shrink-0 hidden lg:flex items-center"
+              className="p-1.5 rounded-lg transition-all hidden lg:flex items-center"
+              style={{ color: 'var(--text-3)', background: 'var(--surface-3)' }}
+              onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-1)' }}
+              onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-3)' }}
             >
               {pinned
-                ? <PinOff className="w-3.5 h-3.5" />
-                : <Pin className="w-3.5 h-3.5" />}
+                ? <PinOff className="w-3.5 h-3.5" strokeWidth={1.5} />
+                : <Pin className="w-3.5 h-3.5" strokeWidth={1.5} />}
             </button>
           </>
         ) : (
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600/20 to-cyan-600/20 border border-blue-500/20 flex items-center justify-center">
-            <span
-              className="text-xs font-bold"
-              style={{ background: 'linear-gradient(90deg,#3B82F6,#06B6D4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
-            >
-              W
-            </span>
+          <div
+            className="apple-icon rounded-[10px]"
+            style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-glow))' }}
+          >
+            <span className="text-xs font-bold text-white">W</span>
           </div>
         )}
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 py-4 px-2 space-y-0.5 overflow-y-auto">
+      <nav className="flex-1 py-4 px-2 overflow-y-auto space-y-0.5">
         {mainItems.map(item => renderNavLink(item, showText))}
 
-        {/* Cadastro collapsible group */}
+        {/* Section divider */}
         {cadastroItems.length > 0 && (
-          <div>
-            <button
-              title={!showText ? 'Cadastro' : undefined}
-              onClick={() => {
-                if (!showText) {
-                  // Icon-only mode: navigate to first item or active one
-                  const target = cadastroItems.find(i => pathname.startsWith(i.href)) ?? cadastroItems[0]
-                  if (target) router.push(target.href)
-                } else {
-                  setCadastroOpen(v => !v)
-                }
-              }}
-              className={cn(
-                'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group',
-                !showText && 'justify-center px-0',
-                isCadastroActive
-                  ? 'text-[#94A3B8]'
-                  : 'text-[#475569] hover:bg-[#111827] hover:text-[#94A3B8]',
-              )}
-              style={isCadastroActive && !showText ? {
-                background: 'linear-gradient(135deg, rgba(59,130,246,0.10), rgba(6,182,212,0.05))',
-              } : {}}
-            >
-              <FolderOpen className={cn(
-                'w-4 h-4 flex-shrink-0',
-                isCadastroActive ? 'text-blue-400/70' : 'text-[#475569] group-hover:text-[#64748B]',
-              )} />
-              <span className={cn(
-                'flex-1 text-left whitespace-nowrap transition-all duration-200',
-                showText ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden',
-              )}>
-                Cadastro
-              </span>
-              {showText && (
-                <ChevronDown className={cn(
-                  'w-3.5 h-3.5 flex-shrink-0 transition-transform duration-200',
-                  cadastroOpen ? '' : '-rotate-90',
-                )} />
-              )}
-            </button>
-
-            {/* Subitems */}
-            <div className={cn(
-              'overflow-hidden transition-all duration-300 ease-in-out',
-              cadastroOpen && showText ? 'max-h-24 opacity-100' : 'max-h-0 opacity-0',
-            )}>
-              <div className="py-0.5 ml-2 border-l border-[#1E293B]">
-                {cadastroItems.map(item => renderNavLink(item, showText, true))}
+          <>
+            {showText && (
+              <div className="pt-3 pb-1 px-2">
+                <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>
+                  Cadastros
+                </span>
               </div>
-            </div>
-          </div>
+            )}
+            {!showText && <div className="my-2 mx-2 h-px" style={{ background: 'var(--border)' }} />}
+
+            {/* Cadastro group (only shows toggle when expanded) */}
+            {showText ? (
+              <div>
+                <button
+                  onClick={() => setCadastroOpen(v => !v)}
+                  className="w-full flex items-center gap-2.5 px-2 py-2 rounded-xl text-sm font-medium transition-all duration-150 group"
+                  style={{ color: isCadastroActive ? 'var(--text-1)' : 'var(--text-2)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = '' }}
+                >
+                  <span
+                    className="apple-icon flex-shrink-0"
+                    style={{ background: isCadastroActive ? 'linear-gradient(135deg, #64748B, #475569)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)') }}
+                  >
+                    <FolderOpen className="w-3.5 h-3.5" strokeWidth={1.5} style={{ color: isCadastroActive ? 'white' : 'var(--text-3)' }} />
+                  </span>
+                  <span className="flex-1 text-left">Cadastro</span>
+                  <ChevronDown
+                    className={cn('w-3.5 h-3.5 transition-transform duration-200')}
+                    strokeWidth={1.5}
+                    style={{ transform: cadastroOpen ? '' : 'rotate(-90deg)', color: 'var(--text-3)' }}
+                  />
+                </button>
+
+                <div className={cn('overflow-hidden transition-all duration-300 ease-in-out', cadastroOpen ? 'max-h-24 opacity-100' : 'max-h-0 opacity-0')}>
+                  <div className="pt-0.5 ml-3 pl-2" style={{ borderLeft: '1px solid var(--border)' }}>
+                    {cadastroItems.map(item => renderNavLink(item, showText, true))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              // Icon-only: show cadastro items directly
+              cadastroItems.map(item => renderNavLink(item, showText))
+            )}
+          </>
         )}
       </nav>
 
       {/* Footer */}
-      <div className={cn('border-t border-[#1E293B] pt-4 pb-5 space-y-1', showText ? 'px-3' : 'px-2')}>
+      <div
+        className={cn('border-t pt-3 pb-4 space-y-0.5', showText ? 'px-3' : 'px-2')}
+        style={{ borderColor: 'var(--sidebar-border)' }}
+      >
         {/* User card */}
         {nomeAtual && (
           showText ? (
-            <div className="flex items-center gap-2.5 px-3 py-2 mb-1 rounded-lg bg-[#111827]">
-              <div className="w-7 h-7 rounded-full bg-blue-500/20 border border-blue-500/30 flex items-center justify-center flex-shrink-0">
-                <span className="text-[10px] font-bold text-blue-400">{nomeAtual.charAt(0).toUpperCase()}</span>
+            <div
+              className="flex items-center gap-2.5 px-3 py-2 mb-1 rounded-xl"
+              style={{ background: 'var(--surface-3)', border: '1px solid var(--border)' }}
+            >
+              <div
+                className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-[11px]"
+                style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-glow))', color: 'white' }}
+              >
+                {nomeAtual.charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-medium text-[#94A3B8] truncate">{nomeAtual}</p>
-                <p className="text-[10px] text-[#475569]">{PERFIL_LABELS[perfilAtual]}</p>
+                <p className="text-xs font-medium truncate" style={{ color: 'var(--text-1)' }}>{nomeAtual}</p>
+                <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>{PERFIL_LABELS[perfilAtual]}</p>
               </div>
             </div>
           ) : (
             <div className="flex justify-center mb-1">
-              <div className="w-7 h-7 rounded-full bg-blue-500/20 border border-blue-500/30 flex items-center justify-center" title={nomeAtual}>
-                <span className="text-[10px] font-bold text-blue-400">{nomeAtual.charAt(0).toUpperCase()}</span>
+              <div
+                className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-[11px] text-white"
+                title={nomeAtual}
+                style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-glow))' }}
+              >
+                {nomeAtual.charAt(0).toUpperCase()}
               </div>
             </div>
           )
         )}
 
-        {/* Status */}
-        <div className={cn('flex items-center gap-2 px-3 py-1', !showText && 'justify-center px-0')}>
+        {/* Online status */}
+        <div className={cn('flex items-center gap-2 px-3 py-1.5', !showText && 'justify-center px-0')}>
           <span
-            className="w-2 h-2 rounded-full bg-[#10B981] flex-shrink-0"
-            style={{ animation: 'pulse-glow 2s ease-in-out infinite' }}
+            className="w-2 h-2 rounded-full flex-shrink-0"
+            style={{ background: 'var(--green)', animation: 'pulse-glow 2s ease-in-out infinite' }}
             title={!showText ? 'Sistema Online' : undefined}
           />
-          {showText && <span className="text-xs text-[#475569]">Sistema Online</span>}
+          {showText && <span className="text-xs" style={{ color: 'var(--text-3)' }}>Sistema Online</span>}
         </div>
 
-        {/* Logout — always visible */}
+        {/* Logout — always visible, Apple-style danger hover */}
         <Link
           href="/logout"
           onClick={() => setMobileOpen(false)}
           title={!showText ? 'Sair do Sistema' : undefined}
-          className={cn(
-            'flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-[#475569] hover:text-[#EF4444] hover:bg-red-950/20 transition-all duration-150',
-            !showText && 'justify-center px-0',
-          )}
+          className={cn('flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-all duration-150 group', !showText && 'justify-center px-0')}
+          style={{ color: 'var(--text-3)' }}
+          onMouseEnter={e => {
+            e.currentTarget.style.color = 'var(--red)'
+            e.currentTarget.style.background = isDark ? 'rgba(239,68,68,0.08)' : 'rgba(217,48,37,0.06)'
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.color = 'var(--text-3)'
+            e.currentTarget.style.background = ''
+          }}
         >
-          <LogOut className="w-4 h-4 flex-shrink-0" />
+          <span
+            className="apple-icon flex-shrink-0"
+            style={{ background: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(217,48,37,0.08)' }}
+          >
+            <LogOut className="w-3.5 h-3.5" strokeWidth={1.5} style={{ color: 'var(--red)' }} />
+          </span>
           {showText && <span>Sair do Sistema</span>}
         </Link>
 
         {showText && (
           <div className="px-3 pt-1">
-            <p className="text-[10px] text-[#475569]/50">v1.0.0 · FIP Engenharia</p>
+            <p className="text-[10px]" style={{ color: 'var(--text-3)', opacity: 0.5 }}>v1.0.0 · FIP Engenharia</p>
           </div>
         )}
       </div>
@@ -263,39 +343,41 @@ export function Sidebar({
 
   return (
     <>
-      {/* Mobile overlay backdrop */}
+      {/* Mobile overlay */}
       {mobileOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
-          onClick={() => setMobileOpen(false)}
-        />
+        <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden" onClick={() => setMobileOpen(false)} />
       )}
 
-      {/* Mobile drawer — always full text */}
-      <aside className={cn(
-        'fixed inset-y-0 left-0 z-50 w-64 bg-[#080C14] border-r border-[#1E293B] flex flex-col lg:hidden overflow-hidden',
-        'transition-transform duration-300 ease-in-out',
-        mobileOpen ? 'translate-x-0' : '-translate-x-full',
-      )}>
+      {/* Mobile drawer */}
+      <aside
+        className={cn(
+          'fixed inset-y-0 left-0 z-50 w-64 flex flex-col lg:hidden overflow-hidden transition-transform duration-300 ease-in-out',
+          mobileOpen ? 'translate-x-0' : '-translate-x-full'
+        )}
+        style={{ background: 'var(--sidebar-bg)', borderRight: '1px solid var(--sidebar-border)' }}
+      >
         <button
           onClick={() => setMobileOpen(false)}
-          className="absolute top-4 right-4 p-1 rounded-lg text-[#475569] hover:text-[#94A3B8] hover:bg-[#111827]"
+          className="absolute top-4 right-4 p-1 rounded-lg transition-colors"
+          style={{ color: 'var(--text-3)' }}
         >
-          <X className="w-4 h-4" />
+          <X className="w-4 h-4" strokeWidth={1.5} />
         </button>
         {renderContent(true)}
       </aside>
 
-      {/* Desktop sidebar — collapses to icon strip when not pinned */}
+      {/* Desktop sidebar */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 bg-[#080C14] border-r border-[#1E293B] flex-col overflow-hidden',
+          'fixed inset-y-0 left-0 z-50 flex-col overflow-hidden hidden lg:flex',
           'transition-all duration-300 ease-in-out',
-          'hidden lg:flex',
           expanded ? 'w-64' : 'w-14',
-          // Floating shadow when overlay-expanded (not pinned)
-          !pinned && expanded && 'shadow-[4px_0_40px_rgba(0,0,0,0.6)]',
+          !pinned && expanded && 'shadow-2xl',
         )}
+        style={{
+          background: 'var(--sidebar-bg)',
+          borderRight: '1px solid var(--sidebar-border)',
+        }}
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
       >

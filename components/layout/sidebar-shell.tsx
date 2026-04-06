@@ -69,7 +69,7 @@ export function SidebarShell({ perfilAtual, nomeAtual, children }: SidebarShellP
         onMouseLeave={handleMouseLeave}
       />
 
-      <main className="flex-1 flex flex-col overflow-hidden min-w-0">
+      <main className="flex-1 flex flex-col overflow-hidden min-w-0 transition-colors duration-300" style={{ background: 'var(--background)' }}>
         {children}
       </main>
     </div>

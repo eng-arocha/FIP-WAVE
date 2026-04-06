@@ -284,13 +284,13 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
             <Card className="cursor-pointer hover:border-blue-500/40 group">
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-start justify-between mb-3">
-                  <p className="text-xs text-[#475569] uppercase tracking-wider font-semibold">Valor Total</p>
+                  <p className="text-xs text-[var(--text-3)] uppercase tracking-wider font-semibold">Valor Total</p>
                   <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center group-hover:bg-blue-500/20 transition-colors">
                     <DollarSign className="w-4 h-4 text-blue-400" />
                   </div>
                 </div>
-                <p className="text-2xl font-bold text-[#F1F5F9]">{formatCurrency(valorTotal)}</p>
-                <div className="flex gap-3 mt-2 text-xs text-[#475569]">
+                <p className="text-2xl font-bold text-[var(--text-1)]">{formatCurrency(valorTotal)}</p>
+                <div className="flex gap-3 mt-2 text-xs text-[var(--text-3)]">
                   <span>Serv: {formatCurrency(contrato.valor_servicos ?? 0)}</span>
                   <span>Mat: {formatCurrency(contrato.valor_material_direto ?? 0)}</span>
                 </div>
@@ -301,7 +301,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
             <Card className="cursor-pointer hover:border-emerald-500/40 group">
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-start justify-between mb-3">
-                  <p className="text-xs text-[#475569] uppercase tracking-wider font-semibold">Medido</p>
+                  <p className="text-xs text-[var(--text-3)] uppercase tracking-wider font-semibold">Medido</p>
                   <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center group-hover:bg-emerald-500/20 transition-colors">
                     <TrendingUp className="w-4 h-4 text-emerald-400" />
                   </div>
@@ -323,13 +323,13 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
             <Card className="cursor-pointer hover:border-blue-500/40 group">
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-start justify-between mb-3">
-                  <p className="text-xs text-[#475569] uppercase tracking-wider font-semibold">Saldo</p>
+                  <p className="text-xs text-[var(--text-3)] uppercase tracking-wider font-semibold">Saldo</p>
                   <div className="w-8 h-8 rounded-lg bg-slate-500/10 border border-slate-500/20 flex items-center justify-center group-hover:bg-slate-500/20 transition-colors">
                     <Wallet className="w-4 h-4 text-slate-400" />
                   </div>
                 </div>
-                <p className="text-2xl font-bold text-[#F1F5F9]">{formatCurrency(saldo)}</p>
-                <p className="text-xs text-[#475569] mt-2">{formatPercent(100 - percentualMedido)} restante do contrato</p>
+                <p className="text-2xl font-bold text-[var(--text-1)]">{formatCurrency(saldo)}</p>
+                <p className="text-xs text-[var(--text-3)] mt-2">{formatPercent(100 - percentualMedido)} restante do contrato</p>
               </CardContent>
             </Card>
           </Link>
@@ -337,21 +337,21 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
             <Card className={`cursor-pointer hover:border-cyan-500/40 group ${qtdPendentes > 0 ? 'border-amber-500/40' : ''}`}>
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-start justify-between mb-3">
-                  <p className="text-xs text-[#475569] uppercase tracking-wider font-semibold">Medições</p>
+                  <p className="text-xs text-[var(--text-3)] uppercase tracking-wider font-semibold">Medições</p>
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${qtdPendentes > 0 ? 'bg-amber-500/10 border border-amber-500/20 group-hover:bg-amber-500/20' : 'bg-cyan-500/10 border border-cyan-500/20 group-hover:bg-cyan-500/20'}`}>
                     <ClipboardList className={`w-4 h-4 ${qtdPendentes > 0 ? 'text-amber-400' : 'text-cyan-400'}`} />
                   </div>
                 </div>
                 <div className="flex items-end gap-2">
-                  <p className="text-2xl font-bold text-[#F1F5F9]">{qtdAprovadas}</p>
-                  <p className="text-xs text-[#475569] mb-1">aprovadas</p>
+                  <p className="text-2xl font-bold text-[var(--text-1)]">{qtdAprovadas}</p>
+                  <p className="text-xs text-[var(--text-3)] mb-1">aprovadas</p>
                 </div>
                 {qtdPendentes > 0
                   ? <p className="text-xs text-amber-400 mt-1 font-medium flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block animate-pulse" />
                       {qtdPendentes} aguardando aprovação
                     </p>
-                  : <p className="text-xs text-[#475569] mt-1">nenhuma pendente</p>
+                  : <p className="text-xs text-[var(--text-3)] mt-1">nenhuma pendente</p>
                 }
               </CardContent>
             </Card>
@@ -374,7 +374,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
               {/* Chart grupos */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-sm text-[#94A3B8]">Medido vs Contratado por Grupo (R$)</CardTitle>
+                  <CardTitle className="text-sm text-[var(--text-2)]">Medido vs Contratado por Grupo (R$)</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={Math.max(320, gruposChart.length * 28)}>
@@ -382,8 +382,8 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                       <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" horizontal={false} />
                       <XAxis type="number" tick={{ fontSize: 10, fill: '#475569' }} tickFormatter={v => `${(v / 1000000).toFixed(1)}M`} />
                       <YAxis type="category" dataKey="nome" tick={{ fontSize: 10, fill: '#94A3B8' }} width={80} />
-                      <Tooltip formatter={(v) => formatCurrency(v as number)} contentStyle={{ backgroundColor: '#0D1421', border: '1px solid #1E293B', borderRadius: '8px', color: '#F1F5F9', fontSize: 12 }} />
-                      <Legend iconSize={10} wrapperStyle={{ fontSize: 11, color: '#94A3B8' }} />
+                      <Tooltip formatter={(v) => formatCurrency(v as number)} contentStyle={{ backgroundColor: '#0D1421', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-1)', fontSize: 12 }} />
+                      <Legend iconSize={10} wrapperStyle={{ fontSize: 11, color: 'var(--text-2)' }} />
                       <Bar dataKey="contratado" name="Contratado" fill="#1E293B" radius={[0, 2, 2, 0]} />
                       <Bar dataKey="medido" name="Medido" fill="#3B82F6" radius={[0, 2, 2, 0]} />
                     </BarChart>
@@ -394,11 +394,11 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
               {/* Grupos progress */}
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm text-[#94A3B8]">Avanço por Grupo Macro</CardTitle>
+                  <CardTitle className="text-sm text-[var(--text-2)]">Avanço por Grupo Macro</CardTitle>
                   {/* Controles inline */}
                   <div className="flex flex-wrap gap-2 pt-2">
                     <Select value={sortBy} onValueChange={v => setSortBy(v as typeof sortBy)}>
-                      <SelectTrigger className="h-7 text-[11px] w-48 bg-[#0D1421] border-[#1E293B] text-[#F1F5F9]">
+                      <SelectTrigger className="h-7 text-[11px] w-48 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]">
                         <ArrowUpDown className="w-3 h-3 mr-1 flex-shrink-0" />
                         <SelectValue />
                       </SelectTrigger>
@@ -413,7 +413,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                       </SelectContent>
                     </Select>
                     <Select value={viewMode} onValueChange={v => setViewMode(v as typeof viewMode)}>
-                      <SelectTrigger className="h-7 text-[11px] w-36 bg-[#0D1421] border-[#1E293B] text-[#F1F5F9]">
+                      <SelectTrigger className="h-7 text-[11px] w-36 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]">
                         <Filter className="w-3 h-3 mr-1 flex-shrink-0" />
                         <SelectValue />
                       </SelectTrigger>
@@ -426,7 +426,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                     {(sortBy !== 'padrao' || viewMode !== 'total') && (
                       <button
                         onClick={() => { setSortBy('padrao'); setViewMode('total') }}
-                        className="text-[11px] text-[#475569] hover:text-[#94A3B8] px-2"
+                        className="text-[11px] text-[var(--text-3)] hover:text-[var(--text-2)] px-2"
                       >
                         Limpar
                       </button>
@@ -441,13 +441,13 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                       <div key={g.id}>
                         <div className="flex justify-between mb-1">
                           <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-xs font-bold text-[#475569] flex-shrink-0">{g.codigo}</span>
-                            <span className="text-xs font-medium text-[#94A3B8] truncate">{g.nome}</span>
+                            <span className="text-xs font-bold text-[var(--text-3)] flex-shrink-0">{g.codigo}</span>
+                            <span className="text-xs font-medium text-[var(--text-2)] truncate">{g.nome}</span>
                           </div>
                           <span className="text-xs font-bold text-blue-400 flex-shrink-0 ml-2">{formatPercent(pct)}</span>
                         </div>
                         <Progress value={pct} className="h-1.5" />
-                        <div className="flex justify-between text-[10px] text-[#475569] mt-0.5">
+                        <div className="flex justify-between text-[10px] text-[var(--text-3)] mt-0.5">
                           <span>{VIEW_MODE_LABELS[viewMode]}: {formatCurrency(vBase)}</span>
                           <span>Medido: {formatCurrency(g.valor_medido ?? 0)}</span>
                           <span>Saldo: {formatCurrency(vBase - (g.valor_medido ?? 0))}</span>
@@ -462,8 +462,8 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
             {/* ── 3 Acompanhamento Charts — each with independent filters ── */}
             {acomp && (() => {
               const chartTooltipStyle = {
-                background: '#0D1421', border: '1px solid #1E293B',
-                borderRadius: 10, color: '#F1F5F9', fontSize: 12,
+                background: 'var(--surface-1)', border: '1px solid var(--border)',
+                borderRadius: 10, color: 'var(--text-1)', fontSize: 12,
               }
 
               function buildRows(
@@ -499,26 +499,26 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                   <div className="flex flex-wrap gap-2 mb-4">
                     <select value={cx1} onChange={e => { setCx1(e.target.value); setCx2(''); setCx3('') }}
                       className="rounded-xl px-3 py-1.5 text-xs outline-none"
-                      style={{ background: '#080C14', border: '1px solid #1E293B', color: cx1 ? '#F1F5F9' : '#475569' }}>
+                      style={{ background: 'var(--background)', border: '1px solid var(--border)', color: cx1 ? '#F1F5F9' : '#475569' }}>
                       <option value="">Global (todos)</option>
                       {acomp.grupos.map((g: any) => <option key={g.id} value={g.id}>{g.codigo} — {g.nome.substring(0, 35)}</option>)}
                     </select>
                     <select value={cx2} onChange={e => { setCx2(e.target.value); setCx3('') }} disabled={!cx1}
                       className="rounded-xl px-3 py-1.5 text-xs outline-none disabled:opacity-40"
-                      style={{ background: '#080C14', border: '1px solid #1E293B', color: cx2 ? '#F1F5F9' : '#475569' }}>
+                      style={{ background: 'var(--background)', border: '1px solid var(--border)', color: cx2 ? '#F1F5F9' : '#475569' }}>
                       <option value="">Todos (nível 2)</option>
                       {tars.map((t: any) => <option key={t.id} value={t.id}>{t.codigo} — {t.nome.substring(0, 30)}</option>)}
                     </select>
                     <select value={cx3} onChange={e => setCx3(e.target.value)} disabled={!cx2}
                       className="rounded-xl px-3 py-1.5 text-xs outline-none disabled:opacity-40"
-                      style={{ background: '#080C14', border: '1px solid #1E293B', color: cx3 ? '#F1F5F9' : '#475569' }}>
+                      style={{ background: 'var(--background)', border: '1px solid var(--border)', color: cx3 ? '#F1F5F9' : '#475569' }}>
                       <option value="">Todos (nível 3)</option>
                       {dets.map((d: any) => <option key={d.id} value={d.id}>{d.local ?? d.codigo} — {(d.nome ?? '').substring(0, 25)}</option>)}
                     </select>
                     {(cx1 || cx2 || cx3) && (
                       <button onClick={() => { setCx1(''); setCx2(''); setCx3('') }}
                         className="px-3 py-1.5 text-xs rounded-xl transition-colors"
-                        style={{ color: '#475569', border: '1px solid #1E293B' }}
+                        style={{ color: 'var(--text-3)', border: '1px solid var(--border)' }}
                         onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#94A3B8' }}
                         onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#475569' }}>
                         Limpar
@@ -540,9 +540,9 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                   <Card style={{ borderTop: `2px solid ${accent}` }}>
                     <CardHeader className="pb-2">
                       <div className="flex items-center justify-between mb-1">
-                        <CardTitle className="text-sm" style={{ color: '#94A3B8' }}>{title}</CardTitle>
+                        <CardTitle className="text-sm" style={{ color: 'var(--text-2)' }}>{title}</CardTitle>
                         <div className="flex items-center gap-3 text-xs">
-                          <span style={{ color: '#475569' }}>{formatCurrency(totalM)}</span>
+                          <span style={{ color: 'var(--text-3)' }}>{formatCurrency(totalM)}</span>
                           <span className="font-bold px-2 py-0.5 rounded-md" style={{
                             background: totalPct > 100 ? 'rgba(239,68,68,0.15)' : totalPct > 70 ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.12)',
                             color: totalPct > 100 ? '#EF4444' : totalPct > 70 ? '#F59E0B' : accent,
@@ -570,7 +570,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                               const row = payload?.[0]?.payload
                               return row?.nomeFull ? `${label} — ${row.nomeFull.substring(0, 45)}` : label
                             }} />
-                          <Legend iconSize={8} wrapperStyle={{ fontSize: 11, color: '#94A3B8', paddingTop: 8 }} />
+                          <Legend iconSize={8} wrapperStyle={{ fontSize: 11, color: 'var(--text-2)', paddingTop: 8 }} />
                           <Bar dataKey="contratado" name={labelC} fill={colorC} radius={[0, 3, 3, 0]} maxBarSize={14} />
                           <Bar dataKey="medido" name={labelM} radius={[0, 3, 3, 0]} maxBarSize={14}>
                             {rows.map((row: any, i: number) => (
@@ -614,7 +614,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
           {/* Medições */}
           <TabsContent value="medicoes">
             <div className="flex justify-between items-center mb-4">
-              <p className="text-sm text-[#94A3B8]">{medicoes.length} medição(ões) registrada(s)</p>
+              <p className="text-sm text-[var(--text-2)]">{medicoes.length} medição(ões) registrada(s)</p>
               <Link href={`/contratos/${id}/medicoes/nova`}>
                 <Button size="sm">
                   <Plus className="w-4 h-4" />
@@ -634,7 +634,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                         </div>
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="font-semibold text-sm text-[#F1F5F9]">Medição {m.periodo_referencia}</span>
+                            <span className="font-semibold text-sm text-[var(--text-1)]">Medição {m.periodo_referencia}</span>
                             <Badge className={getMedicaoStatusColor(m.status as MedicaoStatus)}>
                               {MEDICAO_STATUS_LABELS[m.status as MedicaoStatus]}
                             </Badge>
@@ -642,11 +642,11 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                               {TIPO_MEDICAO_LABELS[m.tipo]}
                             </Badge>
                           </div>
-                          <p className="text-xs text-[#475569]">Solicitante: {m.solicitante_nome}</p>
+                          <p className="text-xs text-[var(--text-3)]">Solicitante: {m.solicitante_nome}</p>
                         </div>
                         <div className="text-right">
-                          <p className="font-bold text-[#F1F5F9]">{formatCurrency(m.valor_total)}</p>
-                          <p className="text-xs text-[#475569] mt-0.5">
+                          <p className="font-bold text-[var(--text-1)]">{formatCurrency(m.valor_total)}</p>
+                          <p className="text-xs text-[var(--text-3)] mt-0.5">
                             {m.status === 'aprovado' && m.data_aprovacao
                               ? `Aprovado em ${formatDate(m.data_aprovacao)}`
                               : m.data_submissao
@@ -655,7 +655,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                             }
                           </p>
                         </div>
-                        <ChevronRight className="w-4 h-4 text-[#475569] flex-shrink-0" />
+                        <ChevronRight className="w-4 h-4 text-[var(--text-3)] flex-shrink-0" />
                       </div>
                     </CardContent>
                   </Card>
@@ -668,12 +668,12 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
           <TabsContent value="estrutura">
             {/* Cabeçalho com filtros */}
             <div className="flex flex-wrap items-center gap-2 mb-4">
-              <div className="flex items-center gap-1.5 text-xs text-[#475569]">
+              <div className="flex items-center gap-1.5 text-xs text-[var(--text-3)]">
                 <ArrowUpDown className="w-3.5 h-3.5" />
                 <span>Ordenar:</span>
               </div>
               <Select value={sortBy} onValueChange={v => setSortBy(v as typeof sortBy)}>
-                <SelectTrigger className="h-8 text-xs w-52 bg-[#0D1421] border-[#1E293B] text-[#F1F5F9]">
+                <SelectTrigger className="h-8 text-xs w-52 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -687,12 +687,12 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                 </SelectContent>
               </Select>
 
-              <div className="flex items-center gap-1.5 text-xs text-[#475569] ml-2">
+              <div className="flex items-center gap-1.5 text-xs text-[var(--text-3)] ml-2">
                 <Filter className="w-3.5 h-3.5" />
                 <span>Exibir:</span>
               </div>
               <Select value={viewMode} onValueChange={v => setViewMode(v as typeof viewMode)}>
-                <SelectTrigger className="h-8 text-xs w-36 bg-[#0D1421] border-[#1E293B] text-[#F1F5F9]">
+                <SelectTrigger className="h-8 text-xs w-36 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -705,14 +705,14 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
               {(sortBy !== 'padrao' || viewMode !== 'total') && (
                 <Button
                   variant="ghost" size="sm"
-                  className="h-8 text-xs text-[#475569] hover:text-[#F1F5F9]"
+                  className="h-8 text-xs text-[var(--text-3)] hover:text-[var(--text-1)]"
                   onClick={() => { setSortBy('padrao'); setViewMode('total') }}
                 >
                   Limpar
                 </Button>
               )}
 
-              <span className="ml-auto text-xs text-[#475569]">
+              <span className="ml-auto text-xs text-[var(--text-3)]">
                 {gruposExibidos.length} grupos
               </span>
 
@@ -731,10 +731,10 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                 <Card key={g.id}>
                   <CardContent className="p-4">
                     <div className="flex items-center gap-3">
-                      <span className="w-10 text-xs font-bold text-[#475569]">{g.codigo}</span>
+                      <span className="w-10 text-xs font-bold text-[var(--text-3)]">{g.codigo}</span>
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="font-semibold text-sm text-[#F1F5F9]">{g.nome}</span>
+                          <span className="font-semibold text-sm text-[var(--text-1)]">{g.nome}</span>
                         </div>
                         <Progress
                           value={vBase > 0 ? (g.valor_medido / vBase) * 100 : 0}
@@ -742,8 +742,8 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                         />
                       </div>
                       <div className="text-right text-xs min-w-[180px]">
-                        <p className="font-semibold text-[#F1F5F9]">{VIEW_MODE_LABELS[viewMode]}: {formatCurrency(vBase)}</p>
-                        <p className="text-[#475569]">Medido: {formatCurrency(g.valor_medido ?? 0)}</p>
+                        <p className="font-semibold text-[var(--text-1)]">{VIEW_MODE_LABELS[viewMode]}: {formatCurrency(vBase)}</p>
+                        <p className="text-[var(--text-3)]">Medido: {formatCurrency(g.valor_medido ?? 0)}</p>
                         <p className="text-emerald-500/80">Saldo: {formatCurrency(vBase - (g.valor_medido ?? 0))}</p>
                       </div>
                     </div>
@@ -765,7 +765,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
               </div>
             </Link>
             {aditivos.length === 0 ? (
-              <div className="text-center py-12 text-[#475569]">
+              <div className="text-center py-12 text-[var(--text-3)]">
                 <FileText className="w-10 h-10 mx-auto mb-3 opacity-30" />
                 <p className="font-medium">Nenhum aditivo registrado</p>
                 <p className="text-sm mt-1">Registre aditivos de valor, prazo ou escopo aqui</p>
@@ -779,43 +779,43 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
               <CardContent className="p-5">
                 <div className="grid grid-cols-2 gap-x-8 gap-y-4 text-sm">
                   <div>
-                    <p className="text-xs text-[#475569] font-medium uppercase tracking-wide mb-0.5">Número</p>
-                    <p className="text-[#F1F5F9] font-medium">{contrato.numero}</p>
+                    <p className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wide mb-0.5">Número</p>
+                    <p className="text-[var(--text-1)] font-medium">{contrato.numero}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-[#475569] font-medium uppercase tracking-wide mb-0.5">Tipo</p>
-                    <p className="text-[#F1F5F9]">{CONTRATO_TIPO_LABELS[contrato.tipo as ContratoTipo]}</p>
+                    <p className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wide mb-0.5">Tipo</p>
+                    <p className="text-[var(--text-1)]">{CONTRATO_TIPO_LABELS[contrato.tipo as ContratoTipo]}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-[#475569] font-medium uppercase tracking-wide mb-0.5">Contratante</p>
-                    <p className="text-[#F1F5F9]">{contrato.contratante?.nome}</p>
-                    <p className="text-xs text-[#475569]">{contrato.contratante?.cnpj}</p>
+                    <p className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wide mb-0.5">Contratante</p>
+                    <p className="text-[var(--text-1)]">{contrato.contratante?.nome}</p>
+                    <p className="text-xs text-[var(--text-3)]">{contrato.contratante?.cnpj}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-[#475569] font-medium uppercase tracking-wide mb-0.5">Contratado</p>
-                    <p className="text-[#F1F5F9]">{contrato.contratado?.nome}</p>
-                    <p className="text-xs text-[#475569]">{contrato.contratado?.cnpj}</p>
+                    <p className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wide mb-0.5">Contratado</p>
+                    <p className="text-[var(--text-1)]">{contrato.contratado?.nome}</p>
+                    <p className="text-xs text-[var(--text-3)]">{contrato.contratado?.cnpj}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-[#475569] font-medium uppercase tracking-wide mb-0.5">Início</p>
-                    <p className="text-[#F1F5F9]">{formatDate(contrato.data_inicio)}</p>
+                    <p className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wide mb-0.5">Início</p>
+                    <p className="text-[var(--text-1)]">{formatDate(contrato.data_inicio)}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-[#475569] font-medium uppercase tracking-wide mb-0.5">Término</p>
-                    <p className="text-[#F1F5F9]">{formatDate(contrato.data_fim)}</p>
+                    <p className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wide mb-0.5">Término</p>
+                    <p className="text-[var(--text-1)]">{formatDate(contrato.data_fim)}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-[#475569] font-medium uppercase tracking-wide mb-0.5">Local da Obra</p>
-                    <p className="text-[#F1F5F9]">{contrato.local_obra}</p>
+                    <p className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wide mb-0.5">Local da Obra</p>
+                    <p className="text-[var(--text-1)]">{contrato.local_obra}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-[#475569] font-medium uppercase tracking-wide mb-0.5">Fiscal de Obra</p>
-                    <p className="text-[#F1F5F9]">{contrato.fiscal_obra}</p>
-                    <p className="text-xs text-[#475569]">{contrato.email_fiscal}</p>
+                    <p className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wide mb-0.5">Fiscal de Obra</p>
+                    <p className="text-[var(--text-1)]">{contrato.fiscal_obra}</p>
+                    <p className="text-xs text-[var(--text-3)]">{contrato.email_fiscal}</p>
                   </div>
-                  <div className="col-span-2 border-t border-[#1E293B] pt-3">
-                    <p className="text-xs text-[#475569] font-medium uppercase tracking-wide mb-0.5">Objeto</p>
-                    <p className="text-[#94A3B8]">{contrato.objeto}</p>
+                  <div className="col-span-2 border-t border-[var(--border)] pt-3">
+                    <p className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wide mb-0.5">Objeto</p>
+                    <p className="text-[var(--text-2)]">{contrato.objeto}</p>
                   </div>
                 </div>
               </CardContent>

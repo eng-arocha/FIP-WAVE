@@ -69,13 +69,13 @@ export default function CronogramaPage({ params }: { params: Promise<{ id: strin
   const peakMonth = data.reduce((best, d) => d.planejado_total > best.planejado_total ? d : best, data[0] ?? {} as CurvaSPoint)
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#080C14]">
+    <div className="flex flex-col min-h-screen bg-[var(--background)]">
       <Topbar title="Cronograma Físico-Financeiro" />
       <div className="flex-1 p-6 space-y-6">
         {/* Header */}
         <div className="flex items-center gap-3">
           <Link href={`/contratos/${id}`}>
-            <Button variant="ghost" size="sm" className="text-[#475569] hover:text-white gap-2">
+            <Button variant="ghost" size="sm" className="text-[var(--text-3)] hover:text-white gap-2">
               <ArrowLeft className="w-4 h-4" /> Contrato
             </Button>
           </Link>
@@ -84,27 +84,27 @@ export default function CronogramaPage({ params }: { params: Promise<{ id: strin
               <TrendingUp className="w-5 h-5 text-blue-400" />
               Cronograma Físico-Financeiro
             </h1>
-            <p className="text-sm text-[#475569]">Curva S — Planejado vs. Realizado · Mar/26 → Out/27</p>
+            <p className="text-sm text-[var(--text-3)]">Curva S — Planejado vs. Realizado · Mar/26 → Out/27</p>
           </div>
         </div>
 
         {/* KPI Cards */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <Card style={{ background: '#0D1421', border: '1px solid #1E293B' }}>
+          <Card style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             <CardContent className="pt-4 pb-4">
-              <p className="text-xs text-[#475569] uppercase tracking-wide mb-1">Total Planejado</p>
+              <p className="text-xs text-[var(--text-3)] uppercase tracking-wide mb-1">Total Planejado</p>
               <p className="text-xl font-bold text-white">{formatCurrency(totalPlanejado)}</p>
             </CardContent>
           </Card>
-          <Card style={{ background: '#0D1421', border: '1px solid #1E293B' }}>
+          <Card style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             <CardContent className="pt-4 pb-4">
-              <p className="text-xs text-[#475569] uppercase tracking-wide mb-1">Serviço Planejado</p>
+              <p className="text-xs text-[var(--text-3)] uppercase tracking-wide mb-1">Serviço Planejado</p>
               <p className="text-xl font-bold text-blue-400">{formatCurrency(totalPlanejadoFis)}</p>
             </CardContent>
           </Card>
-          <Card style={{ background: '#0D1421', border: '1px solid #1E293B' }}>
+          <Card style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             <CardContent className="pt-4 pb-4">
-              <p className="text-xs text-[#475569] uppercase tracking-wide mb-1">Material Planejado</p>
+              <p className="text-xs text-[var(--text-3)] uppercase tracking-wide mb-1">Material Planejado</p>
               <p className="text-xl font-bold text-cyan-400">{formatCurrency(totalPlanejadoFatD)}</p>
             </CardContent>
           </Card>
@@ -112,7 +112,7 @@ export default function CronogramaPage({ params }: { params: Promise<{ id: strin
 
         {/* Controls */}
         <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex rounded-xl overflow-hidden" style={{ border: '1px solid #1E293B' }}>
+          <div className="flex rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
             {(['acumulado', 'mensal'] as const).map(v => (
               <button
                 key={v}
@@ -127,7 +127,7 @@ export default function CronogramaPage({ params }: { params: Promise<{ id: strin
               </button>
             ))}
           </div>
-          <div className="flex rounded-xl overflow-hidden" style={{ border: '1px solid #1E293B' }}>
+          <div className="flex rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
             {([['total', 'Total'], ['servico', 'Serviço'], ['material', 'Material']] as const).map(([v, label]) => (
               <button
                 key={v}
@@ -145,7 +145,7 @@ export default function CronogramaPage({ params }: { params: Promise<{ id: strin
         </div>
 
         {/* Curva S Chart */}
-        <Card style={{ background: '#0D1421', border: '1px solid #1E293B' }}>
+        <Card style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <CardHeader className="pb-2">
             <CardTitle className="text-white text-sm flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-blue-400" />
@@ -155,9 +155,9 @@ export default function CronogramaPage({ params }: { params: Promise<{ id: strin
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="flex justify-center py-12 text-[#475569]">Carregando dados...</div>
+              <div className="flex justify-center py-12 text-[var(--text-3)]">Carregando dados...</div>
             ) : chartData.length === 0 ? (
-              <div className="flex justify-center py-12 text-[#475569]">
+              <div className="flex justify-center py-12 text-[var(--text-3)]">
                 Nenhum dado de planejamento encontrado. Execute a Migration 005 primeiro.
               </div>
             ) : (
@@ -189,13 +189,13 @@ export default function CronogramaPage({ params }: { params: Promise<{ id: strin
                     width={60}
                   />
                   <Tooltip
-                    contentStyle={{ background: '#0D1421', border: '1px solid #1E293B', borderRadius: 12, color: '#F1F5F9' }}
+                    contentStyle={{ background: 'var(--surface-1)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-1)' }}
                     formatter={(value: any) => formatCurrency(Number(value))}
-                    labelStyle={{ color: '#94A3B8', marginBottom: 4 }}
+                    labelStyle={{ color: 'var(--text-2)', marginBottom: 4 }}
                   />
                   <Legend
                     wrapperStyle={{ paddingTop: 16 }}
-                    formatter={v => <span style={{ color: '#94A3B8', fontSize: 12 }}>{v}</span>}
+                    formatter={v => <span style={{ color: 'var(--text-2)', fontSize: 12 }}>{v}</span>}
                   />
                   <Area
                     type="monotone"
@@ -223,7 +223,7 @@ export default function CronogramaPage({ params }: { params: Promise<{ id: strin
 
         {/* Monthly breakdown table */}
         {!loading && data.length > 0 && (
-          <Card style={{ background: '#0D1421', border: '1px solid #1E293B' }}>
+          <Card style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             <CardHeader className="pb-3">
               <CardTitle className="text-white text-sm flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-blue-400" />
@@ -234,22 +234,22 @@ export default function CronogramaPage({ params }: { params: Promise<{ id: strin
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr style={{ background: '#080C14', borderBottom: '1px solid #1E293B' }}>
-                      <th className="px-4 py-2.5 text-left text-[#475569] font-semibold uppercase tracking-wide">Mês</th>
-                      <th className="px-4 py-2.5 text-right text-[#475569] font-semibold uppercase tracking-wide">Serviço</th>
-                      <th className="px-4 py-2.5 text-right text-[#475569] font-semibold uppercase tracking-wide">Material</th>
-                      <th className="px-4 py-2.5 text-right text-[#475569] font-semibold uppercase tracking-wide">Total</th>
-                      <th className="px-4 py-2.5 text-right text-[#475569] font-semibold uppercase tracking-wide">Acum. Total</th>
+                    <tr style={{ background: 'var(--background)', borderBottom: '1px solid #1E293B' }}>
+                      <th className="px-4 py-2.5 text-left text-[var(--text-3)] font-semibold uppercase tracking-wide">Mês</th>
+                      <th className="px-4 py-2.5 text-right text-[var(--text-3)] font-semibold uppercase tracking-wide">Serviço</th>
+                      <th className="px-4 py-2.5 text-right text-[var(--text-3)] font-semibold uppercase tracking-wide">Material</th>
+                      <th className="px-4 py-2.5 text-right text-[var(--text-3)] font-semibold uppercase tracking-wide">Total</th>
+                      <th className="px-4 py-2.5 text-right text-[var(--text-3)] font-semibold uppercase tracking-wide">Acum. Total</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.map((row, i) => (
-                      <tr key={row.mes} style={{ borderBottom: '1px solid #1E293B' }} className="hover:bg-[#111827] transition-colors">
-                        <td className="px-4 py-2.5 text-[#94A3B8] font-medium">{formatMes(row.mes)}</td>
+                      <tr key={row.mes} style={{ borderBottom: '1px solid #1E293B' }} className="hover:bg-[var(--surface-2)] transition-colors">
+                        <td className="px-4 py-2.5 text-[var(--text-2)] font-medium">{formatMes(row.mes)}</td>
                         <td className="px-4 py-2.5 text-right text-blue-400">{formatCurrency(row.planejado_fisico)}</td>
                         <td className="px-4 py-2.5 text-right text-cyan-400">{formatCurrency(row.planejado_fatd)}</td>
                         <td className="px-4 py-2.5 text-right text-white font-semibold">{formatCurrency(row.planejado_total)}</td>
-                        <td className="px-4 py-2.5 text-right text-[#94A3B8]">{formatCurrency(row.planejado_total_acum)}</td>
+                        <td className="px-4 py-2.5 text-right text-[var(--text-2)]">{formatCurrency(row.planejado_total_acum)}</td>
                       </tr>
                     ))}
                   </tbody>

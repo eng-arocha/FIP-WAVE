@@ -116,7 +116,7 @@ export default function EmpresasPage() {
   }
 
   return (
-    <div className="flex-1 overflow-auto" style={{ background: '#080C14' }}>
+    <div className="flex-1 overflow-auto" style={{ background: 'var(--background)' }}>
       <Topbar
         title="Empresas"
         subtitle="Gerenciamento de contratantes e contratados"
@@ -133,15 +133,15 @@ export default function EmpresasPage() {
         <div className="relative mb-6 max-w-sm">
           <Search
             className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4"
-            style={{ color: '#475569' }}
+            style={{ color: 'var(--text-3)' }}
           />
           <input
             placeholder="Buscar empresa..."
             className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm outline-none transition-all"
             style={{
-              background: '#111827',
-              border: '1px solid #1E293B',
-              color: '#F1F5F9',
+              background: 'var(--surface-2)',
+              border: '1px solid var(--border)',
+              color: 'var(--text-1)',
             }}
             value={busca}
             onChange={e => setBusca(e.target.value)}
@@ -151,7 +151,7 @@ export default function EmpresasPage() {
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center py-12" style={{ color: '#475569' }}>
+          <div className="flex items-center justify-center py-12" style={{ color: 'var(--text-3)' }}>
             <Loader2 className="w-6 h-6 animate-spin mr-2" style={{ color: '#3B82F6' }} />
             <span>Carregando empresas...</span>
           </div>
@@ -164,8 +164,8 @@ export default function EmpresasPage() {
                   key={empresa.id}
                   className="rounded-xl transition-all duration-200"
                   style={{
-                    background: '#111827',
-                    border: '1px solid #1E293B',
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--border)',
                     backdropFilter: 'blur(8px)',
                   }}
                   onMouseEnter={e => (e.currentTarget.style.borderColor = '#2d3f5c')}
@@ -181,11 +181,11 @@ export default function EmpresasPage() {
                           <Building2 className="w-5 h-5" style={{ color: colors.dot }} />
                         </div>
                         <div>
-                          <p className="font-semibold text-sm leading-tight" style={{ color: '#F1F5F9' }}>
+                          <p className="font-semibold text-sm leading-tight" style={{ color: 'var(--text-1)' }}>
                             {empresa.nome}
                           </p>
                           {empresa.cnpj && (
-                            <p className="text-xs mt-0.5" style={{ color: '#475569' }}>
+                            <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>
                               {empresa.cnpj}
                             </p>
                           )}
@@ -201,20 +201,20 @@ export default function EmpresasPage() {
                       style={{ borderTop: '1px solid #1E293B' }}
                     >
                       {empresa.responsavel && (
-                        <div className="flex items-center gap-2 text-xs" style={{ color: '#94A3B8' }}>
-                          <User className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#475569' }} />
+                        <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-2)' }}>
+                          <User className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-3)' }} />
                           {empresa.responsavel}
                         </div>
                       )}
                       {empresa.email_contato && (
-                        <div className="flex items-center gap-2 text-xs" style={{ color: '#94A3B8' }}>
-                          <Mail className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#475569' }} />
+                        <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-2)' }}>
+                          <Mail className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-3)' }} />
                           {empresa.email_contato}
                         </div>
                       )}
                       {empresa.telefone && (
-                        <div className="flex items-center gap-2 text-xs" style={{ color: '#94A3B8' }}>
-                          <Phone className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#475569' }} />
+                        <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-2)' }}>
+                          <Phone className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-3)' }} />
                           {empresa.telefone}
                         </div>
                       )}
@@ -226,8 +226,8 @@ export default function EmpresasPage() {
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150"
                         style={{
                           background: 'transparent',
-                          border: '1px solid #1E293B',
-                          color: '#94A3B8',
+                          border: '1px solid var(--border)',
+                          color: 'var(--text-2)',
                         }}
                         onMouseEnter={e => { e.currentTarget.style.borderColor = '#2d3f5c'; e.currentTarget.style.color = '#F1F5F9'; e.currentTarget.style.background = '#1a2236' }}
                         onMouseLeave={e => { e.currentTarget.style.borderColor = '#1E293B'; e.currentTarget.style.color = '#94A3B8'; e.currentTarget.style.background = 'transparent' }}
@@ -244,7 +244,7 @@ export default function EmpresasPage() {
             {filtradas.length === 0 && !loading && (
               <div className="col-span-3 text-center py-12">
                 <Building2 className="w-10 h-10 mx-auto mb-3" style={{ color: '#1E293B' }} />
-                <p className="font-medium" style={{ color: '#94A3B8' }}>Nenhuma empresa encontrada</p>
+                <p className="font-medium" style={{ color: 'var(--text-2)' }}>Nenhuma empresa encontrada</p>
               </div>
             )}
           </div>
@@ -268,9 +268,9 @@ export default function EmpresasPage() {
                   onChange={e => setForm(f => ({ ...f, nome: e.target.value }))}
                   className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all"
                   style={{
-                    background: '#0D1421',
-                    border: '1px solid #1E293B',
-                    color: '#F1F5F9',
+                    background: 'var(--surface-1)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text-1)',
                   }}
                   onFocus={e => { e.currentTarget.style.borderColor = '#3B82F6'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.10)' }}
                   onBlur={e => { e.currentTarget.style.borderColor = '#1E293B'; e.currentTarget.style.boxShadow = 'none' }}
@@ -284,9 +284,9 @@ export default function EmpresasPage() {
                   onChange={e => setForm(f => ({ ...f, cnpj: e.target.value }))}
                   className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all"
                   style={{
-                    background: '#0D1421',
-                    border: '1px solid #1E293B',
-                    color: '#F1F5F9',
+                    background: 'var(--surface-1)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text-1)',
                   }}
                   onFocus={e => { e.currentTarget.style.borderColor = '#3B82F6'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.10)' }}
                   onBlur={e => { e.currentTarget.style.borderColor = '#1E293B'; e.currentTarget.style.boxShadow = 'none' }}
@@ -313,9 +313,9 @@ export default function EmpresasPage() {
                   onChange={e => setForm(f => ({ ...f, responsavel: e.target.value }))}
                   className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all"
                   style={{
-                    background: '#0D1421',
-                    border: '1px solid #1E293B',
-                    color: '#F1F5F9',
+                    background: 'var(--surface-1)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text-1)',
                   }}
                   onFocus={e => { e.currentTarget.style.borderColor = '#3B82F6'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.10)' }}
                   onBlur={e => { e.currentTarget.style.borderColor = '#1E293B'; e.currentTarget.style.boxShadow = 'none' }}
@@ -329,9 +329,9 @@ export default function EmpresasPage() {
                   onChange={e => setForm(f => ({ ...f, telefone: e.target.value }))}
                   className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all"
                   style={{
-                    background: '#0D1421',
-                    border: '1px solid #1E293B',
-                    color: '#F1F5F9',
+                    background: 'var(--surface-1)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text-1)',
                   }}
                   onFocus={e => { e.currentTarget.style.borderColor = '#3B82F6'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.10)' }}
                   onBlur={e => { e.currentTarget.style.borderColor = '#1E293B'; e.currentTarget.style.boxShadow = 'none' }}
@@ -346,9 +346,9 @@ export default function EmpresasPage() {
                   onChange={e => setForm(f => ({ ...f, email_contato: e.target.value }))}
                   className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all"
                   style={{
-                    background: '#0D1421',
-                    border: '1px solid #1E293B',
-                    color: '#F1F5F9',
+                    background: 'var(--surface-1)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text-1)',
                   }}
                   onFocus={e => { e.currentTarget.style.borderColor = '#3B82F6'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.10)' }}
                   onBlur={e => { e.currentTarget.style.borderColor = '#1E293B'; e.currentTarget.style.boxShadow = 'none' }}
@@ -362,9 +362,9 @@ export default function EmpresasPage() {
                   onChange={e => setForm(f => ({ ...f, endereco: e.target.value }))}
                   className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all"
                   style={{
-                    background: '#0D1421',
-                    border: '1px solid #1E293B',
-                    color: '#F1F5F9',
+                    background: 'var(--surface-1)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text-1)',
                   }}
                   onFocus={e => { e.currentTarget.style.borderColor = '#3B82F6'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.10)' }}
                   onBlur={e => { e.currentTarget.style.borderColor = '#1E293B'; e.currentTarget.style.boxShadow = 'none' }}

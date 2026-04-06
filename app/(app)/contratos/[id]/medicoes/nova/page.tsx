@@ -176,12 +176,12 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                   ? 'bg-blue-500/15 text-blue-300 border border-blue-500/30 shadow-[0_0_12px_rgba(59,130,246,0.10)]'
                   : step > s.n
                   ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                  : 'bg-[#0D1421] text-[#475569] border border-[#1E293B]'
+                  : 'bg-[var(--surface-1)] text-[var(--text-3)] border border-[var(--border)]'
               }`}>
                 <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
                   step === s.n ? 'bg-blue-500 text-white' :
                   step > s.n ? 'bg-emerald-500 text-white' :
-                  'bg-[#1E293B] text-[#475569]'
+                  'bg-[#1E293B] text-[var(--text-3)]'
                 }`}>{step > s.n ? '✓' : s.n}</span>
                 <span className="hidden sm:inline">{s.label}</span>
               </div>
@@ -196,20 +196,20 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
         {step === 1 && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm text-[#F1F5F9]">Dados da Medição</CardTitle>
+              <CardTitle className="text-sm text-[var(--text-1)]">Dados da Medição</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-4">
                 {/* Tipo FIRST */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#475569] font-medium uppercase tracking-wider">Tipo de Medição *</Label>
+                  <Label className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wider">Tipo de Medição *</Label>
                   <Select value={tipo} onValueChange={v => setTipo(v)}>
-                    <SelectTrigger className="bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9]">
+                    <SelectTrigger className="bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-1)]">
                       <SelectValue placeholder="Selecione o tipo" />
                     </SelectTrigger>
-                    <SelectContent className="bg-[#111827] border border-[#1E293B]">
+                    <SelectContent className="bg-[var(--surface-2)] border border-[var(--border)]">
                       {Object.entries(TIPO_MEDICAO_LABELS).map(([k, v]) => (
-                        <SelectItem key={k} value={k} className="text-[#F1F5F9] focus:bg-[#1E293B] focus:text-[#F1F5F9]">{v}</SelectItem>
+                        <SelectItem key={k} value={k} className="text-[var(--text-1)] focus:bg-[#1E293B] focus:text-[var(--text-1)]">{v}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -217,12 +217,12 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
 
                 {/* Período SECOND */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-[#475569] font-medium uppercase tracking-wider">Período de Referência *</Label>
+                  <Label className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wider">Período de Referência *</Label>
                   <Input
                     type="month"
                     value={periodo}
                     onChange={e => setPeriodo(e.target.value)}
-                    className="bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] placeholder:text-[#475569]"
+                    className="bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-1)] placeholder:text-[var(--text-3)]"
                   />
                 </div>
 
@@ -231,20 +231,20 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                   <div className="flex items-center gap-2 p-3 rounded-xl" style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.15)' }}>
                     <User className="w-4 h-4 text-blue-400 flex-shrink-0" />
                     <div className="text-xs">
-                      <span className="text-[#475569]">Solicitado por: </span>
-                      <span className="text-[#F1F5F9] font-medium">{userNome || '—'}</span>
-                      {userEmail && <span className="text-[#475569] ml-1">({userEmail})</span>}
+                      <span className="text-[var(--text-3)]">Solicitado por: </span>
+                      <span className="text-[var(--text-1)] font-medium">{userNome || '—'}</span>
+                      {userEmail && <span className="text-[var(--text-3)] ml-1">({userEmail})</span>}
                     </div>
                   </div>
                 </div>
 
                 <div className="col-span-2 space-y-1.5">
-                  <Label className="text-xs text-[#475569] font-medium uppercase tracking-wider">Observações</Label>
+                  <Label className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wider">Observações</Label>
                   <Textarea
                     placeholder="Informações adicionais sobre a medição..."
                     value={observacoes}
                     onChange={e => setObservacoes(e.target.value)}
-                    className="bg-[#0D1421] border border-[#1E293B] text-[#F1F5F9] placeholder:text-[#475569]"
+                    className="bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-1)] placeholder:text-[var(--text-3)]"
                   />
                 </div>
               </div>
@@ -261,7 +261,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
             </div>
 
             {loadingEstrutura ? (
-              <div className="flex items-center justify-center py-16 text-[#475569]">
+              <div className="flex items-center justify-center py-16 text-[var(--text-3)]">
                 <Loader2 className="w-6 h-6 animate-spin mr-2 text-blue-400" />
                 <span>Carregando estrutura...</span>
               </div>
@@ -269,8 +269,8 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
               estruturaServico.map(grupo => (
                 <Card key={grupo.id}>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm flex items-center gap-2 text-[#F1F5F9]">
-                      <span className="text-[#475569] font-mono">{grupo.codigo}</span>
+                    <CardTitle className="text-sm flex items-center gap-2 text-[var(--text-1)]">
+                      <span className="text-[var(--text-3)] font-mono">{grupo.codigo}</span>
                       {grupo.nome}
                       <Badge className="bg-purple-500/10 text-purple-400 border-purple-500/20 text-[10px]">
                         Serviço
@@ -280,8 +280,8 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                   <CardContent>
                     {(grupo.tarefas || []).map((tarefa: any) => (
                       <div key={tarefa.id} className="mb-4 last:mb-0">
-                        <p className="text-xs font-semibold text-[#94A3B8] mb-2 flex items-center gap-1">
-                          <span className="font-mono text-[#475569]">{tarefa.codigo}</span>
+                        <p className="text-xs font-semibold text-[var(--text-2)] mb-2 flex items-center gap-1">
+                          <span className="font-mono text-[var(--text-3)]">{tarefa.codigo}</span>
                           {tarefa.nome}
                         </p>
                         <div className="space-y-2">
@@ -290,11 +290,11 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                             const qtdMedida = (pct / 100) * (det.quantidade_contratada || 0)
                             const valorItem = qtdMedida * (det.valor_unitario || 0)
                             return (
-                              <div key={det.id} className={`grid grid-cols-12 gap-2 p-2.5 rounded-lg text-xs items-center transition-all ${pct > 0 ? 'bg-blue-500/10 border border-blue-500/20' : 'bg-[#0D1421] border border-transparent'}`}>
-                                <div className="col-span-1 text-[#475569] font-mono">{det.codigo}</div>
-                                <div className="col-span-3 text-[#F1F5F9] font-medium leading-tight">{det.descricao}</div>
-                                <div className="col-span-1 text-center text-[#475569]">{det.unidade}</div>
-                                <div className="col-span-1 text-center text-[#475569]">
+                              <div key={det.id} className={`grid grid-cols-12 gap-2 p-2.5 rounded-lg text-xs items-center transition-all ${pct > 0 ? 'bg-blue-500/10 border border-blue-500/20' : 'bg-[var(--surface-1)] border border-transparent'}`}>
+                                <div className="col-span-1 text-[var(--text-3)] font-mono">{det.codigo}</div>
+                                <div className="col-span-3 text-[var(--text-1)] font-medium leading-tight">{det.descricao}</div>
+                                <div className="col-span-1 text-center text-[var(--text-3)]">{det.unidade}</div>
+                                <div className="col-span-1 text-center text-[var(--text-3)]">
                                   {formatCurrency(det.valor_unitario || 0)}
                                 </div>
                                 {/* 0 / 25 / 50 / 75 / 100 % selector */}
@@ -307,9 +307,9 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                       className={`flex-1 py-1.5 rounded-md text-[11px] font-bold transition-all duration-150 ${
                                         pct === p
                                           ? p === 0
-                                            ? 'bg-[#1E293B] text-[#475569] ring-1 ring-[#2d3f5c]'
+                                            ? 'bg-[#1E293B] text-[var(--text-3)] ring-1 ring-[#2d3f5c]'
                                             : 'bg-blue-500 text-white shadow-md shadow-blue-500/40'
-                                          : 'bg-[#1a2236] text-[#475569] hover:bg-[#2d3f5c] hover:text-[#94A3B8]'
+                                          : 'bg-[var(--surface-3)] text-[var(--text-3)] hover:bg-[#2d3f5c] hover:text-[var(--text-2)]'
                                       }`}
                                     >
                                       {p}%
@@ -317,7 +317,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                   ))}
                                 </div>
                                 <div className="col-span-2 text-right font-bold text-blue-400">
-                                  {valorItem > 0 ? formatCurrency(valorItem) : <span className="text-[#475569] font-normal">—</span>}
+                                  {valorItem > 0 ? formatCurrency(valorItem) : <span className="text-[var(--text-3)] font-normal">—</span>}
                                 </div>
                               </div>
                             )
@@ -333,7 +333,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
             {/* Subtotal */}
             <Card className="border-blue-500/20 bg-blue-500/5">
               <CardContent className="p-4 flex justify-between items-center">
-                <span className="font-semibold text-[#F1F5F9]">Total da Medição</span>
+                <span className="font-semibold text-[var(--text-1)]">Total da Medição</span>
                 <span className="text-2xl font-bold text-blue-400">{formatCurrency(totalMedicao)}</span>
               </CardContent>
             </Card>
@@ -345,16 +345,16 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
           <div className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm text-[#F1F5F9]">Documentos e Comprovantes</CardTitle>
+                <CardTitle className="text-sm text-[var(--text-1)]">Documentos e Comprovantes</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="border-2 border-dashed border-[#1E293B] rounded-lg p-8 text-center hover:border-blue-500/40 transition-colors cursor-pointer">
-                  <Upload className="w-8 h-8 text-[#475569] mx-auto mb-2" />
-                  <p className="text-sm text-[#94A3B8] font-medium">Clique para fazer upload ou arraste arquivos</p>
-                  <p className="text-xs text-[#475569] mt-1">PDF, PNG, JPG, XLS • Máximo 10MB por arquivo</p>
+                <div className="border-2 border-dashed border-[var(--border)] rounded-lg p-8 text-center hover:border-blue-500/40 transition-colors cursor-pointer">
+                  <Upload className="w-8 h-8 text-[var(--text-3)] mx-auto mb-2" />
+                  <p className="text-sm text-[var(--text-2)] font-medium">Clique para fazer upload ou arraste arquivos</p>
+                  <p className="text-xs text-[var(--text-3)] mt-1">PDF, PNG, JPG, XLS • Máximo 10MB por arquivo</p>
                   <div className="flex justify-center gap-2 mt-3 flex-wrap">
                     {(['boleto', 'relatorio_fotos', 'medicao_assinada', 'outro'] as TipoAnexo[]).map(t => (
-                      <Badge key={t} className="bg-[#1E293B] text-[#94A3B8] border-[#1E293B] text-[10px]">{t.replace('_', ' ')}</Badge>
+                      <Badge key={t} className="bg-[#1E293B] text-[var(--text-2)] border-[var(--border)] text-[10px]">{t.replace('_', ' ')}</Badge>
                     ))}
                   </div>
                 </div>
@@ -368,25 +368,25 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
           <div className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm text-[#F1F5F9]">Resumo da Medição</CardTitle>
+                <CardTitle className="text-sm text-[var(--text-1)]">Resumo da Medição</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 gap-4 text-sm mb-4">
                   <div>
-                    <p className="text-xs text-[#475569] mb-0.5">Tipo</p>
-                    <p className="font-medium text-[#F1F5F9]">{TIPO_MEDICAO_LABELS[tipo] ?? tipo}</p>
+                    <p className="text-xs text-[var(--text-3)] mb-0.5">Tipo</p>
+                    <p className="font-medium text-[var(--text-1)]">{TIPO_MEDICAO_LABELS[tipo] ?? tipo}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-[#475569] mb-0.5">Período</p>
-                    <p className="font-medium text-[#F1F5F9]">{periodo}</p>
+                    <p className="text-xs text-[var(--text-3)] mb-0.5">Período</p>
+                    <p className="font-medium text-[var(--text-1)]">{periodo}</p>
                   </div>
                   <div className="col-span-2">
-                    <p className="text-xs text-[#475569] mb-0.5">Solicitante</p>
-                    <p className="font-medium text-[#F1F5F9]">{userNome} {userEmail && <span className="text-[#475569] text-xs">({userEmail})</span>}</p>
+                    <p className="text-xs text-[var(--text-3)] mb-0.5">Solicitante</p>
+                    <p className="font-medium text-[var(--text-1)]">{userNome} {userEmail && <span className="text-[var(--text-3)] text-xs">({userEmail})</span>}</p>
                   </div>
                 </div>
-                <div className="border-t border-[#1E293B] pt-3 flex justify-between items-center">
-                  <span className="font-semibold text-[#F1F5F9]">Valor Total da Medição</span>
+                <div className="border-t border-[var(--border)] pt-3 flex justify-between items-center">
+                  <span className="font-semibold text-[var(--text-1)]">Valor Total da Medição</span>
                   <span className="text-2xl font-bold text-blue-400">{formatCurrency(totalMedicao)}</span>
                 </div>
               </CardContent>

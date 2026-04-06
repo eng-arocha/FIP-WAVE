@@ -117,13 +117,13 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#080C14]">
+    <div className="flex flex-col min-h-screen bg-[var(--background)]">
       <Topbar title="Nova Solicitação" />
       <div className="flex-1 p-6 space-y-6 max-w-4xl mx-auto w-full">
         {/* Header */}
         <div className="flex items-center gap-3">
           <Link href={`/contratos/${id}/fat-direto`}>
-            <Button variant="ghost" size="sm" className="text-[#475569] hover:text-white gap-2">
+            <Button variant="ghost" size="sm" className="text-[var(--text-3)] hover:text-white gap-2">
               <ArrowLeft className="w-4 h-4" /> Faturamento Direto
             </Button>
           </Link>
@@ -132,7 +132,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
               <Package className="w-5 h-5 text-blue-400" />
               Nova Solicitação de Autorização
             </h1>
-            <p className="text-sm text-[#475569]">Solicite autorização WAVE para compra de materiais</p>
+            <p className="text-sm text-[var(--text-3)]">Solicite autorização WAVE para compra de materiais</p>
           </div>
         </div>
 
@@ -148,7 +148,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
               <AlertTriangle className="w-6 h-6 text-red-400 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="text-red-400 font-bold text-base mb-1">Saldo de Material Insuficiente</p>
-                <p className="text-sm text-[#94A3B8]">
+                <p className="text-sm text-[var(--text-2)]">
                   A solicitação de <strong className="text-red-300">{formatCurrency(tetoViolation.valor_novo)}</strong> excede o saldo disponível de{' '}
                   <strong className="text-red-300">{formatCurrency(tetoViolation.saldo_disponivel)}</strong>.
                 </p>
@@ -156,24 +156,24 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
             </div>
             <div className="grid grid-cols-3 gap-3">
               {[
-                { label: 'Teto do Contrato', value: tetoViolation.teto, color: '#94A3B8' },
-                { label: 'Total Aprovado', value: tetoViolation.total_aprovado, color: '#EF4444' },
+                { label: 'Teto do Contrato', value: tetoViolation.teto, color: 'var(--text-2)' },
+                { label: 'Total Aprovado', value: tetoViolation.total_aprovado, color: 'var(--red)' },
                 { label: 'Saldo Disponível', value: tetoViolation.saldo_disponivel, color: tetoViolation.saldo_disponivel <= 0 ? '#EF4444' : '#F59E0B' },
               ].map(k => (
                 <div key={k.label} className="p-3 rounded-xl" style={{ background: 'rgba(0,0,0,0.30)' }}>
-                  <p className="text-xs text-[#475569] mb-1">{k.label}</p>
+                  <p className="text-xs text-[var(--text-3)] mb-1">{k.label}</p>
                   <p className="text-sm font-bold" style={{ color: k.color }}>{formatCurrency(k.value)}</p>
                 </div>
               ))}
             </div>
             {tetoViolation.pedidos_bloqueantes?.length > 0 && (
               <div>
-                <p className="text-xs text-[#475569] font-semibold uppercase tracking-wide mb-2">Pedidos Aprovados que Comprometem o Saldo</p>
+                <p className="text-xs text-[var(--text-3)] font-semibold uppercase tracking-wide mb-2">Pedidos Aprovados que Comprometem o Saldo</p>
                 <div className="space-y-1.5">
                   {tetoViolation.pedidos_bloqueantes.map((p: any) => (
                     <div key={p.id} className="flex items-center justify-between px-3 py-2 rounded-lg"
                       style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.20)' }}>
-                      <span className="text-xs text-[#94A3B8]">
+                      <span className="text-xs text-[var(--text-2)]">
                         SOL-{String(p.numero).padStart(3, '0')} · {new Date(p.data_solicitacao).toLocaleDateString('pt-BR')}
                       </span>
                       <span className="text-xs font-bold text-red-400">{formatCurrency(p.valor_total)}</span>
@@ -182,14 +182,14 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
                 </div>
               </div>
             )}
-            <button onClick={() => setTetoViolation(null)} className="text-xs text-[#475569] hover:text-[#94A3B8] transition-colors">
+            <button onClick={() => setTetoViolation(null)} className="text-xs text-[var(--text-3)] hover:text-[var(--text-2)] transition-colors">
               Fechar alerta
             </button>
           </div>
         )}
 
         {/* ── STEP 1: Dados do Fornecedor ── */}
-        <Card style={{ background: '#0D1421', border: '1px solid #1E293B' }}>
+        <Card style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <CardHeader className="pb-3">
             <CardTitle className="text-white text-sm flex items-center gap-2">
               <Building2 className="w-4 h-4 text-blue-400" />
@@ -199,40 +199,40 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
           <CardContent className="space-y-3">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="md:col-span-2">
-                <label className="block text-xs text-[#475569] mb-1">Razão Social *</label>
+                <label className="block text-xs text-[var(--text-3)] mb-1">Razão Social *</label>
                 <input
                   type="text"
                   value={fornRazaoSocial}
                   onChange={e => setFornRazaoSocial(e.target.value)}
                   placeholder="Nome completo da empresa fornecedora"
                   className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-                  style={{ background: '#080C14', border: '1px solid #1E293B', color: '#F1F5F9' }}
+                  style={{ background: 'var(--background)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
                   onFocus={e => { e.currentTarget.style.borderColor = '#3B82F6' }}
                   onBlur={e => { e.currentTarget.style.borderColor = '#1E293B' }}
                 />
               </div>
               <div>
-                <label className="block text-xs text-[#475569] mb-1">CNPJ</label>
+                <label className="block text-xs text-[var(--text-3)] mb-1">CNPJ</label>
                 <input
                   type="text"
                   value={fornCnpj}
                   onChange={e => setFornCnpj(e.target.value)}
                   placeholder="00.000.000/0001-00"
                   className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-                  style={{ background: '#080C14', border: '1px solid #1E293B', color: '#F1F5F9' }}
+                  style={{ background: 'var(--background)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
                   onFocus={e => { e.currentTarget.style.borderColor = '#3B82F6' }}
                   onBlur={e => { e.currentTarget.style.borderColor = '#1E293B' }}
                 />
               </div>
               <div>
-                <label className="block text-xs text-[#475569] mb-1">Contato (nome/telefone)</label>
+                <label className="block text-xs text-[var(--text-3)] mb-1">Contato (nome/telefone)</label>
                 <input
                   type="text"
                   value={fornContato}
                   onChange={e => setFornContato(e.target.value)}
                   placeholder="Nome e telefone do responsável"
                   className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-                  style={{ background: '#080C14', border: '1px solid #1E293B', color: '#F1F5F9' }}
+                  style={{ background: 'var(--background)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
                   onFocus={e => { e.currentTarget.style.borderColor = '#3B82F6' }}
                   onBlur={e => { e.currentTarget.style.borderColor = '#1E293B' }}
                 />
@@ -242,7 +242,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
         </Card>
 
         {/* Observações */}
-        <Card style={{ background: '#0D1421', border: '1px solid #1E293B' }}>
+        <Card style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <CardHeader className="pb-3">
             <CardTitle className="text-white text-sm">Observações</CardTitle>
           </CardHeader>
@@ -253,7 +253,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
               placeholder="Justificativa ou observações para esta solicitação..."
               rows={3}
               className="w-full rounded-xl px-4 py-3 text-sm outline-none resize-none"
-              style={{ background: '#080C14', border: '1px solid #1E293B', color: '#F1F5F9' }}
+              style={{ background: 'var(--background)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
               onFocus={e => { e.currentTarget.style.borderColor = '#3B82F6' }}
               onBlur={e => { e.currentTarget.style.borderColor = '#1E293B' }}
             />
@@ -261,7 +261,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
         </Card>
 
         {/* Items */}
-        <Card style={{ background: '#0D1421', border: '1px solid #1E293B' }}>
+        <Card style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <CardHeader className="pb-3 flex flex-row items-center justify-between">
             <CardTitle className="text-white text-sm">Itens da Solicitação</CardTitle>
             <Button onClick={addItem} size="sm" variant="ghost" className="text-blue-400 hover:text-blue-300 gap-1">
@@ -270,11 +270,11 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
           </CardHeader>
           <CardContent className="space-y-4">
             {itens.map((item, i) => (
-              <div key={i} className="p-4 rounded-xl space-y-3" style={{ background: '#080C14', border: '1px solid #1E293B' }}>
+              <div key={i} className="p-4 rounded-xl space-y-3" style={{ background: 'var(--background)', border: '1px solid var(--border)' }}>
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-[#475569] font-semibold uppercase tracking-wide">Item {i + 1}</span>
+                  <span className="text-xs text-[var(--text-3)] font-semibold uppercase tracking-wide">Item {i + 1}</span>
                   {itens.length > 1 && (
-                    <button onClick={() => removeItem(i)} className="text-[#475569] hover:text-red-400 transition-colors">
+                    <button onClick={() => removeItem(i)} className="text-[var(--text-3)] hover:text-red-400 transition-colors">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   )}
@@ -282,12 +282,12 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-[#475569] mb-1">Disciplina / Tarefa</label>
+                    <label className="block text-xs text-[var(--text-3)] mb-1">Disciplina / Tarefa</label>
                     <select
                       value={item.tarefa_id}
                       onChange={e => onTarefaChange(i, e.target.value)}
                       className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-                      style={{ background: '#0D1421', border: '1px solid #1E293B', color: item.tarefa_id ? '#F1F5F9' : '#475569' }}
+                      style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', color: item.tarefa_id ? '#F1F5F9' : '#475569' }}
                     >
                       <option value="">Selecione a disciplina...</option>
                       {tarefas.map(t => (
@@ -299,33 +299,33 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
                   </div>
 
                   <div>
-                    <label className="block text-xs text-[#475569] mb-1">Local</label>
+                    <label className="block text-xs text-[var(--text-3)] mb-1">Local</label>
                     <input
                       type="text"
                       value={item.local}
                       onChange={e => updateItem(i, 'local', e.target.value)}
                       placeholder="TORRE, AP-101, etc."
                       className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-                      style={{ background: '#0D1421', border: '1px solid #1E293B', color: '#F1F5F9' }}
+                      style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs text-[#475569] mb-1">Descrição do Material</label>
+                  <label className="block text-xs text-[var(--text-3)] mb-1">Descrição do Material</label>
                   <input
                     type="text"
                     value={item.descricao}
                     onChange={e => updateItem(i, 'descricao', e.target.value)}
                     placeholder="Descreva o material a ser adquirido..."
                     className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-                    style={{ background: '#0D1421', border: '1px solid #1E293B', color: '#F1F5F9' }}
+                    style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-[#475569] mb-1">Valor Total do Item (R$)</label>
+                    <label className="block text-xs text-[var(--text-3)] mb-1">Valor Total do Item (R$)</label>
                     <input
                       type="number"
                       value={item.valor_total}
@@ -334,11 +334,11 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
                       step="0.01"
                       placeholder="0,00"
                       className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-                      style={{ background: '#0D1421', border: '1px solid #1E293B', color: '#F1F5F9' }}
+                      style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-[#475569] mb-1">Valor</label>
+                    <label className="block text-xs text-[var(--text-3)] mb-1">Valor</label>
                     <div className="rounded-xl px-3 py-2.5 text-sm font-bold text-blue-400"
                       style={{ background: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.15)' }}>
                       {formatCurrency(parseFloat(item.valor_total) || 0)}
@@ -349,8 +349,8 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
             ))}
 
             {/* Total */}
-            <div className="flex items-center justify-between pt-3 border-t border-[#1E293B]">
-              <span className="text-sm text-[#94A3B8] font-semibold">Total da Solicitação</span>
+            <div className="flex items-center justify-between pt-3 border-t border-[var(--border)]">
+              <span className="text-sm text-[var(--text-2)] font-semibold">Total da Solicitação</span>
               <span className="text-xl font-black text-white">{formatCurrency(total)}</span>
             </div>
           </CardContent>
@@ -359,7 +359,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
         {/* Actions */}
         <div className="flex items-center justify-end gap-3 pb-6">
           <Link href={`/contratos/${id}/fat-direto`}>
-            <Button variant="ghost" className="text-[#475569] hover:text-white">Cancelar</Button>
+            <Button variant="ghost" className="text-[var(--text-3)] hover:text-white">Cancelar</Button>
           </Link>
           <Button
             onClick={salvar}

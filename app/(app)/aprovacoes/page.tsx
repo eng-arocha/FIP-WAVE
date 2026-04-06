@@ -226,7 +226,7 @@ export default function AprovacoesPage() {
   const qtdAprovadas = historico.filter(h => h.status === 'aprovado').length
 
   return (
-    <div className="flex-1 overflow-auto" style={{ background: '#080C14' }}>
+    <div className="flex-1 overflow-auto" style={{ background: 'var(--background)' }}>
       <Topbar
         title="Fila de Aprovações"
         subtitle={
@@ -250,7 +250,7 @@ export default function AprovacoesPage() {
           <div
             className="rounded-xl p-4 flex items-center gap-3"
             style={{
-              background: '#111827',
+              background: 'var(--surface-2)',
               border: `1px solid ${pendentes.length > 0 ? 'rgba(245,158,11,0.30)' : '#1E293B'}`,
               borderLeft: `4px solid ${pendentes.length > 0 ? '#F59E0B' : '#1E293B'}`,
             }}
@@ -273,7 +273,7 @@ export default function AprovacoesPage() {
               >
                 {pendentes.length}
               </p>
-              <p className="text-xs" style={{ color: '#475569' }}>Aguardando aprovação</p>
+              <p className="text-xs" style={{ color: 'var(--text-3)' }}>Aguardando aprovação</p>
             </div>
           </div>
 
@@ -281,7 +281,7 @@ export default function AprovacoesPage() {
           <div
             className="rounded-xl p-4 flex items-center gap-3"
             style={{
-              background: '#111827',
+              background: 'var(--surface-2)',
               border: '1px solid rgba(16,185,129,0.20)',
               borderLeft: '4px solid #10B981',
             }}
@@ -290,11 +290,11 @@ export default function AprovacoesPage() {
               className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
               style={{ background: 'rgba(16,185,129,0.12)' }}
             >
-              <CheckCircle2 className="w-5 h-5" style={{ color: '#10B981' }} />
+              <CheckCircle2 className="w-5 h-5" style={{ color: 'var(--green)' }} />
             </div>
             <div>
-              <p className="text-2xl font-bold" style={{ color: '#F1F5F9' }}>{qtdAprovadas}</p>
-              <p className="text-xs" style={{ color: '#475569' }}>Aprovadas (total)</p>
+              <p className="text-2xl font-bold" style={{ color: 'var(--text-1)' }}>{qtdAprovadas}</p>
+              <p className="text-xs" style={{ color: 'var(--text-3)' }}>Aprovadas (total)</p>
             </div>
           </div>
 
@@ -302,7 +302,7 @@ export default function AprovacoesPage() {
           <div
             className="rounded-xl p-4 flex items-center gap-3"
             style={{
-              background: '#111827',
+              background: 'var(--surface-2)',
               border: '1px solid rgba(59,130,246,0.20)',
               borderLeft: '4px solid #3B82F6',
             }}
@@ -314,8 +314,8 @@ export default function AprovacoesPage() {
               <FileText className="w-5 h-5" style={{ color: '#3B82F6' }} />
             </div>
             <div>
-              <p className="text-xl font-bold" style={{ color: '#F1F5F9' }}>{formatCurrency(totalAprovado)}</p>
-              <p className="text-xs" style={{ color: '#475569' }}>Total aprovado</p>
+              <p className="text-xl font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(totalAprovado)}</p>
+              <p className="text-xs" style={{ color: 'var(--text-3)' }}>Total aprovado</p>
             </div>
           </div>
         </div>
@@ -323,15 +323,15 @@ export default function AprovacoesPage() {
         {/* Tab switcher */}
         <div
           className="flex gap-1 mb-5 w-fit p-1 rounded-xl"
-          style={{ background: '#0D1421', border: '1px solid #1E293B' }}
+          style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}
         >
           <button
             onClick={() => setAba('pendentes')}
             className="px-4 py-1.5 text-sm font-medium rounded-lg transition-all duration-150 flex items-center gap-2"
             style={
               aba === 'pendentes'
-                ? { background: '#1a2236', color: '#F1F5F9', boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }
-                : { color: '#475569' }
+                ? { background: 'var(--surface-3)', color: 'var(--text-1)', boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }
+                : { color: 'var(--text-3)' }
             }
           >
             Pendentes
@@ -349,8 +349,8 @@ export default function AprovacoesPage() {
             className="px-4 py-1.5 text-sm font-medium rounded-lg transition-all duration-150"
             style={
               aba === 'historico'
-                ? { background: '#1a2236', color: '#F1F5F9', boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }
-                : { color: '#475569' }
+                ? { background: 'var(--surface-3)', color: 'var(--text-1)', boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }
+                : { color: 'var(--text-3)' }
             }
           >
             Histórico
@@ -364,7 +364,7 @@ export default function AprovacoesPage() {
               <div
                 key={i}
                 className="rounded-xl p-5 animate-pulse"
-                style={{ background: '#111827', border: '1px solid #1E293B' }}
+                style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
               >
                 <div className="flex items-start gap-4">
                   <div className="w-12 h-12 rounded-xl flex-shrink-0" style={{ background: '#1E293B' }} />
@@ -385,16 +385,16 @@ export default function AprovacoesPage() {
           <div className="space-y-3">
             {pendentes.length === 0 ? (
               <div className="text-center py-16">
-                <CheckCircle2 className="w-12 h-12 mx-auto mb-3" style={{ color: '#10B981', opacity: 0.6 }} />
-                <p className="font-semibold" style={{ color: '#94A3B8' }}>Nenhuma medição pendente</p>
-                <p className="text-sm mt-1" style={{ color: '#475569' }}>Todas as medições foram analisadas</p>
+                <CheckCircle2 className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--green)', opacity: 0.6 }} />
+                <p className="font-semibold" style={{ color: 'var(--text-2)' }}>Nenhuma medição pendente</p>
+                <p className="text-sm mt-1" style={{ color: 'var(--text-3)' }}>Todas as medições foram analisadas</p>
               </div>
             ) : pendentes.map(m => (
               <div
                 key={m.id}
                 className="rounded-xl transition-all duration-150"
                 style={{
-                  background: '#111827',
+                  background: 'var(--surface-2)',
                   border: '1px solid rgba(245,158,11,0.20)',
                   borderLeft: '4px solid #F59E0B',
                 }}
@@ -407,13 +407,13 @@ export default function AprovacoesPage() {
                       className="w-12 h-12 rounded-xl flex flex-col items-center justify-center flex-shrink-0"
                       style={{ background: 'rgba(245,158,11,0.10)' }}
                     >
-                      <AlertCircle className="w-5 h-5" style={{ color: '#F59E0B' }} />
+                      <AlertCircle className="w-5 h-5" style={{ color: 'var(--amber)' }} />
                     </div>
                     <div className="flex-1">
                       <div className="flex items-start justify-between mb-2">
                         <div>
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="font-bold" style={{ color: '#F1F5F9' }}>
+                            <span className="font-bold" style={{ color: 'var(--text-1)' }}>
                               Medição #{String(m.numero).padStart(3, '0')}
                             </span>
                             <Badge className={getMedicaoStatusColor(m.status as MedicaoStatus)}>
@@ -425,7 +425,7 @@ export default function AprovacoesPage() {
                               {TIPO_LABELS[m.tipo]}
                             </span>
                           </div>
-                          <p className="text-sm" style={{ color: '#94A3B8' }}>
+                          <p className="text-sm" style={{ color: 'var(--text-2)' }}>
                             {m.contrato.numero} · {m.contrato.descricao}
                           </p>
                         </div>
@@ -442,7 +442,7 @@ export default function AprovacoesPage() {
                       </div>
                       <div
                         className="grid grid-cols-3 gap-3 text-xs mb-4"
-                        style={{ color: '#475569' }}
+                        style={{ color: 'var(--text-3)' }}
                       >
                         <span className="flex items-center gap-1">
                           <Calendar className="w-3 h-3" /> {m.periodo_referencia}
@@ -497,7 +497,7 @@ export default function AprovacoesPage() {
                             style={{
                               background: 'transparent',
                               border: '1px solid #2d3f5c',
-                              color: '#94A3B8',
+                              color: 'var(--text-2)',
                             }}
                             onMouseEnter={e => { e.currentTarget.style.borderColor = '#3B82F6'; e.currentTarget.style.color = '#F1F5F9' }}
                             onMouseLeave={e => { e.currentTarget.style.borderColor = '#2d3f5c'; e.currentTarget.style.color = '#94A3B8' }}
@@ -526,8 +526,8 @@ export default function AprovacoesPage() {
                   key={m.id}
                   className="rounded-xl transition-all duration-150"
                   style={{
-                    background: '#111827',
-                    border: '1px solid #1E293B',
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--border)',
                   }}
                   onMouseEnter={e => (e.currentTarget.style.background = '#1a2236')}
                   onMouseLeave={e => (e.currentTarget.style.background = '#111827')}
@@ -541,13 +541,13 @@ export default function AprovacoesPage() {
                         }}
                       >
                         {isAprovado
-                          ? <CheckCircle2 className="w-4 h-4" style={{ color: '#10B981' }} />
-                          : <XCircle className="w-4 h-4" style={{ color: '#EF4444' }} />
+                          ? <CheckCircle2 className="w-4 h-4" style={{ color: 'var(--green)' }} />
+                          : <XCircle className="w-4 h-4" style={{ color: 'var(--red)' }} />
                         }
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm" style={{ color: '#F1F5F9' }}>
+                          <span className="font-medium text-sm" style={{ color: 'var(--text-1)' }}>
                             Medição #{String(m.numero).padStart(3, '0')}
                           </span>
                           <Badge className={getMedicaoStatusColor(m.status as MedicaoStatus)}>
@@ -559,15 +559,15 @@ export default function AprovacoesPage() {
                             {TIPO_LABELS[m.tipo]}
                           </span>
                         </div>
-                        <p className="text-xs" style={{ color: '#475569' }}>
+                        <p className="text-xs" style={{ color: 'var(--text-3)' }}>
                           {m.contrato.numero} · {m.periodo_referencia}
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="font-semibold text-sm" style={{ color: '#F1F5F9' }}>
+                        <p className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>
                           {formatCurrency(m.valor_total)}
                         </p>
-                        <p className="text-xs" style={{ color: '#475569' }}>
+                        <p className="text-xs" style={{ color: 'var(--text-3)' }}>
                           {isAprovado ? 'Aprovado' : 'Rejeitado'} em{' '}
                           {dataAprovacao ? formatDate(dataAprovacao) : '—'}
                         </p>
@@ -575,7 +575,7 @@ export default function AprovacoesPage() {
                       <Link href={`/contratos/${m.contrato.id}/medicoes/${m.id}`}>
                         <button
                           className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
-                          style={{ color: '#475569' }}
+                          style={{ color: 'var(--text-3)' }}
                           onMouseEnter={e => { e.currentTarget.style.background = '#1E293B'; e.currentTarget.style.color = '#94A3B8' }}
                           onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#475569' }}
                         >
@@ -595,7 +595,7 @@ export default function AprovacoesPage() {
       <Dialog open={!!modalAprovar} onOpenChange={() => setModalAprovar(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2" style={{ color: '#10B981' }}>
+            <DialogTitle className="flex items-center gap-2" style={{ color: 'var(--green)' }}>
               <CheckCircle2 className="w-5 h-5" />
               Aprovar Medição
             </DialogTitle>
@@ -620,7 +620,7 @@ export default function AprovacoesPage() {
               Um e-mail de confirmação será enviado automaticamente para o fornecedor e para os envolvidos no contrato.
             </div>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium" style={{ color: '#94A3B8' }}>
+              <label className="text-sm font-medium" style={{ color: 'var(--text-2)' }}>
                 Comentário (opcional)
               </label>
               <Textarea
@@ -644,7 +644,7 @@ export default function AprovacoesPage() {
       <Dialog open={!!modalRejeitar} onOpenChange={() => setModalRejeitar(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2" style={{ color: '#EF4444' }}>
+            <DialogTitle className="flex items-center gap-2" style={{ color: 'var(--red)' }}>
               <XCircle className="w-5 h-5" />
               Rejeitar Medição
             </DialogTitle>
@@ -654,7 +654,7 @@ export default function AprovacoesPage() {
           </DialogHeader>
           <div className="py-2">
             <div className="space-y-1.5">
-              <label className="text-sm font-medium" style={{ color: '#94A3B8' }}>
+              <label className="text-sm font-medium" style={{ color: 'var(--text-2)' }}>
                 Motivo da Rejeição *
               </label>
               <Textarea

@@ -169,20 +169,20 @@ export function CommandPalette() {
       onClick={closePalette}
     >
       <div
-        className="fixed left-1/2 top-[20%] -translate-x-1/2 w-full max-w-xl bg-[#111827] border border-[#2d3f5c] rounded-2xl shadow-2xl shadow-black/60 overflow-hidden"
+        className="fixed left-1/2 top-[20%] -translate-x-1/2 w-full max-w-xl bg-[var(--surface-2)] border border-[#2d3f5c] rounded-2xl shadow-2xl shadow-black/60 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Input */}
-        <div className="flex items-center border-b border-[#1E293B]">
-          <Search className="w-4 h-4 text-[#475569] shrink-0 ml-5" />
+        <div className="flex items-center border-b border-[var(--border)]">
+          <Search className="w-4 h-4 text-[var(--text-3)] shrink-0 ml-5" />
           <input
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Buscar contratos, páginas..."
-            className="flex-1 bg-transparent border-0 px-3 py-4 text-[#F1F5F9] text-base placeholder:text-[#475569] focus:outline-none"
+            className="flex-1 bg-transparent border-0 px-3 py-4 text-[var(--text-1)] text-base placeholder:text-[var(--text-3)] focus:outline-none"
           />
-          <kbd className="shrink-0 mr-4 px-1.5 py-0.5 text-[10px] text-[#475569] bg-[#1a2236] rounded border border-[#2d3f5c]">
+          <kbd className="shrink-0 mr-4 px-1.5 py-0.5 text-[10px] text-[var(--text-3)] bg-[var(--surface-3)] rounded border border-[#2d3f5c]">
             ⌘K
           </kbd>
         </div>
@@ -190,14 +190,14 @@ export function CommandPalette() {
         {/* Results */}
         <div className="max-h-80 overflow-y-auto">
           {results.length === 0 && (
-            <p className="px-4 py-6 text-center text-sm text-[#475569]">
+            <p className="px-4 py-6 text-center text-sm text-[var(--text-3)]">
               Nenhum resultado encontrado.
             </p>
           )}
 
           {showNavSection && (
             <>
-              <p className="px-4 py-1.5 text-[10px] font-semibold text-[#475569] uppercase tracking-wider">
+              <p className="px-4 py-1.5 text-[10px] font-semibold text-[var(--text-3)] uppercase tracking-wider">
                 Navegação
               </p>
               {filteredNav.map((item) => {
@@ -207,8 +207,8 @@ export function CommandPalette() {
                 return (
                   <button
                     key={item.href}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-[#1a2236] text-left transition-colors ${
-                      isActive ? 'bg-[#1a2236] border-l-2 border-blue-500' : ''
+                    className={`w-full flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-[var(--surface-3)] text-left transition-colors ${
+                      isActive ? 'bg-[var(--surface-3)] border-l-2 border-blue-500' : ''
                     }`}
                     onMouseEnter={() => setActiveIdx(idx)}
                     onClick={() => {
@@ -216,8 +216,8 @@ export function CommandPalette() {
                       closePalette()
                     }}
                   >
-                    <Icon className="w-4 h-4 text-[#475569] shrink-0" />
-                    <span className="text-sm text-[#F1F5F9]">{item.label}</span>
+                    <Icon className="w-4 h-4 text-[var(--text-3)] shrink-0" />
+                    <span className="text-sm text-[var(--text-1)]">{item.label}</span>
                   </button>
                 )
               })}
@@ -226,7 +226,7 @@ export function CommandPalette() {
 
           {showContratosSection && (
             <>
-              <p className="px-4 py-1.5 text-[10px] font-semibold text-[#475569] uppercase tracking-wider">
+              <p className="px-4 py-1.5 text-[10px] font-semibold text-[var(--text-3)] uppercase tracking-wider">
                 Contratos
               </p>
               {filteredContratos.map((contrato) => {
@@ -235,8 +235,8 @@ export function CommandPalette() {
                 return (
                   <button
                     key={contrato.id}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-[#1a2236] text-left transition-colors ${
-                      isActive ? 'bg-[#1a2236] border-l-2 border-blue-500' : ''
+                    className={`w-full flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-[var(--surface-3)] text-left transition-colors ${
+                      isActive ? 'bg-[var(--surface-3)] border-l-2 border-blue-500' : ''
                     }`}
                     onMouseEnter={() => setActiveIdx(idx)}
                     onClick={() => {
@@ -244,16 +244,16 @@ export function CommandPalette() {
                       closePalette()
                     }}
                   >
-                    <FileText className="w-4 h-4 text-[#475569] shrink-0" />
+                    <FileText className="w-4 h-4 text-[var(--text-3)] shrink-0" />
                     <div className="flex flex-col min-w-0">
-                      <span className="text-sm text-[#F1F5F9] truncate">
+                      <span className="text-sm text-[var(--text-1)] truncate">
                         {contrato.numero
                           ? `#${contrato.numero} — `
                           : ''}
                         {contrato.descricao ?? 'Contrato sem descrição'}
                       </span>
                       {contrato.contratado?.nome && (
-                        <span className="text-xs text-[#475569] truncate">
+                        <span className="text-xs text-[var(--text-3)] truncate">
                           {contrato.contratado.nome}
                         </span>
                       )}
@@ -266,17 +266,17 @@ export function CommandPalette() {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center gap-3 px-4 py-2 border-t border-[#1E293B] text-[10px] text-[#475569]">
+        <div className="flex items-center gap-3 px-4 py-2 border-t border-[var(--border)] text-[10px] text-[var(--text-3)]">
           <span>
-            <kbd className="px-1 py-0.5 bg-[#1a2236] rounded border border-[#2d3f5c]">↵</kbd>{' '}
+            <kbd className="px-1 py-0.5 bg-[var(--surface-3)] rounded border border-[#2d3f5c]">↵</kbd>{' '}
             Abrir
           </span>
           <span>
-            <kbd className="px-1 py-0.5 bg-[#1a2236] rounded border border-[#2d3f5c]">↑↓</kbd>{' '}
+            <kbd className="px-1 py-0.5 bg-[var(--surface-3)] rounded border border-[#2d3f5c]">↑↓</kbd>{' '}
             Navegar
           </span>
           <span>
-            <kbd className="px-1 py-0.5 bg-[#1a2236] rounded border border-[#2d3f5c]">Esc</kbd>{' '}
+            <kbd className="px-1 py-0.5 bg-[var(--surface-3)] rounded border border-[#2d3f5c]">Esc</kbd>{' '}
             Fechar
           </span>
         </div>
