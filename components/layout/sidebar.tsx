@@ -135,30 +135,31 @@ export function Sidebar({
           if (!isActive) e.currentTarget.style.background = ''
         }}
       >
-        {/* Apple-style icon container */}
-        {isActive ? (
-          <AppleIconBg colorKey={colorLookup}>
-            <item.icon className="w-3.5 h-3.5 text-white" strokeWidth={1.5} />
-          </AppleIconBg>
-        ) : (
+        {/* Apple-style icon — sempre colorido (ativo: 100% / inativo: 75% opacity) */}
+        {colors ? (
           <span
-            className="apple-icon flex-shrink-0 transition-colors"
+            className="apple-icon flex-shrink-0 transition-all duration-200"
             style={{
-              background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+              background: `linear-gradient(135deg, ${colors.from}, ${colors.to})`,
+              opacity: isActive ? 1 : 0.55,
+              boxShadow: isActive ? `0 2px 8px ${colors.from}40` : 'none',
             }}
           >
-            <item.icon
-              className="w-3.5 h-3.5 transition-colors"
-              strokeWidth={1.5}
-              style={{ color: 'var(--text-3)' }}
-            />
+            <item.icon className="w-3.5 h-3.5 text-white" strokeWidth={1.5} />
+          </span>
+        ) : (
+          <span className="apple-icon flex-shrink-0" style={{ background: 'var(--surface-3)' }}>
+            <item.icon className="w-3.5 h-3.5" strokeWidth={1.5} style={{ color: 'var(--text-3)' }} />
           </span>
         )}
 
         {/* Label */}
         <span
           className={cn('whitespace-nowrap transition-all duration-200 flex-1', showText ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden')}
-          style={{ color: isActive ? 'var(--text-1)' : 'var(--text-2)' }}
+          style={{
+            color: isActive ? 'var(--text-1)' : 'var(--text-2)',
+            fontWeight: isActive ? 600 : 400,
+          }}
         >
           {item.label}
         </span>

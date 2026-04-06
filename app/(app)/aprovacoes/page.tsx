@@ -269,7 +269,7 @@ export default function AprovacoesPage() {
             <div>
               <p
                 className="text-2xl font-bold"
-                style={{ color: pendentes.length > 0 ? '#F59E0B' : '#F1F5F9' }}
+                style={{ color: pendentes.length > 0 ? 'var(--amber)' : 'var(--text-1)' }}
               >
                 {pendentes.length}
               </p>
@@ -496,11 +496,11 @@ export default function AprovacoesPage() {
                             className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150"
                             style={{
                               background: 'transparent',
-                              border: '1px solid #2d3f5c',
+                              border: '1px solid var(--border)',
                               color: 'var(--text-2)',
                             }}
-                            onMouseEnter={e => { e.currentTarget.style.borderColor = '#3B82F6'; e.currentTarget.style.color = '#F1F5F9' }}
-                            onMouseLeave={e => { e.currentTarget.style.borderColor = '#2d3f5c'; e.currentTarget.style.color = '#94A3B8' }}
+                            onMouseEnter={e => { e.currentTarget.style.borderColor = '#3B82F6'; e.currentTarget.style.color = 'var(--text-1)' }}
+                            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-2)' }}
                           >
                             Ver detalhes <ArrowRight className="w-3.5 h-3.5" />
                           </button>
@@ -576,8 +576,8 @@ export default function AprovacoesPage() {
                         <button
                           className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
                           style={{ color: 'var(--text-3)' }}
-                          onMouseEnter={e => { e.currentTarget.style.background = '#1E293B'; e.currentTarget.style.color = '#94A3B8' }}
-                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#475569' }}
+                          onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-3)'; e.currentTarget.style.color = 'var(--text-1)' }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)' }}
                         >
                           <ArrowRight className="w-4 h-4" />
                         </button>

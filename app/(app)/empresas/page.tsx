@@ -229,8 +229,8 @@ export default function EmpresasPage() {
                           border: '1px solid var(--border)',
                           color: 'var(--text-2)',
                         }}
-                        onMouseEnter={e => { e.currentTarget.style.borderColor = '#2d3f5c'; e.currentTarget.style.color = '#F1F5F9'; e.currentTarget.style.background = '#1a2236' }}
-                        onMouseLeave={e => { e.currentTarget.style.borderColor = '#1E293B'; e.currentTarget.style.color = '#94A3B8'; e.currentTarget.style.background = 'transparent' }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-hover)'; e.currentTarget.style.color = 'var(--text-1)'; e.currentTarget.style.background = 'var(--surface-3)' }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-2)'; e.currentTarget.style.background = 'transparent' }}
                       >
                         <Pencil className="w-3 h-3" />
                         Editar

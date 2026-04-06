@@ -134,13 +134,13 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link href={`/contratos/${id}/fat-direto`}>
-              <Button variant="ghost" size="sm" className="text-[var(--text-3)] hover:text-white gap-2">
+              <Button variant="ghost" size="sm" className="text-[var(--text-3)] hover:text-[var(--text-1)] gap-2">
                 <ArrowLeft className="w-4 h-4" /> Faturamento Direto
               </Button>
             </Link>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold text-white">SOL-{String(sol.numero).padStart(3, '0')}</h1>
+                <h1 className="text-xl font-bold" style={{ color: 'var(--text-1)' }}>SOL-{String(sol.numero).padStart(3, '0')}</h1>
                 <span
                   className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide"
                   style={{ background: `${statusColor}20`, color: statusColor }}
@@ -155,7 +155,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
           </div>
           <div className="text-right">
             <p className="text-xs text-[var(--text-3)] uppercase tracking-wide">Valor Total</p>
-            <p className="text-2xl font-black text-white">{formatCurrency(sol.valor_total)}</p>
+            <p className="text-2xl font-black" style={{ color: 'var(--text-1)' }}>{formatCurrency(sol.valor_total)}</p>
           </div>
         </div>
 
@@ -228,20 +228,20 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
         {/* Items */}
         <Card style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <CardHeader className="pb-3">
-            <CardTitle className="text-white text-sm">Itens Solicitados</CardTitle>
+            <CardTitle className="text-sm" style={{ color: 'var(--text-1)' }}>Itens Solicitados</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="divide-y divide-[#1E293B]">
+            <div className="divide-y divide-[var(--border)]">
               {(sol.itens || []).map((item, i) => (
                 <div key={item.id} className="px-5 py-3 flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-white font-medium">{item.descricao}</p>
+                    <p className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>{item.descricao}</p>
                     <p className="text-xs text-[var(--text-3)] mt-0.5">
                       {item.tarefa?.codigo} · Local: {item.local} · Qtde: {item.qtde_solicitada}
                       {' · '}{formatCurrency(item.valor_unitario)}/un
                     </p>
                   </div>
-                  <p className="text-sm font-bold text-white ml-4">{formatCurrency(item.valor_total)}</p>
+                  <p className="text-sm font-bold ml-4" style={{ color: 'var(--text-1)' }}>{formatCurrency(item.valor_total)}</p>
                 </div>
               ))}
             </div>
@@ -252,7 +252,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
         <Card style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <CardHeader className="pb-3 flex flex-row items-center justify-between">
             <div>
-              <CardTitle className="text-white text-sm">Notas Fiscais</CardTitle>
+              <CardTitle className="text-sm" style={{ color: 'var(--text-1)' }}>Notas Fiscais</CardTitle>
               {totalNF > 0 && <p className="text-xs text-[#06B6D4] mt-0.5">Total recebido: {formatCurrency(totalNF)}</p>}
             </div>
             {sol.status === 'aprovado' && (
@@ -308,15 +308,15 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                 Nenhuma nota fiscal registrada
               </div>
             ) : (
-              <div className="divide-y divide-[#1E293B] -mx-5 px-0">
+              <div className="divide-y divide-[var(--border)] -mx-5 px-0">
                 {(sol.notas_fiscais || []).map(nf => (
                   <div key={nf.id} className="px-5 py-3 flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-white font-medium">NF {nf.numero_nf}</p>
+                      <p className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>NF {nf.numero_nf}</p>
                       <p className="text-xs text-[var(--text-3)]">{nf.emitente} · {formatDate(nf.data_emissao)}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-bold text-white">{formatCurrency(nf.valor)}</p>
+                      <p className="text-sm font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(nf.valor)}</p>
                       <span className="text-xs" style={{ color: nf.status === 'validada' ? '#10B981' : '#F59E0B' }}>
                         {nf.status === 'validada' ? 'Validada' : 'Pendente'}
                       </span>

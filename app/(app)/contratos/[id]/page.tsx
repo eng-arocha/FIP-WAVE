@@ -391,9 +391,9 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                       <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" horizontal={false} />
                       <XAxis type="number" tick={{ fontSize: 10, fill: '#475569' }} tickFormatter={v => `${(v / 1000000).toFixed(1)}M`} />
                       <YAxis type="category" dataKey="nome" tick={{ fontSize: 10, fill: '#94A3B8' }} width={80} />
-                      <Tooltip formatter={(v) => formatCurrency(v as number)} contentStyle={{ backgroundColor: '#0D1421', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-1)', fontSize: 12 }} />
+                      <Tooltip formatter={(v) => formatCurrency(v as number)} contentStyle={{ backgroundColor: '#0D1421', border: '1px solid #1E293B', borderRadius: '8px', color: '#FFFFFF', fontSize: 12 }} />
                       <Legend iconSize={10} wrapperStyle={{ fontSize: 11, color: 'var(--text-2)' }} />
-                      <Bar dataKey="contratado" name="Contratado" fill="#1E293B" radius={[0, 2, 2, 0]} />
+                      <Bar dataKey="contratado" name="Contratado" fill="#64748B" radius={[0, 2, 2, 0]} />
                       <Bar dataKey="medido" name="Medido" fill="#3B82F6" radius={[0, 2, 2, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
@@ -471,8 +471,8 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
             {/* ── 3 Acompanhamento Charts — each with independent filters ── */}
             {acomp && (() => {
               const chartTooltipStyle = {
-                background: 'var(--surface-1)', border: '1px solid var(--border)',
-                borderRadius: 10, color: 'var(--text-1)', fontSize: 12,
+                background: '#0D1421', border: '1px solid #1E293B',
+                borderRadius: 10, color: '#FFFFFF', fontSize: 12,
               }
 
               function buildRows(
@@ -508,19 +508,19 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                   <div className="flex flex-wrap gap-2 mb-4">
                     <select value={cx1} onChange={e => { setCx1(e.target.value); setCx2(''); setCx3('') }}
                       className="rounded-xl px-3 py-1.5 text-xs outline-none"
-                      style={{ background: 'var(--background)', border: '1px solid var(--border)', color: cx1 ? '#F1F5F9' : '#475569' }}>
+                      style={{ background: 'var(--background)', border: `1px solid ${cx1 ? 'var(--accent)' : 'var(--border)'}`, color: 'var(--text-1)' }}>
                       <option value="">Global (todos)</option>
                       {acomp.grupos.map((g: any) => <option key={g.id} value={g.id}>{g.codigo} — {g.nome.substring(0, 35)}</option>)}
                     </select>
                     <select value={cx2} onChange={e => { setCx2(e.target.value); setCx3('') }} disabled={!cx1}
                       className="rounded-xl px-3 py-1.5 text-xs outline-none disabled:opacity-40"
-                      style={{ background: 'var(--background)', border: '1px solid var(--border)', color: cx2 ? '#F1F5F9' : '#475569' }}>
+                      style={{ background: 'var(--background)', border: `1px solid ${cx2 ? 'var(--accent)' : 'var(--border)'}`, color: 'var(--text-1)' }}>
                       <option value="">Todos (nível 2)</option>
                       {tars.map((t: any) => <option key={t.id} value={t.id}>{t.codigo} — {t.nome.substring(0, 30)}</option>)}
                     </select>
                     <select value={cx3} onChange={e => setCx3(e.target.value)} disabled={!cx2}
                       className="rounded-xl px-3 py-1.5 text-xs outline-none disabled:opacity-40"
-                      style={{ background: 'var(--background)', border: '1px solid var(--border)', color: cx3 ? '#F1F5F9' : '#475569' }}>
+                      style={{ background: 'var(--background)', border: `1px solid ${cx3 ? 'var(--accent)' : 'var(--border)'}`, color: 'var(--text-1)' }}>
                       <option value="">Todos (nível 3)</option>
                       {dets.map((d: any) => <option key={d.id} value={d.id}>{d.local ?? d.codigo} — {(d.nome ?? '').substring(0, 25)}</option>)}
                     </select>
@@ -528,8 +528,8 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                       <button onClick={() => { setCx1(''); setCx2(''); setCx3('') }}
                         className="px-3 py-1.5 text-xs rounded-xl transition-colors"
                         style={{ color: 'var(--text-3)', border: '1px solid var(--border)' }}
-                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#94A3B8' }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#475569' }}>
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text-1)' }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text-3)' }}>
                         Limpar
                       </button>
                     )}
@@ -563,9 +563,9 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                     <CardContent>
                       <ResponsiveContainer width="100%" height={h}>
                         <BarChart data={rows} layout="vertical" margin={{ top: 0, right: 60, left: 8, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" horizontal={false} />
-                          <XAxis type="number" tick={{ fontSize: 10, fill: '#475569' }} tickFormatter={v => `${(v / 1e6).toFixed(1)}M`} axisLine={false} tickLine={false} />
-                          <YAxis type="category" dataKey="nome" tick={{ fontSize: 10, fill: '#94A3B8' }} width={!cx1 ? 90 : 55} axisLine={false} tickLine={false} />
+                          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+                          <XAxis type="number" tick={{ fontSize: 10, fill: 'var(--text-3)' }} tickFormatter={v => `${(v / 1e6).toFixed(1)}M`} axisLine={false} tickLine={false} />
+                          <YAxis type="category" dataKey="nome" tick={{ fontSize: 10, fill: 'var(--text-2)' }} width={!cx1 ? 90 : 55} axisLine={false} tickLine={false} />
                           <Tooltip contentStyle={chartTooltipStyle}
                             formatter={(v: any, name: any, props: any) => {
                               const row = props?.payload
@@ -591,7 +591,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                             ))}
                             <LabelList dataKey="pct" position="right"
                               formatter={(v: any) => v > 0 ? `${v}%` : ''}
-                              style={{ fill: '#94A3B8', fontSize: 10 }}
+                              style={{ fill: 'var(--text-2)', fontSize: 10 }}
                             />
                           </Bar>
                         </BarChart>
@@ -606,15 +606,15 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                   <AcompChart title="Acompanhamento Medição Serviço"
                     rows={buildRows('valor_servico', 'valor_medido_servico', s1, s2)}
                     cx1={s1} cx2={s2} cx3={s3} setCx1={setS1} setCx2={setS2} setCx3={setS3}
-                    colorC="#1E3A5F" colorM="#3B82F6" labelC="Contratado (Serviço)" labelM="Medido" accent="#3B82F6" />
+                    colorC="#64748B" colorM="#3B82F6" labelC="Contratado (Serviço)" labelM="Medido" accent="#3B82F6" />
                   <AcompChart title="Aprovação Pedidos Fat. Direto"
                     rows={buildRows('valor_material', 'valor_aprovado_fatd', f1, f2)}
                     cx1={f1} cx2={f2} cx3={f3} setCx1={setF1} setCx2={setF2} setCx3={setF3}
-                    colorC="#064E3B" colorM="#10B981" labelC="Disponível (Material)" labelM="Aprovado" accent="#10B981" />
+                    colorC="#6B7280" colorM="#10B981" labelC="Disponível (Material)" labelM="Aprovado" accent="#10B981" />
                   <AcompChart title="Faturamento Direto — NFs Recebidas"
                     rows={buildRows('valor_aprovado_fatd', 'valor_nf_fatd', n1, n2)}
                     cx1={n1} cx2={n2} cx3={n3} setCx1={setN1} setCx2={setN2} setCx3={setN3}
-                    colorC="#0C4A6E" colorM="#06B6D4" labelC="Aprovado (Pedidos)" labelM="NFs Recebidas" accent="#06B6D4" />
+                    colorC="#6B7280" colorM="#06B6D4" labelC="Aprovado (Pedidos)" labelM="NFs Recebidas" accent="#06B6D4" />
                 </div>
               )
             })()}

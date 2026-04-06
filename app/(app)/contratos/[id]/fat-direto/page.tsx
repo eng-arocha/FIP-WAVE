@@ -64,12 +64,12 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link href={`/contratos/${id}`}>
-              <Button variant="ghost" size="sm" className="text-[var(--text-3)] hover:text-white gap-2">
+              <Button variant="ghost" size="sm" className="text-[var(--text-3)] hover:text-[var(--text-1)] gap-2">
                 <ArrowLeft className="w-4 h-4" /> Contrato
               </Button>
             </Link>
             <div>
-              <h1 className="text-xl font-bold text-white flex items-center gap-2">
+              <h1 className="text-xl font-bold flex items-center gap-2" style={{ color: 'var(--text-1)' }}>
                 <Package className="w-5 h-5 text-blue-400" />
                 Faturamento Direto
               </h1>
@@ -96,7 +96,7 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
                 </div>
                 <span className="text-xs text-[var(--text-3)]">Saldo: <span className="font-bold" style={{ color: saldoDisponivel < 0 ? '#EF4444' : '#10B981' }}>{formatCurrency(saldoDisponivel)}</span></span>
               </div>
-              <div className="h-2.5 rounded-full overflow-hidden" style={{ background: '#1E293B' }}>
+              <div className="h-2.5 rounded-full overflow-hidden" style={{ background: 'var(--surface-3)' }}>
                 <div className="h-full rounded-full transition-all duration-500" style={{
                   width: `${Math.min(pctUsado, 100)}%`,
                   background: pctUsado > 90 ? '#EF4444' : pctUsado > 70 ? '#F59E0B' : 'linear-gradient(90deg, #10B981, #06B6D4)',
@@ -137,7 +137,7 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
         {/* Solicitations list */}
         <Card style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <CardHeader className="pb-3">
-            <CardTitle className="text-white text-base">Solicitações de Autorização</CardTitle>
+            <CardTitle className="text-base" style={{ color: 'var(--text-1)' }}>Solicitações de Autorização</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             {loading ? (
@@ -153,7 +153,7 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
                 </Link>
               </div>
             ) : (
-              <div className="divide-y divide-[#1E293B]">
+              <div className="divide-y divide-[var(--border)]">
                 {solicitacoes.map(sol => {
                   const cfg = STATUS_CONFIG[sol.status] ?? STATUS_CONFIG.rascunho
                   const nfTotal = (sol.notas_fiscais || []).filter(n => n.status !== 'rejeitada').reduce((s, n) => s + n.valor, 0)
@@ -169,7 +169,7 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="text-white font-semibold text-sm">
+                              <span className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>
                                 SOL-{String(sol.numero).padStart(3, '0')}
                               </span>
                               <span
@@ -190,7 +190,7 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-white font-bold text-sm">{formatCurrency(sol.valor_total)}</p>
+                          <p className="font-bold text-sm" style={{ color: 'var(--text-1)' }}>{formatCurrency(sol.valor_total)}</p>
                           {nfTotal > 0 && (
                             <p className="text-xs text-[#06B6D4]">NF: {formatCurrency(nfTotal)}</p>
                           )}

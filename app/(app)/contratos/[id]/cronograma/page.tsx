@@ -75,12 +75,12 @@ export default function CronogramaPage({ params }: { params: Promise<{ id: strin
         {/* Header */}
         <div className="flex items-center gap-3">
           <Link href={`/contratos/${id}`}>
-            <Button variant="ghost" size="sm" className="text-[var(--text-3)] hover:text-white gap-2">
+            <Button variant="ghost" size="sm" className="text-[var(--text-3)] hover:text-[var(--text-1)] gap-2">
               <ArrowLeft className="w-4 h-4" /> Contrato
             </Button>
           </Link>
           <div>
-            <h1 className="text-xl font-bold text-white flex items-center gap-2">
+            <h1 className="text-xl font-bold flex items-center gap-2" style={{ color: 'var(--text-1)' }}>
               <TrendingUp className="w-5 h-5 text-blue-400" />
               Cronograma Físico-Financeiro
             </h1>
@@ -93,7 +93,7 @@ export default function CronogramaPage({ params }: { params: Promise<{ id: strin
           <Card style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             <CardContent className="pt-4 pb-4">
               <p className="text-xs text-[var(--text-3)] uppercase tracking-wide mb-1">Total Planejado</p>
-              <p className="text-xl font-bold text-white">{formatCurrency(totalPlanejado)}</p>
+              <p className="text-xl font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(totalPlanejado)}</p>
             </CardContent>
           </Card>
           <Card style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
@@ -120,7 +120,7 @@ export default function CronogramaPage({ params }: { params: Promise<{ id: strin
                 className="px-4 py-2 text-xs font-semibold uppercase tracking-wide transition-colors"
                 style={{
                   background: view === v ? 'rgba(59,130,246,0.20)' : 'transparent',
-                  color: view === v ? '#3B82F6' : '#475569',
+                  color: view === v ? 'var(--accent)' : 'var(--text-3)',
                 }}
               >
                 {v === 'acumulado' ? 'Curva S (Acum.)' : 'Mensal'}
@@ -135,7 +135,7 @@ export default function CronogramaPage({ params }: { params: Promise<{ id: strin
                 className="px-4 py-2 text-xs font-semibold uppercase tracking-wide transition-colors"
                 style={{
                   background: tipo === v ? 'rgba(59,130,246,0.20)' : 'transparent',
-                  color: tipo === v ? '#3B82F6' : '#475569',
+                  color: tipo === v ? 'var(--accent)' : 'var(--text-3)',
                 }}
               >
                 {label}
@@ -147,7 +147,7 @@ export default function CronogramaPage({ params }: { params: Promise<{ id: strin
         {/* Curva S Chart */}
         <Card style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <CardHeader className="pb-2">
-            <CardTitle className="text-white text-sm flex items-center gap-2">
+            <CardTitle className="text-sm flex items-center gap-2" style={{ color: 'var(--text-1)' }}>
               <TrendingUp className="w-4 h-4 text-blue-400" />
               Curva S — {view === 'acumulado' ? 'Acumulado' : 'Mensal'} ·{' '}
               {tipo === 'total' ? 'Total' : tipo === 'servico' ? 'Serviço (MDO)' : 'Material (Fat. Direto)'}
@@ -173,16 +173,16 @@ export default function CronogramaPage({ params }: { params: Promise<{ id: strin
                       <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis
                     dataKey="mes"
-                    tick={{ fill: '#475569', fontSize: 10 }}
+                    tick={{ fill: 'var(--text-3)', fontSize: 10 }}
                     axisLine={false}
                     tickLine={false}
                     interval={1}
                   />
                   <YAxis
-                    tick={{ fill: '#475569', fontSize: 10 }}
+                    tick={{ fill: 'var(--text-3)', fontSize: 10 }}
                     axisLine={false}
                     tickLine={false}
                     tickFormatter={v => `R$${(v / 1e6).toFixed(1)}M`}
@@ -225,7 +225,7 @@ export default function CronogramaPage({ params }: { params: Promise<{ id: strin
         {!loading && data.length > 0 && (
           <Card style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             <CardHeader className="pb-3">
-              <CardTitle className="text-white text-sm flex items-center gap-2">
+              <CardTitle className="text-sm flex items-center gap-2" style={{ color: 'var(--text-1)' }}>
                 <Calendar className="w-4 h-4 text-blue-400" />
                 Desembolso Mensal Planejado
               </CardTitle>
@@ -234,7 +234,7 @@ export default function CronogramaPage({ params }: { params: Promise<{ id: strin
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr style={{ background: 'var(--background)', borderBottom: '1px solid #1E293B' }}>
+                    <tr style={{ background: 'var(--background)', borderBottom: '1px solid var(--border)' }}>
                       <th className="px-4 py-2.5 text-left text-[var(--text-3)] font-semibold uppercase tracking-wide">Mês</th>
                       <th className="px-4 py-2.5 text-right text-[var(--text-3)] font-semibold uppercase tracking-wide">Serviço</th>
                       <th className="px-4 py-2.5 text-right text-[var(--text-3)] font-semibold uppercase tracking-wide">Material</th>
@@ -244,11 +244,11 @@ export default function CronogramaPage({ params }: { params: Promise<{ id: strin
                   </thead>
                   <tbody>
                     {data.map((row, i) => (
-                      <tr key={row.mes} style={{ borderBottom: '1px solid #1E293B' }} className="hover:bg-[var(--surface-2)] transition-colors">
+                      <tr key={row.mes} style={{ borderBottom: '1px solid var(--border)' }} className="hover:bg-[var(--surface-2)] transition-colors">
                         <td className="px-4 py-2.5 text-[var(--text-2)] font-medium">{formatMes(row.mes)}</td>
-                        <td className="px-4 py-2.5 text-right text-blue-400">{formatCurrency(row.planejado_fisico)}</td>
-                        <td className="px-4 py-2.5 text-right text-cyan-400">{formatCurrency(row.planejado_fatd)}</td>
-                        <td className="px-4 py-2.5 text-right text-white font-semibold">{formatCurrency(row.planejado_total)}</td>
+                        <td className="px-4 py-2.5 text-right" style={{ color: 'var(--accent)' }}>{formatCurrency(row.planejado_fisico)}</td>
+                        <td className="px-4 py-2.5 text-right" style={{ color: 'var(--accent-glow)' }}>{formatCurrency(row.planejado_fatd)}</td>
+                        <td className="px-4 py-2.5 text-right font-semibold" style={{ color: 'var(--text-1)' }}>{formatCurrency(row.planejado_total)}</td>
                         <td className="px-4 py-2.5 text-right text-[var(--text-2)]">{formatCurrency(row.planejado_total_acum)}</td>
                       </tr>
                     ))}

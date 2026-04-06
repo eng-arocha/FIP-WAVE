@@ -51,9 +51,9 @@ function periodoToMesLabel(periodo: string): string {
 
 const chartTooltipStyle = {
   backgroundColor: '#0D1421',
-  border: '1px solid var(--border)',
+  border: '1px solid #1E293B',
   borderRadius: '8px',
-  color: 'var(--text-1)',
+  color: '#FFFFFF',
   fontSize: 12,
 }
 
@@ -259,8 +259,8 @@ export default function DashboardPage() {
               border: '1px solid var(--border)',
               borderBottom: '2px solid rgba(59,130,246,0.40)',
             }}
-            onMouseEnter={e => (e.currentTarget.style.borderColor = '#2d3f5c')}
-            onMouseLeave={e => (e.currentTarget.style.borderColor = '#1E293B')}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--border-hover)')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
           >
             <div className="flex items-start justify-between">
               <div>
@@ -291,8 +291,8 @@ export default function DashboardPage() {
               border: '1px solid var(--border)',
               borderBottom: '2px solid rgba(16,185,129,0.40)',
             }}
-            onMouseEnter={e => (e.currentTarget.style.borderColor = '#2d3f5c')}
-            onMouseLeave={e => (e.currentTarget.style.borderColor = '#1E293B')}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--border-hover)')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
           >
             <div className="flex items-start justify-between">
               <div>
@@ -323,8 +323,8 @@ export default function DashboardPage() {
               border: '1px solid var(--border)',
               borderBottom: '2px solid rgba(71,85,105,0.60)',
             }}
-            onMouseEnter={e => (e.currentTarget.style.borderColor = '#2d3f5c')}
-            onMouseLeave={e => (e.currentTarget.style.borderColor = '#1E293B')}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--border-hover)')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
           >
             <div className="flex items-start justify-between">
               <div>
@@ -363,7 +363,7 @@ export default function DashboardPage() {
                 </p>
                 <p
                   className="text-2xl font-bold mt-1"
-                  style={{ color: pendentesAprovacao > 0 ? '#F59E0B' : '#F1F5F9' }}
+                  style={{ color: pendentesAprovacao > 0 ? 'var(--amber)' : 'var(--text-1)' }}
                 >
                   {Math.round(animatedPendentes)}
                 </p>
@@ -395,14 +395,14 @@ export default function DashboardPage() {
         {alertas.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-6">
             {alertas.map((a, i) => (
-              <div key={i} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border ${
-                a.type === 'danger' ? 'bg-red-900/20 border-red-800/40 text-red-400' :
-                a.type === 'warning' ? 'bg-amber-900/20 border-amber-800/40 text-amber-400' :
-                'bg-blue-500/10 border-blue-500/20 text-blue-400'
-              }`}>
-                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                  a.type === 'danger' ? 'bg-red-400' : a.type === 'warning' ? 'bg-amber-400' : 'bg-blue-400'
-                }`} />
+              <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border" style={{
+                background: a.type === 'danger' ? 'rgba(239,68,68,0.12)' : a.type === 'warning' ? 'rgba(245,158,11,0.12)' : 'rgba(59,130,246,0.10)',
+                borderColor: a.type === 'danger' ? 'rgba(239,68,68,0.35)' : a.type === 'warning' ? 'rgba(245,158,11,0.35)' : 'rgba(59,130,246,0.25)',
+                color: a.type === 'danger' ? 'var(--red)' : a.type === 'warning' ? 'var(--amber)' : 'var(--accent)',
+              }}>
+                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{
+                  background: a.type === 'danger' ? 'var(--red)' : a.type === 'warning' ? 'var(--amber)' : 'var(--accent)',
+                }} />
                 {a.msg}
               </div>
             ))}
@@ -434,18 +434,18 @@ export default function DashboardPage() {
                       <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis
                     dataKey="mes"
-                    tick={{ fontSize: 10, fill: '#475569' }}
+                    tick={{ fontSize: 10, fill: 'var(--text-3)' }}
                     interval={2}
-                    axisLine={{ stroke: '#1E293B' }}
+                    axisLine={{ stroke: 'var(--border)' }}
                     tickLine={false}
                   />
                   <YAxis
-                    tick={{ fontSize: 10, fill: '#475569' }}
+                    tick={{ fontSize: 10, fill: 'var(--text-3)' }}
                     unit="%"
-                    axisLine={{ stroke: '#1E293B' }}
+                    axisLine={{ stroke: 'var(--border)' }}
                     tickLine={false}
                   />
                   <Tooltip
@@ -485,7 +485,7 @@ export default function DashboardPage() {
             style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
           >
             {/* Cabeçalho + filtros */}
-            <div className="px-5 pt-5 pb-4" style={{ borderBottom: '1px solid #1E293B' }}>
+            <div className="px-5 pt-5 pb-4" style={{ borderBottom: '1px solid var(--border)' }}>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
                   Acompanhamento Medição Serviço
@@ -495,8 +495,8 @@ export default function DashboardPage() {
                     onClick={() => { setFiltroN1(''); setFiltroN2(''); setFiltroN3('') }}
                     className="text-xs px-2.5 py-1 rounded-lg transition-colors"
                     style={{ color: 'var(--text-2)', border: '1px solid var(--border)' }}
-                    onMouseEnter={e => { e.currentTarget.style.color = '#F1F5F9'; e.currentTarget.style.borderColor = '#3B82F6' }}
-                    onMouseLeave={e => { e.currentTarget.style.color = '#94A3B8'; e.currentTarget.style.borderColor = '#1E293B' }}
+                    onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-1)'; e.currentTarget.style.borderColor = '#3B82F6' }}
+                    onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-2)'; e.currentTarget.style.borderColor = 'var(--border)' }}
                   >
                     Limpar filtros
                   </button>
@@ -511,8 +511,8 @@ export default function DashboardPage() {
                   className="text-xs rounded-lg px-2.5 py-1.5 w-full"
                   style={{
                     background: 'var(--surface-1)',
-                    border: `1px solid ${filtroN1 ? '#3B82F6' : '#1E293B'}`,
-                    color: filtroN1 ? '#F1F5F9' : '#475569',
+                    border: `1px solid ${filtroN1 ? '#3B82F6' : 'var(--border)'}`,
+                    color: filtroN1 ? 'var(--text-1)' : 'var(--text-3)',
                     outline: 'none',
                   }}
                 >
@@ -530,8 +530,8 @@ export default function DashboardPage() {
                   className="text-xs rounded-lg px-2.5 py-1.5 w-full"
                   style={{
                     background: 'var(--surface-1)',
-                    border: `1px solid ${filtroN2 ? '#3B82F6' : '#1E293B'}`,
-                    color: !filtroN1 ? '#2d3f5c' : filtroN2 ? '#F1F5F9' : '#475569',
+                    border: `1px solid ${filtroN2 ? '#3B82F6' : 'var(--border)'}`,
+                    color: !filtroN1 ? 'var(--text-3)' : filtroN2 ? 'var(--text-1)' : 'var(--text-3)',
                     outline: 'none',
                     cursor: !filtroN1 ? 'not-allowed' : 'pointer',
                   }}
@@ -550,8 +550,8 @@ export default function DashboardPage() {
                   className="text-xs rounded-lg px-2.5 py-1.5 w-full"
                   style={{
                     background: 'var(--surface-1)',
-                    border: `1px solid ${filtroN3 ? '#3B82F6' : '#1E293B'}`,
-                    color: !filtroN2 ? '#2d3f5c' : filtroN3 ? '#F1F5F9' : '#475569',
+                    border: `1px solid ${filtroN3 ? '#3B82F6' : 'var(--border)'}`,
+                    color: !filtroN2 ? 'var(--text-3)' : filtroN3 ? 'var(--text-1)' : 'var(--text-3)',
                     outline: 'none',
                     cursor: !filtroN2 ? 'not-allowed' : 'pointer',
                   }}
@@ -568,20 +568,20 @@ export default function DashboardPage() {
             <div className="px-4 pb-5 pt-3" style={{ background: 'var(--surface-1)', margin: '0 12px 12px', borderRadius: '10px' }}>
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={chartAcompData} layout="vertical" margin={{ top: 8, right: 20, left: 10, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" horizontal={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
                   <XAxis
                     type="number"
-                    tick={{ fontSize: 10, fill: '#475569' }}
+                    tick={{ fontSize: 10, fill: 'var(--text-3)' }}
                     tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`}
-                    axisLine={{ stroke: '#1E293B' }}
+                    axisLine={{ stroke: 'var(--border)' }}
                     tickLine={false}
                   />
                   <YAxis
                     type="category"
                     dataKey="nome"
-                    tick={{ fontSize: 9, fill: '#475569' }}
+                    tick={{ fontSize: 9, fill: 'var(--text-3)' }}
                     width={110}
-                    axisLine={{ stroke: '#1E293B' }}
+                    axisLine={{ stroke: 'var(--border)' }}
                     tickLine={false}
                   />
                   <Tooltip
@@ -592,7 +592,7 @@ export default function DashboardPage() {
                     iconSize={10}
                     wrapperStyle={{ fontSize: 11, color: 'var(--text-2)' }}
                   />
-                  <Bar dataKey="contratado" name="Contratado" fill="#1E293B" radius={[0, 3, 3, 0]} />
+                  <Bar dataKey="contratado" name="Contratado" fill="#64748B" radius={[0, 3, 3, 0]} />
                   <Bar dataKey="medido" name="Medido" fill="#3B82F6" radius={[0, 3, 3, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -607,14 +607,14 @@ export default function DashboardPage() {
             className="rounded-xl overflow-hidden"
             style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
           >
-            <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid #1E293B' }}>
+            <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid var(--border)' }}>
               <h3 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>Contratos Ativos</h3>
               <Link href="/contratos">
                 <button
                   className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg transition-colors"
                   style={{ color: 'var(--text-2)' }}
-                  onMouseEnter={e => { e.currentTarget.style.color = '#F1F5F9'; e.currentTarget.style.background = '#1a2236' }}
-                  onMouseLeave={e => { e.currentTarget.style.color = '#94A3B8'; e.currentTarget.style.background = 'transparent' }}
+                  onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-1)'; e.currentTarget.style.background = 'var(--surface-3)' }}
+                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-2)'; e.currentTarget.style.background = 'transparent' }}
                 >
                   Ver todos <ArrowRight className="w-3 h-3" />
                 </button>
@@ -631,11 +631,11 @@ export default function DashboardPage() {
                     }}
                     onMouseEnter={e => {
                       e.currentTarget.style.borderColor = 'rgba(59,130,246,0.50)'
-                      e.currentTarget.style.background = '#111827'
+                      e.currentTarget.style.background = 'var(--surface-3)'
                     }}
                     onMouseLeave={e => {
-                      e.currentTarget.style.borderColor = '#1E293B'
-                      e.currentTarget.style.background = '#0D1421'
+                      e.currentTarget.style.borderColor = 'var(--border)'
+                      e.currentTarget.style.background = 'var(--surface-1)'
                     }}
                   >
                     <div className="flex items-start justify-between mb-2">
@@ -655,7 +655,7 @@ export default function DashboardPage() {
                         </span>
                       </div>
                       {/* Custom progress bar */}
-                      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#1E293B' }}>
+                      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--surface-3)' }}>
                         <div
                           className="h-full rounded-full"
                           style={{
@@ -690,14 +690,14 @@ export default function DashboardPage() {
             className="rounded-xl overflow-hidden"
             style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
           >
-            <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid #1E293B' }}>
+            <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid var(--border)' }}>
               <h3 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>Medições Recentes</h3>
               <Link href="/aprovacoes">
                 <button
                   className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg transition-colors"
                   style={{ color: 'var(--text-2)' }}
-                  onMouseEnter={e => { e.currentTarget.style.color = '#F1F5F9'; e.currentTarget.style.background = '#1a2236' }}
-                  onMouseLeave={e => { e.currentTarget.style.color = '#94A3B8'; e.currentTarget.style.background = 'transparent' }}
+                  onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-1)'; e.currentTarget.style.background = 'var(--surface-3)' }}
+                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-2)'; e.currentTarget.style.background = 'transparent' }}
                 >
                   Fila de aprovação <ArrowRight className="w-3 h-3" />
                 </button>
@@ -711,8 +711,8 @@ export default function DashboardPage() {
                       className="flex items-center gap-3 p-2.5 rounded-xl transition-all duration-150 cursor-pointer"
                       style={{ border: '1px solid transparent' }}
                       onMouseEnter={e => {
-                        e.currentTarget.style.background = '#1a2236'
-                        e.currentTarget.style.borderColor = '#1E293B'
+                        e.currentTarget.style.background = 'var(--surface-3)'
+                        e.currentTarget.style.borderColor = 'var(--border)'
                       }}
                       onMouseLeave={e => {
                         e.currentTarget.style.background = 'transparent'

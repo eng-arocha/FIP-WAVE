@@ -124,14 +124,14 @@ export default function ContratosPage() {
                 }
                 onMouseEnter={e => {
                   if (filtroStatus !== s.value) {
-                    e.currentTarget.style.borderColor = '#2d3f5c'
-                    e.currentTarget.style.color = '#F1F5F9'
+                    e.currentTarget.style.borderColor = 'var(--border-hover)'
+                    e.currentTarget.style.color = 'var(--text-1)'
                   }
                 }}
                 onMouseLeave={e => {
                   if (filtroStatus !== s.value) {
-                    e.currentTarget.style.borderColor = '#1E293B'
-                    e.currentTarget.style.color = '#94A3B8'
+                    e.currentTarget.style.borderColor = 'var(--border)'
+                    e.currentTarget.style.color = 'var(--text-2)'
                   }
                 }}
               >
