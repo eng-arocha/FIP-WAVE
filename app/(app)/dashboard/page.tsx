@@ -101,7 +101,7 @@ export default function DashboardPage() {
 
   const totalContratado = contratos.reduce((a, c) => a + (c.valor_contratado || 0), 0)
   const totalMedido = contratos.reduce((a, c) => a + (c.valor_medido || 0), 0)
-  const totalSaldo = contratos.reduce((a, c) => a + (c.saldo_restante || 0), 0)
+  const totalSaldo = contratos.reduce((a, c) => a + (c.saldo || 0), 0)
   const pendentesAprovacao = contratos.reduce((a, c) => a + (c.qtd_medicoes_pendentes || 0), 0)
 
   const animatedTotalMedido = useCountUp(totalMedido)
@@ -549,7 +549,7 @@ export default function DashboardPage() {
                         <span style={{ color: '#475569' }}>
                           Saldo:{' '}
                           <span className="font-medium" style={{ color: '#94A3B8' }}>
-                            {formatCurrency(c.saldo_restante || 0)}
+                            {formatCurrency(c.saldo || 0)}
                           </span>
                         </span>
                       </div>
