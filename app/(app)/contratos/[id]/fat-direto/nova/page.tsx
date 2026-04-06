@@ -233,8 +233,18 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
   function onTarefaChange(i: number, tarefaId: string) {
     const t = tarefas.find(t => t.id === tarefaId)
     const autoLocal = t?.locais?.[0] ?? itens[i].local
+    // Pré-preenche o valor com o total do detalhamento (quantidade × valor_unitário)
+    const autoValor = t && t.valor_material > 0
+      ? String(t.valor_material)
+      : itens[i].valor_total
     setItens(prev => prev.map((item, idx) =>
-      idx === i ? { ...item, tarefa_id: tarefaId, descricao: t ? t.nome.substring(0, 80) : item.descricao, local: autoLocal || item.local } : item
+      idx === i ? {
+        ...item,
+        tarefa_id: tarefaId,
+        descricao: t ? t.nome.substring(0, 80) : item.descricao,
+        local: autoLocal || item.local,
+        valor_total: autoValor,
+      } : item
     ))
   }
 

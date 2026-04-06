@@ -306,16 +306,24 @@ export async function listarTarefasParaSolicitacao(contratoId: string) {
     return 0
   })
 
-  return sorted.map((d: any) => ({
-    id: d.id,
-    codigo: d.codigo,
-    descricao: (d.descricao || '').trim(),
-    local: (d.local || 'TORRE').trim().toUpperCase(),
-    // valor máximo de material para este detalhamento (nivel 3)
-    valor_material: (d.quantidade_contratada || 0) * (d.valor_material_unit || 0),
-    valor_aprovado: aprovadoByDet[d.id] || 0,
-    tarefa_id: d.tarefa_id,
-    tarefa_codigo: tarefaMap[d.tarefa_id]?.codigo || '',
-    tarefa_nome: tarefaMap[d.tarefa_id]?.nome || '',
-  }))
+  return sorted.map((d: any) => {
+    const valorMaterial = (d.quantidade_contratada || 0) * (d.valor_material_unit || 0)
+    return {
+      id: d.id,
+      codigo: d.codigo,
+      // 'nome' é o que a interface Tarefa do formulário espera
+      nome: (d.descricao || '').trim(),
+      // 'locais' é um array — o formulário usa t.locais.some(...)
+      locais: [(d.local || 'TORRE').trim().toUpperCase()],
+      // valor máximo de material para este detalhamento (nivel 3)
+      valor_material: valorMaterial,
+      valor_servico: 0,
+      valor_total: valorMaterial,
+      valor_aprovado: aprovadoByDet[d.id] || 0,
+      grupo_macro: {
+        codigo: tarefaMap[d.tarefa_id]?.codigo || '',
+        nome: tarefaMap[d.tarefa_id]?.nome || '',
+      },
+    }
+  })
 }
