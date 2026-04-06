@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, FileText, Building2, CheckSquare, LogOut, X, Users,
-  Pin, PinOff, ChevronDown, FolderOpen, TrendingUp, Receipt, ClipboardList, FileArchive,
+  Pin, PinOff, ChevronDown, FolderOpen, TrendingUp, Receipt, ClipboardList, FileArchive, Shield,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePermissoes } from '@/lib/context/permissoes-context'
@@ -27,6 +27,7 @@ const ICON_COLORS: Record<string, { from: string; to: string }> = {
   '/aprovacoes':   { from: '#F59E0B', to: '#EF4444' },  // amber → red
   '/empresas':     { from: '#10B981', to: '#059669' },  // green
   '/usuarios':     { from: '#6366F1', to: '#8B5CF6' },  // indigo → purple
+  '/perfis':       { from: '#F59E0B', to: '#EF4444' },  // amber → red
   'cadastro':      { from: '#64748B', to: '#475569' },  // slate (group)
   'cronograma':    { from: '#059669', to: '#10B981' },  // green
   'fat-direto':    { from: '#F59E0B', to: '#FB923C' },  // amber → orange
@@ -67,7 +68,7 @@ export function Sidebar({
   }, [])
 
   useEffect(() => {
-    if (pathname.startsWith('/empresas') || pathname.startsWith('/usuarios')) {
+    if (pathname.startsWith('/empresas') || pathname.startsWith('/usuarios') || pathname.startsWith('/perfis')) {
       setCadastroOpen(true)
     }
   }, [pathname])
@@ -81,9 +82,10 @@ export function Sidebar({
   const cadastroItems = [
     { label: 'Empresas', href: '/empresas', icon: Building2, modulo: 'empresas' },
     { label: 'Usuários', href: '/usuarios', icon: Users, modulo: 'usuarios' },
+    ...(perfilAtual === 'admin' ? [{ label: 'Perfis', href: '/perfis', icon: Shield, modulo: 'usuarios' }] : []),
   ].filter(item => temPermissao(item.modulo, 'visualizar'))
 
-  const isCadastroActive = pathname.startsWith('/empresas') || pathname.startsWith('/usuarios')
+  const isCadastroActive = pathname.startsWith('/empresas') || pathname.startsWith('/usuarios') || pathname.startsWith('/perfis')
 
   // Contract contextual items (shown when inside /contratos/[id])
   const contratoSubItems = contratoId ? [
@@ -316,7 +318,7 @@ export function Sidebar({
                   />
                 </button>
 
-                <div className={cn('overflow-hidden transition-all duration-300 ease-in-out', cadastroOpen ? 'max-h-24 opacity-100' : 'max-h-0 opacity-0')}>
+                <div className={cn('overflow-hidden transition-all duration-300 ease-in-out', cadastroOpen ? 'max-h-36 opacity-100' : 'max-h-0 opacity-0')}>
                   <div className="pt-0.5 ml-3 pl-2" style={{ borderLeft: '1px solid var(--border)' }}>
                     {cadastroItems.map(item => renderNavLink(item, showText, true))}
                   </div>

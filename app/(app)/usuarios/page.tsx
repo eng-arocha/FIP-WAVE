@@ -5,7 +5,7 @@ import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Plus, Loader2, UserCheck, UserX, Pencil, X, Eye, EyeOff, Shield } from 'lucide-react'
+import { Plus, Loader2, UserCheck, UserX, Pencil, X, Eye, EyeOff, Shield, Trash2 } from 'lucide-react'
 import {
   MODULOS_CONFIG, MODULOS_LABELS, ACOES_LABELS, ALL_ACOES, TEMPLATES,
   type Permissao,
@@ -47,6 +47,7 @@ export default function UsuariosPage() {
   const [permissaoAberta, setPermissaoAberta] = useState<string | null>(null)
   const [permissoesMap, setPermissoesMap]   = useState<Record<string, Set<string>>>({})
   const [salvandoPerm, setSalvandoPerm]     = useState(false)
+  const [excluindo, setExcluindo]           = useState<string | null>(null)
 
   async function carregar() {
     setLoading(true)
@@ -118,6 +119,14 @@ export default function UsuariosPage() {
       ...prev,
       [userId]: new Set(TEMPLATES[tpl].map(p => `${p.modulo}:${p.acao}`)),
     }))
+  }
+
+  async function deletarUsuario(u: Usuario) {
+    if (!confirm(`Excluir permanentemente o usuário "${u.nome}" (${u.email})?\n\nEsta ação não pode ser desfeita.`)) return
+    setExcluindo(u.id)
+    await fetch(`/api/usuarios/${u.id}`, { method: 'DELETE' })
+    setExcluindo(null)
+    await carregar()
   }
 
   async function salvarPermissoes(userId: string) {
@@ -294,12 +303,17 @@ export default function UsuariosPage() {
                           <Shield className="w-3.5 h-3.5" />
                         </button>
                         <button onClick={() => { setEditando(u); setEditForm({ nome: u.nome, perfil: u.perfil, nova_senha: '' }); setErro('') }} title="Editar"
-                          className="p-1.5 rounded-lg text-[var(--text-3)] hover:text-[var(--text-2)] hover:bg-[#1E293B] transition-colors">
+                          className="p-1.5 rounded-lg transition-colors text-[var(--text-3)] hover:text-[var(--text-2)] hover:bg-[var(--surface-3)]">
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                         <button onClick={() => toggleAtivo(u)} title={u.ativo ? 'Desativar' : 'Reativar'}
-                          className={`p-1.5 rounded-lg transition-colors ${u.ativo ? 'text-[var(--text-3)] hover:text-red-400 hover:bg-red-900/20' : 'text-[var(--text-3)] hover:text-emerald-400 hover:bg-emerald-900/20'}`}>
+                          className={`p-1.5 rounded-lg transition-colors ${u.ativo ? 'text-[var(--text-3)] hover:text-amber-400 hover:bg-amber-900/20' : 'text-[var(--text-3)] hover:text-emerald-400 hover:bg-emerald-900/20'}`}>
                           {u.ativo ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
+                        </button>
+                        <button onClick={() => deletarUsuario(u)} title="Excluir usuário permanentemente"
+                          className="p-1.5 rounded-lg transition-colors text-[var(--text-3)] hover:text-red-400 hover:bg-red-900/20"
+                          disabled={excluindo === u.id}>
+                          {excluindo === u.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                         </button>
                       </div>
                     </div>

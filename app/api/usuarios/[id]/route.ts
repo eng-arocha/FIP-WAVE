@@ -34,8 +34,8 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   try {
     const { id } = await params
     const admin = createAdminClient()
-    // Desativa ao invés de deletar (preserva histórico)
-    const { error } = await admin.from('perfis').update({ ativo: false }).eq('id', id)
+    // Exclui permanentemente do Supabase Auth (cascateia para perfis via FK)
+    const { error } = await admin.auth.admin.deleteUser(id)
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     return NextResponse.json({ ok: true })
   } catch (e: any) {
