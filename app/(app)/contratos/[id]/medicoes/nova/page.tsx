@@ -91,11 +91,11 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
     }
   }, [step, contratoId])
 
-  // Grupos 4–18 apenas (19 = material)
+  // Todos os grupos 1–18 (grupo 19 = só material, excluído)
   const estruturaServico = estrutura.filter(g => {
     if (g.tipo_medicao === 'faturamento_direto') return false
-    const num = parseInt((g.codigo || '').split('.')[0])
-    return !isNaN(num) && num >= 4 && num <= 18
+    const num = parseInt((g.codigo || '').toString().split('.')[0])
+    return isNaN(num) || num <= 18
   })
 
   function setPercentual(detId: string, pct: number) {
@@ -388,8 +388,8 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                     <p className="font-medium text-[var(--text-1)]">Serviço (Mão de Obra)</p>
                   </div>
                   <div>
-                    <p className="text-xs text-[var(--text-3)] mb-0.5">Período</p>
-                    <p className="font-medium text-[var(--text-1)]">{MESES.find(m => m.v === mesRef)?.l} / {anoRef}</p>
+                    <p className="text-xs text-[var(--text-3)] mb-0.5">Período de Referência</p>
+                    <p className="font-medium text-[var(--text-1)]">Ref. {MESES.find(m => m.v === mesRef)?.l} de {anoRef}</p>
                   </div>
                   <div className="col-span-2">
                     <p className="text-xs text-[var(--text-3)] mb-0.5">Solicitante</p>

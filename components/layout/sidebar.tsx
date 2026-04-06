@@ -94,7 +94,7 @@ export function Sidebar({
   ].filter(item => temPermissao(item.modulo, 'visualizar'))
 
   const documentosItems = [
-    { label: 'Pedidos FD',   href: '/documentos/faturamento-direto', icon: FileArchive,  modulo: 'documentos' },
+    { label: 'Pedidos FD',    href: '/documentos/faturamento-direto', icon: FileArchive,   modulo: 'documentos' },
     { label: 'Med. Serviços', href: '/documentos/medicoes-servico',   icon: ClipboardList, modulo: 'documentos' },
   ].filter(item => temPermissao(item.modulo, 'visualizar'))
 
