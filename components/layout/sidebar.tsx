@@ -82,7 +82,7 @@ export function Sidebar({
   const cadastroItems = [
     { label: 'Empresas', href: '/empresas', icon: Building2, modulo: 'empresas' },
     { label: 'Usuários', href: '/usuarios', icon: Users, modulo: 'usuarios' },
-    ...(perfilAtual === 'admin' ? [{ label: 'Perfis', href: '/perfis', icon: Shield, modulo: 'usuarios' }] : []),
+    { label: 'Perfis', href: '/perfis', icon: Shield, modulo: 'perfis' },
   ].filter(item => temPermissao(item.modulo, 'visualizar'))
 
   const isCadastroActive = pathname.startsWith('/empresas') || pathname.startsWith('/usuarios') || pathname.startsWith('/perfis')

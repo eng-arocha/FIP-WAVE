@@ -1,6 +1,6 @@
 // Constantes puras — sem imports de server. Seguro para usar em client components.
 
-export type Modulo = 'dashboard' | 'contratos' | 'medicoes' | 'aprovacoes' | 'empresas' | 'usuarios'
+export type Modulo = 'dashboard' | 'contratos' | 'medicoes' | 'aprovacoes' | 'empresas' | 'usuarios' | 'perfis'
 export type Acao = 'visualizar' | 'criar' | 'editar' | 'excluir' | 'aprovar'
 
 export interface Permissao {
@@ -15,6 +15,7 @@ export const MODULOS_CONFIG: Record<Modulo, Acao[]> = {
   aprovacoes: ['visualizar', 'aprovar'],
   empresas:   ['visualizar', 'criar', 'editar', 'excluir'],
   usuarios:   ['visualizar', 'criar', 'editar', 'excluir'],
+  perfis:     ['visualizar', 'criar', 'editar', 'excluir'],
 }
 
 export const MODULOS_LABELS: Record<Modulo, string> = {
@@ -24,6 +25,7 @@ export const MODULOS_LABELS: Record<Modulo, string> = {
   aprovacoes: 'Aprovações',
   empresas:   'Empresas',
   usuarios:   'Usuários',
+  perfis:     'Perfis de Acesso',
 }
 
 export const ACOES_LABELS: Record<Acao, string> = {
@@ -43,7 +45,7 @@ export const TEMPLATES: Record<PerfilTemplate, Permissao[]> = {
     acoes.map(acao => ({ modulo, acao }))
   ),
   engenheiro_fip: [
-    ...Object.keys(MODULOS_CONFIG).map(modulo => ({ modulo, acao: 'visualizar' })),
+    ...['dashboard','contratos','medicoes','aprovacoes','empresas','usuarios'].map(modulo => ({ modulo, acao: 'visualizar' })),
     { modulo: 'contratos',  acao: 'criar' },
     { modulo: 'contratos',  acao: 'editar' },
     { modulo: 'medicoes',   acao: 'criar' },
@@ -53,5 +55,5 @@ export const TEMPLATES: Record<PerfilTemplate, Permissao[]> = {
     { modulo: 'empresas',   acao: 'criar' },
     { modulo: 'empresas',   acao: 'editar' },
   ],
-  visualizador: Object.keys(MODULOS_CONFIG).map(modulo => ({ modulo, acao: 'visualizar' })),
+  visualizador: ['dashboard','contratos','medicoes','aprovacoes','empresas','usuarios'].map(modulo => ({ modulo, acao: 'visualizar' })),
 }

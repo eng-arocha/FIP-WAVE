@@ -13,9 +13,16 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     if (body.nome !== undefined) updates.nome = body.nome
     if (body.perfil !== undefined) updates.perfil = body.perfil
     if (body.ativo !== undefined) updates.ativo = body.ativo
+    if (body.template_id !== undefined) updates.template_id = body.template_id || null
 
     const { error } = await admin.from('perfis').update(updates).eq('id', id)
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+    // Atualiza permissões se fornecidas
+    if (body.permissoes_custom && Array.isArray(body.permissoes_custom) && body.permissoes_custom.length > 0) {
+      const { setPermissoesUsuario } = await import('@/lib/db/permissoes')
+      await setPermissoesUsuario(id, body.permissoes_custom)
+    }
 
     // Atualiza senha se fornecida
     if (body.nova_senha) {

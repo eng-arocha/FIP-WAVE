@@ -22,20 +22,35 @@ interface Usuario {
   criado_em: string
 }
 
+interface TemplateOption {
+  id: string
+  nome: string
+  sistema: boolean
+  permissoes: Array<{ modulo: string; acao: string }>
+}
+
+// Base perfil para templates customizados (acesso básico ao sistema)
+const TEMPLATE_BASE_PERFIL: Record<string, Perfil> = {
+  'Administrador': 'admin',
+  'Engenheiro FIP': 'engenheiro_fip',
+  'Visualizador': 'visualizador',
+}
+
 const PERFIL_LABELS: Record<Perfil, string> = {
   visualizador:   'Visualizador',
   engenheiro_fip: 'Engenheiro FIP',
   admin:          'Administrador',
 }
-const PERFIL_COLORS: Record<Perfil, string> = {
+const PERFIL_COLORS: Record<string, string> = {
   visualizador:   'bg-slate-800/60 text-slate-400 border-slate-700/50',
   engenheiro_fip: 'bg-blue-900/30 text-blue-400 border-blue-800/50',
   admin:          'bg-amber-900/30 text-amber-400 border-amber-800/50',
 }
-const EMPTY_FORM = { nome: '', email: '', senha: '', perfil: 'engenheiro_fip' as Perfil }
+const EMPTY_FORM = { nome: '', email: '', senha: '', template_id: '' }
 
 export default function UsuariosPage() {
   const [usuarios, setUsuarios]             = useState<Usuario[]>([])
+  const [templates, setTemplates]           = useState<TemplateOption[]>([])
   const [loading, setLoading]               = useState(true)
   const [showForm, setShowForm]             = useState(false)
   const [form, setForm]                     = useState(EMPTY_FORM)
@@ -43,7 +58,7 @@ export default function UsuariosPage() {
   const [saving, setSaving]                 = useState(false)
   const [erro, setErro]                     = useState('')
   const [editando, setEditando]             = useState<Usuario | null>(null)
-  const [editForm, setEditForm]             = useState({ nome: '', perfil: '' as Perfil, nova_senha: '' })
+  const [editForm, setEditForm]             = useState({ nome: '', template_id: '', nova_senha: '' })
   const [permissaoAberta, setPermissaoAberta] = useState<string | null>(null)
   const [permissoesMap, setPermissoesMap]   = useState<Record<string, Set<string>>>({})
   const [salvandoPerm, setSalvandoPerm]     = useState(false)
@@ -51,19 +66,33 @@ export default function UsuariosPage() {
 
   async function carregar() {
     setLoading(true)
-    const res = await fetch('/api/usuarios')
-    if (res.ok) setUsuarios(await res.json())
+    const [resU, resT] = await Promise.all([
+      fetch('/api/usuarios'),
+      fetch('/api/perfis'),
+    ])
+    if (resU.ok) setUsuarios(await resU.json())
+    if (resT.ok) setTemplates(await resT.json())
     setLoading(false)
   }
   useEffect(() => { carregar() }, [])
 
+  // Resolve perfil base + nome do template selecionado
+  function resolveTemplate(template_id: string) {
+    const tpl = templates.find(t => t.id === template_id)
+    if (!tpl) return { perfil: 'visualizador' as Perfil, template_nome: '' }
+    const perfil = (TEMPLATE_BASE_PERFIL[tpl.nome] || 'visualizador') as Perfil
+    return { perfil, template_nome: tpl.nome, permissoes: tpl.permissoes }
+  }
+
   async function criarUsuario(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true); setErro('')
+    if (!form.template_id) { setErro('Selecione um perfil de acesso.'); setSaving(false); return }
+    const { perfil, permissoes } = resolveTemplate(form.template_id)
     const res = await fetch('/api/usuarios', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      body: JSON.stringify({ ...form, perfil, template_id: form.template_id, permissoes_custom: permissoes }),
     })
     if (res.ok) { setForm(EMPTY_FORM); setShowForm(false); await carregar() }
     else { const d = await res.json(); setErro(d.error || 'Erro ao criar usuário') }
@@ -83,7 +112,8 @@ export default function UsuariosPage() {
     e.preventDefault()
     if (!editando) return
     setSaving(true); setErro('')
-    const body: Record<string, unknown> = { nome: editForm.nome, perfil: editForm.perfil }
+    const { perfil, permissoes } = resolveTemplate(editForm.template_id)
+    const body: Record<string, unknown> = { nome: editForm.nome, perfil, template_id: editForm.template_id, permissoes_custom: permissoes }
     if (editForm.nova_senha) body.nova_senha = editForm.nova_senha
     const res = await fetch(`/api/usuarios/${editando.id}`, {
       method: 'PUT',
@@ -212,12 +242,13 @@ export default function UsuariosPage() {
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs text-[var(--text-3)] uppercase tracking-wide font-medium">Perfil de acesso</label>
-                  <select value={form.perfil} onChange={e => setForm(f => ({ ...f, perfil: e.target.value as Perfil }))}
+                  <label className="text-xs text-[var(--text-3)] uppercase tracking-wide font-medium">Perfil de acesso *</label>
+                  <select required value={form.template_id} onChange={e => setForm(f => ({ ...f, template_id: e.target.value }))}
                     className="w-full px-3 py-2 rounded-lg text-sm bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-1)] outline-none focus:border-blue-500">
-                    <option value="visualizador">Visualizador</option>
-                    <option value="engenheiro_fip">Engenheiro FIP</option>
-                    <option value="admin">Administrador</option>
+                    <option value="">Selecione um perfil...</option>
+                    {templates.map(t => (
+                      <option key={t.id} value={t.id}>{t.nome}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="col-span-2 flex justify-end gap-3 pt-2">
@@ -250,11 +281,12 @@ export default function UsuariosPage() {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs text-[var(--text-3)] uppercase tracking-wide font-medium">Perfil</label>
-                  <select value={editForm.perfil} onChange={e => setEditForm(f => ({ ...f, perfil: e.target.value as Perfil }))}
+                  <select value={editForm.template_id} onChange={e => setEditForm(f => ({ ...f, template_id: e.target.value }))}
                     className="w-full px-3 py-2 rounded-lg text-sm bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-1)] outline-none focus:border-blue-500">
-                    <option value="visualizador">Visualizador</option>
-                    <option value="engenheiro_fip">Engenheiro FIP</option>
-                    <option value="admin">Administrador</option>
+                    <option value="">Selecione um perfil...</option>
+                    {templates.map(t => (
+                      <option key={t.id} value={t.id}>{t.nome}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="col-span-2 space-y-1.5">
@@ -292,7 +324,9 @@ export default function UsuariosPage() {
                         <p className="font-medium text-sm text-[var(--text-1)]">{u.nome}</p>
                         <p className="text-xs text-[var(--text-3)]">{u.email}</p>
                       </div>
-                      <Badge className={PERFIL_COLORS[u.perfil]}>{PERFIL_LABELS[u.perfil]}</Badge>
+                      <Badge className={PERFIL_COLORS[u.perfil] || 'bg-slate-800/60 text-slate-400 border-slate-700/50'}>
+                        {PERFIL_LABELS[u.perfil] || u.perfil}
+                      </Badge>
                       {u.ativo
                         ? <span className="flex items-center gap-1.5 text-emerald-400 text-xs w-16"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />Ativo</span>
                         : <span className="flex items-center gap-1.5 text-[var(--text-3)] text-xs w-16"><span className="w-1.5 h-1.5 rounded-full bg-[#475569] flex-shrink-0" />Inativo</span>
@@ -302,7 +336,13 @@ export default function UsuariosPage() {
                           className={`p-1.5 rounded-lg transition-colors ${permissaoAberta === u.id ? 'text-blue-400 bg-blue-900/20' : 'text-[var(--text-3)] hover:text-blue-400 hover:bg-blue-900/20'}`}>
                           <Shield className="w-3.5 h-3.5" />
                         </button>
-                        <button onClick={() => { setEditando(u); setEditForm({ nome: u.nome, perfil: u.perfil, nova_senha: '' }); setErro('') }} title="Editar"
+                        <button onClick={() => {
+                          // Resolve o template_id do usuário pelo nome do perfil
+                          const tpl = templates.find(t => TEMPLATE_BASE_PERFIL[t.nome] === u.perfil && t.sistema) || templates[0]
+                          setEditando(u)
+                          setEditForm({ nome: u.nome, template_id: tpl?.id || '', nova_senha: '' })
+                          setErro('')
+                        }} title="Editar"
                           className="p-1.5 rounded-lg transition-colors text-[var(--text-3)] hover:text-[var(--text-2)] hover:bg-[var(--surface-3)]">
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
@@ -323,12 +363,16 @@ export default function UsuariosPage() {
                       <div className="bg-[var(--background)] border-b border-[var(--border)] px-6 py-5">
                         <div className="flex items-center justify-between mb-4">
                           <p className="text-xs font-semibold text-[var(--text-2)] uppercase tracking-wide">Permissões — {u.nome}</p>
-                          <div className="flex gap-2">
-                            <span className="text-xs text-[var(--text-3)]">Templates:</span>
-                            {(['admin', 'engenheiro_fip', 'visualizador'] as const).map(tpl => (
-                              <button key={tpl} onClick={() => aplicarTemplate(u.id, tpl)}
+                          <div className="flex flex-wrap gap-2">
+                            <span className="text-xs text-[var(--text-3)]">Perfis:</span>
+                            {templates.map(tpl => (
+                              <button key={tpl.id}
+                                onClick={() => setPermissoesMap(prev => ({
+                                  ...prev,
+                                  [u.id]: new Set(tpl.permissoes.map((p: any) => `${p.modulo}:${p.acao}`)),
+                                }))}
                                 className="text-[11px] px-2 py-1 rounded border border-[var(--border)] text-[var(--text-3)] hover:text-[var(--text-2)] hover:border-[#475569] transition-colors">
-                                {tpl === 'admin' ? 'Administrador' : tpl === 'engenheiro_fip' ? 'Engenheiro FIP' : 'Visualizador'}
+                                {tpl.nome}
                               </button>
                             ))}
                           </div>
