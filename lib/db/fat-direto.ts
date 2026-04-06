@@ -43,6 +43,63 @@ export async function getSolicitacao(id: string) {
   return data
 }
 
+export interface TetoViolation {
+  teto: number
+  total_aprovado: number
+  total_pendente: number
+  valor_novo: number
+  saldo_disponivel: number
+  pedidos_bloqueantes: Array<{
+    id: string
+    numero: number
+    status: string
+    valor_total: number
+    data_solicitacao: string
+  }>
+}
+
+export async function verificarTeto(contratoId: string, valorNovo: number): Promise<TetoViolation | null> {
+  const admin = createAdminClient()
+
+  const { data: contrato } = await admin
+    .from('contratos')
+    .select('valor_material_direto')
+    .eq('id', contratoId)
+    .single()
+
+  const teto = contrato?.valor_material_direto ?? 0
+
+  const { data: sols } = await admin
+    .from('solicitacoes_fat_direto')
+    .select('id, numero, status, valor_total, data_solicitacao')
+    .eq('contrato_id', contratoId)
+    .in('status', ['aprovado', 'aguardando_aprovacao'])
+
+  const total_aprovado = (sols || [])
+    .filter((s: any) => s.status === 'aprovado')
+    .reduce((s: number, x: any) => s + (x.valor_total || 0), 0)
+
+  const total_pendente = (sols || [])
+    .filter((s: any) => s.status === 'aguardando_aprovacao')
+    .reduce((s: number, x: any) => s + (x.valor_total || 0), 0)
+
+  const comprometido = total_aprovado + valorNovo
+  if (comprometido <= teto) return null
+
+  const saldo_disponivel = teto - total_aprovado
+
+  return {
+    teto,
+    total_aprovado,
+    total_pendente,
+    valor_novo: valorNovo,
+    saldo_disponivel,
+    pedidos_bloqueantes: (sols || [])
+      .filter((s: any) => s.status === 'aprovado')
+      .sort((a: any, b: any) => new Date(b.data_solicitacao).getTime() - new Date(a.data_solicitacao).getTime()),
+  }
+}
+
 export async function criarSolicitacao(input: {
   contrato_id: string
   solicitante_id: string
@@ -57,6 +114,14 @@ export async function criarSolicitacao(input: {
 }) {
   const admin = createAdminClient()
   const valor_total = input.itens.reduce((s, i) => s + i.qtde_solicitada * i.valor_unitario, 0)
+
+  // Validate against teto
+  const violation = await verificarTeto(input.contrato_id, valor_total)
+  if (violation) {
+    const err = new Error('TETO_EXCEDIDO')
+    ;(err as any).violation = violation
+    throw err
+  }
 
   const { data: sol, error } = await admin
     .from('solicitacoes_fat_direto')

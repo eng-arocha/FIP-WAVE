@@ -31,6 +31,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     })
     return NextResponse.json(sol, { status: 201 })
   } catch (e: any) {
+    if (e.message === 'TETO_EXCEDIDO') {
+      return NextResponse.json(
+        { error: 'TETO_EXCEDIDO', violation: (e as any).violation },
+        { status: 422 },
+      )
+    }
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
 }

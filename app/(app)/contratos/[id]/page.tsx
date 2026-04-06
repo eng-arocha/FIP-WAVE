@@ -10,7 +10,7 @@ import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell
 } from 'recharts'
 import {
   ArrowLeft, Plus, FileText, Loader2,
@@ -87,6 +87,12 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   const [sortBy, setSortBy] = useState<'padrao' | 'valor_global_desc' | 'valor_global_asc' | 'valor_medido_desc' | 'valor_medido_asc' | 'saldo_desc' | 'saldo_asc'>('padrao')
   const [viewMode, setViewMode] = useState<'total' | 'material' | 'servico'>('total')
 
+  // Acompanhamento data + cascade filter state
+  const [acomp, setAcomp] = useState<any>(null)
+  const [n1, setN1] = useState('') // grupo_id or ''
+  const [n2, setN2] = useState('') // tarefa_id or ''
+  const [n3, setN3] = useState('') // detalhamento_id or ''
+
   useEffect(() => {
     async function loadContrato() {
       try {
@@ -133,6 +139,12 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
       }
     }
     loadAditivos()
+  }, [id])
+
+  useEffect(() => {
+    fetch(`/api/contratos/${id}/acompanhamento`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setAcomp(d) })
   }, [id])
 
   const TIPO_MEDICAO_COLORS: Record<string, string> = {
@@ -396,6 +408,220 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                 </CardContent>
               </Card>
             </div>
+
+            {/* ── 3 Acompanhamento Charts ─────────────────────────────── */}
+            {acomp && (() => {
+              // Cascade filter helpers
+              const selectedGrupo = acomp.grupos.find((g: any) => g.id === n1) ?? null
+              const tarefasN2 = selectedGrupo?.tarefas ?? []
+              const selectedTarefa = tarefasN2.find((t: any) => t.id === n2) ?? null
+              const detsN3 = selectedTarefa?.detalhamentos ?? []
+
+              function buildChartRows(
+                key_contratado: string,
+                key_medido: string,
+              ) {
+                // Level 0 — global single bar when nothing selected
+                if (!n1) {
+                  return [{
+                    nome: 'WAVE (Obra)',
+                    contratado: acomp.total[key_contratado],
+                    medido: acomp.total[key_medido],
+                  }]
+                }
+                // Level 1 — tarefas of selected group
+                if (!n2) {
+                  return tarefasN2.map((t: any) => ({
+                    nome: t.codigo,
+                    nomeFull: t.nome,
+                    contratado: t[key_contratado] ?? 0,
+                    medido: t[key_medido] ?? 0,
+                  }))
+                }
+                // Level 2 — detalhamentos of selected tarefa
+                return detsN3.map((d: any) => ({
+                  nome: d.local ?? d.codigo,
+                  nomeFull: d.nome,
+                  contratado: d[key_contratado] ?? 0,
+                  medido: d[key_medido] ?? 0,
+                }))
+              }
+
+              const chartTooltipStyle = {
+                background: '#0D1421', border: '1px solid #1E293B',
+                borderRadius: 10, color: '#F1F5F9', fontSize: 12,
+              }
+
+              const chartHeight = !n1 ? 100 : !n2 ? Math.max(180, tarefasN2.length * 28) : Math.max(180, detsN3.length * 28)
+
+              const rowsServico = buildChartRows('valor_servico', 'valor_medido_servico')
+              const rowsFatDAprov = buildChartRows('valor_material', 'valor_aprovado_fatd')
+              const rowsFatDNF = buildChartRows('valor_aprovado_fatd', 'valor_nf_fatd')
+
+              // Cascade filter UI
+              const FilterBar = () => (
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <select
+                    value={n1}
+                    onChange={e => { setN1(e.target.value); setN2(''); setN3('') }}
+                    className="rounded-xl px-3 py-1.5 text-xs outline-none"
+                    style={{ background: '#080C14', border: '1px solid #1E293B', color: n1 ? '#F1F5F9' : '#475569' }}
+                  >
+                    <option value="">Global (todos)</option>
+                    {acomp.grupos.map((g: any) => (
+                      <option key={g.id} value={g.id}>{g.codigo} — {g.nome.substring(0, 35)}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={n2}
+                    onChange={e => { setN2(e.target.value); setN3('') }}
+                    disabled={!n1}
+                    className="rounded-xl px-3 py-1.5 text-xs outline-none disabled:opacity-40"
+                    style={{ background: '#080C14', border: '1px solid #1E293B', color: n2 ? '#F1F5F9' : '#475569' }}
+                  >
+                    <option value="">Todos (nível 2)</option>
+                    {tarefasN2.map((t: any) => (
+                      <option key={t.id} value={t.id}>{t.codigo} — {t.nome.substring(0, 30)}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={n3}
+                    onChange={e => setN3(e.target.value)}
+                    disabled={!n2}
+                    className="rounded-xl px-3 py-1.5 text-xs outline-none disabled:opacity-40"
+                    style={{ background: '#080C14', border: '1px solid #1E293B', color: n3 ? '#F1F5F9' : '#475569' }}
+                  >
+                    <option value="">Todos (nível 3)</option>
+                    {detsN3.map((d: any) => (
+                      <option key={d.id} value={d.id}>{d.local ?? d.codigo} — {(d.nome ?? '').substring(0, 25)}</option>
+                    ))}
+                  </select>
+                  {(n1 || n2 || n3) && (
+                    <button
+                      onClick={() => { setN1(''); setN2(''); setN3('') }}
+                      className="px-3 py-1.5 text-xs rounded-xl transition-colors"
+                      style={{ color: '#475569', border: '1px solid #1E293B' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#94A3B8' }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#475569' }}
+                    >
+                      Limpar filtros
+                    </button>
+                  )}
+                </div>
+              )
+
+              function AcompChart({
+                title, rows, keyContratado, keyMedido, colorContratado, colorMedido,
+                labelContratado, labelMedido, accentColor,
+              }: {
+                title: string; rows: any[]; keyContratado: string; keyMedido: string
+                colorContratado: string; colorMedido: string
+                labelContratado: string; labelMedido: string; accentColor: string
+              }) {
+                return (
+                  <Card style={{ borderTop: `2px solid ${accentColor}` }}>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm" style={{ color: '#94A3B8' }}>{title}</CardTitle>
+                      <FilterBar />
+                    </CardHeader>
+                    <CardContent>
+                      <ResponsiveContainer width="100%" height={chartHeight}>
+                        <BarChart
+                          data={rows}
+                          layout="vertical"
+                          margin={{ top: 0, right: 16, left: 8, bottom: 0 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" horizontal={false} />
+                          <XAxis
+                            type="number"
+                            tick={{ fontSize: 10, fill: '#475569' }}
+                            tickFormatter={v => `${(v / 1e6).toFixed(1)}M`}
+                            axisLine={false} tickLine={false}
+                          />
+                          <YAxis
+                            type="category"
+                            dataKey="nome"
+                            tick={{ fontSize: 10, fill: '#94A3B8' }}
+                            width={!n1 ? 80 : 55}
+                            axisLine={false} tickLine={false}
+                          />
+                          <Tooltip
+                            contentStyle={chartTooltipStyle}
+                            formatter={(v: any, name: string, props: any) => [
+                              formatCurrency(v),
+                              name,
+                            ]}
+                            labelFormatter={(label: string, payload: any[]) => {
+                              const row = payload?.[0]?.payload
+                              return row?.nomeFull ? `${label} — ${row.nomeFull.substring(0, 45)}` : label
+                            }}
+                          />
+                          <Legend
+                            iconSize={8}
+                            wrapperStyle={{ fontSize: 11, color: '#94A3B8', paddingTop: 8 }}
+                          />
+                          <Bar
+                            dataKey="contratado"
+                            name={labelContratado}
+                            fill={colorContratado}
+                            radius={[0, 3, 3, 0]}
+                            maxBarSize={14}
+                          />
+                          <Bar
+                            dataKey="medido"
+                            name={labelMedido}
+                            fill={colorMedido}
+                            radius={[0, 3, 3, 0]}
+                            maxBarSize={14}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+                )
+              }
+
+              return (
+                <div className="mt-6 space-y-4">
+                  {/* Chart 1 — Service measurement */}
+                  <AcompChart
+                    title="Acompanhamento Medição Serviço"
+                    rows={rowsServico}
+                    keyContratado="valor_servico"
+                    keyMedido="valor_medido_servico"
+                    colorContratado="#1E3A5F"
+                    colorMedido="#3B82F6"
+                    labelContratado="Contratado (Serviço)"
+                    labelMedido="Medido"
+                    accentColor="#3B82F6"
+                  />
+                  {/* Chart 2 — Fat direto approvals */}
+                  <AcompChart
+                    title="Aprovação Pedidos Fat. Direto"
+                    rows={rowsFatDAprov}
+                    keyContratado="valor_material"
+                    keyMedido="valor_aprovado_fatd"
+                    colorContratado="#064E3B"
+                    colorMedido="#10B981"
+                    labelContratado="Disponível (Material)"
+                    labelMedido="Aprovado"
+                    accentColor="#10B981"
+                  />
+                  {/* Chart 3 — Fat direto NFs */}
+                  <AcompChart
+                    title="Faturamento Direto — NFs Recebidas"
+                    rows={rowsFatDNF}
+                    keyContratado="valor_aprovado_fatd"
+                    keyMedido="valor_nf_fatd"
+                    colorContratado="#0C4A6E"
+                    colorMedido="#06B6D4"
+                    labelContratado="Aprovado (Pedidos)"
+                    labelMedido="NFs Recebidas"
+                    accentColor="#06B6D4"
+                  />
+                </div>
+              )
+            })()}
           </TabsContent>
 
           {/* Medições */}

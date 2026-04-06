@@ -7,7 +7,8 @@ import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { formatCurrency } from '@/lib/utils'
-import { ArrowLeft, Plus, Trash2, Package, Save } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Package, Save, AlertTriangle } from 'lucide-react'
+import { formatCurrency } from '@/lib/utils'
 
 interface Tarefa {
   id: string
@@ -36,6 +37,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
   ])
   const [saving, setSaving] = useState(false)
   const [erro, setErro] = useState('')
+  const [tetoViolation, setTetoViolation] = useState<any>(null)
 
   useEffect(() => {
     fetch(`/api/contratos/${id}/fat-direto/tarefas`)
@@ -97,6 +99,11 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
         body: JSON.stringify(payload),
       })
       const data = await res.json()
+      if (res.status === 422 && data.error === 'TETO_EXCEDIDO') {
+        setTetoViolation(data.violation)
+        setSaving(false)
+        return
+      }
       if (!res.ok) { setErro(data.error || 'Erro ao salvar'); setSaving(false); return }
       router.push(`/contratos/${id}/fat-direto/${data.id}`)
     } catch (e: any) {
@@ -131,6 +138,61 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
         {erro && (
           <div className="p-3 rounded-xl text-sm" style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.30)', color: '#FCA5A5' }}>
             {erro}
+          </div>
+        )}
+
+        {tetoViolation && (
+          <div className="rounded-2xl p-5 space-y-4" style={{ background: 'rgba(239,68,68,0.07)', border: '2px solid rgba(239,68,68,0.40)' }}>
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-6 h-6 text-red-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-red-400 font-bold text-base mb-1">Saldo de Material Insuficiente</p>
+                <p className="text-sm text-[#94A3B8]">
+                  A solicitação de <strong className="text-red-300">{formatCurrency(tetoViolation.valor_novo)}</strong> excede o saldo disponível de{' '}
+                  <strong className="text-red-300">{formatCurrency(tetoViolation.saldo_disponivel)}</strong>.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: 'Teto do Contrato', value: tetoViolation.teto, color: '#94A3B8' },
+                { label: 'Total Aprovado', value: tetoViolation.total_aprovado, color: '#EF4444' },
+                { label: 'Saldo Disponível', value: tetoViolation.saldo_disponivel, color: tetoViolation.saldo_disponivel <= 0 ? '#EF4444' : '#F59E0B' },
+              ].map(k => (
+                <div key={k.label} className="p-3 rounded-xl" style={{ background: 'rgba(0,0,0,0.30)' }}>
+                  <p className="text-xs text-[#475569] mb-1">{k.label}</p>
+                  <p className="text-sm font-bold" style={{ color: k.color }}>{formatCurrency(k.value)}</p>
+                </div>
+              ))}
+            </div>
+
+            {tetoViolation.pedidos_bloqueantes?.length > 0 && (
+              <div>
+                <p className="text-xs text-[#475569] font-semibold uppercase tracking-wide mb-2">
+                  Pedidos Aprovados que Comprometem o Saldo
+                </p>
+                <div className="space-y-1.5">
+                  {tetoViolation.pedidos_bloqueantes.map((p: any) => (
+                    <div key={p.id} className="flex items-center justify-between px-3 py-2 rounded-lg"
+                      style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.20)' }}>
+                      <span className="text-xs text-[#94A3B8]">
+                        SOL-{String(p.numero).padStart(3, '0')} ·{' '}
+                        {new Date(p.data_solicitacao).toLocaleDateString('pt-BR')}
+                      </span>
+                      <span className="text-xs font-bold text-red-400">{formatCurrency(p.valor_total)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={() => setTetoViolation(null)}
+              className="text-xs text-[#475569] hover:text-[#94A3B8] transition-colors"
+            >
+              Fechar alerta
+            </button>
           </div>
         )}
 
