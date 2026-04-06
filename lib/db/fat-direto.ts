@@ -123,14 +123,6 @@ export async function criarSolicitacao(input: {
   const admin = createAdminClient()
   const valor_total = input.itens.reduce((s, i) => s + i.valor_total, 0)
 
-  // Validate against teto global do contrato
-  const violation = await verificarTeto(input.contrato_id, valor_total)
-  if (violation) {
-    const err = new Error('TETO_EXCEDIDO')
-    ;(err as any).violation = violation
-    throw err
-  }
-
   const { data: sol, error } = await admin
     .from('solicitacoes_fat_direto')
     .insert({
@@ -270,7 +262,7 @@ export async function listarTarefasParaSolicitacao(contratoId: string) {
   // Detalhamentos (nivel 3) — lista completa para o dropdown
   const { data: dets, error } = await admin
     .from('detalhamentos')
-    .select('id, tarefa_id, codigo, descricao, local, quantidade_contratada, valor_unitario, valor_total, valor_material_unit')
+    .select('*')
     .in('tarefa_id', tarefaIds)
   if (error) throw error
   const detalhamentos = dets || []

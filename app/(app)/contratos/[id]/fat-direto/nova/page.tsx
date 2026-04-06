@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { formatCurrency } from '@/lib/utils'
 import {
-  ArrowLeft, Plus, Trash2, Package, Save, AlertTriangle,
+  ArrowLeft, Plus, Trash2, Package, Save,
   Building2, ChevronDown, Search, MapPin, X, Hash, Upload, FileText,
 } from 'lucide-react'
 
@@ -200,7 +200,6 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
   ])
   const [saving, setSaving] = useState(false)
   const [erro, setErro] = useState('')
-  const [tetoViolation, setTetoViolation] = useState<any>(null)
 
   useEffect(() => {
     fetch(`/api/contratos/${id}/fat-direto/tarefas`)
@@ -248,16 +247,6 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
     ))
   }
 
-  function getSaldoInfo(item: ItemForm) {
-    const t = tarefas.find(x => x.id === item.tarefa_id)
-    if (!t || !item.tarefa_id) return null
-    const valorAtual = parseFloat(item.valor_total) || 0
-    const totalComAtual = t.valor_aprovado + valorAtual
-    const limite = t.valor_material
-    const excesso = totalComAtual - limite
-    return { jaAprovado: t.valor_aprovado, totalComAtual, limite, excesso, extrapolado: excesso > 0 }
-  }
-
   const total = itens.reduce((s, it) => s + (parseFloat(it.valor_total) || 0), 0)
 
   async function salvar() {
@@ -300,11 +289,6 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
         body: JSON.stringify(payload),
       })
       const data = await res.json()
-      if (res.status === 422 && data.error === 'TETO_EXCEDIDO') {
-        setTetoViolation(data.violation)
-        setSaving(false)
-        return
-      }
       if (!res.ok) { setErro(data.error || 'Erro ao salvar'); setSaving(false); return }
 
       // Upload do PDF do pedido (se selecionado)
@@ -376,34 +360,6 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
         {erro && (
           <div className="p-3 rounded-xl text-sm" style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.30)', color: 'var(--red)' }}>
             {erro}
-          </div>
-        )}
-
-        {tetoViolation && (
-          <div className="rounded-2xl p-5 space-y-4" style={{ background: 'rgba(239,68,68,0.07)', border: '2px solid rgba(239,68,68,0.40)' }}>
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="w-6 h-6 flex-shrink-0 mt-0.5" strokeWidth={1.5} style={{ color: 'var(--red)' }} />
-              <div>
-                <p className="font-bold text-base mb-1" style={{ color: 'var(--red)' }}>Saldo de Material Insuficiente</p>
-                <p className="text-sm" style={{ color: 'var(--text-2)' }}>
-                  A solicitação de <strong style={{ color: 'var(--red)' }}>{formatCurrency(tetoViolation.valor_novo)}</strong> excede o saldo de{' '}
-                  <strong style={{ color: 'var(--red)' }}>{formatCurrency(tetoViolation.saldo_disponivel)}</strong>.
-                </p>
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                { label: 'Teto do Contrato', value: tetoViolation.teto, color: 'var(--text-2)' },
-                { label: 'Total Aprovado', value: tetoViolation.total_aprovado, color: 'var(--red)' },
-                { label: 'Saldo Disponível', value: tetoViolation.saldo_disponivel, color: tetoViolation.saldo_disponivel <= 0 ? 'var(--red)' : 'var(--amber)' },
-              ].map(k => (
-                <div key={k.label} className="p-3 rounded-xl" style={{ background: 'var(--surface-3)' }}>
-                  <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>{k.label}</p>
-                  <p className="text-sm font-bold" style={{ color: k.color }}>{formatCurrency(k.value)}</p>
-                </div>
-              ))}
-            </div>
-            <button onClick={() => setTetoViolation(null)} className="text-xs transition-colors" style={{ color: 'var(--text-3)' }}>Fechar alerta</button>
           </div>
         )}
 
@@ -565,78 +521,49 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
             </Button>
           </CardHeader>
           <CardContent className="space-y-4">
-            {itens.map((item, i) => {
-              const saldo = getSaldoInfo(item)
-              return (
-                <div
-                  key={i}
-                  className="p-4 rounded-xl space-y-3"
-                  style={{ background: 'var(--surface-3)', border: `1px solid ${saldo?.extrapolado ? 'rgba(239,68,68,0.4)' : 'var(--border)'}` }}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Item {i + 1}</span>
-                    {itens.length > 1 && (
-                      <button onClick={() => removeItem(i)} style={{ color: 'var(--text-3)' }}
-                        onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
-                        onMouseLeave={e => e.currentTarget.style.color = 'var(--text-3)'}>
-                        <Trash2 className="w-4 h-4" strokeWidth={1.5} />
-                      </button>
-                    )}
-                  </div>
+            {itens.map((item, i) => (
+              <div
+                key={i}
+                className="p-4 rounded-xl space-y-3"
+                style={{ background: 'var(--surface-3)', border: '1px solid var(--border)' }}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Item {i + 1}</span>
+                  {itens.length > 1 && (
+                    <button onClick={() => removeItem(i)} style={{ color: 'var(--text-3)' }}
+                      onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
+                      onMouseLeave={e => e.currentTarget.style.color = 'var(--text-3)'}>
+                      <Trash2 className="w-4 h-4" strokeWidth={1.5} />
+                    </button>
+                  )}
+                </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-3)' }}>Disciplina / Tarefa</label>
-                      <DisciplinaCombobox tarefas={tarefas} value={item.tarefa_id} localFilter={item.local} onChange={(tid) => onTarefaChange(i, tid)} />
-                    </div>
-                    <div>
-                      <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-3)' }}>Local</label>
-                      <input type="text" value={item.local} onChange={e => updateItem(i, 'local', e.target.value)}
-                        placeholder="TORRE, AP-101, ÁREA COMUM..." className={inputCls} style={inputStyle} {...focusHandlers} />
-                    </div>
-                  </div>
-
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-3)' }}>Descrição do Material</label>
-                    <input type="text" value={item.descricao} onChange={e => updateItem(i, 'descricao', e.target.value)}
-                      placeholder="Descreva o material a ser adquirido..."
-                      className={inputCls} style={inputStyle} {...focusHandlers} />
+                    <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-3)' }}>Disciplina / Tarefa</label>
+                    <DisciplinaCombobox tarefas={tarefas} value={item.tarefa_id} localFilter={item.local} onChange={(tid) => onTarefaChange(i, tid)} />
                   </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-3)' }}>Valor do Item (R$)</label>
-                      <input type="number" value={item.valor_total} onChange={e => updateItem(i, 'valor_total', e.target.value)}
-                        min="0" step="0.01" placeholder="0,00" className={inputCls} style={inputStyle} {...focusHandlers} />
-                    </div>
-                    <div>
-                      <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-3)' }}>Saldo Total do Item</label>
-                      {saldo ? (
-                        <div className="rounded-xl px-3 py-2.5 text-sm space-y-0.5" style={{ background: saldo.extrapolado ? 'rgba(239,68,68,0.08)' : 'rgba(59,130,246,0.06)', border: `1px solid ${saldo.extrapolado ? 'rgba(239,68,68,0.30)' : 'rgba(59,130,246,0.20)'}` }}>
-                          <div className="font-bold" style={{ color: saldo.extrapolado ? 'var(--red)' : 'var(--accent)' }}>
-                            {formatCurrency(saldo.totalComAtual)}
-                          </div>
-                          {saldo.extrapolado ? (
-                            <div className="text-[11px] font-semibold flex items-center gap-1" style={{ color: 'var(--red)' }}>
-                              <AlertTriangle className="w-3 h-3" strokeWidth={2} />
-                              Extrapolado em {formatCurrency(saldo.excesso)}
-                            </div>
-                          ) : (
-                            <div className="text-[11px]" style={{ color: 'var(--text-3)' }}>
-                              já aprov: {formatCurrency(saldo.jaAprovado)} · teto: {formatCurrency(saldo.limite)}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="rounded-xl px-3 py-2.5 text-sm font-bold" style={{ background: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.15)', color: 'var(--accent)' }}>
-                          {formatCurrency(parseFloat(item.valor_total) || 0)}
-                        </div>
-                      )}
-                    </div>
+                  <div>
+                    <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-3)' }}>Local</label>
+                    <input type="text" value={item.local} onChange={e => updateItem(i, 'local', e.target.value)}
+                      placeholder="TORRE, AP-101, ÁREA COMUM..." className={inputCls} style={inputStyle} {...focusHandlers} />
                   </div>
                 </div>
-              )
-            })}
+
+                <div>
+                  <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-3)' }}>Descrição do Material</label>
+                  <input type="text" value={item.descricao} onChange={e => updateItem(i, 'descricao', e.target.value)}
+                    placeholder="Descreva o material a ser adquirido..."
+                    className={inputCls} style={inputStyle} {...focusHandlers} />
+                </div>
+
+                <div>
+                  <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-3)' }}>Valor do Item (R$)</label>
+                  <input type="number" value={item.valor_total} onChange={e => updateItem(i, 'valor_total', e.target.value)}
+                    min="0" step="0.01" placeholder="0,00" className={inputCls} style={inputStyle} {...focusHandlers} />
+                </div>
+              </div>
+            ))}
 
             <div className="flex items-center justify-between pt-3" style={{ borderTop: '1px solid var(--border)' }}>
               <span className="text-sm font-semibold" style={{ color: 'var(--text-2)' }}>Total da Solicitação</span>
