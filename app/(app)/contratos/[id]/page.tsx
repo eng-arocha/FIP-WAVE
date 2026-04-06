@@ -10,7 +10,7 @@ import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell, LabelList
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell
 } from 'recharts'
 import {
   ArrowLeft, Plus, FileText, Loader2,
@@ -88,14 +88,6 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   const [sortBy, setSortBy] = useState<'padrao' | 'valor_global_desc' | 'valor_global_asc' | 'valor_medido_desc' | 'valor_medido_asc' | 'saldo_desc' | 'saldo_asc'>('padrao')
   const [viewMode, setViewMode] = useState<'total' | 'material' | 'servico'>('total')
 
-  // Acompanhamento data + INDEPENDENT cascade filter state per chart
-  const [acomp, setAcomp] = useState<any>(null)
-  // Chart 1 — Serviço
-  const [s1, setS1] = useState(''); const [s2, setS2] = useState(''); const [s3, setS3] = useState('')
-  // Chart 2 — Fat. Direto Aprovação
-  const [f1, setF1] = useState(''); const [f2, setF2] = useState(''); const [f3, setF3] = useState('')
-  // Chart 3 — Fat. Direto NFs
-  const [n1, setN1] = useState(''); const [n2, setN2] = useState(''); const [n3, setN3] = useState('')
 
   useEffect(() => {
     async function loadContrato() {
@@ -145,11 +137,6 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
     loadAditivos()
   }, [id])
 
-  useEffect(() => {
-    fetch(`/api/contratos/${id}/acompanhamento`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) setAcomp(d) })
-  }, [id])
 
   const TIPO_MEDICAO_COLORS: Record<string, string> = {
     servico: 'bg-purple-900/30 text-purple-400 border-purple-800/50',
@@ -190,6 +177,20 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
     [grupos]
   )
 
+  // Paleta de cores por grupo (índice na ordem código 1.0 → 19.0)
+  const GROUP_PALETTE = [
+    '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444',
+    '#06B6D4', '#EC4899', '#F97316', '#14B8A6', '#6366F1',
+    '#84CC16', '#A855F7', '#FB923C', '#34D399', '#FBBF24',
+    '#38BDF8', '#E879F9', '#4ADE80', '#FCA5A5', '#93C5FD',
+  ]
+
+  const groupColorMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    gruposOrdenados.forEach((g, i) => { map[g.id] = GROUP_PALETTE[i % GROUP_PALETTE.length] })
+    return map
+  }, [gruposOrdenados])
+
   if (loading) {
     return (
       <div className="flex-1 overflow-auto">
@@ -225,13 +226,15 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   const qtdPendentes = contrato.qtd_medicoes_pendentes ?? 0
 
   const VIEW_MODE_LABELS: Record<string, string> = { total: 'Total', material: 'Material', servico: 'Serviço' }
-  const gruposChart = gruposOrdenados.map(g => {
+  const gruposChart = gruposOrdenados.map((g, i) => {
     const vContratado = getValorView(g)
     return {
-      nome: g.nome.length > 18 ? g.nome.slice(0, 16) + '…' : g.nome,
+      nome: g.codigo,   // eixo Y mostra apenas o código (ex: 1.0, 2.0…)
+      nomeFull: g.nome, // tooltip mostra o nome completo
       contratado: vContratado,
       medido: g.valor_medido,
       saldo: vContratado - g.valor_medido,
+      color: GROUP_PALETTE[i % GROUP_PALETTE.length],
     }
   })
 
@@ -380,30 +383,54 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
           {/* Visão Geral */}
           <TabsContent value="visao-geral">
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-              {/* Chart grupos */}
+              {/* Chart grupos — Medição de Serviço */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-sm text-[var(--text-2)]">Medido vs Contratado por Grupo (R$)</CardTitle>
+                  <CardTitle className="text-sm text-[var(--text-2)]">Medição de Serviço</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={Math.max(320, gruposChart.length * 28)}>
-                    <BarChart data={gruposChart} layout="vertical" margin={{ top: 0, right: 20, left: 20, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" horizontal={false} />
-                      <XAxis type="number" tick={{ fontSize: 10, fill: '#475569' }} tickFormatter={v => `${(v / 1000000).toFixed(1)}M`} />
-                      <YAxis type="category" dataKey="nome" tick={{ fontSize: 10, fill: '#94A3B8' }} width={80} />
-                      <Tooltip formatter={(v) => formatCurrency(v as number)} contentStyle={{ backgroundColor: '#0D1421', border: '1px solid #1E293B', borderRadius: '8px', color: '#FFFFFF', fontSize: 12 }} />
+                  <ResponsiveContainer width="100%" height={Math.max(320, gruposChart.length * 32)}>
+                    <BarChart data={gruposChart} layout="vertical" margin={{ top: 0, right: 24, left: 8, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+                      <XAxis type="number" tick={{ fontSize: 10, fill: 'var(--text-3)' }} tickFormatter={v => `${(v / 1000000).toFixed(1)}M`} axisLine={false} tickLine={false} />
+                      <YAxis type="category" dataKey="nome" tick={{ fontSize: 10, fill: 'var(--text-2)' }} width={36} axisLine={false} tickLine={false} />
+                      <Tooltip
+                        content={({ active, payload }) => {
+                          if (!active || !payload?.length) return null
+                          const d = payload[0]?.payload
+                          const color = d?.color ?? '#3B82F6'
+                          return (
+                            <div style={{ background: '#0D1421', border: `1px solid ${color}60`, borderRadius: 8, padding: '8px 12px', fontSize: 12, minWidth: 180 }}>
+                              <p style={{ color, fontWeight: 700, marginBottom: 6, fontSize: 11 }}>{d?.nomeFull}</p>
+                              {payload.map((p: any) => (
+                                <p key={p.dataKey} style={{ color: '#FFFFFF', margin: '2px 0' }}>
+                                  {p.name}: {formatCurrency(p.value as number)}
+                                </p>
+                              ))}
+                            </div>
+                          )
+                        }}
+                      />
                       <Legend iconSize={10} wrapperStyle={{ fontSize: 11, color: 'var(--text-2)' }} />
-                      <Bar dataKey="contratado" name="Contratado" fill="#64748B" radius={[0, 2, 2, 0]} />
-                      <Bar dataKey="medido" name="Medido" fill="#3B82F6" radius={[0, 2, 2, 0]} />
+                      <Bar dataKey="contratado" name="Contratado" radius={[0, 2, 2, 0]} maxBarSize={10}>
+                        {gruposChart.map((entry, i) => (
+                          <Cell key={i} fill={`${entry.color}38`} />
+                        ))}
+                      </Bar>
+                      <Bar dataKey="medido" name="Medido" radius={[0, 2, 2, 0]} maxBarSize={10}>
+                        {gruposChart.map((entry, i) => (
+                          <Cell key={i} fill={entry.color} />
+                        ))}
+                      </Bar>
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
               </Card>
 
-              {/* Grupos progress */}
+              {/* Grupos progress — Pedidos Aprovados */}
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm text-[var(--text-2)]">Avanço por Grupo Macro</CardTitle>
+                  <CardTitle className="text-sm text-[var(--text-2)]">Pedidos Aprovados</CardTitle>
                   {/* Controles inline */}
                   <div className="flex flex-wrap gap-2 pt-2">
                     <Select value={sortBy} onValueChange={v => setSortBy(v as typeof sortBy)}>
@@ -446,16 +473,20 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                   {gruposExibidos.map(g => {
                     const vBase = getValorView(g)
                     const pct = vBase > 0 ? (g.valor_medido / vBase) * 100 : 0
+                    const color = groupColorMap[g.id] ?? '#3B82F6'
                     return (
                       <div key={g.id}>
                         <div className="flex justify-between mb-1">
                           <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-xs font-bold text-[var(--text-3)] flex-shrink-0">{g.codigo}</span>
+                            <span className="text-xs font-bold flex-shrink-0" style={{ color }}>{g.codigo}</span>
                             <span className="text-xs font-medium text-[var(--text-2)] truncate">{g.nome}</span>
                           </div>
-                          <span className="text-xs font-bold text-blue-400 flex-shrink-0 ml-2">{formatPercent(pct)}</span>
+                          <span className="text-xs font-bold flex-shrink-0 ml-2" style={{ color }}>{formatPercent(pct)}</span>
                         </div>
-                        <Progress value={pct} className="h-1.5" />
+                        {/* Progress bar com cor do grupo */}
+                        <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--surface-3)' }}>
+                          <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(pct, 100)}%`, background: color }} />
+                        </div>
                         <div className="flex justify-between text-[10px] text-[var(--text-3)] mt-0.5">
                           <span>{VIEW_MODE_LABELS[viewMode]}: {formatCurrency(vBase)}</span>
                           <span>Medido: {formatCurrency(g.valor_medido ?? 0)}</span>
@@ -468,156 +499,6 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
               </Card>
             </div>
 
-            {/* ── 3 Acompanhamento Charts — each with independent filters ── */}
-            {acomp && (() => {
-              const chartTooltipStyle = {
-                background: '#0D1421', border: '1px solid #1E293B',
-                borderRadius: 10, color: '#FFFFFF', fontSize: 12,
-              }
-
-              function buildRows(
-                key_contratado: string, key_medido: string,
-                cx1: string, cx2: string,
-              ) {
-                const toRow = (nome: string, nomeFull: string | undefined, contratado: number, medido: number) => ({
-                  nome, nomeFull, contratado, medido,
-                  pct: contratado > 0 ? Math.round((medido / contratado) * 100) : 0,
-                })
-                const selGrupo = acomp.grupos.find((g: any) => g.id === cx1) ?? null
-                const tars = selGrupo?.tarefas ?? []
-                const selTar = tars.find((t: any) => t.id === cx2) ?? null
-                const dets = selTar?.detalhamentos ?? []
-                if (!cx1) return [toRow('WAVE (Obra)', undefined, acomp.total[key_contratado], acomp.total[key_medido])]
-                if (!cx2) return tars
-                  .filter((t: any) => (t[key_contratado] ?? 0) > 0 || (t[key_medido] ?? 0) > 0)
-                  .map((t: any) => toRow(t.codigo, t.nome, t[key_contratado] ?? 0, t[key_medido] ?? 0))
-                return dets
-                  .filter((d: any) => (d[key_contratado] ?? 0) > 0 || (d[key_medido] ?? 0) > 0)
-                  .map((d: any) => toRow(d.local ?? d.codigo, d.nome, d[key_contratado] ?? 0, d[key_medido] ?? 0))
-              }
-
-              function ChartFilter({ cx1, cx2, cx3, setCx1, setCx2, setCx3 }: {
-                cx1: string; cx2: string; cx3: string
-                setCx1: (v: string) => void; setCx2: (v: string) => void; setCx3: (v: string) => void
-              }) {
-                const selGrupo = acomp.grupos.find((g: any) => g.id === cx1) ?? null
-                const tars = selGrupo?.tarefas ?? []
-                const selTar = tars.find((t: any) => t.id === cx2) ?? null
-                const dets = selTar?.detalhamentos ?? []
-                return (
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    <select value={cx1} onChange={e => { setCx1(e.target.value); setCx2(''); setCx3('') }}
-                      className="rounded-xl px-3 py-1.5 text-xs outline-none"
-                      style={{ background: 'var(--background)', border: `1px solid ${cx1 ? 'var(--accent)' : 'var(--border)'}`, color: 'var(--text-1)' }}>
-                      <option value="">Global (todos)</option>
-                      {acomp.grupos.map((g: any) => <option key={g.id} value={g.id}>{g.codigo} — {g.nome.substring(0, 35)}</option>)}
-                    </select>
-                    <select value={cx2} onChange={e => { setCx2(e.target.value); setCx3('') }} disabled={!cx1}
-                      className="rounded-xl px-3 py-1.5 text-xs outline-none disabled:opacity-40"
-                      style={{ background: 'var(--background)', border: `1px solid ${cx2 ? 'var(--accent)' : 'var(--border)'}`, color: 'var(--text-1)' }}>
-                      <option value="">Todos (nível 2)</option>
-                      {tars.map((t: any) => <option key={t.id} value={t.id}>{t.codigo} — {t.nome.substring(0, 30)}</option>)}
-                    </select>
-                    <select value={cx3} onChange={e => setCx3(e.target.value)} disabled={!cx2}
-                      className="rounded-xl px-3 py-1.5 text-xs outline-none disabled:opacity-40"
-                      style={{ background: 'var(--background)', border: `1px solid ${cx3 ? 'var(--accent)' : 'var(--border)'}`, color: 'var(--text-1)' }}>
-                      <option value="">Todos (nível 3)</option>
-                      {dets.map((d: any) => <option key={d.id} value={d.id}>{d.local ?? d.codigo} — {(d.nome ?? '').substring(0, 25)}</option>)}
-                    </select>
-                    {(cx1 || cx2 || cx3) && (
-                      <button onClick={() => { setCx1(''); setCx2(''); setCx3('') }}
-                        className="px-3 py-1.5 text-xs rounded-xl transition-colors"
-                        style={{ color: 'var(--text-3)', border: '1px solid var(--border)' }}
-                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text-1)' }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text-3)' }}>
-                        Limpar
-                      </button>
-                    )}
-                  </div>
-                )
-              }
-
-              function AcompChart({ title, rows, cx1, cx2, colorC, colorM, labelC, labelM, accent, setCx1, setCx2, setCx3, cx3 }: any) {
-                const h = !cx1 ? 100 : !cx2
-                  ? Math.max(200, rows.length * 32)
-                  : Math.max(200, rows.length * 32)
-                // Summary stats
-                const totalC = rows.reduce((s: number, r: any) => s + r.contratado, 0)
-                const totalM = rows.reduce((s: number, r: any) => s + r.medido, 0)
-                const totalPct = totalC > 0 ? Math.round((totalM / totalC) * 100) : 0
-                return (
-                  <Card style={{ borderTop: `2px solid ${accent}` }}>
-                    <CardHeader className="pb-2">
-                      <div className="flex items-center justify-between mb-1">
-                        <CardTitle className="text-sm" style={{ color: 'var(--text-2)' }}>{title}</CardTitle>
-                        <div className="flex items-center gap-3 text-xs">
-                          <span style={{ color: 'var(--text-3)' }}>{formatCurrency(totalM)}</span>
-                          <span className="font-bold px-2 py-0.5 rounded-md" style={{
-                            background: totalPct > 100 ? 'rgba(239,68,68,0.15)' : totalPct > 70 ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.12)',
-                            color: totalPct > 100 ? '#EF4444' : totalPct > 70 ? '#F59E0B' : accent,
-                          }}>{totalPct}%</span>
-                        </div>
-                      </div>
-                      <ChartFilter cx1={cx1} cx2={cx2} cx3={cx3} setCx1={setCx1} setCx2={setCx2} setCx3={setCx3} />
-                    </CardHeader>
-                    <CardContent>
-                      <ResponsiveContainer width="100%" height={h}>
-                        <BarChart data={rows} layout="vertical" margin={{ top: 0, right: 60, left: 8, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-                          <XAxis type="number" tick={{ fontSize: 10, fill: 'var(--text-3)' }} tickFormatter={v => `${(v / 1e6).toFixed(1)}M`} axisLine={false} tickLine={false} />
-                          <YAxis type="category" dataKey="nome" tick={{ fontSize: 10, fill: 'var(--text-2)' }} width={!cx1 ? 90 : 55} axisLine={false} tickLine={false} />
-                          <Tooltip contentStyle={chartTooltipStyle}
-                            formatter={(v: any, name: any, props: any) => {
-                              const row = props?.payload
-                              const pct = row?.pct ?? 0
-                              return [
-                                `${formatCurrency(v)}${name === labelM ? ` (${pct}%)` : ''}`,
-                                name,
-                              ]
-                            }}
-                            labelFormatter={(label: any, payload: any) => {
-                              const row = payload?.[0]?.payload
-                              return row?.nomeFull ? `${label} — ${row.nomeFull.substring(0, 45)}` : label
-                            }} />
-                          <Legend iconSize={8} wrapperStyle={{ fontSize: 11, color: 'var(--text-2)', paddingTop: 8 }} />
-                          <Bar dataKey="contratado" name={labelC} fill={colorC} radius={[0, 3, 3, 0]} maxBarSize={14} />
-                          <Bar dataKey="medido" name={labelM} radius={[0, 3, 3, 0]} maxBarSize={14}>
-                            {rows.map((row: any, i: number) => (
-                              <Cell key={i} fill={
-                                row.pct > 100 ? '#EF4444' :
-                                row.pct > 80 ? '#F59E0B' :
-                                colorM
-                              } />
-                            ))}
-                            <LabelList dataKey="pct" position="right"
-                              formatter={(v: any) => v > 0 ? `${v}%` : ''}
-                              style={{ fill: 'var(--text-2)', fontSize: 10 }}
-                            />
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </CardContent>
-                  </Card>
-                )
-              }
-
-              return (
-                <div className="mt-6 space-y-4">
-                  <AcompChart title="Acompanhamento Medição Serviço"
-                    rows={buildRows('valor_servico', 'valor_medido_servico', s1, s2)}
-                    cx1={s1} cx2={s2} cx3={s3} setCx1={setS1} setCx2={setS2} setCx3={setS3}
-                    colorC="#64748B" colorM="#3B82F6" labelC="Contratado (Serviço)" labelM="Medido" accent="#3B82F6" />
-                  <AcompChart title="Aprovação Pedidos Fat. Direto"
-                    rows={buildRows('valor_material', 'valor_aprovado_fatd', f1, f2)}
-                    cx1={f1} cx2={f2} cx3={f3} setCx1={setF1} setCx2={setF2} setCx3={setF3}
-                    colorC="#6B7280" colorM="#10B981" labelC="Disponível (Material)" labelM="Aprovado" accent="#10B981" />
-                  <AcompChart title="Faturamento Direto — NFs Recebidas"
-                    rows={buildRows('valor_aprovado_fatd', 'valor_nf_fatd', n1, n2)}
-                    cx1={n1} cx2={n2} cx3={n3} setCx1={setN1} setCx2={setN2} setCx3={setN3}
-                    colorC="#6B7280" colorM="#06B6D4" labelC="Aprovado (Pedidos)" labelM="NFs Recebidas" accent="#06B6D4" />
-                </div>
-              )
-            })()}
           </TabsContent>
 
           {/* Medições */}
