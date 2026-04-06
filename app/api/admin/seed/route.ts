@@ -15,7 +15,7 @@ export async function POST() {
     // 2) Upsert tarefas
     const { error: tErr, count: tCount } = await admin
       .from('tarefas')
-      .upsert(SEED_TAREFAS as any[], { onConflict: 'id', ignoreDuplicates: true })
+      .upsert([...SEED_TAREFAS] as any[], { onConflict: 'id', ignoreDuplicates: true })
       .select('id')
     if (tErr) throw new Error(`tarefas: ${tErr.message}`)
 
@@ -23,7 +23,7 @@ export async function POST() {
     let dInserted = 0
     const BATCH = 50
     for (let i = 0; i < SEED_DETALHAMENTOS.length; i += BATCH) {
-      const batch = (SEED_DETALHAMENTOS as any[]).slice(i, i + BATCH)
+      const batch = ([...SEED_DETALHAMENTOS] as any[]).slice(i, i + BATCH)
       const { error: dErr } = await admin
         .from('detalhamentos')
         .upsert(batch, { onConflict: 'id', ignoreDuplicates: true })
