@@ -12,7 +12,10 @@ const TabsList = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <TabsPrimitive.List
     ref={ref}
-    className={cn('inline-flex items-center justify-start rounded-lg bg-[#0D1421] border border-[#1E293B] p-1 text-[#475569]', className)}
+    className={cn(
+      'inline-flex items-center justify-start rounded-xl bg-[#0A0F1A] border border-[#1E293B] p-1 text-[#475569]',
+      className
+    )}
     {...props}
   />
 ))
@@ -25,10 +28,11 @@ const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      'inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium ring-offset-white transition-all',
-      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e3a5f] focus-visible:ring-offset-2',
+      'inline-flex items-center justify-center whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200',
+      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:ring-offset-0',
       'disabled:pointer-events-none disabled:opacity-50',
-      'data-[state=active]:bg-[#1a2236] data-[state=active]:text-[#F1F5F9] data-[state=active]:shadow-sm data-[state=active]:font-semibold',
+      'hover:text-[#94A3B8] hover:bg-[#111827]',
+      'data-[state=active]:bg-gradient-to-b data-[state=active]:from-[#1e3a5f]/60 data-[state=active]:to-[#1a2236] data-[state=active]:text-white data-[state=active]:font-semibold data-[state=active]:shadow-[0_1px_8px_rgba(59,130,246,0.15),inset_0_1px_0_rgba(59,130,246,0.20)]',
       className
     )}
     {...props}

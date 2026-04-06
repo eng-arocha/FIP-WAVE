@@ -163,23 +163,31 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
 
       <div className="p-6 max-w-5xl">
         {/* Steps indicator */}
-        <div className="flex items-center gap-2 mb-6">
+        <div className="flex items-center gap-1 mb-8">
           {[
             { n: 1, label: 'Dados Gerais' },
-            { n: 2, label: 'Itens da Medição' },
+            { n: 2, label: 'Itens' },
             { n: 3, label: 'Anexos' },
             { n: 4, label: 'Revisão' },
           ].map((s, i) => (
-            <div key={s.n} className="flex items-center">
-              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                step === s.n ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
-                step > s.n ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-800/50' :
-                'bg-[#1E293B] text-[#475569]'
+            <div key={s.n} className="flex items-center flex-1">
+              <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all flex-1 justify-center ${
+                step === s.n
+                  ? 'bg-blue-500/15 text-blue-300 border border-blue-500/30 shadow-[0_0_12px_rgba(59,130,246,0.10)]'
+                  : step > s.n
+                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                  : 'bg-[#0D1421] text-[#475569] border border-[#1E293B]'
               }`}>
-                <span>{s.n}</span>
-                <span>{s.label}</span>
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
+                  step === s.n ? 'bg-blue-500 text-white' :
+                  step > s.n ? 'bg-emerald-500 text-white' :
+                  'bg-[#1E293B] text-[#475569]'
+                }`}>{step > s.n ? '✓' : s.n}</span>
+                <span className="hidden sm:inline">{s.label}</span>
               </div>
-              {i < 3 && <div className="w-6 h-px bg-[#1E293B] mx-1" />}
+              {i < 3 && (
+                <div className={`w-4 h-px flex-shrink-0 mx-1 ${step > s.n ? 'bg-emerald-500/40' : 'bg-[#1E293B]'}`} />
+              )}
             </div>
           ))}
         </div>

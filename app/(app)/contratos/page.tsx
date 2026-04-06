@@ -148,8 +148,14 @@ export default function ContratosPage() {
                   background: '#111827',
                   border: '1px solid #1E293B',
                 }}
-                onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(59,130,246,0.40)')}
-                onMouseLeave={e => (e.currentTarget.style.borderColor = '#1E293B')}
+                onMouseEnter={e => {
+                  e.currentTarget.style.borderColor = 'rgba(59,130,246,0.35)'
+                  e.currentTarget.style.boxShadow = '0 0 0 1px rgba(59,130,246,0.08), 0 8px 30px rgba(0,0,0,0.35)'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.borderColor = '#1E293B'
+                  e.currentTarget.style.boxShadow = 'none'
+                }}
               >
                 <div className="p-5">
                   <div className="flex items-start gap-4">

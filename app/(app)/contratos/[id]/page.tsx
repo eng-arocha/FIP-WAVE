@@ -14,7 +14,8 @@ import {
 } from 'recharts'
 import {
   ArrowLeft, Plus, FileText, Loader2,
-  ChevronRight, Layers, ArrowUpDown, Filter, Package, TrendingUp
+  ChevronRight, Layers, ArrowUpDown, Filter, Package, TrendingUp,
+  DollarSign, CheckCircle2, Wallet, ClipboardList
 } from 'lucide-react'
 import {
   formatCurrency, formatPercent, formatDate,
@@ -237,7 +238,14 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   return (
     <div className="flex-1 overflow-auto">
       <Topbar
-        title={contrato.numero}
+        title={
+          <span className="flex items-center gap-2">
+            {contrato.numero}
+            <Badge className={getContratoStatusColor(contrato.status as any)}>
+              {CONTRATO_STATUS_LABELS[contrato.status as keyof typeof CONTRATO_STATUS_LABELS]}
+            </Badge>
+          </span>
+        }
         subtitle={contrato.descricao}
         actions={
           <div className="flex gap-2 flex-wrap">
@@ -273,10 +281,15 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
         {/* KPI Row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <Link href={`/contratos/${id}/cronograma`}>
-            <Card className="cursor-pointer hover:border-blue-500/40 transition-colors">
-              <CardContent className="pt-5">
-                <p className="text-xs text-[#475569] uppercase tracking-wide font-medium">Valor Total</p>
-                <p className="text-xl font-bold text-[#F1F5F9] mt-1">{formatCurrency(valorTotal)}</p>
+            <Card className="cursor-pointer hover:border-blue-500/40 group">
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-start justify-between mb-3">
+                  <p className="text-xs text-[#475569] uppercase tracking-wider font-semibold">Valor Total</p>
+                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center group-hover:bg-blue-500/20 transition-colors">
+                    <DollarSign className="w-4 h-4 text-blue-400" />
+                  </div>
+                </div>
+                <p className="text-2xl font-bold text-[#F1F5F9]">{formatCurrency(valorTotal)}</p>
                 <div className="flex gap-3 mt-2 text-xs text-[#475569]">
                   <span>Serv: {formatCurrency(contrato.valor_servicos ?? 0)}</span>
                   <span>Mat: {formatCurrency(contrato.valor_material_direto ?? 0)}</span>
@@ -285,35 +298,61 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
             </Card>
           </Link>
           <Link href={`/contratos/${id}/medicoes`}>
-            <Card className="cursor-pointer hover:border-emerald-500/40 transition-colors">
-              <CardContent className="pt-5">
-                <p className="text-xs text-[#475569] uppercase tracking-wide font-medium">Medido</p>
-                <p className="text-xl font-bold text-emerald-400 mt-1">{formatCurrency(valorMedido)}</p>
-                <p className="text-xs text-[#475569] mt-1">{formatPercent(percentualMedido)} do total</p>
-                <Progress value={percentualMedido} className="h-1 mt-2" indicatorClassName="bg-green-600" />
+            <Card className="cursor-pointer hover:border-emerald-500/40 group">
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-start justify-between mb-3">
+                  <p className="text-xs text-[#475569] uppercase tracking-wider font-semibold">Medido</p>
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center group-hover:bg-emerald-500/20 transition-colors">
+                    <TrendingUp className="w-4 h-4 text-emerald-400" />
+                  </div>
+                </div>
+                <p className="text-2xl font-bold text-emerald-400">{formatCurrency(valorMedido)}</p>
+                <div className="flex items-center gap-2 mt-2">
+                  <div className="flex-1 h-1.5 rounded-full bg-[#1E293B] overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-700"
+                      style={{ width: `${Math.min(percentualMedido, 100)}%`, background: 'linear-gradient(90deg, #059669, #10B981)' }}
+                    />
+                  </div>
+                  <span className="text-xs font-medium text-emerald-400 flex-shrink-0">{formatPercent(percentualMedido)}</span>
+                </div>
               </CardContent>
             </Card>
           </Link>
           <Link href={`/contratos/${id}/cronograma`}>
-            <Card className="cursor-pointer hover:border-blue-500/40 transition-colors">
-              <CardContent className="pt-5">
-                <p className="text-xs text-[#475569] uppercase tracking-wide font-medium">Saldo</p>
-                <p className="text-xl font-bold text-[#F1F5F9] mt-1">{formatCurrency(saldo)}</p>
-                <p className="text-xs text-[#475569] mt-1">{formatPercent(100 - percentualMedido)} restante</p>
+            <Card className="cursor-pointer hover:border-blue-500/40 group">
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-start justify-between mb-3">
+                  <p className="text-xs text-[#475569] uppercase tracking-wider font-semibold">Saldo</p>
+                  <div className="w-8 h-8 rounded-lg bg-slate-500/10 border border-slate-500/20 flex items-center justify-center group-hover:bg-slate-500/20 transition-colors">
+                    <Wallet className="w-4 h-4 text-slate-400" />
+                  </div>
+                </div>
+                <p className="text-2xl font-bold text-[#F1F5F9]">{formatCurrency(saldo)}</p>
+                <p className="text-xs text-[#475569] mt-2">{formatPercent(100 - percentualMedido)} restante do contrato</p>
               </CardContent>
             </Card>
           </Link>
           <Link href={`/contratos/${id}/fat-direto`}>
-            <Card className={`cursor-pointer hover:border-cyan-500/40 transition-colors ${qtdPendentes > 0 ? 'border-amber-500/50' : ''}`}>
-              <CardContent className="pt-5">
-                <p className="text-xs text-[#475569] uppercase tracking-wide font-medium">Medições</p>
-                <div className="flex items-end gap-2 mt-1">
-                  <p className="text-xl font-bold text-[#F1F5F9]">{qtdAprovadas}</p>
-                  <p className="text-xs text-[#475569] mb-0.5">aprovadas</p>
+            <Card className={`cursor-pointer hover:border-cyan-500/40 group ${qtdPendentes > 0 ? 'border-amber-500/40' : ''}`}>
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-start justify-between mb-3">
+                  <p className="text-xs text-[#475569] uppercase tracking-wider font-semibold">Medições</p>
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${qtdPendentes > 0 ? 'bg-amber-500/10 border border-amber-500/20 group-hover:bg-amber-500/20' : 'bg-cyan-500/10 border border-cyan-500/20 group-hover:bg-cyan-500/20'}`}>
+                    <ClipboardList className={`w-4 h-4 ${qtdPendentes > 0 ? 'text-amber-400' : 'text-cyan-400'}`} />
+                  </div>
                 </div>
-                {qtdPendentes > 0 && (
-                  <p className="text-xs text-amber-400 mt-1 font-medium">{qtdPendentes} aguardando aprovação</p>
-                )}
+                <div className="flex items-end gap-2">
+                  <p className="text-2xl font-bold text-[#F1F5F9]">{qtdAprovadas}</p>
+                  <p className="text-xs text-[#475569] mb-1">aprovadas</p>
+                </div>
+                {qtdPendentes > 0
+                  ? <p className="text-xs text-amber-400 mt-1 font-medium flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block animate-pulse" />
+                      {qtdPendentes} aguardando aprovação
+                    </p>
+                  : <p className="text-xs text-[#475569] mt-1">nenhuma pendente</p>
+                }
               </CardContent>
             </Card>
           </Link>

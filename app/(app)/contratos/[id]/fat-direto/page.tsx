@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { Plus, ArrowLeft, FileText, CheckCircle, Clock, XCircle, Package } from 'lucide-react'
+import { Plus, ArrowLeft, FileText, CheckCircle, Clock, XCircle, Package, ClipboardList, Timer, BadgeCheck, Receipt } from 'lucide-react'
 
 interface Solicitacao {
   id: string
@@ -113,15 +113,20 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
         {/* KPI Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: 'Total Solicitações', value: solicitacoes.length, type: 'count', color: '#3B82F6' },
-            { label: 'Aguardando Aprovação', value: totalPendente, type: 'currency', color: '#F59E0B' },
-            { label: 'Total Aprovado', value: totalAprovado, type: 'currency', color: '#10B981' },
-            { label: 'NFs Recebidas', value: totalNFs, type: 'currency', color: '#06B6D4' },
+            { label: 'Total Solicitações', value: solicitacoes.length, type: 'count', color: '#3B82F6', bg: 'rgba(59,130,246,0.10)', border: 'rgba(59,130,246,0.20)', Icon: ClipboardList },
+            { label: 'Aguardando Aprovação', value: totalPendente, type: 'currency', color: '#F59E0B', bg: 'rgba(245,158,11,0.10)', border: 'rgba(245,158,11,0.20)', Icon: Timer },
+            { label: 'Total Aprovado', value: totalAprovado, type: 'currency', color: '#10B981', bg: 'rgba(16,185,129,0.10)', border: 'rgba(16,185,129,0.20)', Icon: BadgeCheck },
+            { label: 'NFs Recebidas', value: totalNFs, type: 'currency', color: '#06B6D4', bg: 'rgba(6,182,212,0.10)', border: 'rgba(6,182,212,0.20)', Icon: Receipt },
           ].map(kpi => (
-            <Card key={kpi.label} style={{ background: '#0D1421', border: '1px solid #1E293B' }}>
+            <Card key={kpi.label}>
               <CardContent className="pt-4 pb-4">
-                <p className="text-xs text-[#475569] uppercase tracking-wide mb-1">{kpi.label}</p>
-                <p className="text-xl font-bold" style={{ color: kpi.color }}>
+                <div className="flex items-start justify-between mb-2">
+                  <p className="text-xs text-[#475569] uppercase tracking-wider font-semibold">{kpi.label}</p>
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: kpi.bg, border: `1px solid ${kpi.border}` }}>
+                    <kpi.Icon className="w-4 h-4" style={{ color: kpi.color }} />
+                  </div>
+                </div>
+                <p className="text-2xl font-bold" style={{ color: kpi.color }}>
                   {kpi.type === 'currency' ? formatCurrency(kpi.value as number) : kpi.value}
                 </p>
               </CardContent>

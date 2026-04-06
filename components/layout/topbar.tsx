@@ -1,29 +1,30 @@
 'use client'
 
+import React from 'react'
 import { Bell, User, Search, Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface TopbarProps {
-  title?: string
+  title?: React.ReactNode
   subtitle?: React.ReactNode
   actions?: React.ReactNode
 }
 
 export function Topbar({ title, subtitle, actions }: TopbarProps) {
   return (
-    <header className="h-14 bg-[#0D1421]/80 backdrop-blur-sm border-b border-[#1E293B] flex items-center justify-between px-6">
+    <header className="h-14 bg-[#0A0F1A]/90 backdrop-blur-sm border-b border-[#1E293B] flex items-center justify-between px-6 sticky top-0 z-10">
       <button
         onClick={() => window.dispatchEvent(new CustomEvent('open-mobile-sidebar'))}
         className="lg:hidden p-2 rounded-lg text-[#475569] hover:text-[#94A3B8] hover:bg-[#1a2236] transition-colors mr-1"
       >
         <Menu className="w-5 h-5" />
       </button>
-      <div>
+      <div className="min-w-0">
         {title && (
-          <h2 className="font-bold text-[#F1F5F9] text-base leading-tight">{title}</h2>
+          <h2 className="font-bold text-[#F1F5F9] text-base leading-tight flex items-center gap-2">{title}</h2>
         )}
         {subtitle && (
-          <div className="text-xs text-[#475569] leading-tight">{subtitle}</div>
+          <div className="text-xs text-[#475569] leading-tight truncate max-w-sm">{subtitle}</div>
         )}
       </div>
       <div className="flex items-center gap-2">
