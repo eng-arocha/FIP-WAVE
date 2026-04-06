@@ -246,6 +246,7 @@ export async function listarTarefasParaSolicitacao(contratoId: string) {
     .eq('contrato_id', contratoId)
   const grupoIds = (grupos || []).map((g: any) => g.id)
   if (grupoIds.length === 0) return []
+
   const { data, error } = await admin
     .from('tarefas')
     .select(`
@@ -255,5 +256,36 @@ export async function listarTarefasParaSolicitacao(contratoId: string) {
     .in('grupo_macro_id', grupoIds)
     .order('codigo')
   if (error) throw error
-  return data || []
+  const tarefas = data || []
+  const tarefaIds = tarefas.map((t: any) => t.id)
+
+  // Load distinct locals per tarefa from detalhamentos
+  const { data: dets } = await admin
+    .from('detalhamentos')
+    .select('tarefa_id, local')
+    .in('tarefa_id', tarefaIds)
+  const locaisByTarefa: Record<string, Set<string>> = {}
+  ;(dets || []).forEach((d: any) => {
+    if (d.local) {
+      if (!locaisByTarefa[d.tarefa_id]) locaisByTarefa[d.tarefa_id] = new Set()
+      locaisByTarefa[d.tarefa_id].add(d.local.trim().toUpperCase())
+    }
+  })
+
+  // Load total already approved per tarefa
+  const { data: itensAprov } = await admin
+    .from('itens_solicitacao_fat_direto')
+    .select('tarefa_id, valor_total, solicitacao_id, solicitacoes_fat_direto!inner(status)')
+    .in('tarefa_id', tarefaIds)
+    .eq('solicitacoes_fat_direto.status', 'aprovado')
+  const aprovadoByTarefa: Record<string, number> = {}
+  ;(itensAprov || []).forEach((it: any) => {
+    aprovadoByTarefa[it.tarefa_id] = (aprovadoByTarefa[it.tarefa_id] || 0) + (it.valor_total || 0)
+  })
+
+  return tarefas.map((t: any) => ({
+    ...t,
+    locais: Array.from(locaisByTarefa[t.id] || []).sort(),
+    valor_aprovado: aprovadoByTarefa[t.id] || 0,
+  }))
 }
