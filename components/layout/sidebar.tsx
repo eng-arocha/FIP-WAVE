@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, FileText, Building2, CheckSquare, LogOut, X, Users,
-  Pin, PinOff, ChevronDown, FolderOpen, TrendingUp, Receipt, ClipboardList, FileArchive, Shield, Wrench,
+  Pin, PinOff, ChevronDown, FolderOpen, TrendingUp, Receipt, ClipboardList, FileArchive, Shield, Wrench, BookOpen,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePermissoes } from '@/lib/context/permissoes-context'
@@ -29,7 +29,9 @@ const ICON_COLORS: Record<string, { from: string; to: string }> = {
   '/usuarios':     { from: '#6366F1', to: '#8B5CF6' },  // indigo → purple
   '/perfis':       { from: '#F59E0B', to: '#EF4444' },  // amber → red
   '/admin':        { from: '#6B7280', to: '#4B5563' },  // gray
+  '/documentos/faturamento-direto': { from: '#EF4444', to: '#F97316' },  // red → orange
   'cadastro':      { from: '#64748B', to: '#475569' },  // slate (group)
+  'docs-group':    { from: '#EF4444', to: '#F97316' },  // red → orange (group)
   'cronograma':    { from: '#059669', to: '#10B981' },  // green
   'fat-direto':    { from: '#F59E0B', to: '#FB923C' },  // amber → orange
   'medicoes':      { from: '#6366F1', to: '#3B82F6' },  // indigo → blue
@@ -55,6 +57,7 @@ export function Sidebar({
   const [mobileOpen, setMobileOpen] = useState(false)
   const [cadastroOpen, setCadastroOpen] = useState(false)
   const [contratoOpen, setContratoOpen] = useState(true)
+  const [docsOpen, setDocsOpen] = useState(false)
 
   // Detect if inside a specific contract (extract UUID from pathname)
   const contratoMatch = pathname.match(/^\/contratos\/([a-f0-9-]{36})/)
@@ -72,6 +75,9 @@ export function Sidebar({
     if (pathname.startsWith('/empresas') || pathname.startsWith('/usuarios') || pathname.startsWith('/perfis') || pathname.startsWith('/admin')) {
       setCadastroOpen(true)
     }
+    if (pathname.startsWith('/documentos')) {
+      setDocsOpen(true)
+    }
   }, [pathname])
 
   const mainItems = [
@@ -87,14 +93,19 @@ export function Sidebar({
     ...(perfilAtual === 'admin' ? [{ label: 'Sistema', href: '/admin', icon: Wrench, modulo: 'usuarios' }] : []),
   ].filter(item => temPermissao(item.modulo, 'visualizar'))
 
+  const documentosItems = [
+    { label: 'Pedidos FD', href: '/documentos/faturamento-direto', icon: FileArchive, modulo: 'documentos' },
+  ].filter(item => temPermissao(item.modulo, 'visualizar'))
+
   const isCadastroActive = pathname.startsWith('/empresas') || pathname.startsWith('/usuarios') || pathname.startsWith('/perfis') || pathname.startsWith('/admin')
+  const isDocsActive = pathname.startsWith('/documentos')
 
   // Contract contextual items (shown when inside /contratos/[id])
   const contratoSubItems = contratoId ? [
-    { label: 'Cronograma',       href: `/contratos/${contratoId}/cronograma`,  icon: TrendingUp,    colorKey: 'cronograma' },
-    { label: 'Fat. Direto',      href: `/contratos/${contratoId}/fat-direto`,  icon: Receipt,       colorKey: 'fat-direto' },
-    { label: 'Med. Serviços',    href: `/contratos/${contratoId}/medicoes`,    icon: ClipboardList,  colorKey: 'medicoes' },
-    { label: 'Documentos',       href: `/contratos/${contratoId}/documentos`,  icon: FileArchive,   colorKey: 'documentos' },
+    { label: 'Cronograma',    href: `/contratos/${contratoId}/cronograma`, icon: TrendingUp,   colorKey: 'cronograma' },
+    { label: 'Fat. Direto',   href: `/contratos/${contratoId}/fat-direto`, icon: Receipt,      colorKey: 'fat-direto' },
+    { label: 'Med. Serviços', href: `/contratos/${contratoId}/medicoes`,   icon: ClipboardList, colorKey: 'medicoes' },
+    { label: 'Documentos',    href: `/contratos/${contratoId}/documentos`, icon: FileArchive,  colorKey: 'documentos' },
   ] : []
 
   // Apple iOS icon container — active items get a colored gradient pill
@@ -102,10 +113,7 @@ export function Sidebar({
     const colors = ICON_COLORS[colorKey]
     if (!colors) return <>{children}</>
     return (
-      <span
-        className="apple-icon flex-shrink-0"
-        style={{ background: `linear-gradient(135deg, ${colors.from}, ${colors.to})` }}
-      >
+      <span className="apple-icon flex-shrink-0" style={{ background: `linear-gradient(135deg, ${colors.from}, ${colors.to})` }}>
         {children}
       </span>
     )
@@ -113,7 +121,6 @@ export function Sidebar({
 
   const renderNavLink = (item: any, showText: boolean, indent = false) => {
     const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
-    // Support both href-based color lookup and explicit colorKey
     const colorLookup = item.colorKey ?? item.href
     const colors = ICON_COLORS[colorLookup] ?? ICON_COLORS[item.href]
 
@@ -139,7 +146,6 @@ export function Sidebar({
           if (!isActive) e.currentTarget.style.background = ''
         }}
       >
-        {/* Apple-style icon — sempre colorido (ativo: 100% / inativo: 75% opacity) */}
         {colors ? (
           <span
             className="apple-icon flex-shrink-0 transition-all duration-200"
@@ -157,28 +163,19 @@ export function Sidebar({
           </span>
         )}
 
-        {/* Label */}
         <span
           className={cn('whitespace-nowrap transition-all duration-200 flex-1', showText ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden')}
-          style={{
-            color: isActive ? 'var(--text-1)' : 'var(--text-2)',
-            fontWeight: isActive ? 600 : 400,
-          }}
+          style={{ color: isActive ? 'var(--text-1)' : 'var(--text-2)', fontWeight: isActive ? 600 : 400 }}
         >
           {item.label}
         </span>
 
-        {/* Badge dot */}
         {'badge' in item && item.badge && showText && (
           <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
         )}
 
-        {/* Active indicator line (only in expanded mode) */}
         {isActive && showText && (
-          <span
-            className="absolute right-2 w-1.5 h-1.5 rounded-full"
-            style={{ background: colors?.from ?? 'var(--accent)' }}
-          />
+          <span className="absolute right-2 w-1.5 h-1.5 rounded-full" style={{ background: colors?.from ?? 'var(--accent)' }} />
         )}
       </Link>
     )
@@ -187,10 +184,7 @@ export function Sidebar({
   const renderContent = (showText: boolean) => (
     <>
       {/* Top gradient accent */}
-      <div
-        className="absolute top-0 left-0 right-0 h-[2px]"
-        style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent-glow), transparent)' }}
-      />
+      <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent-glow), transparent)' }} />
 
       {/* Header: logo + pin */}
       <div
@@ -199,20 +193,8 @@ export function Sidebar({
       >
         {showText ? (
           <>
-            {/* Logo sempre com fundo escuro para contraste garantido em ambos os modos */}
-            <div
-              className="rounded-xl px-3 py-2 flex items-center justify-center"
-              style={{ background: '#080C14', border: '1px solid rgba(59,130,246,0.15)' }}
-            >
-              <Image
-                src="/logos/wave-branco.png"
-                alt="WAVE Beira-Mar"
-                width={110}
-                height={62}
-                priority
-                className="object-contain"
-                style={{ width: 'auto', height: 'auto', maxWidth: 110, maxHeight: 48 }}
-              />
+            <div className="rounded-xl px-3 py-2 flex items-center justify-center" style={{ background: '#080C14', border: '1px solid rgba(59,130,246,0.15)' }}>
+              <Image src="/logos/wave-branco.png" alt="WAVE Beira-Mar" width={110} height={62} priority className="object-contain" style={{ width: 'auto', height: 'auto', maxWidth: 110, maxHeight: 48 }} />
             </div>
             <button
               onClick={(e) => { e.stopPropagation(); onTogglePin() }}
@@ -222,16 +204,11 @@ export function Sidebar({
               onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-1)' }}
               onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-3)' }}
             >
-              {pinned
-                ? <PinOff className="w-3.5 h-3.5" strokeWidth={1.5} />
-                : <Pin className="w-3.5 h-3.5" strokeWidth={1.5} />}
+              {pinned ? <PinOff className="w-3.5 h-3.5" strokeWidth={1.5} /> : <Pin className="w-3.5 h-3.5" strokeWidth={1.5} />}
             </button>
           </>
         ) : (
-          <div
-            className="apple-icon rounded-[10px]"
-            style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-glow))' }}
-          >
+          <div className="apple-icon rounded-[10px]" style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-glow))' }}>
             <span className="text-xs font-bold text-white">W</span>
           </div>
         )}
@@ -246,9 +223,7 @@ export function Sidebar({
           <>
             {showText && (
               <div className="pt-3 pb-1 px-2">
-                <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>
-                  Contrato
-                </span>
+                <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>Contrato</span>
               </div>
             )}
             {!showText && <div className="my-2 mx-2 h-px" style={{ background: 'var(--border)' }} />}
@@ -266,11 +241,7 @@ export function Sidebar({
                     <FileText className="w-3.5 h-3.5 text-white" strokeWidth={1.5} />
                   </span>
                   <span className="flex-1 text-left">Módulos</span>
-                  <ChevronDown
-                    className="w-3.5 h-3.5 transition-transform duration-200"
-                    strokeWidth={1.5}
-                    style={{ transform: contratoOpen ? '' : 'rotate(-90deg)', color: 'var(--text-3)' }}
-                  />
+                  <ChevronDown className="w-3.5 h-3.5 transition-transform duration-200" strokeWidth={1.5} style={{ transform: contratoOpen ? '' : 'rotate(-90deg)', color: 'var(--text-3)' }} />
                 </button>
                 <div className={cn('overflow-hidden transition-all duration-300 ease-in-out', contratoOpen ? 'max-h-48 opacity-100' : 'max-h-0 opacity-0')}>
                   <div className="pt-0.5 ml-3 pl-2" style={{ borderLeft: '1px solid var(--border)' }}>
@@ -284,19 +255,16 @@ export function Sidebar({
           </>
         )}
 
-        {/* Section divider */}
+        {/* ── Cadastros section ── */}
         {cadastroItems.length > 0 && (
           <>
             {showText && (
               <div className="pt-3 pb-1 px-2">
-                <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>
-                  Cadastros
-                </span>
+                <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>Cadastros</span>
               </div>
             )}
             {!showText && <div className="my-2 mx-2 h-px" style={{ background: 'var(--border)' }} />}
 
-            {/* Cadastro group (only shows toggle when expanded) */}
             {showText ? (
               <div>
                 <button
@@ -306,20 +274,12 @@ export function Sidebar({
                   onMouseEnter={e => { e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }}
                   onMouseLeave={e => { e.currentTarget.style.background = '' }}
                 >
-                  <span
-                    className="apple-icon flex-shrink-0"
-                    style={{ background: isCadastroActive ? 'linear-gradient(135deg, #64748B, #475569)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)') }}
-                  >
+                  <span className="apple-icon flex-shrink-0" style={{ background: isCadastroActive ? 'linear-gradient(135deg, #64748B, #475569)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)') }}>
                     <FolderOpen className="w-3.5 h-3.5" strokeWidth={1.5} style={{ color: isCadastroActive ? 'white' : 'var(--text-3)' }} />
                   </span>
                   <span className="flex-1 text-left">Cadastro</span>
-                  <ChevronDown
-                    className={cn('w-3.5 h-3.5 transition-transform duration-200')}
-                    strokeWidth={1.5}
-                    style={{ transform: cadastroOpen ? '' : 'rotate(-90deg)', color: 'var(--text-3)' }}
-                  />
+                  <ChevronDown className={cn('w-3.5 h-3.5 transition-transform duration-200')} strokeWidth={1.5} style={{ transform: cadastroOpen ? '' : 'rotate(-90deg)', color: 'var(--text-3)' }} />
                 </button>
-
                 <div className={cn('overflow-hidden transition-all duration-300 ease-in-out', cadastroOpen ? 'max-h-48 opacity-100' : 'max-h-0 opacity-0')}>
                   <div className="pt-0.5 ml-3 pl-2" style={{ borderLeft: '1px solid var(--border)' }}>
                     {cadastroItems.map(item => renderNavLink(item, showText, true))}
@@ -327,29 +287,55 @@ export function Sidebar({
                 </div>
               </div>
             ) : (
-              // Icon-only: show cadastro items directly
               cadastroItems.map(item => renderNavLink(item, showText))
+            )}
+          </>
+        )}
+
+        {/* ── Documentos section ── */}
+        {documentosItems.length > 0 && (
+          <>
+            {showText && (
+              <div className="pt-3 pb-1 px-2">
+                <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>Documentos</span>
+              </div>
+            )}
+            {!showText && <div className="my-2 mx-2 h-px" style={{ background: 'var(--border)' }} />}
+
+            {showText ? (
+              <div>
+                <button
+                  onClick={() => setDocsOpen(v => !v)}
+                  className="w-full flex items-center gap-2.5 px-2 py-2 rounded-xl text-sm font-medium transition-all duration-150"
+                  style={{ color: isDocsActive ? 'var(--text-1)' : 'var(--text-2)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = '' }}
+                >
+                  <span className="apple-icon flex-shrink-0" style={{ background: isDocsActive ? 'linear-gradient(135deg, #EF4444, #F97316)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)') }}>
+                    <BookOpen className="w-3.5 h-3.5" strokeWidth={1.5} style={{ color: isDocsActive ? 'white' : 'var(--text-3)' }} />
+                  </span>
+                  <span className="flex-1 text-left">Documentos</span>
+                  <ChevronDown className="w-3.5 h-3.5 transition-transform duration-200" strokeWidth={1.5} style={{ transform: docsOpen ? '' : 'rotate(-90deg)', color: 'var(--text-3)' }} />
+                </button>
+                <div className={cn('overflow-hidden transition-all duration-300 ease-in-out', docsOpen ? 'max-h-24 opacity-100' : 'max-h-0 opacity-0')}>
+                  <div className="pt-0.5 ml-3 pl-2" style={{ borderLeft: '1px solid var(--border)' }}>
+                    {documentosItems.map(item => renderNavLink(item, showText, true))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              documentosItems.map(item => renderNavLink(item, showText))
             )}
           </>
         )}
       </nav>
 
       {/* Footer */}
-      <div
-        className={cn('border-t pt-3 pb-4 space-y-0.5', showText ? 'px-3' : 'px-2')}
-        style={{ borderColor: 'var(--sidebar-border)' }}
-      >
-        {/* User card */}
+      <div className={cn('border-t pt-3 pb-4 space-y-0.5', showText ? 'px-3' : 'px-2')} style={{ borderColor: 'var(--sidebar-border)' }}>
         {nomeAtual && (
           showText ? (
-            <div
-              className="flex items-center gap-2.5 px-3 py-2 mb-1 rounded-xl"
-              style={{ background: 'var(--surface-3)', border: '1px solid var(--border)' }}
-            >
-              <div
-                className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-[11px]"
-                style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-glow))', color: 'white' }}
-              >
+            <div className="flex items-center gap-2.5 px-3 py-2 mb-1 rounded-xl" style={{ background: 'var(--surface-3)', border: '1px solid var(--border)' }}>
+              <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-[11px]" style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-glow))', color: 'white' }}>
                 {nomeAtual.charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0">
@@ -359,47 +345,28 @@ export function Sidebar({
             </div>
           ) : (
             <div className="flex justify-center mb-1">
-              <div
-                className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-[11px] text-white"
-                title={nomeAtual}
-                style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-glow))' }}
-              >
+              <div className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-[11px] text-white" title={nomeAtual} style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-glow))' }}>
                 {nomeAtual.charAt(0).toUpperCase()}
               </div>
             </div>
           )
         )}
 
-        {/* Online status */}
         <div className={cn('flex items-center gap-2 px-3 py-1.5', !showText && 'justify-center px-0')}>
-          <span
-            className="w-2 h-2 rounded-full flex-shrink-0"
-            style={{ background: 'var(--green)', animation: 'pulse-glow 2s ease-in-out infinite' }}
-            title={!showText ? 'Sistema Online' : undefined}
-          />
+          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: 'var(--green)', animation: 'pulse-glow 2s ease-in-out infinite' }} title={!showText ? 'Sistema Online' : undefined} />
           {showText && <span className="text-xs" style={{ color: 'var(--text-3)' }}>Sistema Online</span>}
         </div>
 
-        {/* Logout — always visible, Apple-style danger hover */}
         <Link
           href="/logout"
           onClick={() => setMobileOpen(false)}
           title={!showText ? 'Sair do Sistema' : undefined}
           className={cn('flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-all duration-150 group', !showText && 'justify-center px-0')}
           style={{ color: 'var(--text-3)' }}
-          onMouseEnter={e => {
-            e.currentTarget.style.color = 'var(--red)'
-            e.currentTarget.style.background = isDark ? 'rgba(239,68,68,0.08)' : 'rgba(217,48,37,0.06)'
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.color = 'var(--text-3)'
-            e.currentTarget.style.background = ''
-          }}
+          onMouseEnter={e => { e.currentTarget.style.color = 'var(--red)'; e.currentTarget.style.background = isDark ? 'rgba(239,68,68,0.08)' : 'rgba(217,48,37,0.06)' }}
+          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-3)'; e.currentTarget.style.background = '' }}
         >
-          <span
-            className="apple-icon flex-shrink-0"
-            style={{ background: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(217,48,37,0.08)' }}
-          >
+          <span className="apple-icon flex-shrink-0" style={{ background: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(217,48,37,0.08)' }}>
             <LogOut className="w-3.5 h-3.5" strokeWidth={1.5} style={{ color: 'var(--red)' }} />
           </span>
           {showText && <span>Sair do Sistema</span>}
@@ -416,41 +383,23 @@ export function Sidebar({
 
   return (
     <>
-      {/* Mobile overlay */}
       {mobileOpen && (
         <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden" onClick={() => setMobileOpen(false)} />
       )}
 
-      {/* Mobile drawer */}
       <aside
-        className={cn(
-          'fixed inset-y-0 left-0 z-50 w-64 flex flex-col lg:hidden overflow-hidden transition-transform duration-300 ease-in-out',
-          mobileOpen ? 'translate-x-0' : '-translate-x-full'
-        )}
+        className={cn('fixed inset-y-0 left-0 z-50 w-64 flex flex-col lg:hidden overflow-hidden transition-transform duration-300 ease-in-out', mobileOpen ? 'translate-x-0' : '-translate-x-full')}
         style={{ background: 'var(--sidebar-bg)', borderRight: '1px solid var(--sidebar-border)' }}
       >
-        <button
-          onClick={() => setMobileOpen(false)}
-          className="absolute top-4 right-4 p-1 rounded-lg transition-colors"
-          style={{ color: 'var(--text-3)' }}
-        >
+        <button onClick={() => setMobileOpen(false)} className="absolute top-4 right-4 p-1 rounded-lg transition-colors" style={{ color: 'var(--text-3)' }}>
           <X className="w-4 h-4" strokeWidth={1.5} />
         </button>
         {renderContent(true)}
       </aside>
 
-      {/* Desktop sidebar */}
       <aside
-        className={cn(
-          'fixed inset-y-0 left-0 z-50 flex-col overflow-hidden hidden lg:flex',
-          'transition-all duration-300 ease-in-out',
-          expanded ? 'w-64' : 'w-14',
-          !pinned && expanded && 'shadow-2xl',
-        )}
-        style={{
-          background: 'var(--sidebar-bg)',
-          borderRight: '1px solid var(--sidebar-border)',
-        }}
+        className={cn('fixed inset-y-0 left-0 z-50 flex-col overflow-hidden hidden lg:flex', 'transition-all duration-300 ease-in-out', expanded ? 'w-64' : 'w-14', !pinned && expanded && 'shadow-2xl')}
+        style={{ background: 'var(--sidebar-bg)', borderRight: '1px solid var(--sidebar-border)' }}
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
       >
