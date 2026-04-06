@@ -4,25 +4,25 @@
    DESIGN TOKENS — Light mode (default)
    ═══════════════════════════════════════════════════ */
 :root {
-  --background:    #F5F5F7;
-  --surface-1:     #FAFAFA;
+  --background:    #F2F2F7;   /* iOS system background */
+  --surface-1:     #E5E5EA;
   --surface-2:     #FFFFFF;
-  --surface-3:     #F0F0F5;
-  --border:        #D2D2D7;
-  --border-hover:  #C7C7CC;
-  --accent:        #0071E3;
-  --accent-glow:   #34AADC;
-  --green:         #1C9E4E;
-  --amber:         #C77A00;
-  --red:           #D93025;
-  --text-1:        #1D1D1F;
-  --text-2:        #4A4A4F;
-  --text-3:        #6E6E73;
+  --surface-3:     #EBEBF0;
+  --border:        #C6C6C8;
+  --border-hover:  #AEAEB2;
+  --accent:        #007AFF;   /* iOS blue — crisp */
+  --accent-glow:   #5AC8FA;
+  --green:         #34C759;   /* iOS green */
+  --amber:         #FF9500;   /* iOS orange */
+  --red:           #FF3B30;   /* iOS red */
+  --text-1:        #000000;   /* pure black — max contrast */
+  --text-2:        #1C1C1E;   /* near-black secondary */
+  --text-3:        #3A3A3C;   /* dark gray — WCAG AA+ */
   --sidebar-bg:    #FFFFFF;
-  --sidebar-border:#E8E8ED;
-  --topbar-bg:     rgba(255,255,255,0.85);
+  --sidebar-border:#E5E5EA;
+  --topbar-bg:     rgba(242,242,247,0.92);
   --input-bg:      #FFFFFF;
-  --badge-bg:      #F0F0F5;
+  --badge-bg:      #E5E5EA;
 }
 
 /* ═══════════════════════════════════════════════════

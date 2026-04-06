@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, FileText, Building2, CheckSquare, LogOut, X, Users,
-  Pin, PinOff, ChevronDown, FolderOpen,
+  Pin, PinOff, ChevronDown, FolderOpen, TrendingUp, Receipt, ClipboardList, FileArchive,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePermissoes } from '@/lib/context/permissoes-context'
@@ -21,13 +21,17 @@ const PERFIL_LABELS: Record<Perfil, string> = {
 }
 
 // Apple-style icon configs: each nav item has its own gradient color
-const ICON_COLORS = {
-  '/dashboard':  { from: '#3B82F6', to: '#06B6D4' },  // blue → cyan
-  '/contratos':  { from: '#8B5CF6', to: '#A855F7' },  // purple
-  '/aprovacoes': { from: '#F59E0B', to: '#EF4444' },  // amber → red
-  '/empresas':   { from: '#10B981', to: '#059669' },  // green
-  '/usuarios':   { from: '#6366F1', to: '#8B5CF6' },  // indigo → purple
-  'cadastro':    { from: '#64748B', to: '#475569' },  // slate (group)
+const ICON_COLORS: Record<string, { from: string; to: string }> = {
+  '/dashboard':    { from: '#3B82F6', to: '#06B6D4' },  // blue → cyan
+  '/contratos':    { from: '#8B5CF6', to: '#A855F7' },  // purple
+  '/aprovacoes':   { from: '#F59E0B', to: '#EF4444' },  // amber → red
+  '/empresas':     { from: '#10B981', to: '#059669' },  // green
+  '/usuarios':     { from: '#6366F1', to: '#8B5CF6' },  // indigo → purple
+  'cadastro':      { from: '#64748B', to: '#475569' },  // slate (group)
+  'cronograma':    { from: '#059669', to: '#10B981' },  // green
+  'fat-direto':    { from: '#F59E0B', to: '#FB923C' },  // amber → orange
+  'medicoes':      { from: '#6366F1', to: '#3B82F6' },  // indigo → blue
+  'documentos':    { from: '#EC4899', to: '#F43F5E' },  // pink → rose
 }
 
 interface SidebarProps {
@@ -48,6 +52,12 @@ export function Sidebar({
   const { isDark } = useTheme()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [cadastroOpen, setCadastroOpen] = useState(false)
+  const [contratoOpen, setContratoOpen] = useState(true)
+
+  // Detect if inside a specific contract (extract UUID from pathname)
+  const contratoMatch = pathname.match(/^\/contratos\/([a-f0-9-]{36})/)
+  const contratoId = contratoMatch?.[1] ?? null
+  const isInContrato = !!contratoId
   const { temPermissao } = usePermissoes()
 
   useEffect(() => {
@@ -75,9 +85,17 @@ export function Sidebar({
 
   const isCadastroActive = pathname.startsWith('/empresas') || pathname.startsWith('/usuarios')
 
+  // Contract contextual items (shown when inside /contratos/[id])
+  const contratoSubItems = contratoId ? [
+    { label: 'Cronograma',       href: `/contratos/${contratoId}/cronograma`,  icon: TrendingUp,    colorKey: 'cronograma' },
+    { label: 'Fat. Direto',      href: `/contratos/${contratoId}/fat-direto`,  icon: Receipt,       colorKey: 'fat-direto' },
+    { label: 'Med. Serviços',    href: `/contratos/${contratoId}/medicoes`,    icon: ClipboardList,  colorKey: 'medicoes' },
+    { label: 'Documentos',       href: `/contratos/${contratoId}/documentos`,  icon: FileArchive,   colorKey: 'documentos' },
+  ] : []
+
   // Apple iOS icon container — active items get a colored gradient pill
-  const AppleIconBg = ({ href, children }: { href: string; children: React.ReactNode }) => {
-    const colors = ICON_COLORS[href as keyof typeof ICON_COLORS]
+  const AppleIconBg = ({ colorKey, children }: { colorKey: string; children: React.ReactNode }) => {
+    const colors = ICON_COLORS[colorKey]
     if (!colors) return <>{children}</>
     return (
       <span
@@ -91,7 +109,9 @@ export function Sidebar({
 
   const renderNavLink = (item: any, showText: boolean, indent = false) => {
     const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
-    const colors = ICON_COLORS[item.href as keyof typeof ICON_COLORS]
+    // Support both href-based color lookup and explicit colorKey
+    const colorLookup = item.colorKey ?? item.href
+    const colors = ICON_COLORS[colorLookup] ?? ICON_COLORS[item.href]
 
     return (
       <Link
@@ -117,7 +137,7 @@ export function Sidebar({
       >
         {/* Apple-style icon container */}
         {isActive ? (
-          <AppleIconBg href={item.href}>
+          <AppleIconBg colorKey={colorLookup}>
             <item.icon className="w-3.5 h-3.5 text-white" strokeWidth={1.5} />
           </AppleIconBg>
         ) : (
@@ -210,6 +230,49 @@ export function Sidebar({
       {/* Navigation */}
       <nav className="flex-1 py-4 px-2 overflow-y-auto space-y-0.5">
         {mainItems.map(item => renderNavLink(item, showText))}
+
+        {/* ── Contract contextual group ── */}
+        {isInContrato && contratoSubItems.length > 0 && (
+          <>
+            {showText && (
+              <div className="pt-3 pb-1 px-2">
+                <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>
+                  Contrato
+                </span>
+              </div>
+            )}
+            {!showText && <div className="my-2 mx-2 h-px" style={{ background: 'var(--border)' }} />}
+
+            {showText ? (
+              <div>
+                <button
+                  onClick={() => setContratoOpen(v => !v)}
+                  className="w-full flex items-center gap-2.5 px-2 py-2 rounded-xl text-sm font-medium transition-all"
+                  style={{ color: 'var(--text-2)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = '' }}
+                >
+                  <span className="apple-icon flex-shrink-0" style={{ background: 'linear-gradient(135deg, #8B5CF6, #A855F7)' }}>
+                    <FileText className="w-3.5 h-3.5 text-white" strokeWidth={1.5} />
+                  </span>
+                  <span className="flex-1 text-left">Módulos</span>
+                  <ChevronDown
+                    className="w-3.5 h-3.5 transition-transform duration-200"
+                    strokeWidth={1.5}
+                    style={{ transform: contratoOpen ? '' : 'rotate(-90deg)', color: 'var(--text-3)' }}
+                  />
+                </button>
+                <div className={cn('overflow-hidden transition-all duration-300 ease-in-out', contratoOpen ? 'max-h-48 opacity-100' : 'max-h-0 opacity-0')}>
+                  <div className="pt-0.5 ml-3 pl-2" style={{ borderLeft: '1px solid var(--border)' }}>
+                    {contratoSubItems.map(item => renderNavLink(item, showText, true))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              contratoSubItems.map(item => renderNavLink(item, showText))
+            )}
+          </>
+        )}
 
         {/* Section divider */}
         {cadastroItems.length > 0 && (
