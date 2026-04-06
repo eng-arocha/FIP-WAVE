@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { formatCurrency } from '@/lib/utils'
 import {
-  ArrowLeft, Plus, Trash2, Package, Save,
+  ArrowLeft, Plus, Trash2, Package, Save, AlertTriangle,
   Building2, ChevronDown, Search, MapPin, X, Hash, Upload, FileText,
 } from 'lucide-react'
 
@@ -200,6 +200,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
   ])
   const [saving, setSaving] = useState(false)
   const [erro, setErro] = useState('')
+  const [tetoViolation, setTetoViolation] = useState<any>(null)
 
   useEffect(() => {
     fetch(`/api/contratos/${id}/fat-direto/tarefas`)
@@ -289,6 +290,9 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
         body: JSON.stringify(payload),
       })
       const data = await res.json()
+      if (res.status === 422 && data.error === 'TETO_EXCEDIDO') {
+        setTetoViolation(data.violation); setSaving(false); return
+      }
       if (!res.ok) { setErro(data.error || 'Erro ao salvar'); setSaving(false); return }
 
       // Upload do PDF do pedido (se selecionado)
@@ -360,6 +364,33 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
         {erro && (
           <div className="p-3 rounded-xl text-sm" style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.30)', color: 'var(--red)' }}>
             {erro}
+          </div>
+        )}
+
+        {tetoViolation && (
+          <div className="rounded-2xl p-4 space-y-3" style={{ background: 'rgba(239,68,68,0.07)', border: '2px solid rgba(239,68,68,0.40)' }}>
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" strokeWidth={1.5} style={{ color: 'var(--red)' }} />
+              <div>
+                <p className="font-bold mb-0.5" style={{ color: 'var(--red)' }}>Saldo de Material Insuficiente</p>
+                <p className="text-sm" style={{ color: 'var(--text-2)' }}>
+                  Solicitação de <strong style={{ color: 'var(--red)' }}>{formatCurrency(tetoViolation.valor_novo)}</strong> excede o saldo de <strong style={{ color: 'var(--red)' }}>{formatCurrency(tetoViolation.saldo_disponivel)}</strong>.
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label: 'Teto', value: tetoViolation.teto },
+                { label: 'Aprovado', value: tetoViolation.total_aprovado },
+                { label: 'Saldo', value: tetoViolation.saldo_disponivel },
+              ].map(k => (
+                <div key={k.label} className="p-2.5 rounded-xl" style={{ background: 'var(--surface-3)' }}>
+                  <p className="text-xs mb-0.5" style={{ color: 'var(--text-3)' }}>{k.label}</p>
+                  <p className="text-sm font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(k.value)}</p>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setTetoViolation(null)} className="text-xs" style={{ color: 'var(--text-3)' }}>Fechar</button>
           </div>
         )}
 

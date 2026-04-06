@@ -123,6 +123,14 @@ export async function criarSolicitacao(input: {
   const admin = createAdminClient()
   const valor_total = input.itens.reduce((s, i) => s + i.valor_total, 0)
 
+  // Verificar teto global do contrato
+  const violation = await verificarTeto(input.contrato_id, valor_total)
+  if (violation) {
+    const err = new Error('TETO_EXCEDIDO')
+    ;(err as any).violation = violation
+    throw err
+  }
+
   const { data: sol, error } = await admin
     .from('solicitacoes_fat_direto')
     .insert({
