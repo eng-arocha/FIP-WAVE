@@ -194,16 +194,21 @@ export function Sidebar({
       >
         {showText ? (
           <>
-            {isDark ? (
-              <Image src="/logos/wave-branco.png" alt="WAVE" width={120} height={67} priority className="object-contain rounded-lg" style={{ width: 'auto', height: 'auto', maxWidth: 120 }} />
-            ) : (
-              <div
-                className="font-bold text-xl tracking-tight"
-                style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent-glow))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
-              >
-                WAVE
-              </div>
-            )}
+            {/* Logo sempre com fundo escuro para contraste garantido em ambos os modos */}
+            <div
+              className="rounded-xl px-3 py-2 flex items-center justify-center"
+              style={{ background: '#080C14', border: '1px solid rgba(59,130,246,0.15)' }}
+            >
+              <Image
+                src="/logos/wave-branco.png"
+                alt="WAVE Beira-Mar"
+                width={110}
+                height={62}
+                priority
+                className="object-contain"
+                style={{ width: 'auto', height: 'auto', maxWidth: 110, maxHeight: 48 }}
+              />
+            </div>
             <button
               onClick={(e) => { e.stopPropagation(); onTogglePin() }}
               title={pinned ? 'Desafixar sidebar' : 'Fixar sidebar'}

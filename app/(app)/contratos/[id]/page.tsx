@@ -251,26 +251,14 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
           <div className="flex gap-2 flex-wrap">
             <Link href="/contratos">
               <Button variant="outline" size="sm">
-                <ArrowLeft className="w-4 h-4" />
+                <ArrowLeft className="w-4 h-4" strokeWidth={1.5} />
                 Contratos
               </Button>
             </Link>
-            <Link href={`/contratos/${id}/cronograma`}>
-              <Button variant="outline" size="sm" className="gap-1.5 border-blue-500/30 text-blue-400 hover:bg-blue-500/10">
-                <TrendingUp className="w-4 h-4" />
-                Cronograma
-              </Button>
-            </Link>
-            <Link href={`/contratos/${id}/fat-direto`}>
-              <Button variant="outline" size="sm" className="gap-1.5 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10">
-                <Package className="w-4 h-4" />
-                Fat. Direto
-              </Button>
-            </Link>
             <Link href={`/contratos/${id}/medicoes/nova`}>
-              <Button size="sm">
-                <Plus className="w-4 h-4" />
-                Nova Medição
+              <Button size="sm" className="gap-1.5">
+                <Plus className="w-4 h-4" strokeWidth={1.5} />
+                Med. Serviços
               </Button>
             </Link>
           </div>
@@ -280,78 +268,99 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
       <div className="p-6 space-y-6">
         {/* KPI Row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* KPI: Valor Total */}
           <Link href={`/contratos/${id}/cronograma`}>
-            <Card className="cursor-pointer hover:border-blue-500/40 group">
+            <Card className="cursor-pointer group transition-all" style={{ borderColor: 'var(--border)' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(59,130,246,0.5)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(59,130,246,0.10)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = 'none' }}
+            >
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-start justify-between mb-3">
-                  <p className="text-xs text-[var(--text-3)] uppercase tracking-wider font-semibold">Valor Total</p>
-                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center group-hover:bg-blue-500/20 transition-colors">
-                    <DollarSign className="w-4 h-4 text-blue-400" />
+                  <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: 'var(--text-3)' }}>Valor Total</p>
+                  <div className="w-9 h-9 rounded-xl kpi-icon-blue flex items-center justify-center transition-all" style={{ background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.25)' }}>
+                    <DollarSign className="w-4 h-4" strokeWidth={1.5} style={{ color: 'var(--accent)' }} />
                   </div>
                 </div>
-                <p className="text-2xl font-bold text-[var(--text-1)]">{formatCurrency(valorTotal)}</p>
-                <div className="flex gap-3 mt-2 text-xs text-[var(--text-3)]">
+                <p className="text-2xl font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(valorTotal)}</p>
+                <div className="flex gap-3 mt-2 text-xs" style={{ color: 'var(--text-3)' }}>
                   <span>Serv: {formatCurrency(contrato.valor_servicos ?? 0)}</span>
                   <span>Mat: {formatCurrency(contrato.valor_material_direto ?? 0)}</span>
                 </div>
               </CardContent>
             </Card>
           </Link>
+
+          {/* KPI: Medido */}
           <Link href={`/contratos/${id}/medicoes`}>
-            <Card className="cursor-pointer hover:border-emerald-500/40 group">
+            <Card className="cursor-pointer group transition-all" style={{ borderColor: 'var(--border)' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(16,185,129,0.5)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(16,185,129,0.10)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = 'none' }}
+            >
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-start justify-between mb-3">
-                  <p className="text-xs text-[var(--text-3)] uppercase tracking-wider font-semibold">Medido</p>
-                  <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center group-hover:bg-emerald-500/20 transition-colors">
-                    <TrendingUp className="w-4 h-4 text-emerald-400" />
+                  <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: 'var(--text-3)' }}>Medido</p>
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center transition-all" style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)' }}>
+                    <TrendingUp className="w-4 h-4" strokeWidth={1.5} style={{ color: 'var(--green)' }} />
                   </div>
                 </div>
-                <p className="text-2xl font-bold text-emerald-400">{formatCurrency(valorMedido)}</p>
+                <p className="text-2xl font-bold" style={{ color: 'var(--green)' }}>{formatCurrency(valorMedido)}</p>
                 <div className="flex items-center gap-2 mt-2">
-                  <div className="flex-1 h-1.5 rounded-full bg-[#1E293B] overflow-hidden">
+                  <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--surface-3)' }}>
                     <div
                       className="h-full rounded-full transition-all duration-700"
-                      style={{ width: `${Math.min(percentualMedido, 100)}%`, background: 'linear-gradient(90deg, #059669, #10B981)' }}
+                      style={{ width: `${Math.min(percentualMedido, 100)}%`, background: 'linear-gradient(90deg, #059669, #10B981)', boxShadow: percentualMedido > 0 ? '0 0 6px rgba(16,185,129,0.4)' : 'none' }}
                     />
                   </div>
-                  <span className="text-xs font-medium text-emerald-400 flex-shrink-0">{formatPercent(percentualMedido)}</span>
+                  <span className="text-xs font-semibold flex-shrink-0" style={{ color: 'var(--green)' }}>{formatPercent(percentualMedido)}</span>
                 </div>
               </CardContent>
             </Card>
           </Link>
+
+          {/* KPI: Saldo */}
           <Link href={`/contratos/${id}/cronograma`}>
-            <Card className="cursor-pointer hover:border-blue-500/40 group">
+            <Card className="cursor-pointer group transition-all" style={{ borderColor: 'var(--border)' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(100,116,139,0.5)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.08)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = 'none' }}
+            >
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-start justify-between mb-3">
-                  <p className="text-xs text-[var(--text-3)] uppercase tracking-wider font-semibold">Saldo</p>
-                  <div className="w-8 h-8 rounded-lg bg-slate-500/10 border border-slate-500/20 flex items-center justify-center group-hover:bg-slate-500/20 transition-colors">
-                    <Wallet className="w-4 h-4 text-slate-400" />
+                  <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: 'var(--text-3)' }}>Saldo</p>
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center transition-all" style={{ background: 'var(--surface-3)', border: '1px solid var(--border)' }}>
+                    <Wallet className="w-4 h-4" strokeWidth={1.5} style={{ color: 'var(--text-2)' }} />
                   </div>
                 </div>
-                <p className="text-2xl font-bold text-[var(--text-1)]">{formatCurrency(saldo)}</p>
-                <p className="text-xs text-[var(--text-3)] mt-2">{formatPercent(100 - percentualMedido)} restante do contrato</p>
+                <p className="text-2xl font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(saldo)}</p>
+                <p className="text-xs mt-2" style={{ color: 'var(--text-3)' }}>{formatPercent(100 - percentualMedido)} restante do contrato</p>
               </CardContent>
             </Card>
           </Link>
-          <Link href={`/contratos/${id}/fat-direto`}>
-            <Card className={`cursor-pointer hover:border-cyan-500/40 group ${qtdPendentes > 0 ? 'border-amber-500/40' : ''}`}>
+
+          {/* KPI: Medições */}
+          <Link href={`/contratos/${id}/medicoes`}>
+            <Card className="cursor-pointer group transition-all"
+              style={{ borderColor: qtdPendentes > 0 ? 'rgba(245,158,11,0.4)' : 'var(--border)' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = qtdPendentes > 0 ? 'rgba(245,158,11,0.6)' : 'rgba(6,182,212,0.5)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.08)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = qtdPendentes > 0 ? 'rgba(245,158,11,0.4)' : 'var(--border)'; e.currentTarget.style.boxShadow = 'none' }}
+            >
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-start justify-between mb-3">
-                  <p className="text-xs text-[var(--text-3)] uppercase tracking-wider font-semibold">Medições</p>
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${qtdPendentes > 0 ? 'bg-amber-500/10 border border-amber-500/20 group-hover:bg-amber-500/20' : 'bg-cyan-500/10 border border-cyan-500/20 group-hover:bg-cyan-500/20'}`}>
-                    <ClipboardList className={`w-4 h-4 ${qtdPendentes > 0 ? 'text-amber-400' : 'text-cyan-400'}`} />
+                  <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: 'var(--text-3)' }}>Medições</p>
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center transition-all"
+                    style={{ background: qtdPendentes > 0 ? 'rgba(245,158,11,0.12)' : 'rgba(6,182,212,0.10)', border: `1px solid ${qtdPendentes > 0 ? 'rgba(245,158,11,0.25)' : 'rgba(6,182,212,0.20)'}` }}>
+                    <ClipboardList className="w-4 h-4" strokeWidth={1.5} style={{ color: qtdPendentes > 0 ? 'var(--amber)' : '#06B6D4' }} />
                   </div>
                 </div>
                 <div className="flex items-end gap-2">
-                  <p className="text-2xl font-bold text-[var(--text-1)]">{qtdAprovadas}</p>
-                  <p className="text-xs text-[var(--text-3)] mb-1">aprovadas</p>
+                  <p className="text-2xl font-bold" style={{ color: 'var(--text-1)' }}>{qtdAprovadas}</p>
+                  <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>aprovadas</p>
                 </div>
                 {qtdPendentes > 0
-                  ? <p className="text-xs text-amber-400 mt-1 font-medium flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block animate-pulse" />
+                  ? <p className="text-xs mt-1 font-semibold flex items-center gap-1" style={{ color: 'var(--amber)' }}>
+                      <span className="w-1.5 h-1.5 rounded-full inline-block animate-pulse" style={{ background: 'var(--amber)' }} />
                       {qtdPendentes} aguardando aprovação
                     </p>
-                  : <p className="text-xs text-[var(--text-3)] mt-1">nenhuma pendente</p>
+                  : <p className="text-xs mt-1" style={{ color: 'var(--text-3)' }}>nenhuma pendente</p>
                 }
               </CardContent>
             </Card>
