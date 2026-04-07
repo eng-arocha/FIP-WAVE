@@ -178,26 +178,26 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
   return (
     <div className="flex flex-col min-h-screen bg-[var(--background)]">
       <Topbar title="Faturamento Direto" />
-      <div className="flex-1 p-6 space-y-6">
+      <div className="flex-1 p-3 sm:p-6 space-y-4 sm:space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-start sm:items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
             <Link href={`/contratos/${id}`}>
-              <Button variant="ghost" size="sm" className="text-[var(--text-3)] hover:text-[var(--text-1)] gap-2">
-                <ArrowLeft className="w-4 h-4" /> Contrato
+              <Button variant="ghost" size="sm" className="text-[var(--text-3)] hover:text-[var(--text-1)] gap-2 px-2 sm:px-3">
+                <ArrowLeft className="w-4 h-4" /> <span className="hidden sm:inline">Contrato</span>
               </Button>
             </Link>
             <div>
-              <h1 className="text-xl font-bold flex items-center gap-2" style={{ color: 'var(--text-1)' }}>
-                <Package className="w-5 h-5 text-blue-400" />
+              <h1 className="text-lg sm:text-xl font-bold flex items-center gap-2" style={{ color: 'var(--text-1)' }}>
+                <Package className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
                 Faturamento Direto
               </h1>
-              <p className="text-sm text-[var(--text-3)]">Controle de autorização de compras de material</p>
+              <p className="text-xs sm:text-sm text-[var(--text-3)] hidden sm:block">Controle de autorização de compras de material</p>
             </div>
           </div>
           <Link href={`/contratos/${id}/fat-direto/nova`}>
-            <Button className="gap-2 bg-blue-600 hover:bg-blue-500 text-white">
-              <Plus className="w-4 h-4" /> Nova Solicitação
+            <Button className="gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm px-3 sm:px-4">
+              <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Nova Solicitação</span><span className="sm:hidden">Nova</span>
             </Button>
           </Link>
         </div>

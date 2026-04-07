@@ -105,7 +105,7 @@ export default function AditivosPage({ params }: { params: Promise<{ id: string 
         }
       />
 
-      <div className="p-6">
+      <div className="p-3 sm:p-6">
         {loading ? (
           <div className="flex items-center justify-center py-16 text-blue-400">
             <Loader2 className="w-6 h-6 animate-spin mr-2" />

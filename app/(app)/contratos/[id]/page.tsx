@@ -245,7 +245,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
     return (
       <div className="flex-1 overflow-auto">
         <Topbar title="Contrato não encontrado" subtitle="" />
-        <div className="p-6">
+        <div className="p-3 sm:p-6">
           <Link href="/contratos">
             <Button variant="outline" size="sm">
               <ArrowLeft className="w-4 h-4" />
@@ -290,32 +290,39 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
         }
         subtitle={contrato.descricao}
         actions={
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-1 sm:gap-2 flex-wrap">
             <Link href="/contratos">
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" className="px-2 sm:px-3">
                 <ArrowLeft className="w-4 h-4" strokeWidth={1.5} />
-                Contratos
+                <span className="hidden sm:inline">Contratos</span>
               </Button>
             </Link>
             <Link href={`/contratos/${id}/cronograma`}>
-              <Button variant="outline" size="sm">Cronograma</Button>
+              <Button variant="outline" size="sm" className="px-2 sm:px-3">
+                <span className="hidden sm:inline">Cronograma</span>
+                <span className="sm:hidden text-xs">Cron.</span>
+              </Button>
             </Link>
             <Link href={`/contratos/${id}/fat-direto`}>
-              <Button variant="outline" size="sm">Fat. Direto</Button>
+              <Button variant="outline" size="sm" className="px-2 sm:px-3">
+                <span className="hidden sm:inline">Fat. Direto</span>
+                <span className="sm:hidden text-xs">Fat.</span>
+              </Button>
             </Link>
             <Link href={`/contratos/${id}/medicoes/nova`}>
-              <Button size="sm" className="gap-1.5">
+              <Button size="sm" className="gap-1 px-2 sm:px-3">
                 <Plus className="w-4 h-4" strokeWidth={1.5} />
-                Med. Serviços
+                <span className="hidden sm:inline">Med. Serviços</span>
+                <span className="sm:hidden text-xs">Med.</span>
               </Button>
             </Link>
           </div>
         }
       />
 
-      <div className="p-6 space-y-6">
+      <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
         {/* KPI Row */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {/* KPI: Valor Total → abre Estrutura */}
           <div onClick={() => setActiveTab('estrutura')} className="cursor-pointer">
             <Card className="group transition-all theme-card">
@@ -326,7 +333,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                     <DollarSign className="w-4 h-4" strokeWidth={1.5} style={{ color: 'var(--accent)' }} />
                   </div>
                 </div>
-                <p className="text-2xl font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(valorTotal)}</p>
+                <p className="text-base sm:text-2xl font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(valorTotal)}</p>
                 <div className="flex gap-3 mt-2 text-xs" style={{ color: 'var(--text-3)' }}>
                   <span>Serv: {formatCurrency(contrato.valor_servicos ?? 0)}</span>
                   <span>Mat: {formatCurrency(contrato.valor_material_direto ?? 0)}</span>
@@ -345,7 +352,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                     <TrendingUp className="w-4 h-4" strokeWidth={1.5} style={{ color: 'var(--green)' }} />
                   </div>
                 </div>
-                <p className="text-2xl font-bold" style={{ color: 'var(--green)' }}>{formatCurrency(valorMedido)}</p>
+                <p className="text-base sm:text-2xl font-bold" style={{ color: 'var(--green)' }}>{formatCurrency(valorMedido)}</p>
                 <div className="flex items-center gap-2 mt-2">
                   <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--surface-3)' }}>
                     <div
@@ -369,7 +376,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                     <Wallet className="w-4 h-4" strokeWidth={1.5} style={{ color: 'var(--text-2)' }} />
                   </div>
                 </div>
-                <p className="text-2xl font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(saldo)}</p>
+                <p className="text-base sm:text-2xl font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(saldo)}</p>
                 <p className="text-xs mt-2" style={{ color: 'var(--text-3)' }}>{formatPercent(100 - percentualMedido)} restante do contrato</p>
               </CardContent>
             </Card>
@@ -387,7 +394,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                   </div>
                 </div>
                 <div className="flex items-end gap-2">
-                  <p className="text-2xl font-bold" style={{ color: 'var(--text-1)' }}>{qtdAprovadas}</p>
+                  <p className="text-base sm:text-2xl font-bold" style={{ color: 'var(--text-1)' }}>{qtdAprovadas}</p>
                   <p className="text-xs mb-1" style={{ color: 'var(--text-3)' }}>aprovadas</p>
                 </div>
                 {qtdPendentes > 0
@@ -422,7 +429,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
               <div className="space-y-3">
                 <div className="p-4 rounded-xl" style={{ background: '#F5F5F7' }}>
                   <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#86868B' }}>Total Medido</p>
-                  <p className="text-2xl font-bold" style={{ color: 'var(--green)' }}>{formatCurrency(valorMedido)}</p>
+                  <p className="text-base sm:text-2xl font-bold" style={{ color: 'var(--green)' }}>{formatCurrency(valorMedido)}</p>
                   <p className="text-xs mt-1" style={{ color: '#86868B' }}>{formatPercent(percentualMedido)} do contrato</p>
                 </div>
 

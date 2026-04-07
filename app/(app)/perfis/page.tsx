@@ -127,7 +127,7 @@ export default function PerfisPage() {
         }
       />
 
-      <div className="p-6 space-y-6">
+      <div className="p-3 sm:p-6 space-y-6">
         {/* KPIs */}
         <div className="grid grid-cols-2 gap-4">
           <Card><CardContent className="pt-5">

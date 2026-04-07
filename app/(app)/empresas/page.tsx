@@ -128,7 +128,7 @@ export default function EmpresasPage() {
         }
       />
 
-      <div className="p-6">
+      <div className="p-3 sm:p-6">
         {/* Busca */}
         <div className="relative mb-6 max-w-sm">
           <Search

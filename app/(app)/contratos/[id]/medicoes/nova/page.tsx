@@ -181,7 +181,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
         }
       />
 
-      <div className="p-6 max-w-5xl">
+      <div className="p-3 sm:p-6 max-w-5xl">
         {/* Steps */}
         <div className="flex items-center gap-1 mb-8">
           {[{ n: 1, label: 'Dados Gerais' }, { n: 2, label: 'Itens' }, { n: 3, label: 'Anexos' }, { n: 4, label: 'Revisão' }].map((s, i) => (

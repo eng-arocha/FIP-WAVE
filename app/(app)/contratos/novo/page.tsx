@@ -118,7 +118,7 @@ export default function NovoContratoPage() {
         }
       />
 
-      <div className="p-6 max-w-4xl">
+      <div className="p-3 sm:p-6 max-w-4xl">
         <div className="space-y-6">
           {/* Identificação */}
           <div className="bg-[var(--surface-2)] border border-[var(--border)] rounded-xl overflow-hidden">

@@ -185,7 +185,7 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
         }
       />
 
-      <div className="p-6 space-y-3">
+      <div className="p-3 sm:p-6 space-y-3">
         {/* Barra de filtros e ordenação */}
         <div className="flex flex-wrap items-center gap-2 pb-1">
           <div className="flex items-center gap-1.5 text-xs text-[var(--text-3)]">

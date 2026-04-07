@@ -243,7 +243,7 @@ export default function AprovacoesPage() {
         }
       />
 
-      <div className="p-6">
+      <div className="p-3 sm:p-6">
         {/* Stats cards */}
         <div className="grid grid-cols-3 gap-4 mb-6">
           {/* Pendentes */}

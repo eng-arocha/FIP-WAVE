@@ -80,17 +80,17 @@ export default function ContratosPage() {
         }
       />
 
-      <div className="p-6">
+      <div className="p-3 sm:p-6">
         {/* Filtros */}
-        <div className="flex gap-3 mb-6 flex-wrap items-center">
-          <div className="relative">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mb-4 sm:mb-6">
+          <div className="relative flex-1 sm:flex-none">
             <Search
               className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
               style={{ color: 'var(--text-3)' }}
             />
             <input
               placeholder="Buscar contrato..."
-              className="pl-9 pr-4 py-2 rounded-xl text-sm outline-none transition-all w-64"
+              className="pl-9 pr-4 py-2 rounded-xl text-sm outline-none transition-all w-full sm:w-64"
               style={{
                 background: 'var(--surface-2)',
                 border: '1px solid var(--border)',
@@ -102,7 +102,7 @@ export default function ContratosPage() {
               onBlur={e => { e.currentTarget.style.borderColor = '#1E293B'; e.currentTarget.style.boxShadow = 'none' }}
             />
           </div>
-          <div className="flex gap-1.5">
+          <div className="flex gap-1.5 flex-wrap">
             {statusOptions.map(s => (
               <button
                 key={s.value}
@@ -166,10 +166,10 @@ export default function ContratosPage() {
                   e.currentTarget.style.boxShadow = 'none'
                 }}
               >
-                <div className="p-5">
-                  <div className="flex items-start gap-4">
-                    {/* Donut ring progress */}
-                    <div className="w-12 h-12 flex-shrink-0 relative">
+                <div className="p-3 sm:p-5">
+                  <div className="flex items-start gap-3 sm:gap-4">
+                    {/* Donut ring progress — hidden on mobile */}
+                    <div className="w-12 h-12 flex-shrink-0 relative hidden sm:block">
                       <svg viewBox="0 0 44 44" className="w-12 h-12 -rotate-90">
                         <circle cx="22" cy="22" r="17" fill="none" stroke="#1E293B" strokeWidth="4" />
                         <circle
@@ -188,7 +188,7 @@ export default function ContratosPage() {
 
                     <div className="flex-1 min-w-0">
                       {/* Header */}
-                      <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="flex items-start justify-between gap-2 mb-2 sm:mb-3">
                         <div>
                           <div className="flex items-center gap-2 mb-1">
                             <span
@@ -221,7 +221,7 @@ export default function ContratosPage() {
                       </div>
 
                       {/* Info grid */}
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-1.5 sm:gap-3 mb-3 sm:mb-4">
                         <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-2)' }}>
                           <Building2 className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-3)' }} />
                           <span className="truncate">{contrato.contratado?.nome}</span>

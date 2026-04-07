@@ -188,7 +188,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
         }
       />
 
-      <div className="p-6">
+      <div className="p-3 sm:p-6">
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           {/* Main content */}
           <div className="xl:col-span-2 space-y-5">

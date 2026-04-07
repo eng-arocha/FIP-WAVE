@@ -71,7 +71,7 @@ export default function CronogramaPage({ params }: { params: Promise<{ id: strin
   return (
     <div className="flex flex-col min-h-screen bg-[var(--background)]">
       <Topbar title="Cronograma Físico-Financeiro" />
-      <div className="flex-1 p-6 space-y-6">
+      <div className="flex-1 p-3 sm:p-6 space-y-6">
         {/* Header */}
         <div className="flex items-center gap-3">
           <Link href={`/contratos/${id}`}>

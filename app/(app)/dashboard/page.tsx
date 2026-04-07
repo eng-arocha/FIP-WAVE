@@ -276,12 +276,12 @@ export default function DashboardPage() {
         }
       />
 
-      <div className="p-6 space-y-6">
+      <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
         {/* KPI Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {/* Total Contratado */}
           <div
-            className="rounded-xl p-5 transition-all duration-200 cursor-default"
+            className="rounded-xl p-3 sm:p-5 transition-all duration-200 cursor-default"
             style={{
               background: 'var(--surface-2)',
               border: '1px solid var(--border)',
@@ -295,7 +295,7 @@ export default function DashboardPage() {
                 <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>
                   Total Contratado
                 </p>
-                <p className="text-2xl font-bold" style={{ color: 'var(--text-1)' }}>
+                <p className="text-base sm:text-2xl font-bold" style={{ color: 'var(--text-1)' }}>
                   {formatCurrency(totalContratado)}
                 </p>
                 <p className="text-xs mt-1" style={{ color: 'var(--text-3)' }}>
@@ -303,7 +303,7 @@ export default function DashboardPage() {
                 </p>
               </div>
               <div
-                className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center flex-shrink-0 hidden sm:flex"
                 style={{ background: 'rgba(59,130,246,0.15)' }}
               >
                 <FileText className="w-5 h-5" style={{ color: '#3B82F6' }} />
@@ -313,7 +313,7 @@ export default function DashboardPage() {
 
           {/* Medição - Serviço */}
           <div
-            className="rounded-xl p-5 transition-all duration-200 cursor-default"
+            className="rounded-xl p-3 sm:p-5 transition-all duration-200 cursor-default"
             style={{
               background: 'var(--surface-2)',
               border: '1px solid var(--border)',
@@ -327,7 +327,7 @@ export default function DashboardPage() {
                 <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>
                   Medição - Serviço
                 </p>
-                <p className="text-2xl font-bold" style={{ color: 'var(--green)' }}>
+                <p className="text-base sm:text-2xl font-bold" style={{ color: 'var(--green)' }}>
                   {formatCurrency(animatedMedidoServico)}
                 </p>
                 <p className="text-xs mt-1" style={{ color: 'var(--text-3)' }}>
@@ -335,7 +335,7 @@ export default function DashboardPage() {
                 </p>
               </div>
               <div
-                className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center flex-shrink-0 hidden sm:flex"
                 style={{ background: 'rgba(16,185,129,0.15)' }}
               >
                 <TrendingUp className="w-5 h-5" style={{ color: 'var(--green)' }} />
@@ -345,7 +345,7 @@ export default function DashboardPage() {
 
           {/* Medição Faturamento Direto */}
           <div
-            className="rounded-xl p-5 transition-all duration-200 cursor-default"
+            className="rounded-xl p-3 sm:p-5 transition-all duration-200 cursor-default"
             style={{
               background: 'var(--surface-2)',
               border: '1px solid var(--border)',
@@ -359,7 +359,7 @@ export default function DashboardPage() {
                 <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>
                   Medição Fat. Direto
                 </p>
-                <p className="text-2xl font-bold" style={{ color: '#6366F1' }}>
+                <p className="text-base sm:text-2xl font-bold" style={{ color: '#6366F1' }}>
                   {formatCurrency(animatedNfFatDireto)}
                 </p>
                 <p className="text-xs mt-1" style={{ color: 'var(--text-3)' }}>
@@ -367,7 +367,7 @@ export default function DashboardPage() {
                 </p>
               </div>
               <div
-                className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center flex-shrink-0 hidden sm:flex"
                 style={{ background: 'rgba(99,102,241,0.12)' }}
               >
                 <DollarSign className="w-5 h-5" style={{ color: '#6366F1' }} />
@@ -377,7 +377,7 @@ export default function DashboardPage() {
 
           {/* Saldo */}
           <div
-            className="rounded-xl p-5 transition-all duration-200 cursor-default"
+            className="rounded-xl p-3 sm:p-5 transition-all duration-200 cursor-default"
             style={{
               background: 'var(--surface-2)',
               border: '1px solid var(--border)',
@@ -391,7 +391,7 @@ export default function DashboardPage() {
                 <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>
                   Saldo
                 </p>
-                <p className="text-2xl font-bold" style={{ color: 'var(--text-1)' }}>
+                <p className="text-base sm:text-2xl font-bold" style={{ color: 'var(--text-1)' }}>
                   {formatCurrency(animatedSaldo)}
                 </p>
                 <p className="text-xs mt-1" style={{ color: 'var(--text-3)' }}>
@@ -399,7 +399,7 @@ export default function DashboardPage() {
                 </p>
               </div>
               <div
-                className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center flex-shrink-0 hidden sm:flex"
                 style={{ background: 'rgba(71,85,105,0.12)' }}
               >
                 <CheckCircle2 className="w-5 h-5" style={{ color: 'var(--text-2)' }} />

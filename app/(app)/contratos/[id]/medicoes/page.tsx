@@ -51,7 +51,7 @@ export default function MedicoesPage({ params }: { params: Promise<{ id: string 
         }
       />
 
-      <div className="p-6 max-w-4xl space-y-4">
+      <div className="p-3 sm:p-6 max-w-4xl space-y-4">
         {loading ? (
           <div className="flex items-center justify-center py-16 text-[var(--text-3)]">
             <Loader2 className="w-6 h-6 animate-spin mr-2 text-blue-400" />

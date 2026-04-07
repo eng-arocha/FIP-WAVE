@@ -13,7 +13,7 @@ interface TopbarProps {
 export function Topbar({ title, subtitle, actions }: TopbarProps) {
   return (
     <header
-      className="h-14 border-b flex items-center justify-between px-6 sticky top-0 z-10"
+      className="h-14 border-b flex items-center justify-between px-3 sm:px-6 sticky top-0 z-10"
       style={{
         background: 'var(--topbar-bg)',
         backdropFilter: 'saturate(180%) blur(20px)',
@@ -45,8 +45,8 @@ export function Topbar({ title, subtitle, actions }: TopbarProps) {
         )}
       </div>
 
-      <div className="flex items-center gap-1.5">
-        {actions && <div className="flex items-center gap-2 mr-1">{actions}</div>}
+      <div className="flex items-center gap-1.5 ml-2">
+        {actions && <div className="flex items-center gap-1 sm:gap-2 mr-1">{actions}</div>}
 
         {/* Notifications */}
         <button
