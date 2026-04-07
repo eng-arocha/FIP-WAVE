@@ -191,8 +191,13 @@ export function Sidebar({
       >
         {showText ? (
           <>
-            <div className="rounded-xl px-3 py-2 flex items-center justify-center" style={{ background: '#080C14', border: '1px solid rgba(59,130,246,0.15)' }}>
-              <Image src="/logos/wave-branco.png" alt="WAVE Beira-Mar" width={110} height={62} priority className="object-contain" style={{ width: 'auto', height: 'auto', maxWidth: 110, maxHeight: 48 }} />
+            <div
+              className="rounded-xl px-3 py-2 flex items-center justify-center cursor-pointer select-none"
+              style={{ background: 'white', border: '1px solid rgba(59,130,246,0.15)' }}
+              onDoubleClick={() => window.open('https://www.wavebeiramar.com.br', '_blank')}
+              title="Duplo clique para acessar wavebeiramar.com.br"
+            >
+              <Image src="/logos/Wave.png" alt="WAVE Beira-Mar" width={110} height={62} priority className="object-contain" style={{ width: 'auto', height: 'auto', maxWidth: 110, maxHeight: 48 }} />
             </div>
             <button
               onClick={(e) => { e.stopPropagation(); onTogglePin() }}

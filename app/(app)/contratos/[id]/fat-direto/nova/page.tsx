@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useState, useEffect, useRef, useCallback } from 'react'
+import { use, useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { formatCurrency } from '@/lib/utils'
 import {
   ArrowLeft, Plus, Trash2, Package, Save, AlertTriangle,
-  Building2, ChevronDown, Search, MapPin, X, Hash, Upload, FileText,
+  Building2, ChevronDown, Search, MapPin, X, Hash, Upload, FileText, TrendingUp,
 } from 'lucide-react'
 
 // ── Máscaras ───────────────────────────────────────────────────────────────
@@ -40,6 +40,7 @@ interface Tarefa {
   valor_servico: number
   valor_total: number
   valor_aprovado: number
+  valor_em_aprovacao: number
   locais: string[]
   grupo_macro?: { codigo: string; nome: string }
 }
@@ -143,7 +144,7 @@ function DisciplinaCombobox({
             </div>
           ) : (
             filtered.map(t => {
-              const saldoDisp = t.valor_material - t.valor_aprovado
+              const saldoDisp = t.valor_material - t.valor_aprovado - (t.valor_em_aprovacao || 0)
               return (
                 <button
                   key={t.id}
@@ -194,6 +195,54 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
   const [fornContatoTel, setFornContatoTel] = useState('') // masked value
   const [numeroPedidoFip, setNumeroPedidoFip] = useState('')
 
+  // CNPJ lookup state
+  const [cnpjLookupStatus, setCnpjLookupStatus] = useState<'idle' | 'loading' | 'found' | 'not_found' | 'error' | 'inactive'>('idle')
+  const [cnpjLookupMsg, setCnpjLookupMsg] = useState('')
+
+  async function lookupCnpj(maskedValue: string) {
+    const digits = maskedValue.replace(/\D/g, '')
+    if (digits.length !== 14) return
+    setCnpjLookupStatus('loading')
+    setCnpjLookupMsg('')
+    try {
+      const res = await fetch(`/api/cnpj/${digits}`)
+      const data = await res.json()
+      if (res.status === 404) {
+        setCnpjLookupStatus('not_found')
+        setCnpjLookupMsg('CNPJ não encontrado na Receita Federal')
+        setFornRazaoSocial('')
+        return
+      }
+      if (!res.ok) {
+        setCnpjLookupStatus('error')
+        setCnpjLookupMsg(data.error || 'Erro ao consultar Receita Federal')
+        return
+      }
+      if (!data.ativa) {
+        setCnpjLookupStatus('inactive')
+        setCnpjLookupMsg(`Empresa com situação: ${data.situacao_cadastral}`)
+        setFornRazaoSocial(data.razao_social || '')
+        return
+      }
+      setCnpjLookupStatus('found')
+      setCnpjLookupMsg(`${data.municipio}/${data.uf}`)
+      setFornRazaoSocial(data.razao_social || '')
+    } catch {
+      setCnpjLookupStatus('error')
+      setCnpjLookupMsg('Falha na conexão com Receita Federal')
+    }
+  }
+
+  function handleCnpjChange(raw: string) {
+    const masked = maskCnpj(raw)
+    setFornCnpj(masked)
+    setCnpjLookupStatus('idle')
+    setCnpjLookupMsg('')
+    setFornRazaoSocial('')
+    const digits = masked.replace(/\D/g, '')
+    if (digits.length === 14) lookupCnpj(masked)
+  }
+
   const [observacoes, setObservacoes] = useState('')
   const [pedidoPdfFile, setPedidoPdfFile] = useState<File | null>(null)
   const [itens, setItens] = useState<ItemForm[]>([
@@ -202,6 +251,33 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
   const [saving, setSaving] = useState(false)
   const [erro, setErro] = useState('')
   const [tetoViolation, setTetoViolation] = useState<any>(null)
+  const [itemLimiteViolation, setItemLimiteViolation] = useState<any>(null)
+
+  // Real-time per-item limit violations (nivel 3)
+  const itemViolations = useMemo(() => {
+    const out: Record<number, { aprovado: number; emAprovacao: number; saldo: number; limite: number; codigo: string }> = {}
+    itens.forEach((item, i) => {
+      if (!item.tarefa_id) return
+      const t = tarefas.find(x => x.id === item.tarefa_id)
+      if (!t || t.valor_material <= 0) return
+      const valorAtual = parseFloat(item.valor_total) || 0
+      if (valorAtual <= 0) return
+      const aprovado = t.valor_aprovado
+      const emAprovacao = t.valor_em_aprovacao || 0
+      // Other items in this same form for same detalhamento
+      const outrosItensForm = itens.reduce((sum, other, j) => {
+        if (j === i && other.tarefa_id === item.tarefa_id) return sum
+        if (other.tarefa_id === item.tarefa_id) return sum + (parseFloat(other.valor_total) || 0)
+        return sum
+      }, 0)
+      const totalComprometido = aprovado + emAprovacao + outrosItensForm + valorAtual
+      const saldo = Math.max(0, t.valor_material - aprovado - emAprovacao)
+      if (totalComprometido > t.valor_material) {
+        out[i] = { aprovado, emAprovacao, saldo, limite: t.valor_material, codigo: t.codigo }
+      }
+    })
+    return out
+  }, [itens, tarefas])
 
   useEffect(() => {
     fetch(`/api/contratos/${id}/fat-direto/tarefas`)
@@ -264,6 +340,10 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
       if (!it.tarefa_id || !it.descricao || !it.local) { setErro('Preencha todos os campos de cada item.'); return }
       if (!it.valor_total || parseFloat(it.valor_total) <= 0) { setErro('Informe o valor de cada item.'); return }
     }
+    if (Object.keys(itemViolations).length > 0) {
+      setErro('Corrija os limites por disciplina antes de enviar.')
+      return
+    }
     setSaving(true)
     try {
       // Dígitos apenas para CNPJ e telefone
@@ -297,6 +377,9 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
       const data = await res.json()
       if (res.status === 422 && data.error === 'TETO_EXCEDIDO') {
         setTetoViolation(data.violation); setSaving(false); return
+      }
+      if (res.status === 422 && data.error === 'ITEM_LIMITE_EXCEDIDO') {
+        setItemLimiteViolation(data.itemViolation); setSaving(false); return
       }
       if (!res.ok) { setErro(data.error || 'Erro ao salvar'); setSaving(false); return }
 
@@ -399,6 +482,32 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
           </div>
         )}
 
+        {itemLimiteViolation && (
+          <div className="rounded-2xl p-4 space-y-3" style={{ background: 'rgba(239,68,68,0.07)', border: '2px solid rgba(239,68,68,0.40)' }}>
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" strokeWidth={1.5} style={{ color: 'var(--red)' }} />
+              <div>
+                <p className="font-bold mb-0.5" style={{ color: 'var(--red)' }}>Limite do Item Excedido — {itemLimiteViolation.codigo}</p>
+                <p className="text-sm" style={{ color: 'var(--text-2)' }}>{itemLimiteViolation.descricao}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                { label: 'Limite Contratado', value: itemLimiteViolation.limite },
+                { label: 'Aprovado', value: itemLimiteViolation.aprovado },
+                { label: 'Em Aprovação', value: itemLimiteViolation.emAprovacao },
+                { label: 'Saldo Disponível', value: itemLimiteViolation.saldoDisponivel },
+              ].map(k => (
+                <div key={k.label} className="p-2.5 rounded-xl" style={{ background: 'var(--surface-3)' }}>
+                  <p className="text-xs mb-0.5" style={{ color: 'var(--text-3)' }}>{k.label}</p>
+                  <p className="text-sm font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(k.value)}</p>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setItemLimiteViolation(null)} className="text-xs" style={{ color: 'var(--text-3)' }}>Fechar</button>
+          </div>
+        )}
+
         {/* ── Dados do Fornecedor ── */}
         <div ref={supplierCardRef}>
           <Card style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
@@ -411,40 +520,91 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {/* Razão Social */}
+              {/* CNPJ — lookup first */}
               <div>
-                <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-3)' }}>Razão Social *</label>
-                <input type="text" value={fornRazaoSocial} onChange={e => setFornRazaoSocial(e.target.value)}
-                  placeholder="Nome completo da empresa fornecedora" className={inputCls} style={inputStyle} {...focusHandlers} />
-              </div>
-
-              {/* CNPJ + Nº Pedido FIP */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-3)' }}>CNPJ *</label>
+                <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-3)' }}>CNPJ *</label>
+                <div className="relative">
                   <input
                     type="text"
                     value={fornCnpj}
-                    onChange={e => setFornCnpj(maskCnpj(e.target.value))}
+                    onChange={e => handleCnpjChange(e.target.value)}
                     placeholder="00.000.000/0001-00"
                     maxLength={18}
-                    className={inputCls} style={inputStyle} {...focusHandlers}
+                    className={inputCls}
+                    style={{
+                      ...inputStyle,
+                      paddingRight: '2.5rem',
+                      borderColor: cnpjLookupStatus === 'found' ? '#10B981'
+                        : cnpjLookupStatus === 'not_found' || cnpjLookupStatus === 'error' ? '#EF4444'
+                        : cnpjLookupStatus === 'inactive' ? '#F59E0B'
+                        : undefined,
+                    }}
+                    {...focusHandlers}
                   />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    {cnpjLookupStatus === 'loading' && (
+                      <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none" style={{ color: 'var(--accent)' }}>
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                      </svg>
+                    )}
+                    {cnpjLookupStatus === 'found' && <span className="text-[#10B981] text-sm font-bold">✓</span>}
+                    {(cnpjLookupStatus === 'not_found' || cnpjLookupStatus === 'error') && <span className="text-[#EF4444] text-sm font-bold">✗</span>}
+                    {cnpjLookupStatus === 'inactive' && <span className="text-[#F59E0B] text-sm font-bold">!</span>}
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs mb-1 font-medium flex items-center gap-1" style={{ color: 'var(--text-3)' }}>
-                    <Hash className="w-3 h-3" strokeWidth={1.5} /> Nº Pedido Interno FIP *
-                  </label>
-                  <input
-                    type="number"
-                    value={numeroPedidoFip}
-                    onChange={e => setNumeroPedidoFip(e.target.value)}
-                    placeholder="Ex: 1023"
-                    min="1"
-                    step="1"
-                    className={inputCls} style={inputStyle} {...focusHandlers}
-                  />
-                </div>
+                {cnpjLookupMsg && (
+                  <p className="text-[11px] mt-1 font-medium" style={{
+                    color: cnpjLookupStatus === 'found' ? '#10B981'
+                      : cnpjLookupStatus === 'inactive' ? '#F59E0B'
+                      : '#EF4444',
+                  }}>
+                    {cnpjLookupStatus === 'found' ? `✓ Empresa ativa — ${cnpjLookupMsg}` : cnpjLookupMsg}
+                  </p>
+                )}
+              </div>
+
+              {/* Razão Social — auto-filled from CNPJ lookup, editable */}
+              <div>
+                <label className="block text-xs mb-1 font-medium flex items-center gap-1.5" style={{ color: 'var(--text-3)' }}>
+                  Razão Social *
+                  {cnpjLookupStatus === 'found' && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-bold" style={{ background: 'rgba(16,185,129,0.15)', color: '#10B981' }}>
+                      preenchido automaticamente
+                    </span>
+                  )}
+                </label>
+                <input
+                  type="text"
+                  value={fornRazaoSocial}
+                  onChange={e => setFornRazaoSocial(e.target.value)}
+                  placeholder={cnpjLookupStatus === 'loading' ? 'Consultando Receita Federal...' : 'Será preenchido automaticamente pelo CNPJ'}
+                  readOnly={cnpjLookupStatus === 'found'}
+                  className={inputCls}
+                  style={{
+                    ...inputStyle,
+                    background: cnpjLookupStatus === 'found' ? 'var(--surface-3)' : inputStyle.background,
+                    color: cnpjLookupStatus === 'found' ? 'var(--text-2)' : inputStyle.color,
+                    cursor: cnpjLookupStatus === 'found' ? 'default' : undefined,
+                  }}
+                  {...(cnpjLookupStatus === 'found' ? {} : focusHandlers)}
+                />
+              </div>
+
+              {/* Nº Pedido FIP */}
+              <div>
+                <label className="block text-xs mb-1 font-medium flex items-center gap-1" style={{ color: 'var(--text-3)' }}>
+                  <Hash className="w-3 h-3" strokeWidth={1.5} /> Nº Pedido Interno FIP * <span className="ml-1 opacity-60">(será o número desta solicitação)</span>
+                </label>
+                <input
+                  type="number"
+                  value={numeroPedidoFip}
+                  onChange={e => setNumeroPedidoFip(e.target.value)}
+                  placeholder="Ex: 1023"
+                  min="1"
+                  step="1"
+                  className={inputCls} style={inputStyle} {...focusHandlers}
+                />
               </div>
 
               {/* Nome + Telefone do contato */}
@@ -595,8 +755,35 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
 
                 <div>
                   <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-3)' }}>Valor do Item (R$)</label>
-                  <input type="number" value={item.valor_total} onChange={e => updateItem(i, 'valor_total', e.target.value)}
-                    min="0" step="0.01" placeholder="0,00" className={inputCls} style={inputStyle} {...focusHandlers} />
+                  <input
+                    type="number"
+                    value={item.valor_total}
+                    onChange={e => updateItem(i, 'valor_total', e.target.value)}
+                    min="0" step="0.01" placeholder="0,00"
+                    className={inputCls}
+                    style={{ ...inputStyle, borderColor: itemViolations[i] ? 'rgba(239,68,68,0.60)' : undefined }}
+                    {...focusHandlers}
+                  />
+                  {itemViolations[i] && (() => {
+                    const v = itemViolations[i]
+                    return (
+                      <div className="mt-2 rounded-xl p-3 flex items-start gap-2" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.35)' }}>
+                        <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" strokeWidth={1.5} style={{ color: '#EF4444' }} />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-bold mb-1" style={{ color: '#EF4444' }}>
+                            LIMITE EXCEDIDO — {v.codigo}
+                          </p>
+                          <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px]" style={{ color: 'var(--text-2)' }}>
+                            <span>Aprovado: <strong>{formatCurrency(v.aprovado)}</strong></span>
+                            <span>Em Aprovação: <strong>{formatCurrency(v.emAprovacao)}</strong></span>
+                            <span style={{ color: v.saldo <= 0 ? '#EF4444' : '#10B981' }}>
+                              Saldo Disponível: <strong>{formatCurrency(v.saldo)}</strong>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })()}
                 </div>
               </div>
             ))}
@@ -613,11 +800,17 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
           <Link href={`/contratos/${id}/fat-direto`}>
             <Button variant="ghost" style={{ color: 'var(--text-3)' }}>Cancelar</Button>
           </Link>
+          {Object.keys(itemViolations).length > 0 && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold" style={{ background: 'rgba(239,68,68,0.12)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.30)' }}>
+              <AlertTriangle className="w-3.5 h-3.5" strokeWidth={2} />
+              {Object.keys(itemViolations).length} item(s) com limite excedido
+            </div>
+          )}
           <Button
             onClick={salvar}
-            disabled={saving}
+            disabled={saving || Object.keys(itemViolations).length > 0}
             className="gap-2 text-white"
-            style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-glow))' }}
+            style={{ background: Object.keys(itemViolations).length > 0 ? 'var(--surface-3)' : 'linear-gradient(135deg, var(--accent), var(--accent-glow))' }}
           >
             {saving ? (
               <>

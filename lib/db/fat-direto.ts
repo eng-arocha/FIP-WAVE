@@ -131,21 +131,78 @@ export async function criarSolicitacao(input: {
     throw err
   }
 
+  // Verificar limite por detalhamento (nível 3)
+  const detIdsReq = input.itens.map(i => i.detalhamento_id).filter(Boolean) as string[]
+  if (detIdsReq.length > 0) {
+    const { data: detsData } = await admin
+      .from('detalhamentos')
+      .select('id, codigo, descricao, valor_total, quantidade_contratada, valor_unitario')
+      .in('id', detIdsReq)
+
+    const { data: itensExist } = await admin
+      .from('itens_solicitacao_fat_direto')
+      .select('detalhamento_id, valor_total, solicitacoes_fat_direto!inner(status)')
+      .in('detalhamento_id', detIdsReq)
+      .in('solicitacoes_fat_direto.status', ['aprovado', 'aguardando_aprovacao'])
+
+    const aprovByDet: Record<string, number> = {}
+    const pendByDet: Record<string, number> = {}
+    ;(itensExist || []).forEach((it: any) => {
+      if (!it.detalhamento_id) return
+      const s = it.solicitacoes_fat_direto?.status
+      if (s === 'aprovado') aprovByDet[it.detalhamento_id] = (aprovByDet[it.detalhamento_id] || 0) + (it.valor_total || 0)
+      else if (s === 'aguardando_aprovacao') pendByDet[it.detalhamento_id] = (pendByDet[it.detalhamento_id] || 0) + (it.valor_total || 0)
+    })
+
+    // Group new items by detalhamento
+    const novoByDet: Record<string, number> = {}
+    input.itens.forEach(i => {
+      if (i.detalhamento_id) novoByDet[i.detalhamento_id] = (novoByDet[i.detalhamento_id] || 0) + i.valor_total
+    })
+
+    for (const det of (detsData || [])) {
+      const limite = det.valor_total || (det.quantidade_contratada || 0) * (det.valor_unitario || 0)
+      if (limite <= 0) continue
+      const aprovado = aprovByDet[det.id] || 0
+      const emAprovacao = pendByDet[det.id] || 0
+      const novo = novoByDet[det.id] || 0
+      if (aprovado + emAprovacao + novo > limite) {
+        const err = new Error('ITEM_LIMITE_EXCEDIDO')
+        ;(err as any).itemViolation = {
+          codigo: det.codigo,
+          descricao: det.descricao,
+          limite,
+          aprovado,
+          emAprovacao,
+          saldoDisponivel: Math.max(0, limite - aprovado - emAprovacao),
+          novoValor: novo,
+        }
+        throw err
+      }
+    }
+  }
+
+  const insertPayload: Record<string, unknown> = {
+    contrato_id: input.contrato_id,
+    solicitante_id: input.solicitante_id,
+    observacoes: input.observacoes,
+    numero_pedido_fip: input.numero_pedido_fip,
+    fornecedor_razao_social: input.fornecedor_razao_social,
+    fornecedor_cnpj: input.fornecedor_cnpj,
+    fornecedor_contato: input.fornecedor_contato,
+    fornecedor_contato_nome: input.fornecedor_contato_nome,
+    fornecedor_contato_telefone: input.fornecedor_contato_telefone,
+    valor_total,
+    status: 'aguardando_aprovacao',
+  }
+  // Use FIP order number as the solicitation number
+  if (input.numero_pedido_fip) {
+    insertPayload.numero = input.numero_pedido_fip
+  }
+
   const { data: sol, error } = await admin
     .from('solicitacoes_fat_direto')
-    .insert({
-      contrato_id: input.contrato_id,
-      solicitante_id: input.solicitante_id,
-      observacoes: input.observacoes,
-      numero_pedido_fip: input.numero_pedido_fip,
-      fornecedor_razao_social: input.fornecedor_razao_social,
-      fornecedor_cnpj: input.fornecedor_cnpj,
-      fornecedor_contato: input.fornecedor_contato,
-      fornecedor_contato_nome: input.fornecedor_contato_nome,
-      fornecedor_contato_telefone: input.fornecedor_contato_telefone,
-      valor_total,
-      status: 'aguardando_aprovacao',
-    })
+    .insert(insertPayload)
     .select()
     .single()
   if (error) throw error
@@ -280,18 +337,23 @@ export async function listarTarefasParaSolicitacao(contratoId: string) {
   const detalhamentos = dets || []
   const detIds = detalhamentos.map((d: any) => d.id)
 
-  // Valores já aprovados por detalhamento (a partir de solicitações aprovadas)
+  // Valores já aprovados e em aprovação por detalhamento
   const aprovadoByDet: Record<string, number> = {}
+  const emAprovacaoByDet: Record<string, number> = {}
   if (detIds.length > 0) {
     try {
-      const { data: itensAprov } = await admin
+      const { data: itensComStatus } = await admin
         .from('itens_solicitacao_fat_direto')
         .select('detalhamento_id, valor_total, solicitacoes_fat_direto!inner(status)')
         .in('detalhamento_id', detIds)
-        .eq('solicitacoes_fat_direto.status', 'aprovado')
-      ;(itensAprov || []).forEach((it: any) => {
-        if (it.detalhamento_id) {
+        .in('solicitacoes_fat_direto.status', ['aprovado', 'aguardando_aprovacao'])
+      ;(itensComStatus || []).forEach((it: any) => {
+        if (!it.detalhamento_id) return
+        const status = it.solicitacoes_fat_direto?.status
+        if (status === 'aprovado') {
           aprovadoByDet[it.detalhamento_id] = (aprovadoByDet[it.detalhamento_id] || 0) + (it.valor_total || 0)
+        } else if (status === 'aguardando_aprovacao') {
+          emAprovacaoByDet[it.detalhamento_id] = (emAprovacaoByDet[it.detalhamento_id] || 0) + (it.valor_total || 0)
         }
       })
     } catch {
@@ -325,6 +387,7 @@ export async function listarTarefasParaSolicitacao(contratoId: string) {
       valor_servico: 0,
       valor_total: valorMaterial,
       valor_aprovado: aprovadoByDet[d.id] || 0,
+      valor_em_aprovacao: emAprovacaoByDet[d.id] || 0,
       grupo_macro: {
         codigo: tarefaMap[d.tarefa_id]?.codigo || '',
         nome: tarefaMap[d.tarefa_id]?.nome || '',
