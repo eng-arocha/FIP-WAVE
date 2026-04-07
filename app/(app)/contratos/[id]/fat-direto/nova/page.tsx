@@ -861,7 +861,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
                           placeholder="1"
                           maxLength={3}
                           onChange={e => handleNivelChange(gIdx, '_nv1', e.target.value)}
-                          onKeyDown={e => { if (e.key === '.' || e.key === ' ' || e.key === 'Enter') { e.preventDefault(); (document.getElementById(`nv2-${gIdx}`) as HTMLInputElement | null)?.focus() } }}
+                          onKeyDown={e => { if (['.', ',', ' ', 'Enter'].includes(e.key)) { e.preventDefault(); (document.getElementById(`nv2-${gIdx}`) as HTMLInputElement | null)?.focus() } }}
                           className="h-7 rounded-lg text-center text-xs outline-none w-full"
                           style={nvBorder()}
                           onFocus={e => Object.assign(e.currentTarget.style, { borderColor: 'var(--accent)', boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent)' })}
@@ -877,7 +877,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
                           placeholder="1"
                           maxLength={3}
                           onChange={e => handleNivelChange(gIdx, '_nv2', e.target.value)}
-                          onKeyDown={e => { if (e.key === '.' || e.key === ' ' || e.key === 'Enter') { e.preventDefault(); (document.getElementById(`nv3-${gIdx}`) as HTMLInputElement | null)?.focus() } }}
+                          onKeyDown={e => { if (['.', ',', ' ', 'Enter'].includes(e.key)) { e.preventDefault(); (document.getElementById(`nv3-${gIdx}`) as HTMLInputElement | null)?.focus() } }}
                           className="h-7 rounded-lg text-center text-xs outline-none w-full"
                           style={nvBorder()}
                           onFocus={e => Object.assign(e.currentTarget.style, { borderColor: 'var(--accent)', boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent)' })}
