@@ -1,13 +1,14 @@
 'use client'
 
-import { use, useState, useEffect } from 'react'
+import { use, useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { Plus, ArrowLeft, FileText, CheckCircle, Clock, XCircle, Package, ClipboardList, Timer, BadgeCheck, Receipt, Undo2 } from 'lucide-react'
+import { Plus, ArrowLeft, FileText, CheckCircle, Clock, XCircle, Package, ClipboardList, Timer, BadgeCheck, Receipt, Undo2, ChevronDown, X, BarChart2 } from 'lucide-react'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 
 interface Solicitacao {
@@ -33,6 +34,15 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.
   cancelado:             { label: 'Cancelado',           color: 'var(--text-3)', icon: <XCircle className="w-3 h-3" /> },
 }
 
+type KpiKey = 'total' | 'pendente' | 'aprovado' | 'nf'
+
+const KPI_META: Record<KpiKey, { label: string; statusFilter?: string; color: string }> = {
+  total:    { label: 'Total Solicitações',    color: '#3B82F6' },
+  pendente: { label: 'Aguardando Aprovação',  statusFilter: 'aguardando_aprovacao', color: 'var(--amber)' },
+  aprovado: { label: 'Total Aprovado',        statusFilter: 'aprovado',             color: 'var(--green)' },
+  nf:       { label: 'NFs Recebidas',                                               color: '#06B6D4' },
+}
+
 export default function FatDiretoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const { perfilAtual } = usePermissoes()
@@ -40,6 +50,12 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
   const [solicitacoes, setSolicitacoes] = useState<Solicitacao[]>([])
   const [resumo, setResumo] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+
+  // Report state
+  const [activeKpi, setActiveKpi] = useState<KpiKey | null>(null)
+  const [filterStatus, setFilterStatus] = useState<string>('_todos')
+  const [filterFornecedor, setFilterFornecedor] = useState<string>('_todos')
+  const [filterMes, setFilterMes] = useState<string>('_todos')
 
   useEffect(() => {
     Promise.all([
@@ -61,9 +77,21 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ acao: 'aguardando_aprovacao' }),
     })
-    // Reload
     const sols = await fetch(`/api/contratos/${id}/fat-direto/solicitacoes`).then(r => r.json())
     setSolicitacoes(Array.isArray(sols) ? sols : [])
+  }
+
+  function openReport(kpi: KpiKey) {
+    if (activeKpi === kpi) {
+      setActiveKpi(null)
+      return
+    }
+    setActiveKpi(kpi)
+    // Pre-set status filter based on which card was clicked
+    const meta = KPI_META[kpi]
+    setFilterStatus(meta.statusFilter ?? '_todos')
+    setFilterFornecedor('_todos')
+    setFilterMes('_todos')
   }
 
   const totalAprovado = solicitacoes.filter(s => s.status === 'aprovado').reduce((sum, s) => sum + s.valor_total, 0)
@@ -72,6 +100,50 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
   const teto = resumo?.valor_material_direto ?? 0
   const saldoDisponivel = teto - totalAprovado
   const pctUsado = teto > 0 ? Math.round((totalAprovado / teto) * 100) : 0
+
+  // Unique fornecedores for dropdown
+  const fornecedores = useMemo(() => {
+    const set = new Set<string>()
+    solicitacoes.forEach(s => { if (s.fornecedor_razao_social) set.add(s.fornecedor_razao_social) })
+    return Array.from(set).sort()
+  }, [solicitacoes])
+
+  // Unique months for dropdown
+  const meses = useMemo(() => {
+    const set = new Set<string>()
+    solicitacoes.forEach(s => {
+      if (s.data_solicitacao) {
+        const d = new Date(s.data_solicitacao)
+        set.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+      }
+    })
+    return Array.from(set).sort().reverse()
+  }, [solicitacoes])
+
+  // Base set for the active KPI card
+  const baseSet = useMemo(() => {
+    if (!activeKpi) return solicitacoes
+    if (activeKpi === 'nf') return solicitacoes.filter(s => (s.notas_fiscais || []).some(n => n.status !== 'rejeitada'))
+    const meta = KPI_META[activeKpi]
+    if (meta.statusFilter) return solicitacoes.filter(s => s.status === meta.statusFilter)
+    return solicitacoes
+  }, [activeKpi, solicitacoes])
+
+  // Apply dropdown filters on top
+  const reportRows = useMemo(() => {
+    return baseSet.filter(s => {
+      if (filterStatus !== '_todos' && s.status !== filterStatus) return false
+      if (filterFornecedor !== '_todos' && s.fornecedor_razao_social !== filterFornecedor) return false
+      if (filterMes !== '_todos') {
+        const d = new Date(s.data_solicitacao)
+        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+        if (ym !== filterMes) return false
+      }
+      return true
+    })
+  }, [baseSet, filterStatus, filterFornecedor, filterMes])
+
+  const reportTotal = reportRows.reduce((sum, s) => sum + s.valor_total, 0)
 
   return (
     <div className="flex flex-col min-h-screen bg-[var(--background)]">
@@ -127,29 +199,207 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
           </Card>
         )}
 
-        {/* KPI Cards */}
+        {/* KPI Cards — clickable */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { label: 'Total Solicitações', value: solicitacoes.length, type: 'count', color: '#3B82F6', bg: 'rgba(59,130,246,0.10)', border: 'rgba(59,130,246,0.20)', Icon: ClipboardList },
-            { label: 'Aguardando Aprovação', value: totalPendente, type: 'currency', color: 'var(--amber)', bg: 'rgba(245,158,11,0.10)', border: 'rgba(245,158,11,0.20)', Icon: Timer },
-            { label: 'Total Aprovado', value: totalAprovado, type: 'currency', color: 'var(--green)', bg: 'rgba(16,185,129,0.10)', border: 'rgba(16,185,129,0.20)', Icon: BadgeCheck },
-            { label: 'NFs Recebidas', value: totalNFs, type: 'currency', color: '#06B6D4', bg: 'rgba(6,182,212,0.10)', border: 'rgba(6,182,212,0.20)', Icon: Receipt },
-          ].map(kpi => (
-            <Card key={kpi.label}>
-              <CardContent className="pt-4 pb-4">
-                <div className="flex items-start justify-between mb-2">
-                  <p className="text-xs text-[var(--text-3)] uppercase tracking-wider font-semibold">{kpi.label}</p>
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: kpi.bg, border: `1px solid ${kpi.border}` }}>
-                    <kpi.Icon className="w-4 h-4" style={{ color: kpi.color }} />
+          {([
+            { key: 'total'    as KpiKey, label: 'Total Solicitações',   value: solicitacoes.length, type: 'count',    color: '#3B82F6',         bg: 'rgba(59,130,246,0.10)',  border: 'rgba(59,130,246,0.20)',  Icon: ClipboardList },
+            { key: 'pendente' as KpiKey, label: 'Aguardando Aprovação', value: totalPendente,       type: 'currency', color: 'var(--amber)',     bg: 'rgba(245,158,11,0.10)', border: 'rgba(245,158,11,0.20)', Icon: Timer },
+            { key: 'aprovado' as KpiKey, label: 'Total Aprovado',        value: totalAprovado,       type: 'currency', color: 'var(--green)',     bg: 'rgba(16,185,129,0.10)', border: 'rgba(16,185,129,0.20)', Icon: BadgeCheck },
+            { key: 'nf'       as KpiKey, label: 'NFs Recebidas',         value: totalNFs,            type: 'currency', color: '#06B6D4',          bg: 'rgba(6,182,212,0.10)',  border: 'rgba(6,182,212,0.20)',  Icon: Receipt },
+          ] as const).map(kpi => {
+            const isActive = activeKpi === kpi.key
+            return (
+              <button
+                key={kpi.key}
+                onClick={() => openReport(kpi.key)}
+                className="text-left rounded-xl transition-all duration-200 focus:outline-none"
+                style={{
+                  background: isActive ? `${kpi.bg.replace('0.10', '0.18')}` : 'var(--surface-1)',
+                  border: `2px solid ${isActive ? kpi.color : 'var(--border)'}`,
+                  boxShadow: isActive ? `0 0 0 2px ${kpi.color}22` : undefined,
+                  transform: isActive ? 'translateY(-1px)' : undefined,
+                }}
+              >
+                <div className="p-4">
+                  <div className="flex items-start justify-between mb-2">
+                    <p className="text-xs text-[var(--text-3)] uppercase tracking-wider font-semibold leading-tight">{kpi.label}</p>
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ml-2" style={{ background: kpi.bg, border: `1px solid ${kpi.border}` }}>
+                      <kpi.Icon className="w-4 h-4" style={{ color: kpi.color }} />
+                    </div>
                   </div>
+                  <p className="text-2xl font-bold" style={{ color: kpi.color }}>
+                    {kpi.type === 'currency' ? formatCurrency(kpi.value as number) : kpi.value}
+                  </p>
+                  <p className="text-[10px] mt-1.5 font-medium" style={{ color: isActive ? kpi.color : 'var(--text-3)' }}>
+                    {isActive ? 'Clique para fechar ↑' : 'Clique para ver detalhes →'}
+                  </p>
                 </div>
-                <p className="text-2xl font-bold" style={{ color: kpi.color }}>
-                  {kpi.type === 'currency' ? formatCurrency(kpi.value as number) : kpi.value}
-                </p>
-              </CardContent>
-            </Card>
-          ))}
+              </button>
+            )
+          })}
         </div>
+
+        {/* Inline Report Panel */}
+        {activeKpi && (
+          <Card style={{ background: 'var(--surface-1)', border: `1px solid ${KPI_META[activeKpi].color}40` }}>
+            <CardHeader className="pb-3 border-b" style={{ borderColor: 'var(--border)' }}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <BarChart2 className="w-4 h-4" style={{ color: KPI_META[activeKpi].color }} />
+                  <CardTitle className="text-base" style={{ color: 'var(--text-1)' }}>
+                    Relatório — {KPI_META[activeKpi].label}
+                  </CardTitle>
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: `${KPI_META[activeKpi].color}20`, color: KPI_META[activeKpi].color }}>
+                    {reportRows.length} registros
+                  </span>
+                </div>
+                <button
+                  onClick={() => setActiveKpi(null)}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                  style={{ color: 'var(--text-3)', background: 'var(--surface-3)' }}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Filters */}
+              <div className="flex flex-wrap gap-3 mt-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] text-[var(--text-3)] font-medium">Status</span>
+                  <Select value={filterStatus} onValueChange={setFilterStatus}>
+                    <SelectTrigger className="h-7 text-xs w-44 rounded-lg" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-1)' }}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_todos">Todos</SelectItem>
+                      <SelectItem value="rascunho">Rascunho</SelectItem>
+                      <SelectItem value="aguardando_aprovacao">Aguard. Aprovação</SelectItem>
+                      <SelectItem value="aprovado">Aprovado</SelectItem>
+                      <SelectItem value="rejeitado">Rejeitado</SelectItem>
+                      <SelectItem value="cancelado">Cancelado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {fornecedores.length > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-[var(--text-3)] font-medium">Fornecedor</span>
+                    <Select value={filterFornecedor} onValueChange={setFilterFornecedor}>
+                      <SelectTrigger className="h-7 text-xs w-48 rounded-lg" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-1)' }}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_todos">Todos</SelectItem>
+                        {fornecedores.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {meses.length > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-[var(--text-3)] font-medium">Período</span>
+                    <Select value={filterMes} onValueChange={setFilterMes}>
+                      <SelectTrigger className="h-7 text-xs w-36 rounded-lg" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-1)' }}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_todos">Todos</SelectItem>
+                        {meses.map(m => {
+                          const [y, mo] = m.split('-')
+                          const label = new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+                          return <SelectItem key={m} value={m}>{label}</SelectItem>
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {(filterStatus !== '_todos' || filterFornecedor !== '_todos' || filterMes !== '_todos') && (
+                  <button
+                    onClick={() => { setFilterStatus(KPI_META[activeKpi].statusFilter ?? '_todos'); setFilterFornecedor('_todos'); setFilterMes('_todos') }}
+                    className="h-7 px-2 rounded-lg text-[11px] font-medium flex items-center gap-1 transition-colors"
+                    style={{ background: 'rgba(239,68,68,0.12)', color: '#EF4444' }}
+                  >
+                    <X className="w-3 h-3" /> Limpar filtros
+                  </button>
+                )}
+              </div>
+            </CardHeader>
+
+            <CardContent className="p-0">
+              {reportRows.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 text-[var(--text-3)]">
+                  <Package className="w-8 h-8 mb-2 opacity-30" />
+                  <p className="text-sm">Nenhum registro encontrado</p>
+                </div>
+              ) : (
+                <>
+                  {/* Table header */}
+                  <div className="grid grid-cols-[2fr_1fr_2fr_1fr_1.5fr_1.2fr] gap-3 px-5 py-2 text-[10px] font-bold uppercase tracking-wider text-[var(--text-3)] border-b" style={{ borderColor: 'var(--border)' }}>
+                    <span>Solicitação</span>
+                    <span>Data</span>
+                    <span>Fornecedor</span>
+                    <span className="text-center">Itens</span>
+                    <span className="text-right">Valor Total</span>
+                    <span className="text-center">Status</span>
+                  </div>
+
+                  <div className="divide-y divide-[var(--border)]">
+                    {reportRows.map(sol => {
+                      const cfg = STATUS_CONFIG[sol.status] ?? STATUS_CONFIG.rascunho
+                      const nfTotal = (sol.notas_fiscais || []).filter(n => n.status !== 'rejeitada').reduce((s, n) => s + n.valor, 0)
+                      return (
+                        <Link key={sol.id} href={`/contratos/${id}/fat-direto/${sol.id}`} className="block">
+                          <div className="grid grid-cols-[2fr_1fr_2fr_1fr_1.5fr_1.2fr] gap-3 px-5 py-3 items-center hover:bg-[var(--surface-2)] transition-colors text-sm">
+                            <span className="font-semibold" style={{ color: 'var(--text-1)' }}>
+                              SOL-{String(sol.numero).padStart(3, '0')}
+                            </span>
+                            <span className="text-xs text-[var(--text-3)]">{formatDate(sol.data_solicitacao)}</span>
+                            <div className="min-w-0">
+                              <span className="truncate block text-xs" style={{ color: 'var(--text-2)' }}>
+                                {sol.fornecedor_razao_social || sol.solicitante?.nome || '—'}
+                              </span>
+                              {sol.fornecedor_cnpj && (
+                                <span className="text-[10px] text-[var(--text-3)]">{sol.fornecedor_cnpj}</span>
+                              )}
+                            </div>
+                            <span className="text-center text-xs text-[var(--text-3)]">
+                              {sol.itens?.length ?? 0}
+                            </span>
+                            <div className="text-right">
+                              <p className="font-bold text-sm" style={{ color: 'var(--text-1)' }}>{formatCurrency(sol.valor_total)}</p>
+                              {nfTotal > 0 && (
+                                <p className="text-[10px] text-[#06B6D4]">NF: {formatCurrency(nfTotal)}</p>
+                              )}
+                            </div>
+                            <div className="flex justify-center">
+                              <span
+                                className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide flex items-center gap-1 whitespace-nowrap"
+                                style={{ background: `${cfg.color}20`, color: cfg.color }}
+                              >
+                                {cfg.icon} {cfg.label}
+                              </span>
+                            </div>
+                          </div>
+                        </Link>
+                      )
+                    })}
+                  </div>
+
+                  {/* Footer total */}
+                  <div className="flex justify-between items-center px-5 py-3 border-t" style={{ borderColor: 'var(--border)', background: 'var(--surface-2)' }}>
+                    <span className="text-xs text-[var(--text-3)] font-medium">{reportRows.length} solicitação(ões)</span>
+                    <div className="flex items-center gap-4">
+                      <span className="text-xs text-[var(--text-3)]">Total:</span>
+                      <span className="text-base font-bold" style={{ color: KPI_META[activeKpi].color }}>{formatCurrency(reportTotal)}</span>
+                    </div>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Solicitations list */}
         <Card style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
