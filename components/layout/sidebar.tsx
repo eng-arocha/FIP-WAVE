@@ -197,7 +197,7 @@ export function Sidebar({
               onDoubleClick={() => window.open('https://www.wavebeiramar.com.br', '_blank')}
               title="Duplo clique para acessar wavebeiramar.com.br"
             >
-              <Image src="/logos/wave-logo.png" alt="WAVE Beira-Mar" width={110} height={62} priority className="object-contain" style={{ width: 'auto', height: 'auto', maxWidth: 110, maxHeight: 48 }} />
+              <Image src="/logos/Wave.png" alt="WAVE Beira-Mar" width={110} height={62} priority className="object-contain" style={{ width: 'auto', height: 'auto', maxWidth: 110, maxHeight: 48 }} />
             </div>
             <button
               onClick={(e) => { e.stopPropagation(); onTogglePin() }}
