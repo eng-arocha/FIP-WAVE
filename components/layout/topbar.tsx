@@ -46,19 +46,6 @@ export function Topbar({ title, subtitle, actions }: TopbarProps) {
       <div className="flex items-center gap-1.5">
         {actions && <div className="flex items-center gap-2 mr-1">{actions}</div>}
 
-        {/* Search */}
-        <button
-          onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}
-          className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs transition-all border"
-          style={{ background: 'var(--surface-3)', borderColor: 'var(--border)', color: 'var(--text-3)' }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-hover)'; e.currentTarget.style.color = 'var(--text-2)' }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-3)' }}
-        >
-          <Search className="w-3.5 h-3.5" strokeWidth={1.5} />
-          <span>Buscar</span>
-          <kbd className="ml-1 px-1.5 py-0.5 text-[10px] rounded border" style={{ background: 'var(--surface-2)', borderColor: 'var(--border)', color: 'var(--text-3)' }}>⌘K</kbd>
-        </button>
-
         {/* Theme toggle */}
         <button
           onClick={toggle}

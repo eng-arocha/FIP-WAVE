@@ -103,9 +103,6 @@ export function Sidebar({
 
   // Contract contextual items (shown when inside /contratos/[id])
   const contratoSubItems = contratoId ? [
-    { label: 'Cronograma',    href: `/contratos/${contratoId}/cronograma`, icon: TrendingUp,   colorKey: 'cronograma' },
-    { label: 'Fat. Direto',   href: `/contratos/${contratoId}/fat-direto`, icon: Receipt,      colorKey: 'fat-direto' },
-    { label: 'Med. Serviços', href: `/contratos/${contratoId}/medicoes`,   icon: ClipboardList, colorKey: 'medicoes' },
     { label: 'Documentos',    href: `/contratos/${contratoId}/documentos`, icon: FileArchive,  colorKey: 'documentos' },
   ] : []
 
