@@ -133,12 +133,10 @@ export function Sidebar({
           showText ? (indent ? 'px-2 pl-3' : 'px-2') : 'px-0 justify-center',
         )}
         style={isActive && showText ? {
-          background: isDark
-            ? `linear-gradient(135deg, ${colors?.from}18, ${colors?.to}0c)`
-            : `linear-gradient(135deg, ${colors?.from}14, ${colors?.to}08)`,
+          background: 'rgba(0,0,0,0.04)',
         } : {}}
         onMouseEnter={e => {
-          if (!isActive) e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'
+          if (!isActive) e.currentTarget.style.background = 'rgba(0,0,0,0.03)'
         }}
         onMouseLeave={e => {
           if (!isActive) e.currentTarget.style.background = ''
@@ -181,19 +179,15 @@ export function Sidebar({
 
   const renderContent = (showText: boolean) => (
     <>
-      {/* Top gradient accent */}
-      <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent-glow), transparent)' }} />
-
       {/* Header: logo + pin */}
       <div
-        className={cn('border-b flex items-center transition-all duration-300', showText ? 'px-4 py-4 justify-between' : 'px-0 py-4 justify-center')}
-        style={{ borderColor: 'var(--sidebar-border)' }}
+        className={cn('flex items-center transition-all duration-300', showText ? 'px-4 py-4 justify-between' : 'px-0 py-4 justify-center')}
+        style={{ borderBottom: '1px solid rgba(0,0,0,0.06)' }}
       >
         {showText ? (
           <>
             <div
-              className="rounded-xl px-3 py-2 flex items-center justify-center cursor-pointer select-none"
-              style={{ background: 'white', border: '1px solid rgba(59,130,246,0.15)' }}
+              className="flex items-center justify-center cursor-pointer select-none"
               onDoubleClick={() => window.open('https://www.wavebeiramar.com.br', '_blank')}
               title="Duplo clique para acessar wavebeiramar.com.br"
             >
@@ -203,15 +197,15 @@ export function Sidebar({
               onClick={(e) => { e.stopPropagation(); onTogglePin() }}
               title={pinned ? 'Desafixar sidebar' : 'Fixar sidebar'}
               className="p-1.5 rounded-lg transition-all hidden lg:flex items-center"
-              style={{ color: 'var(--text-3)', background: 'var(--surface-3)' }}
-              onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-1)' }}
-              onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-3)' }}
+              style={{ color: '#86868B' }}
+              onMouseEnter={e => { e.currentTarget.style.color = '#1D1D1F'; e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
+              onMouseLeave={e => { e.currentTarget.style.color = '#86868B'; e.currentTarget.style.background = '' }}
             >
               {pinned ? <PinOff className="w-3.5 h-3.5" strokeWidth={1.5} /> : <Pin className="w-3.5 h-3.5" strokeWidth={1.5} />}
             </button>
           </>
         ) : (
-          <div className="apple-icon rounded-[10px]" style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-glow))' }}>
+          <div className="apple-icon rounded-[10px]" style={{ background: 'linear-gradient(135deg, #0071E3, #42A5F5)' }}>
             <span className="text-xs font-bold text-white">W</span>
           </div>
         )}
@@ -326,21 +320,21 @@ export function Sidebar({
       </nav>
 
       {/* Footer */}
-      <div className={cn('border-t pt-3 pb-4 space-y-0.5', showText ? 'px-3' : 'px-2')} style={{ borderColor: 'var(--sidebar-border)' }}>
+      <div className={cn('pt-3 pb-4 space-y-0.5', showText ? 'px-3' : 'px-2')} style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }}>
         {nomeAtual && (
           showText ? (
-            <div className="flex items-center gap-2.5 px-3 py-2 mb-1 rounded-xl" style={{ background: 'var(--surface-3)', border: '1px solid var(--border)' }}>
-              <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-[11px]" style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-glow))', color: 'white' }}>
+            <div className="flex items-center gap-2.5 px-3 py-2 mb-1 rounded-xl" style={{ background: '#F5F5F7' }}>
+              <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-[11px]" style={{ background: 'linear-gradient(135deg, #0071E3, #42A5F5)', color: 'white' }}>
                 {nomeAtual.charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-medium truncate" style={{ color: 'var(--text-1)' }}>{nomeAtual}</p>
-                <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>{PERFIL_LABELS[perfilAtual]}</p>
+                <p className="text-xs font-medium truncate" style={{ color: '#1D1D1F' }}>{nomeAtual}</p>
+                <p className="text-[10px]" style={{ color: '#86868B' }}>{PERFIL_LABELS[perfilAtual]}</p>
               </div>
             </div>
           ) : (
             <div className="flex justify-center mb-1">
-              <div className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-[11px] text-white" title={nomeAtual} style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-glow))' }}>
+              <div className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-[11px] text-white" title={nomeAtual} style={{ background: 'linear-gradient(135deg, #0071E3, #42A5F5)' }}>
                 {nomeAtual.charAt(0).toUpperCase()}
               </div>
             </div>
@@ -348,8 +342,8 @@ export function Sidebar({
         )}
 
         <div className={cn('flex items-center gap-2 px-3 py-1.5', !showText && 'justify-center px-0')}>
-          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: 'var(--green)', animation: 'pulse-glow 2s ease-in-out infinite' }} title={!showText ? 'Sistema Online' : undefined} />
-          {showText && <span className="text-xs" style={{ color: 'var(--text-3)' }}>Sistema Online</span>}
+          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: '#28CD41' }} title={!showText ? 'Sistema Online' : undefined} />
+          {showText && <span className="text-[11px]" style={{ color: '#86868B' }}>Online</span>}
         </div>
 
         <Link
@@ -357,12 +351,12 @@ export function Sidebar({
           onClick={() => setMobileOpen(false)}
           title={!showText ? 'Sair do Sistema' : undefined}
           className={cn('flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-all duration-150 group', !showText && 'justify-center px-0')}
-          style={{ color: 'var(--text-3)' }}
-          onMouseEnter={e => { e.currentTarget.style.color = 'var(--red)'; e.currentTarget.style.background = isDark ? 'rgba(239,68,68,0.08)' : 'rgba(217,48,37,0.06)' }}
-          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-3)'; e.currentTarget.style.background = '' }}
+          style={{ color: '#86868B' }}
+          onMouseEnter={e => { e.currentTarget.style.color = '#FF3B30'; e.currentTarget.style.background = 'rgba(255,59,48,0.06)' }}
+          onMouseLeave={e => { e.currentTarget.style.color = '#86868B'; e.currentTarget.style.background = '' }}
         >
-          <span className="apple-icon flex-shrink-0" style={{ background: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(217,48,37,0.08)' }}>
-            <LogOut className="w-3.5 h-3.5" strokeWidth={1.5} style={{ color: 'var(--red)' }} />
+          <span className="apple-icon flex-shrink-0" style={{ background: 'rgba(255,59,48,0.08)' }}>
+            <LogOut className="w-3.5 h-3.5" strokeWidth={1.5} style={{ color: '#FF3B30' }} />
           </span>
           {showText && <span>Sair do Sistema</span>}
         </Link>
@@ -385,7 +379,7 @@ export function Sidebar({
 
       <aside
         className={cn('fixed inset-y-0 left-0 z-50 w-64 flex flex-col lg:hidden overflow-hidden transition-transform duration-300 ease-in-out', mobileOpen ? 'translate-x-0' : '-translate-x-full')}
-        style={{ background: 'var(--sidebar-bg)', borderRight: '1px solid var(--sidebar-border)' }}
+        style={{ background: '#FFFFFF', borderRight: '1px solid rgba(0,0,0,0.06)' }}
       >
         <button onClick={() => setMobileOpen(false)} className="absolute top-4 right-4 p-1 rounded-lg transition-colors" style={{ color: 'var(--text-3)' }}>
           <X className="w-4 h-4" strokeWidth={1.5} />
@@ -395,7 +389,7 @@ export function Sidebar({
 
       <aside
         className={cn('fixed inset-y-0 left-0 z-50 flex-col overflow-hidden hidden lg:flex', 'transition-all duration-300 ease-in-out', expanded ? 'w-64' : 'w-14', !pinned && expanded && 'shadow-2xl')}
-        style={{ background: 'var(--sidebar-bg)', borderRight: '1px solid var(--sidebar-border)' }}
+        style={{ background: '#FFFFFF', borderRight: '1px solid rgba(0,0,0,0.06)' }}
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
       >

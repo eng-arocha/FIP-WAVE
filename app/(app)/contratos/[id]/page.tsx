@@ -316,10 +316,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {/* KPI: Valor Total */}
           <Link href={`/contratos/${id}/cronograma`}>
-            <Card className="cursor-pointer group transition-all" style={{ borderColor: 'rgba(59,130,246,0.35)', background: 'linear-gradient(135deg, #EFF6FF, #DBEAFE)' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(59,130,246,0.6)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(59,130,246,0.15)' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(59,130,246,0.35)'; e.currentTarget.style.boxShadow = 'none' }}
-            >
+            <Card className="cursor-pointer group transition-all theme-card">
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-start justify-between mb-3">
                   <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: 'var(--text-3)' }}>Valor Total</p>
@@ -338,10 +335,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
 
           {/* KPI: Medido */}
           <Link href={`/contratos/${id}/medicoes`}>
-            <Card className="cursor-pointer group transition-all" style={{ borderColor: 'rgba(16,185,129,0.35)', background: 'linear-gradient(135deg, #F0FDF4, #DCFCE7)' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(16,185,129,0.6)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(16,185,129,0.15)' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(16,185,129,0.35)'; e.currentTarget.style.boxShadow = 'none' }}
-            >
+            <Card className="cursor-pointer group transition-all theme-card">
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-start justify-between mb-3">
                   <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: 'var(--text-3)' }}>Medido</p>
@@ -365,10 +359,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
 
           {/* KPI: Saldo */}
           <Link href={`/contratos/${id}/cronograma`}>
-            <Card className="cursor-pointer group transition-all" style={{ borderColor: 'rgba(6,182,212,0.35)', background: 'linear-gradient(135deg, #ECFEFF, #CFFAFE)' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(6,182,212,0.6)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(6,182,212,0.15)' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(6,182,212,0.35)'; e.currentTarget.style.boxShadow = 'none' }}
-            >
+            <Card className="cursor-pointer group transition-all theme-card">
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-start justify-between mb-3">
                   <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: 'var(--text-3)' }}>Saldo</p>
@@ -384,11 +375,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
 
           {/* KPI: Medições */}
           <Link href={`/contratos/${id}/medicoes`}>
-            <Card className="cursor-pointer group transition-all"
-              style={{ borderColor: qtdPendentes > 0 ? 'rgba(245,158,11,0.4)' : 'rgba(139,92,246,0.35)', background: qtdPendentes > 0 ? 'linear-gradient(135deg, #FFFBEB, #FEF3C7)' : 'linear-gradient(135deg, #F5F3FF, #EDE9FE)' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = qtdPendentes > 0 ? 'rgba(245,158,11,0.6)' : 'rgba(139,92,246,0.6)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.08)' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = qtdPendentes > 0 ? 'rgba(245,158,11,0.4)' : 'rgba(139,92,246,0.35)'; e.currentTarget.style.boxShadow = 'none' }}
-            >
+            <Card className="cursor-pointer group transition-all theme-card">
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-start justify-between mb-3">
                   <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: 'var(--text-3)' }}>Medições</p>

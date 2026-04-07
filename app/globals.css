@@ -1,53 +1,29 @@
 @import "tailwindcss";
 
 /* ═══════════════════════════════════════════════════
-   DESIGN TOKENS — Light mode (default)
+   DESIGN TOKENS — Light mode (Apple-inspired)
+   Premium, clean, neutral — designed for clarity
    ═══════════════════════════════════════════════════ */
 :root {
-  --background:    #EBF3FF;   /* light blue system background */
-  --surface-1:     #D6E8FF;
-  --surface-2:     #F0F7FF;
-  --surface-3:     #E0EEFF;
-  --border:        #B3CEED;
-  --border-hover:  #90B4E8;
-  --accent:        #007AFF;   /* iOS blue — crisp */
-  --accent-glow:   #5AC8FA;
-  --green:         #34C759;   /* iOS green */
-  --amber:         #FF9500;   /* iOS orange */
-  --red:           #FF3B30;   /* iOS red */
-  --text-1:        #000000;   /* pure black — max contrast */
-  --text-2:        #1C1C1E;   /* near-black secondary */
-  --text-3:        #3A3A3C;   /* dark gray — WCAG AA+ */
-  --sidebar-bg:    #EBF3FF;
-  --sidebar-border:#C5DEFF;
-  --topbar-bg:     rgba(235,243,255,0.92);
+  --background:    #F5F5F7;   /* Apple signature gray */
+  --surface-1:     #EFEFF1;   /* inset / recessed areas */
+  --surface-2:     #FFFFFF;   /* cards — pure white with shadow */
+  --surface-3:     #F0F0F2;   /* subtle bg for badges, tags */
+  --border:        #D1D1D6;   /* iOS system border */
+  --border-hover:  #B8B8BF;
+  --accent:        #0071E3;   /* Apple blue */
+  --accent-glow:   #42A5F5;
+  --green:         #28CD41;   /* Apple green */
+  --amber:         #FF9F0A;   /* Apple orange */
+  --red:           #FF3B30;   /* Apple red */
+  --text-1:        #1D1D1F;   /* near-black */
+  --text-2:        #424245;   /* secondary */
+  --text-3:        #86868B;   /* tertiary / captions */
+  --sidebar-bg:    #FFFFFF;
+  --sidebar-border:#E8E8ED;
+  --topbar-bg:     rgba(245,245,247,0.72);
   --input-bg:      #FFFFFF;
-  --badge-bg:      #D6E8FF;
-}
-
-/* ═══════════════════════════════════════════════════
-   DESIGN TOKENS — Dark mode
-   ═══════════════════════════════════════════════════ */
-.dark {
-  --background:    #080C14;
-  --surface-1:     #0D1421;
-  --surface-2:     #111827;
-  --surface-3:     #1a2236;
-  --border:        #1E293B;
-  --border-hover:  #2d3f5c;
-  --accent:        #3B82F6;
-  --accent-glow:   #06B6D4;
-  --green:         #10B981;
-  --amber:         #F59E0B;
-  --red:           #EF4444;
-  --text-1:        #F1F5F9;
-  --text-2:        #94A3B8;
-  --text-3:        #475569;
-  --sidebar-bg:    #080C14;
-  --sidebar-border:#1E293B;
-  --topbar-bg:     rgba(10,15,26,0.90);
-  --input-bg:      #111827;
-  --badge-bg:      #1a2236;
+  --badge-bg:      #F0F0F2;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -81,95 +57,88 @@
 body {
   background: var(--background);
   color: var(--text-1);
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Inter', 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  transition: background 0.25s ease, color 0.25s ease;
 }
 
 /* ═══════════════════════════════════════════════════
-   Scrollbar
+   Scrollbar — minimal
    ═══════════════════════════════════════════════════ */
-::-webkit-scrollbar          { width: 5px; height: 5px; }
-::-webkit-scrollbar-track    { background: var(--surface-1); }
-::-webkit-scrollbar-thumb    { background: var(--border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+::-webkit-scrollbar          { width: 6px; height: 6px; }
+::-webkit-scrollbar-track    { background: transparent; }
+::-webkit-scrollbar-thumb    { background: rgba(0,0,0,0.15); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
 
 /* ═══════════════════════════════════════════════════
-   Glass card
+   Glass — frosted glass effect
    ═══════════════════════════════════════════════════ */
 .glass {
-  background: var(--surface-2);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.72);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border: 1px solid rgba(0,0,0,0.06);
   border-radius: 0.75rem;
 }
-
-/* ═══════════════════════════════════════════════════
-   Glow helpers
-   ═══════════════════════════════════════════════════ */
-.glow-blue  { box-shadow: 0 0 18px rgba(59,130,246,0.35), 0 0 40px rgba(59,130,246,0.12); }
-.glow-green { box-shadow: 0 0 18px rgba(16,185,129,0.35), 0 0 40px rgba(16,185,129,0.12); }
 
 /* ═══════════════════════════════════════════════════
    Gradient text
    ═══════════════════════════════════════════════════ */
 .gradient-text {
-  background: linear-gradient(90deg, var(--accent), var(--accent-glow));
+  background: linear-gradient(135deg, var(--accent), var(--accent-glow));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
 /* ═══════════════════════════════════════════════════
-   Theme-aware utility classes
+   Cards — Apple-style elevated surfaces
    ═══════════════════════════════════════════════════ */
+.theme-card {
+  background: #FFFFFF;
+  border: 1px solid rgba(0,0,0,0.06);
+  border-radius: 12px;
+  box-shadow:
+    0 1px 1px rgba(0,0,0,0.03),
+    0 2px 6px rgba(0,0,0,0.04),
+    0 4px 12px rgba(0,0,0,0.02);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.theme-card:hover {
+  box-shadow:
+    0 2px 4px rgba(0,0,0,0.04),
+    0 4px 16px rgba(0,0,0,0.06),
+    0 8px 24px rgba(0,0,0,0.04);
+  transform: translateY(-1px);
+}
+
 .theme-page {
   background: var(--background);
   color: var(--text-1);
   min-height: 100%;
 }
 
-.theme-card {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.theme-card:hover {
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
-}
-
 .theme-surface {
   background: var(--surface-2);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(0,0,0,0.06);
 }
 
 .theme-input {
   background: var(--input-bg);
   border: 1px solid var(--border);
   color: var(--text-1);
-  border-radius: 0.75rem;
+  border-radius: 10px;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .theme-input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+  box-shadow: 0 0 0 4px rgba(0,113,227,0.12);
   outline: none;
 }
 
 .theme-input::placeholder { color: var(--text-3); }
-
-/* Light mode card shadows (Apple style) */
-:root .theme-card {
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
-}
-:root .theme-card:hover {
-  box-shadow: 0 4px 16px rgba(0,0,0,0.10), 0 2px 4px rgba(0,0,0,0.06);
-}
 
 /* ═══════════════════════════════════════════════════
    Apple-style icon container
@@ -185,11 +154,35 @@ body {
 }
 
 /* ═══════════════════════════════════════════════════
+   Tabs — clean active state
+   ═══════════════════════════════════════════════════ */
+[data-state=active] {
+  background: #FFFFFF;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  color: var(--accent) !important;
+  font-weight: 600;
+}
+
+/* ═══════════════════════════════════════════════════
+   KPI icon containers
+   ═══════════════════════════════════════════════════ */
+.kpi-icon-blue  { background: #EFF6FF; border-color: #BFDBFE; }
+.kpi-icon-green { background: #F0FDF4; border-color: #A7F3D0; }
+.kpi-icon-slate { background: #F8FAFC; border-color: #E2E8F0; }
+.kpi-icon-amber { background: #FFFBEB; border-color: #FDE68A; }
+
+/* ═══════════════════════════════════════════════════
+   Glow helpers
+   ═══════════════════════════════════════════════════ */
+.glow-blue  { box-shadow: 0 0 20px rgba(0,113,227,0.20); }
+.glow-green { box-shadow: 0 0 20px rgba(40,205,65,0.20); }
+
+/* ═══════════════════════════════════════════════════
    Keyframes
    ═══════════════════════════════════════════════════ */
 @keyframes pulse-glow {
-  0%, 100% { opacity: 1;   box-shadow: 0 0 6px rgba(16,185,129,0.8); }
-  50%       { opacity: 0.6; box-shadow: 0 0 14px rgba(16,185,129,0.4); }
+  0%, 100% { opacity: 1;   box-shadow: 0 0 6px rgba(40,205,65,0.6); }
+  50%       { opacity: 0.6; box-shadow: 0 0 14px rgba(40,205,65,0.3); }
 }
 
 @keyframes count-up {
@@ -201,36 +194,3 @@ body {
   0%   { background-position: -200% center; }
   100% { background-position:  200% center; }
 }
-
-@keyframes theme-fade {
-  from { opacity: 0.7; }
-  to   { opacity: 1; }
-}
-
-.theme-transition * {
-  transition: background-color 0.25s ease, border-color 0.25s ease, color 0.2s ease !important;
-}
-
-/* ═══════════════════════════════════════════════════
-   Tabs — active state theming (dark vs light)
-   ═══════════════════════════════════════════════════ */
-.dark [data-state=active] {
-  background: linear-gradient(to bottom, rgba(30,58,95,0.6), rgba(26,34,54,1));
-  box-shadow: 0 1px 8px rgba(59,130,246,0.15), inset 0 1px 0 rgba(59,130,246,0.20);
-  color: #fff !important;
-}
-
-:root:not(.dark) [data-state=active] {
-  background: #FFFFFF;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.06);
-  color: var(--accent) !important;
-  font-weight: 600;
-}
-
-/* ═══════════════════════════════════════════════════
-   KPI card icon containers — stronger in light mode
-   ═══════════════════════════════════════════════════ */
-:root:not(.dark) .kpi-icon-blue  { background: #EBF5FF; border-color: #BFDBFE; }
-:root:not(.dark) .kpi-icon-green { background: #ECFDF5; border-color: #A7F3D0; }
-:root:not(.dark) .kpi-icon-slate { background: #F1F5F9; border-color: #CBD5E1; }
-:root:not(.dark) .kpi-icon-amber { background: #FFFBEB; border-color: #FDE68A; }

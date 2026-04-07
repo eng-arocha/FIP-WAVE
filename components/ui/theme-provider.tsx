@@ -1,62 +1,31 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, useCallback } from 'react'
-
-type Theme = 'dark' | 'light'
+import { createContext, useContext, useEffect } from 'react'
 
 interface ThemeContextValue {
-  theme: Theme
+  theme: 'light'
   toggle: () => void
-  isDark: boolean
+  isDark: false
 }
 
 const ThemeContext = createContext<ThemeContextValue>({
-  theme: 'dark',
+  theme: 'light',
   toggle: () => {},
-  isDark: true,
+  isDark: false,
 })
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>('dark')
-
   useEffect(() => {
-    // Read from localStorage; fallback to system preference; fallback dark
-    const stored = localStorage.getItem('fip-theme') as Theme | null
-    let resolved: Theme = 'dark'
-    if (stored === 'light' || stored === 'dark') {
-      resolved = stored
-    } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
-      resolved = 'light'
-    }
-    setTheme(resolved)
-    applyTheme(resolved)
-  }, [])
-
-  const toggle = useCallback(() => {
-    setTheme(prev => {
-      const next: Theme = prev === 'dark' ? 'light' : 'dark'
-      localStorage.setItem('fip-theme', next)
-      applyTheme(next)
-      return next
-    })
+    // Force light mode
+    document.documentElement.classList.remove('dark')
+    document.documentElement.classList.add('light')
   }, [])
 
   return (
-    <ThemeContext.Provider value={{ theme, toggle, isDark: theme === 'dark' }}>
+    <ThemeContext.Provider value={{ theme: 'light', toggle: () => {}, isDark: false }}>
       {children}
     </ThemeContext.Provider>
   )
-}
-
-function applyTheme(theme: Theme) {
-  const root = document.documentElement
-  if (theme === 'dark') {
-    root.classList.add('dark')
-    root.classList.remove('light')
-  } else {
-    root.classList.remove('dark')
-    root.classList.add('light')
-  }
 }
 
 export const useTheme = () => useContext(ThemeContext)

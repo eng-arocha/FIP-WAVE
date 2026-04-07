@@ -1,9 +1,8 @@
 'use client'
 
 import React from 'react'
-import { Bell, User, Search, Menu, Moon, Sun } from 'lucide-react'
+import { Bell, User, Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { useTheme } from '@/components/ui/theme-provider'
 
 interface TopbarProps {
   title?: React.ReactNode
@@ -12,12 +11,15 @@ interface TopbarProps {
 }
 
 export function Topbar({ title, subtitle, actions }: TopbarProps) {
-  const { isDark, toggle } = useTheme()
-
   return (
     <header
-      className="h-14 backdrop-blur-md border-b flex items-center justify-between px-6 sticky top-0 z-10 transition-colors duration-300"
-      style={{ background: 'var(--topbar-bg)', borderColor: 'var(--border)' }}
+      className="h-14 border-b flex items-center justify-between px-6 sticky top-0 z-10"
+      style={{
+        background: 'var(--topbar-bg)',
+        backdropFilter: 'saturate(180%) blur(20px)',
+        WebkitBackdropFilter: 'saturate(180%) blur(20px)',
+        borderColor: 'rgba(0,0,0,0.08)',
+      }}
     >
       <button
         onClick={() => window.dispatchEvent(new CustomEvent('open-mobile-sidebar'))}
@@ -46,27 +48,21 @@ export function Topbar({ title, subtitle, actions }: TopbarProps) {
       <div className="flex items-center gap-1.5">
         {actions && <div className="flex items-center gap-2 mr-1">{actions}</div>}
 
-        {/* Theme toggle */}
+        {/* Notifications */}
         <button
-          onClick={toggle}
-          title={isDark ? 'Modo Claro' : 'Modo Escuro'}
-          className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
-          style={{ color: 'var(--text-3)', background: 'var(--surface-3)' }}
-          onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-1)'; e.currentTarget.style.background = 'var(--surface-2)' }}
-          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-3)'; e.currentTarget.style.background = 'var(--surface-3)' }}
+          className="w-8 h-8 rounded-full flex items-center justify-center transition-all relative"
+          style={{ color: '#86868B' }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = '' }}
         >
-          {isDark
-            ? <Sun className="w-4 h-4" strokeWidth={1.5} />
-            : <Moon className="w-4 h-4" strokeWidth={1.5} />}
+          <Bell className="w-[18px] h-[18px]" strokeWidth={1.5} />
         </button>
 
-        {/* Notifications */}
-        <Button variant="ghost" size="icon" className="relative rounded-xl w-8 h-8" style={{ color: 'var(--text-3)', background: 'var(--surface-3)' }}>
-          <Bell className="w-4 h-4" strokeWidth={1.5} />
-        </Button>
-
         {/* Avatar */}
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-sm">
+        <div
+          className="w-8 h-8 rounded-full flex items-center justify-center"
+          style={{ background: 'linear-gradient(135deg, #0071E3, #42A5F5)' }}
+        >
           <User className="w-4 h-4 text-white" strokeWidth={1.5} />
         </div>
       </div>

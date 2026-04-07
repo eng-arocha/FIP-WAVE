@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Lock, Mail, AlertCircle } from 'lucide-react'
+import { Lock, Mail, AlertCircle, ArrowRight } from 'lucide-react'
 import Image from 'next/image'
 
 export default function LoginPage() {
@@ -23,104 +23,36 @@ export default function LoginPage() {
     router.refresh()
   }
 
+  const inputStyle = {
+    background: '#F5F5F7',
+    border: '1px solid #D1D1D6',
+    color: '#1D1D1F',
+  }
+
   return (
-    <div
-      className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
-      style={{
-        background: 'linear-gradient(135deg, var(--background) 0%, var(--surface-1) 50%, var(--background) 100%)',
-      }}
-    >
-      {/* Grid overlay */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          backgroundImage:
-            'linear-gradient(rgba(59,130,246,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(59,130,246,0.03) 1px, transparent 1px)',
-          backgroundSize: '40px 40px',
-        }}
-      />
-
-      {/* Animated floating particles */}
-      <div
-        className="absolute top-[10%] left-[15%] w-72 h-72 rounded-full pointer-events-none"
-        style={{
-          background: 'radial-gradient(circle, rgba(59,130,246,0.12) 0%, transparent 70%)',
-          animation: 'floatA 18s ease-in-out infinite',
-          filter: 'blur(2px)',
-        }}
-      />
-      <div
-        className="absolute bottom-[15%] right-[10%] w-96 h-96 rounded-full pointer-events-none"
-        style={{
-          background: 'radial-gradient(circle, rgba(6,182,212,0.10) 0%, transparent 70%)',
-          animation: 'floatB 22s ease-in-out infinite',
-          filter: 'blur(2px)',
-        }}
-      />
-      <div
-        className="absolute top-[55%] left-[5%] w-56 h-56 rounded-full pointer-events-none"
-        style={{
-          background: 'radial-gradient(circle, rgba(59,130,246,0.08) 0%, transparent 70%)',
-          animation: 'floatC 26s ease-in-out infinite',
-          filter: 'blur(3px)',
-        }}
-      />
-      <div
-        className="absolute top-[20%] right-[20%] w-48 h-48 rounded-full pointer-events-none"
-        style={{
-          background: 'radial-gradient(circle, rgba(16,185,129,0.07) 0%, transparent 70%)',
-          animation: 'floatD 20s ease-in-out infinite',
-          filter: 'blur(3px)',
-        }}
-      />
-
-      <style>{`
-        @keyframes floatA {
-          0%, 100% { transform: translate(0, 0) scale(1); }
-          33% { transform: translate(30px, -40px) scale(1.05); }
-          66% { transform: translate(-20px, 20px) scale(0.97); }
-        }
-        @keyframes floatB {
-          0%, 100% { transform: translate(0, 0) scale(1); }
-          40% { transform: translate(-40px, -30px) scale(1.08); }
-          70% { transform: translate(25px, 15px) scale(0.95); }
-        }
-        @keyframes floatC {
-          0%, 100% { transform: translate(0, 0); }
-          50% { transform: translate(20px, -50px) scale(1.1); }
-        }
-        @keyframes floatD {
-          0%, 100% { transform: translate(0, 0) scale(1); }
-          45% { transform: translate(-30px, 30px) scale(0.9); }
-        }
-      `}</style>
-
-      <div className="w-full max-w-md relative z-10">
-        {/* Logo area */}
-        <div className="text-center mb-8">
-          <div className="flex justify-center mb-5">
-            <Image
-              src="/logos/wave-branco.png"
-              alt="WAVE Beira-Mar"
-              width={200}
-              height={112}
-              priority
-              className="object-contain"
-            />
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: '#F5F5F7' }}>
+      <div className="w-full max-w-[400px]">
+        {/* Logo */}
+        <div className="text-center mb-10">
+          <div className="flex justify-center mb-6">
+            <div className="p-4 rounded-2xl" style={{ background: 'white', boxShadow: '0 2px 16px rgba(0,0,0,0.06), 0 1px 4px rgba(0,0,0,0.04)' }}>
+              <Image
+                src="/logos/Wave.png"
+                alt="WAVE"
+                width={160}
+                height={90}
+                priority
+                className="object-contain"
+                style={{ width: 'auto', height: 'auto', maxWidth: 140, maxHeight: 80 }}
+              />
+            </div>
           </div>
 
-          <h1
-            className="text-3xl font-black tracking-tight mb-2"
-            style={{
-              background: 'linear-gradient(90deg, #3B82F6 0%, #06B6D4 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-            }}
-          >
-            INSTALAÇÕES - WAVE
+          <h1 className="text-2xl font-bold tracking-tight mb-1" style={{ color: '#1D1D1F' }}>
+            Instalações WAVE
           </h1>
-          <p className="text-sm" style={{ color: 'var(--text-2)' }}>
-            Gestão de Contratos &amp; Medições
+          <p className="text-sm" style={{ color: '#86868B' }}>
+            Gestão de Contratos & Medições
           </p>
         </div>
 
@@ -128,40 +60,27 @@ export default function LoginPage() {
         <div
           className="rounded-2xl p-8"
           style={{
-            background: 'rgba(17,24,39,0.80)',
-            backdropFilter: 'blur(24px)',
-            border: '1px solid var(--border)',
-            boxShadow: '0 25px 50px rgba(0,0,0,0.5), 0 0 0 1px rgba(59,130,246,0.05) inset',
+            background: '#FFFFFF',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.04), 0 4px 24px rgba(0,0,0,0.06)',
           }}
         >
           <form onSubmit={entrar} className="space-y-5">
             {erro && (
               <div
                 className="flex items-center gap-2.5 p-3.5 rounded-xl text-sm"
-                style={{
-                  background: 'rgba(239,68,68,0.10)',
-                  border: '1px solid rgba(239,68,68,0.30)',
-                  color: '#FCA5A5',
-                }}
+                style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626' }}
               >
-                <AlertCircle className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--red)' }} />
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
                 {erro}
               </div>
             )}
 
             <div className="space-y-1.5">
-              <label
-                htmlFor="email"
-                className="block text-xs font-semibold uppercase tracking-wider"
-                style={{ color: 'var(--text-2)' }}
-              >
+              <label htmlFor="email" className="block text-xs font-semibold uppercase tracking-wider" style={{ color: '#86868B' }}>
                 E-mail
               </label>
               <div className="relative">
-                <Mail
-                  className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4"
-                  style={{ color: 'var(--text-3)' }}
-                />
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: '#86868B' }} />
                 <input
                   id="email"
                   type="email"
@@ -170,30 +89,19 @@ export default function LoginPage() {
                   onChange={e => setEmail(e.target.value)}
                   required
                   className="w-full pl-10 pr-4 py-3 rounded-xl text-sm outline-none transition-all"
-                  style={{
-                    background: 'var(--surface-1)',
-                    border: '1px solid var(--border)',
-                    color: 'var(--text-1)',
-                  }}
-                  onFocus={e => { e.currentTarget.style.borderColor = '#3B82F6'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.10)' }}
-                  onBlur={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = 'none' }}
+                  style={inputStyle}
+                  onFocus={e => { e.currentTarget.style.borderColor = '#0071E3'; e.currentTarget.style.boxShadow = '0 0 0 4px rgba(0,113,227,0.10)' }}
+                  onBlur={e => { e.currentTarget.style.borderColor = '#D1D1D6'; e.currentTarget.style.boxShadow = 'none' }}
                 />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <label
-                htmlFor="senha"
-                className="block text-xs font-semibold uppercase tracking-wider"
-                style={{ color: 'var(--text-2)' }}
-              >
+              <label htmlFor="senha" className="block text-xs font-semibold uppercase tracking-wider" style={{ color: '#86868B' }}>
                 Senha
               </label>
               <div className="relative">
-                <Lock
-                  className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4"
-                  style={{ color: 'var(--text-3)' }}
-                />
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: '#86868B' }} />
                 <input
                   id="senha"
                   type="password"
@@ -202,13 +110,9 @@ export default function LoginPage() {
                   onChange={e => setSenha(e.target.value)}
                   required
                   className="w-full pl-10 pr-4 py-3 rounded-xl text-sm outline-none transition-all"
-                  style={{
-                    background: 'var(--surface-1)',
-                    border: '1px solid var(--border)',
-                    color: 'var(--text-1)',
-                  }}
-                  onFocus={e => { e.currentTarget.style.borderColor = '#3B82F6'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.10)' }}
-                  onBlur={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = 'none' }}
+                  style={inputStyle}
+                  onFocus={e => { e.currentTarget.style.borderColor = '#0071E3'; e.currentTarget.style.boxShadow = '0 0 0 4px rgba(0,113,227,0.10)' }}
+                  onBlur={e => { e.currentTarget.style.borderColor = '#D1D1D6'; e.currentTarget.style.boxShadow = 'none' }}
                 />
               </div>
             </div>
@@ -216,21 +120,15 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3.5 rounded-xl text-sm font-bold tracking-wide transition-all duration-200 flex items-center justify-center gap-2"
+              className="w-full py-3.5 rounded-xl text-sm font-semibold tracking-wide transition-all duration-200 flex items-center justify-center gap-2"
               style={{
-                background: loading
-                  ? 'rgba(59,130,246,0.40)'
-                  : 'linear-gradient(90deg, #3B82F6 0%, #06B6D4 100%)',
-                color: '#fff',
-                boxShadow: loading ? 'none' : '0 0 24px rgba(59,130,246,0.35)',
+                background: loading ? '#B8B8BF' : '#0071E3',
+                color: '#FFFFFF',
+                boxShadow: loading ? 'none' : '0 2px 8px rgba(0,113,227,0.25)',
                 cursor: loading ? 'not-allowed' : 'pointer',
               }}
-              onMouseEnter={e => {
-                if (!loading) e.currentTarget.style.boxShadow = '0 0 36px rgba(59,130,246,0.55)'
-              }}
-              onMouseLeave={e => {
-                if (!loading) e.currentTarget.style.boxShadow = '0 0 24px rgba(59,130,246,0.35)'
-              }}
+              onMouseEnter={e => { if (!loading) e.currentTarget.style.background = '#0077ED' }}
+              onMouseLeave={e => { if (!loading) e.currentTarget.style.background = '#0071E3' }}
             >
               {loading ? (
                 <>
@@ -241,15 +139,20 @@ export default function LoginPage() {
                   Entrando...
                 </>
               ) : (
-                'Entrar no Sistema'
+                <>
+                  Entrar no Sistema
+                  <ArrowRight className="w-4 h-4" strokeWidth={2} />
+                </>
               )}
             </button>
           </form>
         </div>
 
-        <p className="text-center mt-6 text-xs" style={{ color: 'var(--text-3)' }}>
-          Acesso Restrito © 2025
-        </p>
+        {/* Footer */}
+        <div className="flex items-center justify-between mt-6 px-2">
+          <Image src="/logos/fip-logo.svg" alt="FIP Engenharia" width={80} height={24} className="opacity-50" style={{ height: 20, width: 'auto' }} />
+          <p className="text-[11px]" style={{ color: '#86868B' }}>© 2025</p>
+        </div>
       </div>
     </div>
   )
