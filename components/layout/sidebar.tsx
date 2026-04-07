@@ -261,11 +261,7 @@ export function Sidebar({
         {/* ── Cadastros section ── */}
         {cadastroItems.length > 0 && (
           <>
-            {showText && (
-              <div className="pt-3 pb-1 px-2">
-                <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>Cadastros</span>
-              </div>
-            )}
+            <div className="my-2 mx-2 h-px" style={{ background: 'var(--border)' }} />
             {!showText && <div className="my-2 mx-2 h-px" style={{ background: 'var(--border)' }} />}
 
             {showText ? (
@@ -298,11 +294,7 @@ export function Sidebar({
         {/* ── Documentos section ── */}
         {documentosItems.length > 0 && (
           <>
-            {showText && (
-              <div className="pt-3 pb-1 px-2">
-                <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>Documentos</span>
-              </div>
-            )}
+            <div className="my-1 mx-2 h-px" style={{ background: 'var(--border)' }} />
             {!showText && <div className="my-2 mx-2 h-px" style={{ background: 'var(--border)' }} />}
 
             {showText ? (
@@ -376,8 +368,9 @@ export function Sidebar({
         </Link>
 
         {showText && (
-          <div className="px-3 pt-1">
-            <p className="text-[10px]" style={{ color: 'var(--text-3)', opacity: 0.5 }}>v1.0.0 · FIP Engenharia</p>
+          <div className="px-3 pt-2 pb-1 flex items-center justify-between">
+            <Image src="/logos/fip-logo.svg" alt="FIP Engenharia" width={110} height={32} className="object-contain opacity-80" style={{ width: 'auto', height: 28 }} />
+            <span className="text-[10px]" style={{ color: 'var(--text-3)', opacity: 0.5 }}>v1.0.0</span>
           </div>
         )}
       </div>

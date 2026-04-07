@@ -4,12 +4,12 @@
    DESIGN TOKENS — Light mode (default)
    ═══════════════════════════════════════════════════ */
 :root {
-  --background:    #F2F2F7;   /* iOS system background */
-  --surface-1:     #E5E5EA;
-  --surface-2:     #FFFFFF;
-  --surface-3:     #EBEBF0;
-  --border:        #C6C6C8;
-  --border-hover:  #AEAEB2;
+  --background:    #EBF3FF;   /* light blue system background */
+  --surface-1:     #D6E8FF;
+  --surface-2:     #F0F7FF;
+  --surface-3:     #E0EEFF;
+  --border:        #B3CEED;
+  --border-hover:  #90B4E8;
   --accent:        #007AFF;   /* iOS blue — crisp */
   --accent-glow:   #5AC8FA;
   --green:         #34C759;   /* iOS green */
@@ -18,11 +18,11 @@
   --text-1:        #000000;   /* pure black — max contrast */
   --text-2:        #1C1C1E;   /* near-black secondary */
   --text-3:        #3A3A3C;   /* dark gray — WCAG AA+ */
-  --sidebar-bg:    #FFFFFF;
-  --sidebar-border:#E5E5EA;
-  --topbar-bg:     rgba(242,242,247,0.92);
+  --sidebar-bg:    #EBF3FF;
+  --sidebar-border:#C5DEFF;
+  --topbar-bg:     rgba(235,243,255,0.92);
   --input-bg:      #FFFFFF;
-  --badge-bg:      #E5E5EA;
+  --badge-bg:      #D6E8FF;
 }
 
 /* ═══════════════════════════════════════════════════

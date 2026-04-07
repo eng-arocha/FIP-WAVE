@@ -14,8 +14,8 @@ import {
 } from 'recharts'
 import {
   ArrowLeft, Plus, FileText, Loader2,
-  ChevronRight, Layers, ArrowUpDown, Filter, Package, TrendingUp,
-  DollarSign, CheckCircle2, Wallet, ClipboardList
+  ChevronRight, ChevronDown, Layers, ArrowUpDown, Filter, Package, TrendingUp,
+  DollarSign, CheckCircle2, Wallet, ClipboardList, Search, X
 } from 'lucide-react'
 import {
   formatCurrency, formatPercent, formatDate,
@@ -49,6 +49,24 @@ interface Contrato {
   qtd_medicoes_pendentes?: number
 }
 
+interface Detalhamento {
+  id: string
+  codigo: string
+  descricao: string
+  unidade: string
+  quantidade_contratada: number
+  valor_unitario: number
+  valor_total: number
+}
+
+interface Tarefa {
+  id: string
+  codigo: string
+  nome: string
+  valor_contratado: number
+  detalhamentos?: Detalhamento[]
+}
+
 interface Grupo {
   id: string
   codigo: string
@@ -60,6 +78,7 @@ interface Grupo {
   valor_medido: number
   valor_saldo?: number
   percentual_medido?: number
+  tarefas?: Tarefa[]
 }
 
 interface Medicao {
@@ -87,6 +106,24 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   const [aditivos, setAditivos] = useState<Aditivo[]>([])
   const [sortBy, setSortBy] = useState<'padrao' | 'valor_global_desc' | 'valor_global_asc' | 'valor_medido_desc' | 'valor_medido_asc' | 'saldo_desc' | 'saldo_asc'>('padrao')
   const [viewMode, setViewMode] = useState<'total' | 'material' | 'servico'>('total')
+
+  // Estrutura detalhada state
+  const [estruturaBusca, setEstruturaBusca] = useState('')
+  const [estruturaNivel, setEstruturaNivel] = useState<'todos' | '1' | '2' | '3'>('todos')
+  const [expandedGrupos, setExpandedGrupos] = useState<Set<string>>(new Set())
+  const [expandedTarefas, setExpandedTarefas] = useState<Set<string>>(new Set())
+
+  function toggleGrupo(id: string) {
+    setExpandedGrupos(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
+  }
+  function toggleTarefa(id: string) {
+    setExpandedTarefas(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
+  }
+  function expandAll() {
+    setExpandedGrupos(new Set(grupos.map(g => g.id)))
+    setExpandedTarefas(new Set(grupos.flatMap(g => (g.tarefas || []).map(t => t.id))))
+  }
+  function collapseAll() { setExpandedGrupos(new Set()); setExpandedTarefas(new Set()) }
 
 
   useEffect(() => {
@@ -279,9 +316,9 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {/* KPI: Valor Total */}
           <Link href={`/contratos/${id}/cronograma`}>
-            <Card className="cursor-pointer group transition-all" style={{ borderColor: 'var(--border)' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(59,130,246,0.5)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(59,130,246,0.10)' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = 'none' }}
+            <Card className="cursor-pointer group transition-all" style={{ borderColor: 'rgba(59,130,246,0.35)', background: 'linear-gradient(135deg, #EFF6FF, #DBEAFE)' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(59,130,246,0.6)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(59,130,246,0.15)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(59,130,246,0.35)'; e.currentTarget.style.boxShadow = 'none' }}
             >
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-start justify-between mb-3">
@@ -301,9 +338,9 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
 
           {/* KPI: Medido */}
           <Link href={`/contratos/${id}/medicoes`}>
-            <Card className="cursor-pointer group transition-all" style={{ borderColor: 'var(--border)' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(16,185,129,0.5)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(16,185,129,0.10)' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = 'none' }}
+            <Card className="cursor-pointer group transition-all" style={{ borderColor: 'rgba(16,185,129,0.35)', background: 'linear-gradient(135deg, #F0FDF4, #DCFCE7)' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(16,185,129,0.6)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(16,185,129,0.15)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(16,185,129,0.35)'; e.currentTarget.style.boxShadow = 'none' }}
             >
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-start justify-between mb-3">
@@ -328,9 +365,9 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
 
           {/* KPI: Saldo */}
           <Link href={`/contratos/${id}/cronograma`}>
-            <Card className="cursor-pointer group transition-all" style={{ borderColor: 'var(--border)' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(100,116,139,0.5)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.08)' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = 'none' }}
+            <Card className="cursor-pointer group transition-all" style={{ borderColor: 'rgba(6,182,212,0.35)', background: 'linear-gradient(135deg, #ECFEFF, #CFFAFE)' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(6,182,212,0.6)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(6,182,212,0.15)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(6,182,212,0.35)'; e.currentTarget.style.boxShadow = 'none' }}
             >
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-start justify-between mb-3">
@@ -348,9 +385,9 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
           {/* KPI: Medições */}
           <Link href={`/contratos/${id}/medicoes`}>
             <Card className="cursor-pointer group transition-all"
-              style={{ borderColor: qtdPendentes > 0 ? 'rgba(245,158,11,0.4)' : 'var(--border)' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = qtdPendentes > 0 ? 'rgba(245,158,11,0.6)' : 'rgba(6,182,212,0.5)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.08)' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = qtdPendentes > 0 ? 'rgba(245,158,11,0.4)' : 'var(--border)'; e.currentTarget.style.boxShadow = 'none' }}
+              style={{ borderColor: qtdPendentes > 0 ? 'rgba(245,158,11,0.4)' : 'rgba(139,92,246,0.35)', background: qtdPendentes > 0 ? 'linear-gradient(135deg, #FFFBEB, #FEF3C7)' : 'linear-gradient(135deg, #F5F3FF, #EDE9FE)' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = qtdPendentes > 0 ? 'rgba(245,158,11,0.6)' : 'rgba(139,92,246,0.6)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.08)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = qtdPendentes > 0 ? 'rgba(245,158,11,0.4)' : 'rgba(139,92,246,0.35)'; e.currentTarget.style.boxShadow = 'none' }}
             >
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-start justify-between mb-3">
@@ -562,35 +599,44 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
             </div>
           </TabsContent>
 
-          {/* Estrutura */}
+          {/* Estrutura — orçamento detalhado nível 1→3 */}
           <TabsContent value="estrutura">
-            {/* Cabeçalho com filtros */}
-            <div className="flex flex-wrap items-center gap-2 mb-4">
-              <div className="flex items-center gap-1.5 text-xs text-[var(--text-3)]">
-                <ArrowUpDown className="w-3.5 h-3.5" />
-                <span>Ordenar:</span>
+            {/* Toolbar */}
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              {/* Search */}
+              <div className="relative flex-1 min-w-48 max-w-72">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-3)]" strokeWidth={1.5} />
+                <input
+                  type="text"
+                  value={estruturaBusca}
+                  onChange={e => setEstruturaBusca(e.target.value)}
+                  placeholder="Buscar código ou descrição..."
+                  className="w-full h-8 pl-8 pr-8 text-xs rounded-lg outline-none"
+                  style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+                />
+                {estruturaBusca && (
+                  <button className="absolute right-2 top-1/2 -translate-y-1/2" onClick={() => setEstruturaBusca('')}>
+                    <X className="w-3 h-3 text-[var(--text-3)]" />
+                  </button>
+                )}
               </div>
-              <Select value={sortBy} onValueChange={v => setSortBy(v as typeof sortBy)}>
-                <SelectTrigger className="h-8 text-xs w-52 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]">
+
+              {/* Level filter */}
+              <Select value={estruturaNivel} onValueChange={v => setEstruturaNivel(v as typeof estruturaNivel)}>
+                <SelectTrigger className="h-8 text-xs w-36 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="padrao">Padrão (1.0 → 19.0)</SelectItem>
-                  <SelectItem value="valor_global_desc">Valor — Maior primeiro</SelectItem>
-                  <SelectItem value="valor_global_asc">Valor — Menor primeiro</SelectItem>
-                  <SelectItem value="valor_medido_desc">Medido — Maior primeiro</SelectItem>
-                  <SelectItem value="valor_medido_asc">Medido — Menor primeiro</SelectItem>
-                  <SelectItem value="saldo_desc">Saldo — Maior primeiro</SelectItem>
-                  <SelectItem value="saldo_asc">Saldo — Menor primeiro</SelectItem>
+                  <SelectItem value="todos">Todos os níveis</SelectItem>
+                  <SelectItem value="1">Nível 1 — Grupos</SelectItem>
+                  <SelectItem value="2">Nível 2 — Serviços</SelectItem>
+                  <SelectItem value="3">Nível 3 — Itens</SelectItem>
                 </SelectContent>
               </Select>
 
-              <div className="flex items-center gap-1.5 text-xs text-[var(--text-3)] ml-2">
-                <Filter className="w-3.5 h-3.5" />
-                <span>Exibir:</span>
-              </div>
+              {/* View mode */}
               <Select value={viewMode} onValueChange={v => setViewMode(v as typeof viewMode)}>
-                <SelectTrigger className="h-8 text-xs w-36 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]">
+                <SelectTrigger className="h-8 text-xs w-32 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -600,55 +646,158 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                 </SelectContent>
               </Select>
 
-              {(sortBy !== 'padrao' || viewMode !== 'total') && (
-                <Button
-                  variant="ghost" size="sm"
-                  className="h-8 text-xs text-[var(--text-3)] hover:text-[var(--text-1)]"
-                  onClick={() => { setSortBy('padrao'); setViewMode('total') }}
-                >
-                  Limpar
-                </Button>
-              )}
-
-              <span className="ml-auto text-xs text-[var(--text-3)]">
-                {gruposExibidos.length} grupos
-              </span>
-
-              <Link href={`/contratos/${id}/estrutura`}>
-                <Button variant="outline" size="sm" className="h-8">
-                  <Layers className="w-4 h-4" />
-                  Gerenciar Estrutura
-                </Button>
-              </Link>
+              <div className="flex gap-1 ml-auto">
+                <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={expandAll}>Expandir tudo</Button>
+                <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={collapseAll}>Recolher</Button>
+                <Link href={`/contratos/${id}/estrutura`}>
+                  <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
+                    <Layers className="w-3.5 h-3.5" /> Gerenciar
+                  </Button>
+                </Link>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              {gruposExibidos.map(g => {
-                const vBase = getValorView(g)
-                return (
-                <Card key={g.id}>
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <span className="w-10 text-xs font-bold text-[var(--text-3)]">{g.codigo}</span>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-sm text-[var(--text-1)]">{g.nome}</span>
+            {/* Tree */}
+            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+              {/* Header */}
+              <div className="grid grid-cols-[1fr_120px_120px_120px] gap-2 px-4 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ background: 'var(--surface-3)', color: 'var(--text-3)', borderBottom: '1px solid var(--border)' }}>
+                <span>Código / Descrição</span>
+                <span className="text-right">Qtd × Un</span>
+                <span className="text-right">V. Unit.</span>
+                <span className="text-right">V. Total</span>
+              </div>
+
+              {(() => {
+                const busca = estruturaBusca.toLowerCase()
+                const rows: React.ReactNode[] = []
+
+                gruposExibidos.forEach(g => {
+                  const tarefas = g.tarefas || []
+
+                  // Search matching
+                  const grupoMatch = !busca || g.codigo.toLowerCase().includes(busca) || g.nome.toLowerCase().includes(busca)
+                  const tarefasMatch = tarefas.some(t =>
+                    t.codigo.toLowerCase().includes(busca) || t.nome.toLowerCase().includes(busca) ||
+                    (t.detalhamentos || []).some(d => d.codigo.toLowerCase().includes(busca) || d.descricao.toLowerCase().includes(busca))
+                  )
+                  if (busca && !grupoMatch && !tarefasMatch) return
+
+                  const isGrupoExpanded = expandedGrupos.has(g.id) || (busca.length > 0)
+                  const vBase = getValorView(g)
+
+                  // Nivel 1 row
+                  if (estruturaNivel === 'todos' || estruturaNivel === '1') {
+                    rows.push(
+                      <div
+                        key={`g-${g.id}`}
+                        className="grid grid-cols-[1fr_120px_120px_120px] gap-2 px-4 py-3 cursor-pointer select-none"
+                        style={{ background: 'rgba(59,130,246,0.06)', borderBottom: '1px solid var(--border)' }}
+                        onClick={() => toggleGrupo(g.id)}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="flex-shrink-0" style={{ color: 'var(--accent)' }}>
+                            {isGrupoExpanded ? <ChevronDown className="w-3.5 h-3.5" strokeWidth={2} /> : <ChevronRight className="w-3.5 h-3.5" strokeWidth={2} />}
+                          </span>
+                          <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: 'var(--accent)', color: 'white', minWidth: 36, textAlign: 'center' }}>{g.codigo}</span>
+                          <span className="font-semibold text-sm truncate" style={{ color: 'var(--text-1)' }}>{g.nome}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded ml-1 flex-shrink-0" style={{ background: 'rgba(59,130,246,0.12)', color: 'var(--accent)' }}>
+                            {tarefas.length} serv.
+                          </span>
                         </div>
-                        <Progress
-                          value={vBase > 0 ? (g.valor_medido / vBase) * 100 : 0}
-                          className="h-1 mt-2 max-w-xs"
-                        />
+                        <span className="text-right text-xs text-[var(--text-3)]">—</span>
+                        <span className="text-right text-xs text-[var(--text-3)]">—</span>
+                        <span className="text-right text-sm font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(vBase)}</span>
                       </div>
-                      <div className="text-right text-xs min-w-[180px]">
-                        <p className="font-semibold text-[var(--text-1)]">{VIEW_MODE_LABELS[viewMode]}: {formatCurrency(vBase)}</p>
-                        <p className="text-[var(--text-3)]">Medido: {formatCurrency(g.valor_medido ?? 0)}</p>
-                        <p className="text-emerald-500/80">Saldo: {formatCurrency(vBase - (g.valor_medido ?? 0))}</p>
-                      </div>
+                    )
+                  }
+
+                  if (!isGrupoExpanded && estruturaNivel === 'todos') return
+
+                  // Nivel 2 rows
+                  tarefas.forEach(t => {
+                    const detalhamentos = t.detalhamentos || []
+                    const tarefaMatchBusca = !busca || t.codigo.toLowerCase().includes(busca) || t.nome.toLowerCase().includes(busca) ||
+                      detalhamentos.some(d => d.codigo.toLowerCase().includes(busca) || d.descricao.toLowerCase().includes(busca))
+                    if (busca && !tarefaMatchBusca) return
+
+                    const isTarefaExpanded = expandedTarefas.has(t.id) || (busca.length > 0)
+
+                    if (estruturaNivel === 'todos' || estruturaNivel === '2') {
+                      rows.push(
+                        <div
+                          key={`t-${t.id}`}
+                          className="grid grid-cols-[1fr_120px_120px_120px] gap-2 px-4 py-2.5 cursor-pointer"
+                          style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', paddingLeft: estruturaNivel === '2' ? 16 : 40 }}
+                          onClick={() => toggleTarefa(t.id)}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            {detalhamentos.length > 0 ? (
+                              <span className="flex-shrink-0 text-[var(--text-3)]">
+                                {isTarefaExpanded ? <ChevronDown className="w-3 h-3" strokeWidth={2} /> : <ChevronRight className="w-3 h-3" strokeWidth={2} />}
+                              </span>
+                            ) : <span className="w-3 h-3 flex-shrink-0" />}
+                            <span className="text-[11px] font-bold px-1.5 py-0.5 rounded flex-shrink-0" style={{ background: 'rgba(100,116,139,0.15)', color: 'var(--text-2)', minWidth: 36, textAlign: 'center' }}>{t.codigo}</span>
+                            <span className="text-sm truncate" style={{ color: 'var(--text-2)' }}>{t.nome}</span>
+                          </div>
+                          <span className="text-right text-xs text-[var(--text-3)]">—</span>
+                          <span className="text-right text-xs text-[var(--text-3)]">—</span>
+                          <span className="text-right text-xs font-semibold" style={{ color: 'var(--text-1)' }}>{formatCurrency(t.valor_contratado || 0)}</span>
+                        </div>
+                      )
+                    }
+
+                    if (!isTarefaExpanded && estruturaNivel === 'todos') return
+
+                    // Nivel 3 rows
+                    if (estruturaNivel === 'todos' || estruturaNivel === '3') {
+                      detalhamentos.forEach(d => {
+                        const detMatch = !busca || d.codigo.toLowerCase().includes(busca) || d.descricao.toLowerCase().includes(busca)
+                        if (busca && !detMatch) return
+
+                        const valorTotal = d.valor_total || (d.quantidade_contratada || 0) * (d.valor_unitario || 0)
+                        rows.push(
+                          <div
+                            key={`d-${d.id}`}
+                            className="grid grid-cols-[1fr_120px_120px_120px] gap-2 py-2"
+                            style={{ background: 'var(--surface-1)', borderBottom: '1px solid var(--border)', paddingLeft: estruturaNivel === '3' ? 16 : 64, paddingRight: 16 }}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-[10px] font-mono px-1 py-0.5 rounded flex-shrink-0" style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981', minWidth: 44, textAlign: 'center' }}>{d.codigo}</span>
+                              <span className="text-xs truncate" style={{ color: 'var(--text-2)' }}>{d.descricao}</span>
+                              <span className="text-[10px] px-1 rounded flex-shrink-0" style={{ background: 'var(--surface-3)', color: 'var(--text-3)' }}>{d.unidade}</span>
+                            </div>
+                            <span className="text-right text-xs" style={{ color: 'var(--text-3)' }}>
+                              {d.quantidade_contratada?.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}
+                            </span>
+                            <span className="text-right text-xs" style={{ color: 'var(--text-3)' }}>{formatCurrency(d.valor_unitario || 0)}</span>
+                            <span className="text-right text-xs font-semibold" style={{ color: '#10B981' }}>{formatCurrency(valorTotal)}</span>
+                          </div>
+                        )
+                      })
+                    }
+                  })
+                })
+
+                if (rows.length === 0) {
+                  return (
+                    <div className="flex flex-col items-center justify-center py-12 text-[var(--text-3)]">
+                      <Package className="w-8 h-8 mb-2 opacity-30" />
+                      <p className="text-sm">Nenhum item encontrado</p>
                     </div>
-                  </CardContent>
-                </Card>
-                )
-              })}
+                  )
+                }
+                return rows
+              })()}
+
+              {/* Footer totals */}
+              <div className="grid grid-cols-[1fr_120px_120px_120px] gap-2 px-4 py-3" style={{ background: 'var(--surface-3)', borderTop: '2px solid var(--border)' }}>
+                <span className="text-xs font-bold" style={{ color: 'var(--text-2)' }}>TOTAL ORÇADO ({gruposExibidos.length} grupos)</span>
+                <span />
+                <span />
+                <span className="text-right text-sm font-black" style={{ color: 'var(--accent)' }}>
+                  {formatCurrency(gruposExibidos.reduce((s, g) => s + getValorView(g), 0))}
+                </span>
+              </div>
             </div>
           </TabsContent>
 

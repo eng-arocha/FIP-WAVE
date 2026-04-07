@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" fill="none">
+  <!-- Diamond / rhombus logo mark -->
+  <polygon points="0,30 18,0 36,30 18,60" fill="#2B4C8C"/>
+  <polygon points="18,0 36,30 54,0" fill="#4A7EC7"/>
+  <polygon points="18,60 36,30 54,60" fill="#6B9AD4"/>
+  <polygon points="36,30 54,0 72,30 54,60" fill="#8FB8E8"/>
+  <!-- FIP text -->
+  <text x="82" y="26" font-family="Arial, sans-serif" font-size="22" font-weight="800" fill="#1E3A6E" letter-spacing="1">FIP</text>
+  <!-- ENGENHARIA text -->
+  <text x="82" y="46" font-family="Arial, sans-serif" font-size="11" font-weight="600" fill="#4A7EC7" letter-spacing="2">ENGENHARIA</text>
+</svg>
