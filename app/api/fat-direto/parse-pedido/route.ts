@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
-import pdfParse from 'pdf-parse'
+
+// pdf-parse precisa do runtime Node.js (não funciona no Edge Runtime)
+export const runtime = 'nodejs'
 
 export async function POST(req: Request) {
   try {
@@ -13,6 +15,10 @@ export async function POST(req: Request) {
 
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
+
+    // Import dinâmico evita o bug do pdf-parse que tenta ler arquivo de teste
+    // em tempo de build (ENOENT: test/version1.3.pdf)
+    const pdfParse = (await import('pdf-parse/lib/pdf-parse')).default
 
     // Parsear apenas página 1 — headers se repetem em cada página
     const data = await pdfParse(buffer, { max: 1 })
