@@ -43,6 +43,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         { status: 422 },
       )
     }
+    if (e.message === 'ITEM_LIMITE_EXCEDIDO') {
+      return NextResponse.json(
+        { error: 'ITEM_LIMITE_EXCEDIDO', itemViolation: (e as any).itemViolation },
+        { status: 422 },
+      )
+    }
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
 }
