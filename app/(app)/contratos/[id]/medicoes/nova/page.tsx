@@ -102,19 +102,22 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
     const min = acumulado[detId] || 0
     if (p < min) return // não pode retroagir
 
-    const current = percentualMedicao[detId] ?? min
-    const hasDelta = current > min
+    // Usa updater funcional para sempre ler o estado mais recente (evita stale closure)
+    setPercentualMedicao(prev => {
+      const current = prev[detId] ?? min
+      const hasDelta = current > min
 
-    if (!hasDelta) {
-      // Nenhuma seleção ativa → clicar qualquer botão seleciona
-      setPercentualMedicao(prev => ({ ...prev, [detId]: p }))
-    } else if (p > current) {
-      // Já tem seleção e clicou em algo MAIOR → limpa tudo (volta ao acumulado)
-      setPercentualMedicao(prev => ({ ...prev, [detId]: min }))
-    } else {
-      // p <= current → reduz ou mantém (clicar no mesmo = volta ao acumulado se for min)
-      setPercentualMedicao(prev => ({ ...prev, [detId]: p }))
-    }
+      if (!hasDelta) {
+        // Sem seleção → seleciona até p
+        return { ...prev, [detId]: p }
+      }
+      if (p > current) {
+        // Clicou ACIMA da seleção atual → limpa (volta ao acumulado)
+        return { ...prev, [detId]: min }
+      }
+      // Clicou igual ou abaixo → reduz seleção para p
+      return { ...prev, [detId]: p }
+    })
   }
 
   function calcularValorTotal() {
