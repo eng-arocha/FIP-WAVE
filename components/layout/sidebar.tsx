@@ -215,42 +215,6 @@ export function Sidebar({
       <nav className="flex-1 py-4 px-2 overflow-y-auto space-y-0.5">
         {mainItems.map(item => renderNavLink(item, showText))}
 
-        {/* ── Contract contextual group ── */}
-        {isInContrato && contratoSubItems.length > 0 && (
-          <>
-            {showText && (
-              <div className="pt-3 pb-1 px-2">
-                <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>Contrato</span>
-              </div>
-            )}
-            {!showText && <div className="my-2 mx-2 h-px" style={{ background: 'var(--border)' }} />}
-
-            {showText ? (
-              <div>
-                <button
-                  onClick={() => setContratoOpen(v => !v)}
-                  className="w-full flex items-center gap-2.5 px-2 py-2 rounded-xl text-sm font-medium transition-all"
-                  style={{ color: 'var(--text-2)' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }}
-                  onMouseLeave={e => { e.currentTarget.style.background = '' }}
-                >
-                  <span className="apple-icon flex-shrink-0" style={{ background: 'linear-gradient(135deg, #8B5CF6, #A855F7)' }}>
-                    <FileText className="w-3.5 h-3.5 text-white" strokeWidth={1.5} />
-                  </span>
-                  <span className="flex-1 text-left">Módulos</span>
-                  <ChevronDown className="w-3.5 h-3.5 transition-transform duration-200" strokeWidth={1.5} style={{ transform: contratoOpen ? '' : 'rotate(-90deg)', color: 'var(--text-3)' }} />
-                </button>
-                <div className={cn('overflow-hidden transition-all duration-300 ease-in-out', contratoOpen ? 'max-h-48 opacity-100' : 'max-h-0 opacity-0')}>
-                  <div className="pt-0.5 ml-3 pl-2" style={{ borderLeft: '1px solid var(--border)' }}>
-                    {contratoSubItems.map(item => renderNavLink(item, showText, true))}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              contratoSubItems.map(item => renderNavLink(item, showText))
-            )}
-          </>
-        )}
 
         {/* ── Cadastros section ── */}
         {cadastroItems.length > 0 && (
@@ -285,38 +249,6 @@ export function Sidebar({
           </>
         )}
 
-        {/* ── Documentos section ── */}
-        {documentosItems.length > 0 && (
-          <>
-            <div className="my-1 mx-2 h-px" style={{ background: 'var(--border)' }} />
-            {!showText && <div className="my-2 mx-2 h-px" style={{ background: 'var(--border)' }} />}
-
-            {showText ? (
-              <div>
-                <button
-                  onClick={() => setDocsOpen(v => !v)}
-                  className="w-full flex items-center gap-2.5 px-2 py-2 rounded-xl text-sm font-medium transition-all duration-150"
-                  style={{ color: isDocsActive ? 'var(--text-1)' : 'var(--text-2)' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }}
-                  onMouseLeave={e => { e.currentTarget.style.background = '' }}
-                >
-                  <span className="apple-icon flex-shrink-0" style={{ background: isDocsActive ? 'linear-gradient(135deg, #EF4444, #F97316)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)') }}>
-                    <BookOpen className="w-3.5 h-3.5" strokeWidth={1.5} style={{ color: isDocsActive ? 'white' : 'var(--text-3)' }} />
-                  </span>
-                  <span className="flex-1 text-left">Documentos</span>
-                  <ChevronDown className="w-3.5 h-3.5 transition-transform duration-200" strokeWidth={1.5} style={{ transform: docsOpen ? '' : 'rotate(-90deg)', color: 'var(--text-3)' }} />
-                </button>
-                <div className={cn('overflow-hidden transition-all duration-300 ease-in-out', docsOpen ? 'max-h-24 opacity-100' : 'max-h-0 opacity-0')}>
-                  <div className="pt-0.5 ml-3 pl-2" style={{ borderLeft: '1px solid var(--border)' }}>
-                    {documentosItems.map(item => renderNavLink(item, showText, true))}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              documentosItems.map(item => renderNavLink(item, showText))
-            )}
-          </>
-        )}
       </nav>
 
       {/* Footer */}
