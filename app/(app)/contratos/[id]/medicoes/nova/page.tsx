@@ -98,10 +98,23 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
     return isNaN(num) || num <= 18
   })
 
-  function setPercentual(detId: string, pct: number) {
+  function setPercentual(detId: string, p: number) {
     const min = acumulado[detId] || 0
-    if (pct < min) return // não pode retroagir
-    setPercentualMedicao(prev => ({ ...prev, [detId]: pct }))
+    if (p < min) return // não pode retroagir
+
+    const current = percentualMedicao[detId] ?? min
+    const hasDelta = current > min
+
+    if (!hasDelta) {
+      // Nenhuma seleção ativa → clicar qualquer botão seleciona
+      setPercentualMedicao(prev => ({ ...prev, [detId]: p }))
+    } else if (p > current) {
+      // Já tem seleção e clicou em algo MAIOR → limpa tudo (volta ao acumulado)
+      setPercentualMedicao(prev => ({ ...prev, [detId]: min }))
+    } else {
+      // p <= current → reduz ou mantém (clicar no mesmo = volta ao acumulado se for min)
+      setPercentualMedicao(prev => ({ ...prev, [detId]: p }))
+    }
   }
 
   function calcularValorTotal() {
