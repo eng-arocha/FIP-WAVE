@@ -27,7 +27,8 @@ export async function DELETE(
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
-    const { data: perfil } = await supabase
+    const admin = createAdminClient()
+    const { data: perfil } = await admin
       .from('perfis')
       .select('perfil')
       .eq('id', user.id)
@@ -35,8 +36,6 @@ export async function DELETE(
     if (perfil?.perfil !== 'admin') {
       return NextResponse.json({ error: 'Apenas administradores podem deletar solicitações' }, { status: 403 })
     }
-
-    const admin = createAdminClient()
     // Deletar itens e NFs primeiro (cascade pode não estar ativo)
     await admin.from('itens_solicitacao_fat_direto').delete().eq('solicitacao_id', solId)
     await admin.from('notas_fiscais_fat_direto').delete().eq('solicitacao_id', solId)
