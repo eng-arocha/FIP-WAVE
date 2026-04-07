@@ -245,6 +245,45 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
 
   const [observacoes, setObservacoes] = useState('')
   const [anexos, setAnexos] = useState<File[]>([])
+  const parsePdfInputRef = useRef<HTMLInputElement>(null)
+  const [parseStatus, setParseStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+  const [parseMsg, setParseMsg] = useState('')
+  const [parsedFields, setParsedFields] = useState<Set<string>>(new Set())
+
+  async function handlePedidoPdfUpload(file: File) {
+    // Adiciona o arquivo à lista de anexos automaticamente
+    setAnexos(prev => [...prev, file])
+    setParseStatus('loading')
+    setParseMsg('')
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/fat-direto/parse-pedido', { method: 'POST', body: fd })
+      const data = await res.json()
+      if (!res.ok || !data.ok) {
+        setParseStatus('error')
+        setParseMsg(data.error || 'Não foi possível extrair os dados do PDF')
+        return
+      }
+      const filled = new Set<string>()
+      if (data.numero_pedido) { setNumeroPedidoFip(data.numero_pedido); filled.add('pedido') }
+      if (data.razao_social)  { setFornRazaoSocial(data.razao_social); filled.add('razao') }
+      if (data.cnpj) {
+        // Dispara máscara + lookup Receita Federal
+        handleCnpjChange(data.cnpj)
+        filled.add('cnpj')
+      }
+      if (data.contato)  { setFornContatoNome(data.contato); filled.add('contato') }
+      if (data.telefone) { setFornContatoTel(maskTelefone(data.telefone)); filled.add('tel') }
+      setParsedFields(filled)
+      setParseStatus('done')
+      setParseMsg(`${filled.size} campo${filled.size !== 1 ? 's' : ''} preenchido${filled.size !== 1 ? 's' : ''} automaticamente`)
+    } catch {
+      setParseStatus('error')
+      setParseMsg('Erro ao processar o PDF')
+    }
+  }
+
   const [itens, setItens] = useState<ItemForm[]>([
     { tarefa_id: '', descricao: '', local: '', valor_total: '' },
   ])
@@ -508,6 +547,93 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
           </div>
         )}
 
+        {/* ── Upload do Pedido de Compra FIP (auto-preenchimento) ── */}
+        <Card style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2" style={{ color: 'var(--text-1)' }}>
+              <span className="apple-icon" style={{ background: 'linear-gradient(135deg, #8B5CF6, #A855F7)' }}>
+                <FileText className="w-3.5 h-3.5 text-white" strokeWidth={1.5} />
+              </span>
+              Upload do Pedido de Compra FIP
+              <span className="text-xs font-normal ml-1" style={{ color: 'var(--text-3)' }}>
+                (preenche os campos automaticamente)
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {parseStatus !== 'done' ? (
+              <div
+                className="flex flex-col items-center gap-3 rounded-xl px-4 py-6 cursor-pointer transition-all text-center"
+                style={{
+                  background: 'var(--surface-3)',
+                  border: `1.5px dashed ${parseStatus === 'error' ? 'rgba(239,68,68,0.50)' : 'var(--border)'}`,
+                }}
+                onClick={() => parseStatus !== 'loading' && parsePdfInputRef.current?.click()}
+                onMouseEnter={e => { if (parseStatus !== 'loading') e.currentTarget.style.borderColor = 'var(--accent)' }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = parseStatus === 'error' ? 'rgba(239,68,68,0.50)' : 'var(--border)' }}
+              >
+                {parseStatus === 'loading' ? (
+                  <>
+                    <svg className="animate-spin w-6 h-6" viewBox="0 0 24 24" fill="none" style={{ color: 'var(--accent)' }}>
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                    </svg>
+                    <p className="text-sm font-medium" style={{ color: 'var(--text-2)' }}>Lendo PDF...</p>
+                    <p className="text-xs" style={{ color: 'var(--text-3)' }}>Extraindo dados do fornecedor</p>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-5 h-5" strokeWidth={1.5} style={{ color: parseStatus === 'error' ? 'var(--red)' : 'var(--text-3)' }} />
+                    <div>
+                      <p className="text-sm font-medium" style={{ color: 'var(--text-2)' }}>
+                        {parseStatus === 'error' ? 'Erro — tente outro PDF' : 'Selecionar PDF do Pedido de Compra'}
+                      </p>
+                      <p className="text-xs mt-0.5" style={{ color: parseStatus === 'error' ? 'var(--red)' : 'var(--text-3)' }}>
+                        {parseStatus === 'error' ? parseMsg : 'Preenche automaticamente: Nº Pedido, Razão Social, CNPJ, Telefone'}
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div
+                className="flex items-center gap-3 rounded-xl px-4 py-3"
+                style={{ background: 'rgba(16,185,129,0.07)', border: '1.5px solid rgba(16,185,129,0.30)' }}
+              >
+                <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(16,185,129,0.15)' }}>
+                  <span className="text-sm font-bold" style={{ color: '#10B981' }}>✓</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold" style={{ color: '#10B981' }}>{parseMsg}</p>
+                  <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-3)' }}>
+                    {anexos.find(f => f.type === 'application/pdf')?.name}
+                  </p>
+                </div>
+                <button
+                  onClick={() => { setParseStatus('idle'); setParseMsg(''); setParsedFields(new Set()) }}
+                  className="text-xs flex-shrink-0 px-2.5 py-1 rounded-lg transition-all"
+                  style={{ color: 'var(--text-3)', border: '1px solid var(--border)' }}
+                  onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-1)' }}
+                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-3)' }}
+                >
+                  Trocar PDF
+                </button>
+              </div>
+            )}
+            <input
+              ref={parsePdfInputRef}
+              type="file"
+              accept="application/pdf"
+              className="hidden"
+              onChange={e => {
+                const f = e.target.files?.[0]
+                if (f) handlePedidoPdfUpload(f)
+                e.target.value = ''
+              }}
+            />
+          </CardContent>
+        </Card>
+
         {/* ── Dados do Fornecedor ── */}
         <div ref={supplierCardRef}>
           <Card style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
@@ -522,7 +648,12 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
             <CardContent className="space-y-3">
               {/* CNPJ — lookup first */}
               <div>
-                <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-3)' }}>CNPJ *</label>
+                <label className="block text-xs mb-1 font-medium flex items-center gap-1.5" style={{ color: 'var(--text-3)' }}>
+                  CNPJ *
+                  {parsedFields.has('cnpj') && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-bold" style={{ background: 'rgba(139,92,246,0.12)', color: '#8B5CF6' }}>via PDF</span>
+                  )}
+                </label>
                 <div className="relative">
                   <input
                     type="text"
@@ -573,6 +704,11 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
                       preenchido automaticamente
                     </span>
                   )}
+                  {parsedFields.has('razao') && cnpjLookupStatus !== 'found' && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-bold" style={{ background: 'rgba(139,92,246,0.12)', color: '#8B5CF6' }}>
+                      via PDF
+                    </span>
+                  )}
                 </label>
                 <input
                   type="text"
@@ -595,6 +731,11 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
               <div>
                 <label className="block text-xs mb-1 font-medium flex items-center gap-1" style={{ color: 'var(--text-3)' }}>
                   <Hash className="w-3 h-3" strokeWidth={1.5} /> Nº Pedido Interno FIP * <span className="ml-1 opacity-60">(será o número desta solicitação)</span>
+                  {parsedFields.has('pedido') && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-bold ml-1" style={{ background: 'rgba(139,92,246,0.12)', color: '#8B5CF6' }}>
+                      via PDF
+                    </span>
+                  )}
                 </label>
                 <input
                   type="number"
@@ -610,12 +751,22 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
               {/* Nome + Telefone do contato */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-3)' }}>Nome do Contato *</label>
+                  <label className="block text-xs mb-1 font-medium flex items-center gap-1.5" style={{ color: 'var(--text-3)' }}>
+                    Nome do Contato *
+                    {parsedFields.has('contato') && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded font-bold" style={{ background: 'rgba(139,92,246,0.12)', color: '#8B5CF6' }}>via PDF</span>
+                    )}
+                  </label>
                   <input type="text" value={fornContatoNome} onChange={e => setFornContatoNome(e.target.value)}
                     placeholder="Nome do responsável" className={inputCls} style={inputStyle} {...focusHandlers} />
                 </div>
                 <div>
-                  <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-3)' }}>Telefone *</label>
+                  <label className="block text-xs mb-1 font-medium flex items-center gap-1.5" style={{ color: 'var(--text-3)' }}>
+                    Telefone *
+                    {parsedFields.has('tel') && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded font-bold" style={{ background: 'rgba(139,92,246,0.12)', color: '#8B5CF6' }}>via PDF</span>
+                    )}
+                  </label>
                   <input
                     type="tel"
                     value={fornContatoTel}
