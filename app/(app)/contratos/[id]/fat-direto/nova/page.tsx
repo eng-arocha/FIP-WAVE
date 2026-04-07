@@ -8,8 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { formatCurrency } from '@/lib/utils'
 import {
-  ArrowLeft, Plus, Trash2, Package, Save, AlertTriangle,
-  Building2, ChevronDown, Search, MapPin, X, Hash, Upload, FileText, TrendingUp, Paperclip,
+  ArrowLeft, Plus, Package, Save, AlertTriangle,
+  Building2, X, Hash, Upload, FileText, TrendingUp, Paperclip, CheckCircle2,
 } from 'lucide-react'
 
 // ── Máscaras ───────────────────────────────────────────────────────────────
@@ -52,134 +52,13 @@ interface ItemForm {
   descricao: string
   local: string
   valor_total: string
+  _nv1: string   // primeira parte do código (ex: "4")
+  _nv2: string   // segunda parte (ex: "3")
+  _nv3: string   // terceira parte (ex: "1") → código completo = "4.3.1"
 }
 
-// ── Searchable combobox ────────────────────────────────────────────────────
-function DisciplinaCombobox({
-  tarefas,
-  value,
-  localFilter,
-  onChange,
-}: {
-  tarefas: Tarefa[]
-  value: string
-  localFilter: string
-  onChange: (tarefaId: string) => void
-}) {
-  const [query, setQuery] = useState('')
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const selected = tarefas.find(t => t.id === value)
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
-
-  const filtered = tarefas.filter(t => {
-    const matchLocal = !localFilter.trim() ||
-      t.locais.some(l => l.includes(localFilter.trim().toUpperCase())) ||
-      t.locais.length === 0
-    const q = query.toLowerCase()
-    const matchQuery = !q || t.codigo.toLowerCase().includes(q) || t.nome.toLowerCase().includes(q)
-    return matchLocal && matchQuery
-  })
-
-  function handleSelect(t: Tarefa) {
-    onChange(t.id)
-    setQuery('')
-    setOpen(false)
-  }
-
-  function handleClear() {
-    onChange('')
-    setQuery('')
-    inputRef.current?.focus()
-  }
-
-  return (
-    <div ref={ref} className="relative">
-      <div
-        className="w-full rounded-xl flex items-center gap-2 px-3 py-2.5 cursor-text"
-        style={{ background: 'var(--surface-2)', border: `1px solid ${open ? 'var(--accent)' : 'var(--border)'}`, boxShadow: open ? '0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent)' : 'none' }}
-        onClick={() => { setOpen(true); inputRef.current?.focus() }}
-      >
-        <Search className="w-3.5 h-3.5 flex-shrink-0" strokeWidth={1.5} style={{ color: 'var(--text-3)' }} />
-        {selected && !open ? (
-          <span className="flex-1 text-sm truncate" style={{ color: 'var(--text-1)' }}>
-            <span style={{ color: 'var(--accent)' }}>{selected.codigo}</span>
-            {' — '}{selected.nome.substring(0, 50)}
-          </span>
-        ) : (
-          <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={e => { setQuery(e.target.value); if (!open) setOpen(true) }}
-            onFocus={() => setOpen(true)}
-            placeholder={selected ? `${selected.codigo} — ${selected.nome.substring(0, 40)}` : 'Digite o código (ex: 12.1) ou nome...'}
-            className="flex-1 text-sm outline-none bg-transparent"
-            style={{ color: 'var(--text-1)' }}
-          />
-        )}
-        {value && (
-          <button onClick={e => { e.stopPropagation(); handleClear() }} className="flex-shrink-0 rounded-full p-0.5" style={{ color: 'var(--text-3)' }}>
-            <X className="w-3 h-3" strokeWidth={2} />
-          </button>
-        )}
-        <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} strokeWidth={1.5} style={{ color: 'var(--text-3)' }} />
-      </div>
-
-      {open && (
-        <div
-          className="absolute z-50 left-0 right-0 top-full mt-1 rounded-xl overflow-auto shadow-lg"
-          style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', maxHeight: 260, boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}
-        >
-          {filtered.length === 0 ? (
-            <div className="px-4 py-3 text-sm text-center" style={{ color: 'var(--text-3)' }}>
-              Nenhuma disciplina encontrada
-              {localFilter && <span className="block text-xs mt-0.5">para o local "{localFilter}"</span>}
-            </div>
-          ) : (
-            filtered.map(t => {
-              const saldoDisp = t.valor_material - t.valor_aprovado - (t.valor_em_aprovacao || 0)
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => handleSelect(t)}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors"
-                  style={{ borderBottom: '1px solid var(--border)' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-3)' }}
-                  onMouseLeave={e => { e.currentTarget.style.background = '' }}
-                >
-                  <span className="text-xs font-bold font-mono px-1.5 py-0.5 rounded-md flex-shrink-0" style={{ background: 'var(--accent)', color: 'white', minWidth: 40, textAlign: 'center' }}>
-                    {t.codigo}
-                  </span>
-                  <span className="flex-1 min-w-0">
-                    <span className="text-sm font-medium block truncate" style={{ color: 'var(--text-1)' }}>{t.nome.substring(0, 60)}</span>
-                    {t.locais.length > 0 && (
-                      <span className="text-[11px] flex items-center gap-1 mt-0.5" style={{ color: 'var(--text-3)' }}>
-                        <MapPin className="w-2.5 h-2.5" strokeWidth={1.5} />
-                        {t.locais.slice(0, 3).join(' · ')}{t.locais.length > 3 ? '…' : ''}
-                      </span>
-                    )}
-                  </span>
-                  <span className="text-xs font-semibold flex-shrink-0" style={{ color: saldoDisp <= 0 ? 'var(--red)' : 'var(--green)' }}>
-                    {formatCurrency(saldoDisp)}
-                  </span>
-                </button>
-              )
-            })
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
+const GROUP_SIZE = 5
+const EMPTY_ITEM = (): ItemForm => ({ tarefa_id: '', descricao: '', local: '', valor_total: '', _nv1: '', _nv2: '', _nv3: '' })
 
 // ── Página Principal ──────────────────────────────────────────────────────
 export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: string }> }) {
@@ -293,9 +172,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
     }
   }
 
-  const [itens, setItens] = useState<ItemForm[]>([
-    { tarefa_id: '', descricao: '', local: '', valor_total: '' },
-  ])
+  const [itens, setItens] = useState<ItemForm[]>(() => Array.from({ length: GROUP_SIZE }, EMPTY_ITEM))
   const [saving, setSaving] = useState(false)
   const [erro, setErro] = useState('')
   const [tetoViolation, setTetoViolation] = useState<any>(null)
@@ -343,37 +220,56 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
     return () => observer.disconnect()
   }, [])
 
-  function addItem() {
-    setItens(prev => [...prev, { tarefa_id: '', descricao: '', local: '', valor_total: '' }])
+  // Adiciona mais GROUP_SIZE linhas vazias
+  function addGroup() {
+    setItens(prev => [...prev, ...Array.from({ length: GROUP_SIZE }, EMPTY_ITEM)])
   }
 
-  function removeItem(i: number) {
-    setItens(prev => prev.filter((_, idx) => idx !== i))
+  // Limpa uma linha (não remove, mantém a grade)
+  function clearItem(i: number) {
+    setItens(prev => prev.map((item, idx) => idx === i ? EMPTY_ITEM() : item))
   }
 
   function updateItem(i: number, field: keyof ItemForm, value: string) {
     setItens(prev => prev.map((item, idx) => idx === i ? { ...item, [field]: value } : item))
   }
 
-  function onTarefaChange(i: number, tarefaId: string) {
-    const t = tarefas.find(t => t.id === tarefaId)
-    const autoLocal = t?.locais?.[0] ?? itens[i].local
-    // Pré-preenche o valor com o total do detalhamento (quantidade × valor_unitário)
-    const autoValor = t && t.valor_material > 0
-      ? String(t.valor_material)
-      : itens[i].valor_total
-    setItens(prev => prev.map((item, idx) =>
-      idx === i ? {
-        ...item,
-        tarefa_id: tarefaId,
-        descricao: t ? t.nome.substring(0, 80) : item.descricao,
-        local: autoLocal || item.local,
-        valor_total: autoValor,
-      } : item
-    ))
+  // Chamado quando nv1/nv2/nv3 muda — tenta auto-selecionar o detalhamento
+  function handleNivelChange(i: number, nv: '_nv1' | '_nv2' | '_nv3', val: string, nextInputId?: string) {
+    setItens(prev => prev.map((item, idx) => {
+      if (idx !== i) return item
+      const next = { ...item, [nv]: val }
+      const nv1 = nv === '_nv1' ? val : next._nv1
+      const nv2 = nv === '_nv2' ? val : next._nv2
+      const nv3 = nv === '_nv3' ? val : next._nv3
+      if (nv1 && nv2 && nv3) {
+        const fullCode = `${nv1}.${nv2}.${nv3}`
+        const t = tarefas.find(x => x.codigo === fullCode)
+        if (t) {
+          return {
+            ...next,
+            tarefa_id: t.id,
+            descricao: next.descricao || t.nome.substring(0, 80),
+            local: next.local || t.locais[0] || '',
+            valor_total: next.valor_total || (t.valor_material > 0 ? String(t.valor_material) : ''),
+          }
+        }
+      }
+      return { ...next, tarefa_id: '' }
+    }))
+    if (nextInputId) setTimeout(() => (document.getElementById(nextInputId) as HTMLInputElement | null)?.focus(), 0)
   }
 
   const total = itens.reduce((s, it) => s + (parseFloat(it.valor_total) || 0), 0)
+
+  // Agrupa itens em blocos de GROUP_SIZE para exibição
+  const grupos = useMemo(() => {
+    const g: { start: number; items: ItemForm[] }[] = []
+    for (let i = 0; i < itens.length; i += GROUP_SIZE) {
+      g.push({ start: i, items: itens.slice(i, i + GROUP_SIZE) })
+    }
+    return g
+  }, [itens])
 
   async function salvar() {
     setErro('')
@@ -384,9 +280,11 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
     if (!numeroPedidoFip.trim() || isNaN(parseInt(numeroPedidoFip, 10))) {
       setErro('Informe o Nº Pedido Interno FIP (número inteiro).'); return
     }
-    for (const it of itens) {
-      if (!it.tarefa_id || !it.descricao || !it.local) { setErro('Preencha todos os campos de cada item.'); return }
-      if (!it.valor_total || parseFloat(it.valor_total) <= 0) { setErro('Informe o valor de cada item.'); return }
+    // Somente linhas preenchidas contam
+    const filledItens = itens.filter(it => it.tarefa_id && parseFloat(it.valor_total) > 0)
+    if (filledItens.length === 0) { setErro('Adicione pelo menos um item com disciplina e valor.'); return }
+    for (const it of filledItens) {
+      if (!it.local) { setErro('Informe o local para todos os itens preenchidos.'); return }
     }
     if (Object.keys(itemViolations).length > 0) {
       setErro('Corrija os limites por disciplina antes de enviar.')
@@ -406,12 +304,12 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
         fornecedor_contato_telefone: telDigits,
         numero_pedido_fip: parseInt(numeroPedidoFip, 10),
         observacoes,
-        itens: itens.map(it => {
+        itens: filledItens.map(it => {
           const t = tarefas.find(x => x.id === it.tarefa_id)
           return {
             tarefa_id: t?.tarefa_id || it.tarefa_id, // FK real para tarefas
             detalhamento_id: it.tarefa_id,            // ID do detalhamento (nível 3)
-            descricao: it.descricao,
+            descricao: it.descricao || t?.nome?.substring(0, 80) || '',
             local: it.local,
             valor_total: parseFloat(it.valor_total) || 0,
           }
@@ -905,102 +803,236 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
 
         {/* ── Itens da Solicitação ── */}
         <Card style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-          <CardHeader className="pb-3 flex flex-row items-center justify-between">
+          <CardHeader className="pb-2">
             <CardTitle className="text-sm" style={{ color: 'var(--text-1)' }}>Itens da Solicitação</CardTitle>
-            <Button onClick={addItem} size="sm" variant="ghost" className="gap-1" style={{ color: 'var(--accent)' }}>
-              <Plus className="w-3.5 h-3.5" strokeWidth={1.5} /> Adicionar Item
-            </Button>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {itens.map((item, i) => (
+          <CardContent className="px-3 pb-3">
+            {/* Cabeçalho das colunas */}
+            <div
+              className="hidden sm:grid mb-1 px-1"
+              style={{ gridTemplateColumns: '26px 46px 40px 46px 1fr 108px 88px 24px', gap: '4px' }}
+            >
+              {['#','NV1','NV2','NV3','Descrição','Local','Valor (R$)',''].map((h, idx) => (
+                <span key={idx} className="text-[10px] font-semibold uppercase tracking-wide text-center" style={{ color: 'var(--text-3)' }}>{h}</span>
+              ))}
+            </div>
+
+            {/* Grupos de GROUP_SIZE linhas */}
+            {grupos.map((grupo, gi) => (
               <div
-                key={i}
-                className="p-4 rounded-xl space-y-3"
-                style={{ background: 'var(--surface-3)', border: '1px solid var(--border)' }}
+                key={gi}
+                className="rounded-xl mb-3 overflow-hidden"
+                style={{ border: '1px solid var(--border)' }}
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Item {i + 1}</span>
-                  {itens.length > 1 && (
-                    <button onClick={() => removeItem(i)} style={{ color: 'var(--text-3)' }}
-                      onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
-                      onMouseLeave={e => e.currentTarget.style.color = 'var(--text-3)'}>
-                      <Trash2 className="w-4 h-4" strokeWidth={1.5} />
-                    </button>
-                  )}
-                </div>
+                {grupo.items.map((item, li) => {
+                  const gIdx = grupo.start + li
+                  const isValid = !!item.tarefa_id
+                  const hasCode = !!(item._nv1 && item._nv2 && item._nv3)
+                  const violation = itemViolations[gIdx]
+                  const nvBorder = (active?: boolean) => ({
+                    background: 'var(--surface-2)',
+                    border: `1px solid ${active ? 'var(--accent)' : hasCode && !isValid ? 'rgba(239,68,68,0.55)' : 'var(--border)'}`,
+                    color: 'var(--text-1)',
+                    boxShadow: active ? '0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent)' : 'none',
+                  })
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-3)' }}>Disciplina / Tarefa</label>
-                    <DisciplinaCombobox tarefas={tarefas} value={item.tarefa_id} localFilter={item.local} onChange={(tid) => onTarefaChange(i, tid)} />
-                  </div>
-                  <div>
-                    <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-3)' }}>Local</label>
-                    <input type="text" value={item.local} onChange={e => updateItem(i, 'local', e.target.value)}
-                      placeholder="TORRE, AP-101, ÁREA COMUM..." className={inputCls} style={inputStyle} {...focusHandlers} />
-                  </div>
-                </div>
+                  return (
+                    <div key={gIdx}>
+                      {/* Linha compacta (desktop) */}
+                      <div
+                        className="hidden sm:grid items-center px-1 py-1"
+                        style={{
+                          gridTemplateColumns: '26px 46px 40px 46px 1fr 108px 88px 24px',
+                          gap: '4px',
+                          background: gIdx % 2 === 0 ? 'var(--surface-3)' : 'var(--surface-2)',
+                        }}
+                      >
+                        {/* # */}
+                        <span className="text-center text-[11px] font-mono" style={{ color: isValid ? 'var(--green)' : 'var(--text-3)' }}>
+                          {isValid ? <CheckCircle2 className="w-3.5 h-3.5 inline" strokeWidth={2} style={{ color: 'var(--green)' }} /> : gIdx + 1}
+                        </span>
 
-                <div>
-                  <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-3)' }}>Descrição do Material</label>
-                  <input type="text" value={item.descricao} onChange={e => updateItem(i, 'descricao', e.target.value)}
-                    placeholder="Descreva o material a ser adquirido..."
-                    className={inputCls} style={inputStyle} {...focusHandlers} />
-                </div>
+                        {/* NV1 */}
+                        <input
+                          id={`nv1-${gIdx}`}
+                          type="text"
+                          inputMode="numeric"
+                          value={item._nv1}
+                          placeholder="1"
+                          maxLength={3}
+                          onChange={e => handleNivelChange(gIdx, '_nv1', e.target.value)}
+                          onKeyDown={e => { if (e.key === '.' || e.key === ' ') { e.preventDefault(); (document.getElementById(`nv2-${gIdx}`) as HTMLInputElement | null)?.focus() } }}
+                          className="h-7 rounded-lg text-center text-xs outline-none w-full"
+                          style={nvBorder()}
+                          onFocus={e => Object.assign(e.currentTarget.style, { borderColor: 'var(--accent)', boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent)' })}
+                          onBlur={e => Object.assign(e.currentTarget.style, { borderColor: hasCode && !isValid ? 'rgba(239,68,68,0.55)' : 'var(--border)', boxShadow: 'none' })}
+                        />
 
-                <div>
-                  <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-3)' }}>Valor do Item (R$)</label>
-                  <input
-                    type="number"
-                    value={item.valor_total}
-                    onChange={e => updateItem(i, 'valor_total', e.target.value)}
-                    min="0" step="0.01" placeholder="0,00"
-                    className={inputCls}
-                    style={{ ...inputStyle, borderColor: itemViolations[i] ? 'rgba(239,68,68,0.60)' : undefined }}
-                    {...focusHandlers}
-                  />
-                  {itemViolations[i] && (() => {
-                    const v = itemViolations[i]
-                    return (
-                      <div className="mt-2 rounded-xl p-3 flex items-start gap-2" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.35)' }}>
-                        <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" strokeWidth={1.5} style={{ color: '#EF4444' }} />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-bold mb-1" style={{ color: '#EF4444' }}>
-                            LIMITE EXCEDIDO — {v.codigo}
-                          </p>
-                          <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px]" style={{ color: 'var(--text-2)' }}>
-                            <span>Aprovado: <strong>{formatCurrency(v.aprovado)}</strong></span>
-                            <span>Em Aprovação: <strong>{formatCurrency(v.emAprovacao)}</strong></span>
-                            <span style={{ color: v.saldo <= 0 ? '#EF4444' : '#10B981' }}>
-                              Saldo Disponível: <strong>{formatCurrency(v.saldo)}</strong>
-                            </span>
-                          </div>
+                        {/* NV2 */}
+                        <input
+                          id={`nv2-${gIdx}`}
+                          type="text"
+                          inputMode="numeric"
+                          value={item._nv2}
+                          placeholder="1"
+                          maxLength={3}
+                          onChange={e => handleNivelChange(gIdx, '_nv2', e.target.value)}
+                          onKeyDown={e => { if (e.key === '.' || e.key === ' ') { e.preventDefault(); (document.getElementById(`nv3-${gIdx}`) as HTMLInputElement | null)?.focus() } }}
+                          className="h-7 rounded-lg text-center text-xs outline-none w-full"
+                          style={nvBorder()}
+                          onFocus={e => Object.assign(e.currentTarget.style, { borderColor: 'var(--accent)', boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent)' })}
+                          onBlur={e => Object.assign(e.currentTarget.style, { borderColor: hasCode && !isValid ? 'rgba(239,68,68,0.55)' : 'var(--border)', boxShadow: 'none' })}
+                        />
+
+                        {/* NV3 */}
+                        <input
+                          id={`nv3-${gIdx}`}
+                          type="text"
+                          inputMode="numeric"
+                          value={item._nv3}
+                          placeholder="1"
+                          maxLength={3}
+                          onChange={e => handleNivelChange(gIdx, '_nv3', e.target.value, item._nv1 && item._nv2 && e.target.value ? `desc-${gIdx}` : undefined)}
+                          className="h-7 rounded-lg text-center text-xs outline-none w-full"
+                          style={nvBorder()}
+                          onFocus={e => Object.assign(e.currentTarget.style, { borderColor: 'var(--accent)', boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent)' })}
+                          onBlur={e => Object.assign(e.currentTarget.style, { borderColor: hasCode && !isValid ? 'rgba(239,68,68,0.55)' : 'var(--border)', boxShadow: 'none' })}
+                        />
+
+                        {/* Descrição */}
+                        <input
+                          id={`desc-${gIdx}`}
+                          type="text"
+                          value={item.descricao}
+                          placeholder={isValid ? '' : 'Selecione NV1.NV2.NV3…'}
+                          onChange={e => updateItem(gIdx, 'descricao', e.target.value)}
+                          className="h-7 rounded-lg px-2 text-xs outline-none w-full"
+                          style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+                          onFocus={e => Object.assign(e.currentTarget.style, { borderColor: 'var(--accent)', boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent)' })}
+                          onBlur={e => Object.assign(e.currentTarget.style, { borderColor: 'var(--border)', boxShadow: 'none' })}
+                        />
+
+                        {/* Local */}
+                        <input
+                          type="text"
+                          value={item.local}
+                          placeholder="TORRE"
+                          onChange={e => updateItem(gIdx, 'local', e.target.value)}
+                          className="h-7 rounded-lg px-2 text-xs outline-none w-full"
+                          style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+                          onFocus={e => Object.assign(e.currentTarget.style, { borderColor: 'var(--accent)', boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent)' })}
+                          onBlur={e => Object.assign(e.currentTarget.style, { borderColor: 'var(--border)', boxShadow: 'none' })}
+                        />
+
+                        {/* Valor */}
+                        <input
+                          type="number"
+                          value={item.valor_total}
+                          placeholder="0,00"
+                          min="0" step="0.01"
+                          onChange={e => updateItem(gIdx, 'valor_total', e.target.value)}
+                          className="h-7 rounded-lg px-2 text-xs text-right outline-none w-full"
+                          style={{ background: 'var(--surface-2)', border: `1px solid ${violation ? 'rgba(239,68,68,0.60)' : 'var(--border)'}`, color: 'var(--text-1)' }}
+                          onFocus={e => Object.assign(e.currentTarget.style, { borderColor: 'var(--accent)', boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent)' })}
+                          onBlur={e => Object.assign(e.currentTarget.style, { borderColor: violation ? 'rgba(239,68,68,0.60)' : 'var(--border)', boxShadow: 'none' })}
+                        />
+
+                        {/* Limpar linha */}
+                        <button
+                          onClick={() => clearItem(gIdx)}
+                          className="h-7 w-6 flex items-center justify-center rounded-lg transition-colors"
+                          style={{ color: 'var(--text-3)' }}
+                          title="Limpar linha"
+                          onMouseEnter={e => { e.currentTarget.style.color = 'var(--red)'; e.currentTarget.style.background = 'rgba(239,68,68,0.08)' }}
+                          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-3)'; e.currentTarget.style.background = '' }}
+                        >
+                          <X className="w-3 h-3" strokeWidth={2} />
+                        </button>
+                      </div>
+
+                      {/* Versão mobile — stacked */}
+                      <div
+                        className="sm:hidden p-3 space-y-2"
+                        style={{ background: gIdx % 2 === 0 ? 'var(--surface-3)' : 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Item {gIdx + 1}</span>
+                          {isValid && <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={2} style={{ color: 'var(--green)' }} />}
+                          <button onClick={() => clearItem(gIdx)} style={{ color: 'var(--text-3)' }}>
+                            <X className="w-3.5 h-3.5" strokeWidth={2} />
+                          </button>
+                        </div>
+                        <div className="flex gap-2">
+                          {(['_nv1','_nv2','_nv3'] as const).map((nv, ni) => (
+                            <input key={nv} type="text" inputMode="numeric" value={item[nv]} placeholder={`NV${ni+1}`} maxLength={3}
+                              onChange={e => handleNivelChange(gIdx, nv, e.target.value)}
+                              className="flex-1 h-8 rounded-lg text-center text-xs outline-none"
+                              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-1)' }} />
+                          ))}
+                        </div>
+                        <input type="text" value={item.descricao} placeholder="Descrição" onChange={e => updateItem(gIdx, 'descricao', e.target.value)}
+                          className="w-full h-8 rounded-lg px-2 text-xs outline-none"
+                          style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-1)' }} />
+                        <div className="flex gap-2">
+                          <input type="text" value={item.local} placeholder="Local" onChange={e => updateItem(gIdx, 'local', e.target.value)}
+                            className="flex-1 h-8 rounded-lg px-2 text-xs outline-none"
+                            style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-1)' }} />
+                          <input type="number" value={item.valor_total} placeholder="Valor" min="0" step="0.01" onChange={e => updateItem(gIdx, 'valor_total', e.target.value)}
+                            className="w-28 h-8 rounded-lg px-2 text-xs text-right outline-none"
+                            style={{ background: 'var(--surface-2)', border: `1px solid ${violation ? 'rgba(239,68,68,0.60)' : 'var(--border)'}`, color: 'var(--text-1)' }} />
                         </div>
                       </div>
-                    )
-                  })()}
-                </div>
+
+                      {/* Alerta de limite */}
+                      {violation && (
+                        <div className="flex items-center gap-3 px-3 py-1.5 text-[11px] flex-wrap" style={{ background: 'rgba(239,68,68,0.07)', borderTop: '1px solid rgba(239,68,68,0.25)' }}>
+                          <AlertTriangle className="w-3 h-3 flex-shrink-0" strokeWidth={2} style={{ color: '#EF4444' }} />
+                          <span style={{ color: '#EF4444', fontWeight: 700 }}>LIMITE — {violation.codigo}</span>
+                          <span style={{ color: 'var(--text-2)' }}>Aprovado: <strong>{formatCurrency(violation.aprovado)}</strong></span>
+                          <span style={{ color: 'var(--text-2)' }}>Em Aprov.: <strong>{formatCurrency(violation.emAprovacao)}</strong></span>
+                          <span style={{ color: violation.saldo <= 0 ? '#EF4444' : '#10B981' }}>Saldo: <strong>{formatCurrency(violation.saldo)}</strong></span>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+
+                {/* Rodapé do grupo — botão apenas no último grupo */}
+                {gi === grupos.length - 1 && (
+                  <div className="flex justify-end px-3 py-2" style={{ borderTop: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+                    <Button onClick={addGroup} size="sm" variant="ghost" className="gap-1 text-xs" style={{ color: 'var(--accent)' }}>
+                      <Plus className="w-3.5 h-3.5" strokeWidth={1.5} /> + 5 linhas
+                    </Button>
+                  </div>
+                )}
               </div>
             ))}
-
-            <div className="flex items-center justify-between pt-3" style={{ borderTop: '1px solid var(--border)' }}>
-              <span className="text-sm font-semibold" style={{ color: 'var(--text-2)' }}>Total da Solicitação</span>
-              <span className="text-xl font-black" style={{ color: 'var(--text-1)' }}>{formatCurrency(total)}</span>
-            </div>
           </CardContent>
         </Card>
+
+        {/* ── Total sticky ── */}
+        <div
+          className="sticky bottom-0 z-10 rounded-xl flex items-center justify-between px-5 py-3"
+          style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', boxShadow: '0 -4px 24px rgba(0,0,0,0.10)' }}
+        >
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-4 h-4" strokeWidth={1.5} style={{ color: 'var(--accent)' }} />
+            <span className="text-sm font-semibold" style={{ color: 'var(--text-2)' }}>Total da Solicitação</span>
+            {Object.keys(itemViolations).length > 0 && (
+              <span className="flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(239,68,68,0.12)', color: '#EF4444' }}>
+                <AlertTriangle className="w-3 h-3" strokeWidth={2} />
+                {Object.keys(itemViolations).length} limite(s) excedido(s)
+              </span>
+            )}
+          </div>
+          <span className="text-xl font-black" style={{ color: total > 0 ? 'var(--text-1)' : 'var(--text-3)' }}>{formatCurrency(total)}</span>
+        </div>
 
         {/* Actions */}
         <div className="flex items-center justify-end gap-3 pb-6">
           <Link href={`/contratos/${id}/fat-direto`}>
             <Button variant="ghost" style={{ color: 'var(--text-3)' }}>Cancelar</Button>
           </Link>
-          {Object.keys(itemViolations).length > 0 && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold" style={{ background: 'rgba(239,68,68,0.12)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.30)' }}>
-              <AlertTriangle className="w-3.5 h-3.5" strokeWidth={2} />
-              {Object.keys(itemViolations).length} item(s) com limite excedido
-            </div>
-          )}
           <Button
             onClick={salvar}
             disabled={saving || Object.keys(itemViolations).length > 0}
