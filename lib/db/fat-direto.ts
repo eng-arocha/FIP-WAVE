@@ -167,7 +167,7 @@ export async function criarSolicitacao(input: {
 
 export async function atualizarStatusSolicitacao(
   id: string,
-  status: 'aprovado' | 'rejeitado' | 'cancelado',
+  status: 'aprovado' | 'rejeitado' | 'cancelado' | 'aguardando_aprovacao',
   aprovador_id?: string,
   motivo_rejeicao?: string,
 ) {
@@ -179,6 +179,10 @@ export async function atualizarStatusSolicitacao(
   if (status === 'aprovado') {
     updates.aprovador_id = aprovador_id
     updates.data_aprovacao = new Date().toISOString()
+  }
+  if (status === 'aguardando_aprovacao') {
+    updates.aprovador_id = null
+    updates.data_aprovacao = null
   }
   if (motivo_rejeicao) updates.motivo_rejeicao = motivo_rejeicao
 

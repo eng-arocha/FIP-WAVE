@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { Plus, ArrowLeft, FileText, CheckCircle, Clock, XCircle, Package, ClipboardList, Timer, BadgeCheck, Receipt } from 'lucide-react'
+import { Plus, ArrowLeft, FileText, CheckCircle, Clock, XCircle, Package, ClipboardList, Timer, BadgeCheck, Receipt, Undo2 } from 'lucide-react'
+import { usePermissoes } from '@/lib/context/permissoes-context'
 
 interface Solicitacao {
   id: string
@@ -34,6 +35,8 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.
 
 export default function FatDiretoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
+  const { perfilAtual } = usePermissoes()
+  const isAdmin = perfilAtual === 'admin'
   const [solicitacoes, setSolicitacoes] = useState<Solicitacao[]>([])
   const [resumo, setResumo] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -48,6 +51,20 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
       setLoading(false)
     })
   }, [id])
+
+  async function desaprovar(e: React.MouseEvent, solId: string) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!confirm('Desaprovar esta solicitação?')) return
+    await fetch(`/api/contratos/${id}/fat-direto/solicitacoes/${solId}/aprovar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ acao: 'aguardando_aprovacao' }),
+    })
+    // Reload
+    const sols = await fetch(`/api/contratos/${id}/fat-direto/solicitacoes`).then(r => r.json())
+    setSolicitacoes(Array.isArray(sols) ? sols : [])
+  }
 
   const totalAprovado = solicitacoes.filter(s => s.status === 'aprovado').reduce((sum, s) => sum + s.valor_total, 0)
   const totalPendente = solicitacoes.filter(s => s.status === 'aguardando_aprovacao').reduce((sum, s) => sum + s.valor_total, 0)
@@ -178,6 +195,14 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
                               >
                                 {cfg.icon} {cfg.label}
                               </span>
+                              {isAdmin && sol.status === 'aprovado' && (
+                                <button
+                                  onClick={e => desaprovar(e, sol.id)}
+                                  className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-red-500/20 text-red-400 hover:bg-red-500/40 transition-colors"
+                                >
+                                  Desaprovar
+                                </button>
+                              )}
                             </div>
                             <p className="text-xs text-[var(--text-3)] mt-0.5">
                               {sol.fornecedor_razao_social

@@ -13,7 +13,7 @@ export async function POST(
     if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
     const { acao, motivo_rejeicao } = await req.json()
-    if (!['aprovado', 'rejeitado', 'cancelado'].includes(acao)) {
+    if (!['aprovado', 'rejeitado', 'cancelado', 'aguardando_aprovacao'].includes(acao)) {
       return NextResponse.json({ error: 'acao inválida' }, { status: 400 })
     }
 

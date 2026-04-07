@@ -81,7 +81,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
 
   useEffect(() => { load() }, [solId])
 
-  async function acao(a: 'aprovado' | 'rejeitado' | 'cancelado') {
+  async function acao(a: 'aprovado' | 'rejeitado' | 'cancelado' | 'aguardando_aprovacao') {
     setActing(true)
     setErro('')
     const res = await fetch(`/api/contratos/${id}/fat-direto/solicitacoes/${solId}/aprovar`, {
@@ -155,18 +155,6 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                 <ArrowLeft className="w-4 h-4" /> Faturamento Direto
               </Button>
             </Link>
-            {isAdmin && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={deletar}
-                disabled={acting}
-                className={confirmDelete ? 'text-white bg-red-600 hover:bg-red-700' : 'text-red-400 hover:text-red-300 hover:bg-red-500/10'}
-              >
-                <Trash2 className="w-4 h-4 mr-1" />
-                {confirmDelete ? 'Confirmar exclusão' : 'Deletar'}
-              </Button>
-            )}
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-bold" style={{ color: 'var(--text-1)' }}>SOL-{String(sol.numero).padStart(3, '0')}</h1>
@@ -230,6 +218,19 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                   >
                     <XCircle className="w-4 h-4" /> Rejeitar
                   </Button>
+                  {isAdmin && (
+                    <Button
+                      onClick={deletar}
+                      disabled={acting}
+                      variant="ghost"
+                      className={confirmDelete
+                        ? 'gap-2 bg-red-600 hover:bg-red-700 text-white'
+                        : 'gap-2 border border-red-500/30 text-red-400 hover:bg-red-500/10'}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      {confirmDelete ? 'Confirmar Exclusão' : 'Excluir'}
+                    </Button>
+                  )}
                 </div>
                 <input
                   type="text"
@@ -250,6 +251,38 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
             <CardContent className="pt-4 pb-4">
               <p className="text-xs text-red-400 font-semibold uppercase tracking-wide mb-1">Motivo da Rejeição</p>
               <p className="text-sm text-[var(--text-2)]">{sol.motivo_rejeicao}</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Admin actions for approved/rejected */}
+        {isAdmin && sol.status !== 'aguardando_aprovacao' && (
+          <Card style={{ background: 'var(--surface-1)', border: '1px solid rgba(239,68,68,0.2)' }}>
+            <CardContent className="pt-4 pb-4">
+              <p className="text-sm text-red-400 font-semibold mb-3">Ações de Administrador</p>
+              <div className="flex gap-3">
+                {sol.status === 'aprovado' && (
+                  <Button
+                    onClick={() => acao('aguardando_aprovacao')}
+                    disabled={acting}
+                    variant="ghost"
+                    className="gap-2 border border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+                  >
+                    <XCircle className="w-4 h-4" /> Desaprovar
+                  </Button>
+                )}
+                <Button
+                  onClick={deletar}
+                  disabled={acting}
+                  variant="ghost"
+                  className={confirmDelete
+                    ? 'gap-2 bg-red-600 hover:bg-red-700 text-white'
+                    : 'gap-2 border border-red-500/30 text-red-400 hover:bg-red-500/10'}
+                >
+                  <Trash2 className="w-4 h-4" />
+                  {confirmDelete ? 'Confirmar Exclusão' : 'Excluir'}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         )}
