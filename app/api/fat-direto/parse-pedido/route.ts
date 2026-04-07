@@ -16,9 +16,13 @@ export async function POST(req: Request) {
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
 
-    // Import dinâmico evita o bug do pdf-parse que tenta ler arquivo de teste
-    // em tempo de build (ENOENT: test/version1.3.pdf)
-    const pdfParse = (await import('pdf-parse/lib/pdf-parse')).default
+    // require em runtime evita (1) o bug do pdf-parse que tenta ler test/version1.3.pdf
+    // em tempo de build e (2) o erro de tipos no caminho sub-path do @types/pdf-parse
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pdfParse = require('pdf-parse/lib/pdf-parse') as (
+      buffer: Buffer,
+      options?: { max?: number }
+    ) => Promise<{ text: string }>
 
     // Parsear apenas página 1 — headers se repetem em cada página
     const data = await pdfParse(buffer, { max: 1 })
