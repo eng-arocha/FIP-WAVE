@@ -98,26 +98,23 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
     return isNaN(num) || num <= 18
   })
 
-  function setPercentual(detId: string, p: number) {
+  // currentPct vem do render — sem risco de stale closure
+  function setPercentual(detId: string, p: number, currentPct: number) {
     const min = acumulado[detId] || 0
     if (p < min) return // não pode retroagir
 
-    // Usa updater funcional para sempre ler o estado mais recente (evita stale closure)
-    setPercentualMedicao(prev => {
-      const current = prev[detId] ?? min
-      const hasDelta = current > min
+    const hasDelta = currentPct > min
 
-      if (!hasDelta) {
-        // Sem seleção → seleciona até p
-        return { ...prev, [detId]: p }
-      }
-      if (p > current) {
-        // Clicou ACIMA da seleção atual → limpa (volta ao acumulado)
-        return { ...prev, [detId]: min }
-      }
+    if (!hasDelta) {
+      // Sem seleção → seleciona até p
+      setPercentualMedicao(prev => ({ ...prev, [detId]: p }))
+    } else if (p > currentPct) {
+      // Clicou ACIMA da seleção atual → limpa tudo (volta ao acumulado)
+      setPercentualMedicao(prev => ({ ...prev, [detId]: min }))
+    } else {
       // Clicou igual ou abaixo → reduz seleção para p
-      return { ...prev, [detId]: p }
-    })
+      setPercentualMedicao(prev => ({ ...prev, [detId]: p }))
+    }
   }
 
   function calcularValorTotal() {
@@ -314,7 +311,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                         key={p}
                                         type="button"
                                         disabled={isMin}
-                                        onClick={() => setPercentual(det.id, p)}
+                                        onClick={() => setPercentual(det.id, p, pct)}
                                         className={`flex-1 py-1.5 rounded text-[11px] font-bold transition-all duration-150 ${
                                           isMin
                                             ? 'opacity-20 cursor-not-allowed bg-[var(--surface-3)] text-[var(--text-3)]'

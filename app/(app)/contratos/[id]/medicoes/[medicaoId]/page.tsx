@@ -14,13 +14,14 @@ import {
 } from '@/components/ui/dialog'
 import {
   ArrowLeft, CheckCircle2, XCircle, MessageSquare, Download,
-  FileText, User, Calendar, Hash, Clock, Paperclip, AlertCircle, Loader2
+  FileText, User, Calendar, Hash, Clock, Paperclip, AlertCircle, Loader2, Trash2, Undo2
 } from 'lucide-react'
 import {
   formatCurrency, formatDatetime, formatDate,
   getMedicaoStatusColor
 } from '@/lib/utils'
 import { MEDICAO_STATUS_LABELS, TIPO_MEDICAO_LABELS, MedicaoStatus } from '@/types'
+import { usePermissoes } from '@/lib/context/permissoes-context'
 
 export default function MedicaoDetailPage({ params }: { params: Promise<{ id: string; medicaoId: string }> }) {
   const { id: contratoId, medicaoId } = use(params)
@@ -34,6 +35,9 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
   const [status, setStatus] = useState<MedicaoStatus | null>(null)
 
   const [historicoMedicoes, setHistoricoMedicoes] = useState<any[]>([])
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const { perfilAtual } = usePermissoes()
+  const isAdmin = perfilAtual === 'admin'
 
   async function fetchMedicao() {
     const res = await fetch(`/api/contratos/${contratoId}/medicoes/${medicaoId}`)
@@ -90,6 +94,23 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
       return { media, fator: (medicao.valor_total / media).toFixed(1) }
     return null
   })()
+
+  async function desaprovar() {
+    if (!confirm('Desaprovar esta medição? Voltará para "Submetido".')) return
+    const res = await fetch(`/api/contratos/${contratoId}/medicoes/${medicaoId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'submetido' }),
+    })
+    if (res.ok) setStatus('submetido' as MedicaoStatus)
+  }
+
+  async function excluir() {
+    if (!confirmDelete) { setConfirmDelete(true); return }
+    const res = await fetch(`/api/contratos/${contratoId}/medicoes/${medicaoId}`, { method: 'DELETE' })
+    if (res.ok) window.history.back()
+    else setConfirmDelete(false)
+  }
 
   async function aprovar() {
     setSaving(true)
@@ -251,6 +272,34 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                 )}
               </CardContent>
             </Card>
+
+            {/* Ações de Administrador */}
+            {isAdmin && !isPendente && (
+              <Card className="border-red-900/40">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-red-400">Ações de Administrador</CardTitle>
+                </CardHeader>
+                <CardContent className="flex gap-2">
+                  {status === 'aprovado' && (
+                    <Button variant="outline" size="sm" onClick={desaprovar} className="border-amber-700 text-amber-400 hover:bg-amber-900/20">
+                      <Undo2 className="w-4 h-4" />
+                      Desaprovar
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline" size="sm"
+                    onClick={excluir}
+                    className={confirmDelete ? 'border-red-500 bg-red-900/30 text-red-300' : 'border-red-900 text-red-400 hover:bg-red-900/20'}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    {confirmDelete ? 'Confirmar Exclusão' : 'Excluir'}
+                  </Button>
+                  {confirmDelete && (
+                    <Button variant="outline" size="sm" onClick={() => setConfirmDelete(false)}>Cancelar</Button>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             {/* Itens */}
             <Card>
