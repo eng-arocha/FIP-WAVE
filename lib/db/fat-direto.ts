@@ -373,10 +373,12 @@ export async function listarTarefasParaSolicitacao(contratoId: string) {
   })
 
   return sorted.map((d: any) => {
-    // Prefer generated column valor_total (qty × valor_unitario, exists since migration 001)
-    // Fallback to qty × valor_material_unit (migration 011) or qty × valor_unitario
-    const valorMaterial = d.valor_total
-      || (d.quantidade_contratada || 0) * (d.valor_material_unit || d.valor_unitario || 0)
+    const qty = d.quantidade_contratada || 0
+    // valor_total = generated column qty × valor_unitario (global)
+    const valorGlobal = d.valor_total || qty * (d.valor_unitario || 0)
+    // valor_material_unit e valor_servico_unit existem desde migration 011
+    const valorMaterial = qty * (d.valor_material_unit || 0) || valorGlobal
+    const valorServico  = qty * (d.valor_servico_unit  || 0)
     return {
       id: d.id,              // detalhamento ID (usado no dropdown)
       tarefa_id: d.tarefa_id, // FK real para tarefas (usado no insert)
@@ -384,8 +386,8 @@ export async function listarTarefasParaSolicitacao(contratoId: string) {
       nome: (d.descricao || '').trim(),
       locais: [(d.local || 'TORRE').trim().toUpperCase()],
       valor_material: valorMaterial,
-      valor_servico: 0,
-      valor_total: valorMaterial,
+      valor_servico: valorServico,
+      valor_total: valorGlobal,
       valor_aprovado: aprovadoByDet[d.id] || 0,
       valor_em_aprovacao: emAprovacaoByDet[d.id] || 0,
       grupo_macro: {

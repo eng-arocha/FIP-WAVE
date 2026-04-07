@@ -312,7 +312,12 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
                             const qtdMedida = det.qtd_medida || 0
                             const qtdContratada = det.quantidade_contratada || 0
                             const pct = qtdContratada > 0 ? (qtdMedida / qtdContratada) * 100 : 0
-                            const valorTotal = qtdContratada * (det.valor_unitario || 0)
+                            // Valor varia conforme filtro ativo
+                            const valorTotal = filterTipo === 'faturamento_direto'
+                              ? qtdContratada * (det.valor_material_unit || 0)
+                              : filterTipo === 'servico'
+                                ? qtdContratada * (det.valor_servico_unit || 0)
+                                : qtdContratada * (det.valor_unitario || 0)
                             return (
                               <div key={det.id} className="grid grid-cols-12 gap-2 py-1.5 px-2 rounded hover:bg-[var(--surface-1)] text-xs items-center">
                                 <span className="col-span-1 font-mono text-[var(--text-3)]">{det.codigo}</span>
