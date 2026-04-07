@@ -1,6 +1,63 @@
--- Migration 015: Seed completo de detalhamentos (grupos 1-18)
--- Usa ON CONFLICT (id) DO NOTHING para ser idempotente
+-- Migration 015: Seed tarefas + detalhamentos completo
+-- Idempotente: ON CONFLICT (id) DO NOTHING
 
+-- 1) Tarefas (precisa existir antes dos detalhamentos por FK)
+INSERT INTO tarefas (id, grupo_macro_id, codigo, nome, unidade, quantidade_contratada, valor_unitario, valor_total) VALUES
+('8ef2c00c-8472-fe20-c5a3-5e090f71bc82', 'c470908c-37ad-4bbd-b15e-c30420bf3e04', '1.1', 'ENTRADA DE ENERGIA - INFRAESTRUTURA ( Poste ao PMT )', 'SV', 1.0, 30747.78, 30747.78),
+('efe17ea8-dee6-6267-d7ac-0738c6349726', 'c470908c-37ad-4bbd-b15e-c30420bf3e04', '1.2', 'ENTRADA DE ENERGIA - CABEAMENTO MÉDIA ( Poste ao PMT  )', 'SV', 1.0, 8895.41, 8895.41),
+('266d1573-d5ac-c3ae-8d44-502d8749f403', 'c470908c-37ad-4bbd-b15e-c30420bf3e04', '1.3', 'ENTRADA DE ENERGIA - EQUIPAMENTOS( Painel de Média Tensão  )', 'SV', 1.0, 348931.39, 348931.39),
+('044dc6cd-0d66-b7d0-3634-4151b60df888', 'c470908c-37ad-4bbd-b15e-c30420bf3e04', '1.4', 'SUBESTAÇÃO PMUC - INFRAESTRUTURA ( PMT até Subestação PMUC + Trafo ao CPG)', 'SV', 1.0, 26909.52, 26909.52),
+('8eba7215-c8aa-6161-acff-9bb32f9b5184', 'c470908c-37ad-4bbd-b15e-c30420bf3e04', '1.5', 'SUBESTAÇÃO PMUC - CABEAMENTO MÉDIA ( PMT até Subestação PMUC )', 'SV', 1.0, 20114.28, 20114.28),
+('1ac1df64-6152-a2da-c04e-618085b57d2f', 'c470908c-37ad-4bbd-b15e-c30420bf3e04', '1.6.', 'SUBESTAÇÃO PMUC - EQUIPAMENTO ( Tranformadores e fechamentos )', 'SV', 1.0, 159374.24, 159374.24),
+('7d07ff97-0de8-bb33-ede6-78817ba09e57', 'c470908c-37ad-4bbd-b15e-c30420bf3e04', '1.7', 'SUBESTAÇÃO PMUC - CABEAMENTO BAIXA TENSÃO ( Transformadores aos CPG''s )', 'SV', 1.0, 54905.38, 54905.38),
+('ef9a06aa-f2b0-be4e-fb89-956218f54a1d', 'c470908c-37ad-4bbd-b15e-c30420bf3e04', '1.8', 'SUBESTAÇÃO PMUC - QUADROS ( CPG''s )', 'SV', 1.0, 124927.76, 124927.76),
+('25b156a4-20e8-253f-b373-f074f23abbc9', 'c470908c-37ad-4bbd-b15e-c30420bf3e04', '1.9', 'SUBESTAÇÃO GRUPO A  - INFRAESTRUTURA ( PMT até Subestação GRUPO A  )', 'SV', 1.0, 23906.86, 23906.86),
+('0489db72-268a-fb54-89e0-8874482155bd', 'c470908c-37ad-4bbd-b15e-c30420bf3e04', '1.10', 'SUBESTAÇÃO GRUPO A  - CABEAMENTO MÉDIA ( PMT até Subestação GRUPO A  )', 'SV', 1.0, 10610.25, 10610.25),
+('61cccd8a-a01e-4ace-5a10-e4369540a6a0', 'c470908c-37ad-4bbd-b15e-c30420bf3e04', '1.11', 'SUBESTAÇÃO GRUPO A  - EQUIPAMENTO ( Tranformador e fechamentos )', 'SV', 1.0, 77888.6, 77888.6),
+('3ebe4212-e8c7-8813-8f55-9c78a651b380', 'c470908c-37ad-4bbd-b15e-c30420bf3e04', '1.12', 'SUBESTAÇÃO GRUPO A  - CABEAMENTO BAIXA TENSÃO ( Transformadores aos CPG'')', 'SV', 1.0, 27452.69, 27452.69),
+('ac90b5b8-1dc0-8cd8-976e-b5243b18c52e', 'c470908c-37ad-4bbd-b15e-c30420bf3e04', '1.13', 'SUBESTAÇÃO GRUPO A  - QUADROS ( CPG )', 'SV', 1.0, 35721.44, 35721.44),
+('68616ce3-cdad-e947-330b-15286b9091ca', 'c470908c-37ad-4bbd-b15e-c30420bf3e04', '1.14', 'ENTRADA / SE PMUC / SE GRUPO A  - ATERRAMENTO ( Haste + Cabeamento + Fechamentos  )', 'SV', 1.0, 25619.67, 25619.67),
+('488d62b0-ccd2-cef1-864f-cf39a7158e52', '0f6c06c1-da38-7b0e-a7dc-32f8d1ae609e', '2.1', 'GRUPO GERADOR PMUC  - EQUIPAMENTO ( Gerador 500 Kva + Escapamento )', 'SV', 1.0, 446509.17, 446509.17),
+('58a685be-9ae6-9ee0-a9f5-9dda93c29765', '0f6c06c1-da38-7b0e-a7dc-32f8d1ae609e', '2.2', 'GRUPO GERADOR PMUC  - PAINEIS (  QTA''s + Quadros reversão )', 'SV', 1.0, 389851.3, 389851.3),
+('3b6cee64-f2c3-034f-f42a-ab141c104e89', '0f6c06c1-da38-7b0e-a7dc-32f8d1ae609e', '2.3', 'GRUPO GERADOR PMUC  - INFRAESTRUTURA  (  Eletrodutos )', 'SV', 1.0, 60941.78, 60941.78),
+('884bae01-1bb7-a5a7-25a2-05761410adf4', '0f6c06c1-da38-7b0e-a7dc-32f8d1ae609e', '2.4', 'GRUPO GERADOR PMUC  - CABEAMENTO BAIXA TENSÃO + COMANDO', 'SV', 1.0, 144019.27, 144019.27),
+('4ba9c271-6a02-2bba-96eb-0b42bd8eb222', '0f6c06c1-da38-7b0e-a7dc-32f8d1ae609e', '2.5', 'GRUPO GERADOR CONDOMINIO  - EQUIPAMENTO ( Gerador 500 Kva + Escapamento )', 'SV', 1.0, 431053.37, 431053.37),
+('0380b53f-f8aa-f6f0-3ec5-f7dad1059e89', '0f6c06c1-da38-7b0e-a7dc-32f8d1ae609e', '2.6', 'GRUPO GERADOR CONDOMINIO  - PAINEIS (  QTA EMERG + QTA QDC + QDG GERADOR )', 'SV', 1.0, 113013.61, 113013.61),
+('04c06583-f0b5-4595-848d-f824d478f887', '0f6c06c1-da38-7b0e-a7dc-32f8d1ae609e', '2.7', 'GRUPO GERADOR CONDOMINIO  - INFRAESTRUTURA  (  Eletrodutos )', 'SV', 1.0, 63561.89, 63561.89),
+('0a435407-69d6-be27-b3d2-396c341bf920', '0f6c06c1-da38-7b0e-a7dc-32f8d1ae609e', '2.8', 'GRUPO GERADOR CONDOMINIO  - CABEAMENTO BAIXA TENSÃO + COMANDO', 'SV', 1.0, 175705.28, 175705.28),
+('3d7ad1e1-bcf9-eb8a-4a4a-7ea2ce05bf90', '0f6c06c1-da38-7b0e-a7dc-32f8d1ae609e', '2.9', 'GRUPO GERADOR PMUC + CONDOMINIO  - ATERRAMENTO', 'SV', 1.0, 9800.56, 9800.56),
+('c04079ee-6333-6e19-0a4f-0b442bc26f45', 'da154b43-68e8-771a-ac55-8e496bddc64a', '3.1', 'INFRAESTRUTURA -  ALIMENTAÇÃO ELÉTRICA ( Eletrocalhas,Eletrodutos, caixas )', 'SV', 1.0, 741426.01, 741426.01),
+('c2d03d67-2239-1d36-b037-836252535dc5', 'da154b43-68e8-771a-ac55-8e496bddc64a', '3.2', 'CABEAMENTO- ALIMENTAÇÃO ELÉTRICA ( CABOS ATOX 1KV )', 'SV', 1.0, 1793587.1145, 1793587.11),
+('01fdc05a-78ec-2a68-4f75-5df05cf7d050', '2341f9a5-4016-bee6-1332-474318c39d19', '4.1', 'INFRAESTRUTURA -  DISTRIBUIÇÃO ELÉTRICA (Eletrocalhas, eletrodutos e caixas )', 'SV', 1.0, 530136.13, 530136.13),
+('b1c8aa5f-23b8-19d2-1b84-4a08ccc8f352', '2341f9a5-4016-bee6-1332-474318c39d19', '4.2', 'CABEAMENTO- DISTRIBUIÇÃO ELETRICA ( Cabos 750v 2,5mm2, 4mm2 e 6mm2 )', 'SV', 1.0, 418568.33, 418568.33),
+('f0af7843-372d-e1b8-3165-ad02d22bed0f', '2341f9a5-4016-bee6-1332-474318c39d19', '4.3', 'ACABAMENTO - DISTRIBUIÇÃO ELETRICA ( Tomadas e Interruptores )', 'SV', 1.0, 39191.56, 39191.56),
+('bf7a7a38-8f0b-391d-dd97-b05f48d113aa', '0744406d-596c-dcdf-964b-d9be3b19b3b3', '5.1', 'NSTALAÇÕES DE LUMINÁRIAS CONFORME PROJETO ( SOMENTE MÃO DE OBRA )', 'SV', 1.0, 287273.52, 287273.52),
+('974ed740-1cc7-805e-96ef-4afc0e6e0113', '00061229-7986-699d-88d2-d040dbd492d1', '6.1', 'QUADROS DE ILUMINAÇÃO', 'SV', 1.0, 973939.0686, 973939.07),
+('bc83b534-3546-81e3-d7bb-8c3e6902729e', '3c43cadf-2161-5334-9fd5-293b09bb06fd', '7.1', 'INFRAESTRUTURA -  DADOS E VOZ (Eletrocalhas, eletrodutos e caixas )', 'SV', 1.0, 277801.37, 277801.37),
+('46b91a6c-c77e-12f4-1be9-3de563613e04', '428b735e-3a63-52e2-2dc9-cbd93e05ea8f', '8.1', 'ÁGUA PLUVIAL ( TUBOS E CONEXÕES )', 'SV', 1.0, 1378381.0361, 1378381.04),
+('78cf38dd-10bd-8951-3e1b-f83d86fa17fb', '428b735e-3a63-52e2-2dc9-cbd93e05ea8f', '8.2', 'BARRILHETE DE BOMBAS DRENAGEM', 'SV', 1.0, 50633.8, 50633.8),
+('7c11b4a4-a002-04eb-24f0-06b8dc96fb6e', '369fd87b-b762-1179-ab06-37b2a1966cc8', '9.1', 'ESGOTO SANITARIO', 'SV', 1.0, 1898133.76, 1898133.76),
+('c003a631-a38e-3f20-3256-896e58f79191', '488b4651-16cc-adbe-2662-edadc0f036b7', '10.1', 'HIDRÁULICA (ÁGUA FRIA)', 'SV', 1.0, 1422075.92, 1422075.92),
+('cecf58c1-f4cd-c5c5-5629-f6daa349d302', '488b4651-16cc-adbe-2662-edadc0f036b7', '10.2', 'HIDRÁULICA (ÁGUA QUENTE)', 'SV', 1.0, 673244.329, 673244.33),
+('abc9f4d1-f216-8143-436a-9acaedaa1dd9', '488b4651-16cc-adbe-2662-edadc0f036b7', '10.3', 'HIDRÁULICA (BARRILHETES BOMBAS E REDUTORAS)', 'SV', 1.0, 757020.26, 757020.26),
+('91657f80-e132-9315-56a9-760df5a77555', '335add86-a820-19fb-f9ad-e7aa6a3e9a95', '12.1', '', 'SV', 1.0, 128774.75, 128774.75),
+('8cba73cb-ead5-c87f-9225-c96236e2ee09', '578cb596-6c31-addb-191b-061c9b01848d', '13.1', 'PILOTIS ( SÓ MÃO DE OBRA )', 'SV', 1.0, 18000.61, 18000.61),
+('2f2c41b0-e82c-652c-bc14-0a71e60ec148', '578cb596-6c31-addb-191b-061c9b01848d', '13.2', 'APARTAMENTOS', 'SV', 1.0, 108286.98, 108286.98),
+('014cf2ba-a2c3-86eb-523e-3a4bba1d6d4f', '9870c9b4-bb78-7ea5-b5aa-3728d5ca37c7', '14.1', 'HIDRANTE', 'SV', 1.0, 340487.9604, 340487.96),
+('e5977692-4f97-b012-e08e-d2df4cedd5d3', '9870c9b4-bb78-7ea5-b5aa-3728d5ca37c7', '14.2', 'SPRINKLERS', 'SV', 1.0, 1202614.9181, 1202614.92),
+('f7363bb4-052f-ce59-7ad2-e839a08717ee', '9870c9b4-bb78-7ea5-b5aa-3728d5ca37c7', '14.3', 'BOMBAS E BARRILHETES', 'SV', 1.0, 139226.83, 139226.83),
+('e27bb86b-db5c-846c-6520-6b7b105951e0', '4f5558fa-2077-3e92-0d34-02dea3e4cac2', '15.1', 'LUMINARIAS DE EMERGENCIA + ROTA DE FUGA', 'SV', 1.0, 60531.42, 60531.42),
+('6f1829f2-6813-0079-a9f3-7f285f5522a5', '4f5558fa-2077-3e92-0d34-02dea3e4cac2', '15.2', 'EXTINTORES', 'SV', 1.0, 89936.92, 89936.92),
+('4622febb-2ffc-d980-ed20-d64ef1103d48', 'dff1c618-976d-f1e1-0a93-11ff5cf2d5c1', '16.1', 'INFRA ESTRUTURA ( ELTRODUTOS E CAIXAS )', 'SV', 1.0, 139792.283, 139792.28),
+('0009349d-287b-0cfc-2dad-447b348dfd35', 'dff1c618-976d-f1e1-0a93-11ff5cf2d5c1', '16.2', 'CABEAMENTO SDAI ( CABO BLINDADO )', 'SV', 1.0, 56320.2911, 56320.29),
+('6be41991-3697-f581-1baa-fad46fa0e2fc', 'dff1c618-976d-f1e1-0a93-11ff5cf2d5c1', '16.3', 'EQUIPAMENTOS', 'SV', 1.0, 206661.62, 206661.62),
+('273aabfa-a3c1-f4a7-8bb9-eb605307b7af', 'c89fdfa2-0d2e-df13-9015-d2749e0f5ca1', '17.1', 'TUBOS E CONEXÕES', 'SV', 1.0, 161093.9, 161093.9),
+('273aabfa-a3c1-f4a7-8bb9-eb605307b7af', 'c89fdfa2-0d2e-df13-9015-d2749e0f5ca1', '17.1', 'CAIXAS, REGULADORES E VALVULAS', 'SV', 1.0, 94472.95, 94472.95),
+('227ee554-792f-c9d2-4283-aff7448c4eb7', 'e9b0a1d0-c6db-c953-19bf-4d5a5827578b', '18.1', 'SPDA', 'SV', 1.0, 335924.86, 335924.86),
+('8b6ab969-5fb9-4e98-aa3d-31489278657c', 'a1877456-1a60-264d-684b-0c11fd3f471c', '19.1', 'DESCREVER SUBDIVISÃO', 'SV', 1.0, 866000.0, 866000.0)
+ON CONFLICT (id) DO NOTHING;
+
+-- 2) Detalhamentos
 INSERT INTO detalhamentos (id, tarefa_id, codigo, descricao, unidade, quantidade_contratada, valor_unitario) VALUES
 ('525186fd-f01b-846b-61bf-c814c132f729', '8ef2c00c-8472-fe20-c5a3-5e090f71bc82', '1.1.1', 'ENTRADA DE ENERGIA - INFRAESTRUTURA ( Poste ao PMT )', 'SV', 1.0, 30747.78),
 ('0c0e44a4-a61a-8f5a-651c-a35daf0e38d2', 'efe17ea8-dee6-6267-d7ac-0738c6349726', '1.2.1', 'ENTRADA DE ENERGIA - CABEAMENTO MÉDIA ( Poste ao PMT  )', 'SV', 1.0, 8895.41),
