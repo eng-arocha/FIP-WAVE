@@ -1,8 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function getPerfil(userId: string) {
-  const supabase = await createClient()
-  const { data } = await supabase
+  // Usa admin client para ignorar RLS e garantir leitura do perfil
+  const admin = createAdminClient()
+  const { data } = await admin
     .from('perfis')
     .select('id, nome, email, perfil, ativo')
     .eq('id', userId)
