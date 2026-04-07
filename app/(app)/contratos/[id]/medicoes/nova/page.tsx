@@ -282,7 +282,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                               ? (delta / 100) * (det.quantidade_contratada || 0) * (det.valor_unitario || 0)
                               : 0
                             return (
-                              <div key={det.id} className={`grid grid-cols-12 gap-2 p-2.5 rounded-lg text-xs items-center transition-all ${delta > 0 ? 'bg-blue-500/10 border border-blue-500/20' : 'bg-[var(--surface-1)] border border-transparent'}`}>
+                              <div key={det.id} className={`grid grid-cols-12 gap-2 p-2.5 rounded-lg text-xs items-center transition-all ${delta > 0 ? 'bg-amber-500/8 border border-amber-500/30' : pct === 100 ? 'bg-emerald-500/8 border border-emerald-500/20' : 'bg-[var(--surface-1)] border border-transparent'}`}>
                                 <div className="col-span-1 text-[var(--text-3)] font-mono text-[10px]">{det.codigo}</div>
                                 <div className="col-span-3 text-[var(--text-1)] font-medium leading-tight">{det.descricao}</div>
                                 <div className="col-span-1 text-center text-[var(--text-3)]">{det.unidade}</div>
@@ -290,8 +290,9 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                 {/* % selector */}
                                 <div className="col-span-4 flex gap-0.5">
                                   {[0, 25, 50, 75, 100].map(p => {
-                                    const isMin = p < pctAnt
-                                    const isSelected = pct === p
+                                    const isMin    = p < pctAnt                        // abaixo do acumulado → desabilitado
+                                    const isAccum  = p === pctAnt && p > 0             // acumulado anterior → verde
+                                    const isDelta  = p > pctAnt && p <= pct && p > 0  // delta nova medição → amarelo
                                     return (
                                       <button
                                         key={p}
@@ -300,11 +301,11 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                         onClick={() => setPercentual(det.id, p)}
                                         className={`flex-1 py-1.5 rounded text-[11px] font-bold transition-all duration-150 ${
                                           isMin
-                                            ? 'opacity-25 cursor-not-allowed bg-[var(--surface-3)] text-[var(--text-3)]'
-                                            : isSelected
-                                            ? p === pctAnt
-                                              ? 'bg-[#334155] text-white ring-1 ring-slate-500'
-                                              : 'bg-blue-500 text-white shadow-md shadow-blue-500/40'
+                                            ? 'opacity-20 cursor-not-allowed bg-[var(--surface-3)] text-[var(--text-3)]'
+                                            : isAccum
+                                            ? 'bg-emerald-600 text-white ring-1 ring-emerald-400'
+                                            : isDelta
+                                            ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/40'
                                             : 'bg-[#1e293b] text-slate-300 hover:bg-[#334155] hover:text-white'
                                         }`}
                                       >
