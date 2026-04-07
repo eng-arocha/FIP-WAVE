@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { formatCurrency } from '@/lib/utils'
 import {
   ArrowLeft, Plus, Trash2, Package, Save, AlertTriangle,
-  Building2, ChevronDown, Search, MapPin, X, Hash, Upload, FileText, TrendingUp,
+  Building2, ChevronDown, Search, MapPin, X, Hash, Upload, FileText, TrendingUp, Paperclip,
 } from 'lucide-react'
 
 // ── Máscaras ───────────────────────────────────────────────────────────────
@@ -244,7 +244,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
   }
 
   const [observacoes, setObservacoes] = useState('')
-  const [pedidoPdfFile, setPedidoPdfFile] = useState<File | null>(null)
+  const [anexos, setAnexos] = useState<File[]>([])
   const [itens, setItens] = useState<ItemForm[]>([
     { tarefa_id: '', descricao: '', local: '', valor_total: '' },
   ])
@@ -383,10 +383,10 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
       }
       if (!res.ok) { setErro(data.error || 'Erro ao salvar'); setSaving(false); return }
 
-      // Upload do PDF do pedido (se selecionado)
-      if (pedidoPdfFile) {
+      // Upload dos anexos (múltiplos arquivos)
+      if (anexos.length > 0) {
         const fd = new FormData()
-        fd.append('file', pedidoPdfFile)
+        anexos.forEach(f => fd.append('files', f))
         fd.append('solicitacao_id', data.id)
         fd.append('tipo', 'pedido')
         fd.append('numero_pedido_fip', numeroPedidoFip)
@@ -643,67 +643,102 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
           </CardContent>
         </Card>
 
-        {/* ── Pedido FIP em PDF ── */}
+        {/* ── Anexos do Pedido ── */}
         <Card style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2" style={{ color: 'var(--text-1)' }}>
               <span className="apple-icon" style={{ background: 'linear-gradient(135deg, #EF4444, #F97316)' }}>
-                <FileText className="w-3.5 h-3.5 text-white" strokeWidth={1.5} />
+                <Paperclip className="w-3.5 h-3.5 text-white" strokeWidth={1.5} />
               </span>
-              Pedido FIP em PDF
-              <span className="text-xs font-normal ml-1" style={{ color: 'var(--text-3)' }}>(opcional)</span>
+              Anexos do Pedido
+              <span className="text-xs font-normal ml-1" style={{ color: 'var(--text-3)' }}>(opcional · múltiplos arquivos)</span>
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
+            {/* Drop zone */}
             <div
-              className="flex items-center gap-3 rounded-xl px-4 py-3 cursor-pointer transition-all"
+              className="flex flex-col items-center gap-2 rounded-xl px-4 py-5 cursor-pointer transition-all text-center"
               style={{
-                background: pedidoPdfFile ? 'rgba(239,68,68,0.05)' : 'var(--surface-3)',
-                border: `1.5px dashed ${pedidoPdfFile ? 'rgba(239,68,68,0.40)' : 'var(--border)'}`,
+                background: 'var(--surface-3)',
+                border: '1.5px dashed var(--border)',
               }}
               onClick={() => pdfInputRef.current?.click()}
-              onMouseEnter={e => { if (!pedidoPdfFile) e.currentTarget.style.borderColor = 'var(--accent)' }}
-              onMouseLeave={e => { if (!pedidoPdfFile) e.currentTarget.style.borderColor = 'var(--border)' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)' }}
+              onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--accent)' }}
+              onDragLeave={e => { e.currentTarget.style.borderColor = 'var(--border)' }}
+              onDrop={e => {
+                e.preventDefault()
+                e.currentTarget.style.borderColor = 'var(--border)'
+                const dropped = Array.from(e.dataTransfer.files)
+                if (dropped.length > 0) setAnexos(prev => [...prev, ...dropped])
+              }}
             >
-              <Upload className="w-4 h-4 flex-shrink-0" strokeWidth={1.5} style={{ color: pedidoPdfFile ? '#EF4444' : 'var(--text-3)' }} />
-              <div className="flex-1 min-w-0">
-                {pedidoPdfFile ? (
-                  <>
-                    <p className="text-sm font-medium truncate" style={{ color: 'var(--text-1)' }}>{pedidoPdfFile.name}</p>
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>
-                      {(pedidoPdfFile.size / 1024 / 1024).toFixed(2)} MB · Será salvo como{' '}
-                      <span className="font-medium" style={{ color: 'var(--accent)' }}>
-                        PEDIDO-FIP-{numeroPedidoFip ? numeroPedidoFip.padStart(4, '0') : '????'}.pdf
-                      </span>
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm" style={{ color: 'var(--text-3)' }}>Clique para selecionar o PDF do pedido aprovado</p>
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)', opacity: 0.7 }}>
-                      Será armazenado como PEDIDO-FIP-{numeroPedidoFip ? numeroPedidoFip.padStart(4, '0') : '????'}.pdf
-                    </p>
-                  </>
-                )}
+              <Upload className="w-5 h-5" strokeWidth={1.5} style={{ color: 'var(--text-3)' }} />
+              <div>
+                <p className="text-sm font-medium" style={{ color: 'var(--text-2)' }}>
+                  Clique ou arraste arquivos aqui
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>
+                  PDF, imagens (JPG, PNG) — sem limite de quantidade
+                </p>
               </div>
-              {pedidoPdfFile && (
-                <button
-                  onClick={e => { e.stopPropagation(); setPedidoPdfFile(null) }}
-                  className="flex-shrink-0 p-1 rounded-full transition-colors"
-                  style={{ color: 'var(--text-3)' }}
-                  onMouseEnter={e => { e.currentTarget.style.color = 'var(--red)' }}
-                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-3)' }}
-                >
-                  <X className="w-4 h-4" strokeWidth={2} />
-                </button>
-              )}
             </div>
+
+            {/* Lista de arquivos selecionados */}
+            {anexos.length > 0 && (
+              <div className="space-y-2">
+                {anexos.map((f, i) => (
+                  <div
+                    key={`${f.name}-${i}`}
+                    className="flex items-center gap-3 rounded-xl px-3 py-2.5"
+                    style={{ background: 'var(--surface-3)', border: '1px solid var(--border)' }}
+                  >
+                    <div
+                      className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ background: f.type.includes('pdf') ? 'rgba(239,68,68,0.12)' : 'rgba(59,130,246,0.12)' }}
+                    >
+                      <FileText
+                        className="w-3.5 h-3.5"
+                        strokeWidth={1.5}
+                        style={{ color: f.type.includes('pdf') ? '#EF4444' : '#3B82F6' }}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate" style={{ color: 'var(--text-1)' }}>{f.name}</p>
+                      <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
+                        {(f.size / 1024).toFixed(0)} KB
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setAnexos(prev => prev.filter((_, idx) => idx !== i))}
+                      className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center transition-colors"
+                      style={{ color: 'var(--text-3)' }}
+                      onMouseEnter={e => { e.currentTarget.style.color = 'var(--red)'; e.currentTarget.style.background = 'rgba(239,68,68,0.08)' }}
+                      onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-3)'; e.currentTarget.style.background = '' }}
+                      title="Remover"
+                    >
+                      <X className="w-3.5 h-3.5" strokeWidth={2} />
+                    </button>
+                  </div>
+                ))}
+                <p className="text-[11px] text-right" style={{ color: 'var(--text-3)' }}>
+                  {anexos.length} arquivo{anexos.length > 1 ? 's' : ''} selecionado{anexos.length > 1 ? 's' : ''}
+                </p>
+              </div>
+            )}
+
             <input
               ref={pdfInputRef}
               type="file"
-              accept="application/pdf"
+              accept="application/pdf,image/jpeg,image/png,image/webp"
+              multiple
               className="hidden"
-              onChange={e => setPedidoPdfFile(e.target.files?.[0] ?? null)}
+              onChange={e => {
+                const files = Array.from(e.target.files ?? [])
+                if (files.length > 0) setAnexos(prev => [...prev, ...files])
+                e.target.value = ''
+              }}
             />
           </CardContent>
         </Card>
