@@ -26,7 +26,9 @@ function maskTelefone(v: string): string {
   const d = v.replace(/\D/g, '').slice(0, 11)
   if (d.length === 0) return ''
   if (d.length <= 2) return `(${d}`
-  if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2)}`
+  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`
+  // Fixo (10 dígitos): (XX) XXXX-XXXX  |  Móvel (11 dígitos): (XX) XXXXX-XXXX
+  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`
   return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`
 }
 
@@ -199,7 +201,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
   const [cnpjLookupStatus, setCnpjLookupStatus] = useState<'idle' | 'loading' | 'found' | 'not_found' | 'error' | 'inactive'>('idle')
   const [cnpjLookupMsg, setCnpjLookupMsg] = useState('')
 
-  async function lookupCnpj(maskedValue: string) {
+  async function lookupCnpj(maskedValue: string, fallbackRazao = '') {
     const digits = maskedValue.replace(/\D/g, '')
     if (digits.length !== 14) return
     setCnpjLookupStatus('loading')
@@ -210,37 +212,42 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
       if (res.status === 404) {
         setCnpjLookupStatus('not_found')
         setCnpjLookupMsg('CNPJ não encontrado na Receita Federal')
-        setFornRazaoSocial('')
+        // Preserva razão social extraída do PDF se houver
+        setFornRazaoSocial(fallbackRazao)
         return
       }
       if (!res.ok) {
         setCnpjLookupStatus('error')
         setCnpjLookupMsg(data.error || 'Erro ao consultar Receita Federal')
+        // Preserva razão social extraída do PDF se houver
+        if (fallbackRazao) setFornRazaoSocial(fallbackRazao)
         return
       }
       if (!data.ativa) {
         setCnpjLookupStatus('inactive')
         setCnpjLookupMsg(`Empresa com situação: ${data.situacao_cadastral}`)
-        setFornRazaoSocial(data.razao_social || '')
+        setFornRazaoSocial(data.razao_social || fallbackRazao)
         return
       }
       setCnpjLookupStatus('found')
       setCnpjLookupMsg(`${data.municipio}/${data.uf}`)
-      setFornRazaoSocial(data.razao_social || '')
+      setFornRazaoSocial(data.razao_social || fallbackRazao)
     } catch {
       setCnpjLookupStatus('error')
       setCnpjLookupMsg('Falha na conexão com Receita Federal')
+      // Preserva razão social extraída do PDF se houver
+      if (fallbackRazao) setFornRazaoSocial(fallbackRazao)
     }
   }
 
-  function handleCnpjChange(raw: string) {
+  function handleCnpjChange(raw: string, fallbackRazao = '') {
     const masked = maskCnpj(raw)
     setFornCnpj(masked)
     setCnpjLookupStatus('idle')
     setCnpjLookupMsg('')
-    setFornRazaoSocial('')
+    setFornRazaoSocial(fallbackRazao)
     const digits = masked.replace(/\D/g, '')
-    if (digits.length === 14) lookupCnpj(masked)
+    if (digits.length === 14) lookupCnpj(masked, fallbackRazao)
   }
 
   const [observacoes, setObservacoes] = useState('')
@@ -267,11 +274,13 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
       }
       const filled = new Set<string>()
       if (data.numero_pedido) { setNumeroPedidoFip(data.numero_pedido); filled.add('pedido') }
-      if (data.razao_social)  { setFornRazaoSocial(data.razao_social); filled.add('razao') }
+      if (data.razao_social) filled.add('razao')
       if (data.cnpj) {
-        // Dispara máscara + lookup Receita Federal
-        handleCnpjChange(data.cnpj)
+        // Passa razão social como fallback — se Receita Federal falhar, usa o valor do PDF
+        handleCnpjChange(data.cnpj, data.razao_social || '')
         filled.add('cnpj')
+      } else if (data.razao_social) {
+        setFornRazaoSocial(data.razao_social)
       }
       if (data.contato)  { setFornContatoNome(data.contato); filled.add('contato') }
       if (data.telefone) { setFornContatoTel(maskTelefone(data.telefone)); filled.add('tel') }
