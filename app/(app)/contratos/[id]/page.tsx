@@ -102,6 +102,8 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   const [loading, setLoading] = useState(true)
   const [contrato, setContrato] = useState<Contrato | null>(null)
   const [grupos, setGrupos] = useState<Grupo[]>([])
+  const [activeTab, setActiveTab] = useState('visao-geral')
+  const [showMedidoResumo, setShowMedidoResumo] = useState(false)
   const [medicoes, setMedicoes] = useState<Medicao[]>([])
   const [aditivos, setAditivos] = useState<Aditivo[]>([])
   const [sortBy, setSortBy] = useState<'padrao' | 'valor_global_desc' | 'valor_global_asc' | 'valor_medido_desc' | 'valor_medido_asc' | 'saldo_desc' | 'saldo_asc'>('padrao')
@@ -314,9 +316,9 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
       <div className="p-6 space-y-6">
         {/* KPI Row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* KPI: Valor Total */}
-          <Link href={`/contratos/${id}/cronograma`}>
-            <Card className="cursor-pointer group transition-all theme-card">
+          {/* KPI: Valor Total → abre Estrutura */}
+          <div onClick={() => setActiveTab('estrutura')} className="cursor-pointer">
+            <Card className="group transition-all theme-card">
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-start justify-between mb-3">
                   <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: 'var(--text-3)' }}>Valor Total</p>
@@ -331,11 +333,11 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                 </div>
               </CardContent>
             </Card>
-          </Link>
+          </div>
 
-          {/* KPI: Medido */}
-          <Link href={`/contratos/${id}/medicoes`}>
-            <Card className="cursor-pointer group transition-all theme-card">
+          {/* KPI: Medido → abre resumo Fat Direto + Medições */}
+          <div onClick={() => setShowMedidoResumo(true)} className="cursor-pointer">
+            <Card className="group transition-all theme-card">
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-start justify-between mb-3">
                   <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: 'var(--text-3)' }}>Medido</p>
@@ -355,11 +357,11 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                 </div>
               </CardContent>
             </Card>
-          </Link>
+          </div>
 
-          {/* KPI: Saldo */}
-          <Link href={`/contratos/${id}/cronograma`}>
-            <Card className="cursor-pointer group transition-all theme-card">
+          {/* KPI: Saldo — sem link */}
+          <div>
+            <Card className="transition-all theme-card">
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-start justify-between mb-3">
                   <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: 'var(--text-3)' }}>Saldo</p>
@@ -371,10 +373,10 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                 <p className="text-xs mt-2" style={{ color: 'var(--text-3)' }}>{formatPercent(100 - percentualMedido)} restante do contrato</p>
               </CardContent>
             </Card>
-          </Link>
+          </div>
 
-          {/* KPI: Medições */}
-          <Link href={`/contratos/${id}/medicoes`}>
+          {/* KPI: Medições → Aprovações */}
+          <Link href="/aprovacoes">
             <Card className="cursor-pointer group transition-all theme-card">
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-start justify-between mb-3">
@@ -401,7 +403,64 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
         </div>
 
         {/* Tabs */}
-        <Tabs defaultValue="visao-geral">
+        {/* Resumo Medido - popup */}
+        {showMedidoResumo && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setShowMedidoResumo(false)}>
+            <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
+            <div
+              className="relative w-full max-w-md mx-4 rounded-2xl p-6 space-y-4"
+              style={{ background: '#FFFFFF', boxShadow: '0 8px 32px rgba(0,0,0,0.12)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold" style={{ color: 'var(--text-1)' }}>Resumo do Faturamento</h3>
+                <button onClick={() => setShowMedidoResumo(false)} className="w-7 h-7 rounded-full flex items-center justify-center" style={{ background: '#F5F5F7', color: '#86868B' }}>
+                  <span className="text-sm font-bold">x</span>
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <div className="p-4 rounded-xl" style={{ background: '#F5F5F7' }}>
+                  <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: '#86868B' }}>Total Medido</p>
+                  <p className="text-2xl font-bold" style={{ color: 'var(--green)' }}>{formatCurrency(valorMedido)}</p>
+                  <p className="text-xs mt-1" style={{ color: '#86868B' }}>{formatPercent(percentualMedido)} do contrato</p>
+                </div>
+
+                <Link href={`/contratos/${id}/medicoes`} onClick={() => setShowMedidoResumo(false)}>
+                  <div className="p-4 rounded-xl cursor-pointer transition-all" style={{ border: '1px solid rgba(0,0,0,0.06)' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#F5F5F7' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '' }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>Medições de Serviço</p>
+                        <p className="text-xs mt-0.5" style={{ color: '#86868B' }}>{medicoes.length} medição(ões) registrada(s)</p>
+                      </div>
+                      <ChevronRight className="w-4 h-4" style={{ color: '#86868B' }} />
+                    </div>
+                  </div>
+                </Link>
+
+                <Link href={`/contratos/${id}/fat-direto`} onClick={() => setShowMedidoResumo(false)}>
+                  <div className="p-4 rounded-xl cursor-pointer transition-all" style={{ border: '1px solid rgba(0,0,0,0.06)' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#F5F5F7' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '' }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>Faturamento Direto</p>
+                        <p className="text-xs mt-0.5" style={{ color: '#86868B' }}>Material direto autorizado</p>
+                      </div>
+                      <ChevronRight className="w-4 h-4" style={{ color: '#86868B' }} />
+                    </div>
+                  </div>
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
             <TabsTrigger value="visao-geral">Visão Geral</TabsTrigger>
             <TabsTrigger value="dados">Dados do Contrato</TabsTrigger>
