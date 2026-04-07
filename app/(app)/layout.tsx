@@ -16,7 +16,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const permissoesEfetivas = permissoes.length > 0 ? permissoes : (TEMPLATES[perfilKey] ?? TEMPLATES.visualizador)
 
   return (
-    <PermissoesProvider permissoes={permissoesEfetivas}>
+    <PermissoesProvider permissoes={permissoesEfetivas} perfilAtual={perfil?.perfil ?? 'visualizador'}>
       <SidebarShell
         perfilAtual={perfil?.perfil ?? 'visualizador'}
         nomeAtual={perfil?.nome ?? ''}

@@ -62,8 +62,8 @@ const STATUS_LABELS: Record<string, string> = {
 export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id: string; solId: string }> }) {
   const { id, solId } = use(params)
   const router = useRouter()
-  const { temPermissao } = usePermissoes()
-  const isAdmin = temPermissao('usuarios', 'criar') // só admin tem esta permissão
+  const { perfilAtual } = usePermissoes()
+  const isAdmin = perfilAtual === 'admin'
   const [sol, setSol] = useState<Solicitacao | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [loading, setLoading] = useState(true)
