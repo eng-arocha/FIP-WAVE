@@ -28,9 +28,9 @@ export async function DELETE(
     if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
     const { data: perfil } = await supabase
-      .from('usuario_perfis')
+      .from('perfis')
       .select('perfil')
-      .eq('user_id', user.id)
+      .eq('id', user.id)
       .single()
     if (perfil?.perfil !== 'admin') {
       return NextResponse.json({ error: 'Apenas administradores podem deletar solicitações' }, { status: 403 })
