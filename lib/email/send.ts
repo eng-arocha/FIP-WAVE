@@ -1,7 +1,5 @@
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
-
 const FROM_EMAIL = process.env.FROM_EMAIL || 'medicoes@fip-wave.com.br'
 const FROM_NAME = 'FIP-WAVE · Controle de Medições'
 
@@ -14,6 +12,7 @@ interface SendEmailParams {
 
 export async function sendEmail({ to, cc, subject, html }: SendEmailParams) {
   try {
+    const resend = new Resend(process.env.RESEND_API_KEY)
     const result = await resend.emails.send({
       from: `${FROM_NAME} <${FROM_EMAIL}>`,
       to: Array.isArray(to) ? to : [to],
