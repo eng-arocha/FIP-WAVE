@@ -318,10 +318,10 @@ export async function listarTarefasParaSolicitacao(contratoId: string) {
   const grupoIds = (grupos || []).map((g: any) => g.id)
   if (grupoIds.length === 0) return []
 
-  // Tarefas (nivel 2) — apenas para montar o mapa código/nome
+  // Tarefas (nivel 2) — inclui valor_material/valor_servico para fallback de proporção
   const { data: tarefas } = await admin
     .from('tarefas')
-    .select('id, codigo, nome')
+    .select('id, codigo, nome, valor_total, valor_material, valor_servico')
     .in('grupo_macro_id', grupoIds)
   const tarefaIds = (tarefas || []).map((t: any) => t.id)
   const tarefaMap: Record<string, any> = {}
@@ -376,9 +376,28 @@ export async function listarTarefasParaSolicitacao(contratoId: string) {
     const qty = d.quantidade_contratada || 0
     // valor_total = generated column qty × valor_unitario (global)
     const valorGlobal = d.valor_total || qty * (d.valor_unitario || 0)
-    // valor_material_unit e valor_servico_unit existem desde migration 011
-    const valorMaterial = qty * (d.valor_material_unit || 0) || valorGlobal
-    const valorServico  = qty * (d.valor_servico_unit  || 0)
+
+    // Calcula valor de material com 3 níveis de prioridade:
+    // 1. valor_material_unit explícito no detalhamento (migration 011/017)
+    // 2. global − valor_servico_unit (quando só serviço está configurado)
+    // 3. Proporção de material da tarefa pai (fallback quando nem um foi configurado)
+    const matUnit = d.valor_material_unit || 0
+    const srvUnit = d.valor_servico_unit  || 0
+    let valorMaterial: number
+    if (matUnit > 0) {
+      valorMaterial = qty * matUnit
+    } else if (srvUnit > 0) {
+      valorMaterial = valorGlobal - qty * srvUnit
+    } else {
+      // Fallback: usar proporção de material da tarefa pai
+      const t = tarefaMap[d.tarefa_id]
+      const tTotal = t?.valor_total || 0
+      const tMat   = t?.valor_material || 0
+      const ratio  = tTotal > 0 ? tMat / tTotal : 1
+      valorMaterial = valorGlobal * ratio
+    }
+    const valorServico = valorGlobal - valorMaterial
+
     return {
       id: d.id,              // detalhamento ID (usado no dropdown)
       tarefa_id: d.tarefa_id, // FK real para tarefas (usado no insert)
