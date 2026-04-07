@@ -182,21 +182,27 @@ export async function criarSolicitacao(input: {
     }
   }
 
+  const insertPayload: Record<string, unknown> = {
+    contrato_id: input.contrato_id,
+    solicitante_id: input.solicitante_id,
+    observacoes: input.observacoes,
+    numero_pedido_fip: input.numero_pedido_fip,
+    fornecedor_razao_social: input.fornecedor_razao_social,
+    fornecedor_cnpj: input.fornecedor_cnpj,
+    fornecedor_contato: input.fornecedor_contato,
+    fornecedor_contato_nome: input.fornecedor_contato_nome,
+    fornecedor_contato_telefone: input.fornecedor_contato_telefone,
+    valor_total,
+    status: 'aguardando_aprovacao',
+  }
+  // Use FIP order number as the solicitation number
+  if (input.numero_pedido_fip) {
+    insertPayload.numero = input.numero_pedido_fip
+  }
+
   const { data: sol, error } = await admin
     .from('solicitacoes_fat_direto')
-    .insert({
-      contrato_id: input.contrato_id,
-      solicitante_id: input.solicitante_id,
-      observacoes: input.observacoes,
-      numero_pedido_fip: input.numero_pedido_fip,
-      fornecedor_razao_social: input.fornecedor_razao_social,
-      fornecedor_cnpj: input.fornecedor_cnpj,
-      fornecedor_contato: input.fornecedor_contato,
-      fornecedor_contato_nome: input.fornecedor_contato_nome,
-      fornecedor_contato_telefone: input.fornecedor_contato_telefone,
-      valor_total,
-      status: 'aguardando_aprovacao',
-    })
+    .insert(insertPayload)
     .select()
     .single()
   if (error) throw error

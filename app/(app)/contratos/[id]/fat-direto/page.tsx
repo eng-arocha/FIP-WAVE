@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { Plus, ArrowLeft, FileText, CheckCircle, Clock, XCircle, Package, ClipboardList, Timer, BadgeCheck, Receipt, Undo2, ChevronDown, X, BarChart2 } from 'lucide-react'
+import { Plus, ArrowLeft, FileText, CheckCircle, Clock, XCircle, Package, ClipboardList, Timer, BadgeCheck, Receipt, Undo2, ChevronDown, X, BarChart2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 
 interface Solicitacao {
@@ -57,6 +57,23 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
   const [filterFornecedor, setFilterFornecedor] = useState<string>('_todos')
   const [filterMes, setFilterMes] = useState<string>('_todos')
 
+  // Sort for main list
+  type SortKey = 'numero' | 'data_solicitacao' | 'fornecedor' | 'valor_total' | 'status'
+  const [sortKey, setSortKey] = useState<SortKey>('numero')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(key); setSortDir('asc') }
+  }
+
+  function SortIcon({ col }: { col: SortKey }) {
+    if (sortKey !== col) return <ArrowUpDown className="w-3 h-3 opacity-30" />
+    return sortDir === 'asc'
+      ? <ArrowUp className="w-3 h-3" style={{ color: 'var(--accent)' }} />
+      : <ArrowDown className="w-3 h-3" style={{ color: 'var(--accent)' }} />
+  }
+
   useEffect(() => {
     Promise.all([
       fetch(`/api/contratos/${id}/fat-direto/solicitacoes`).then(r => r.json()),
@@ -100,6 +117,19 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
   const teto = resumo?.valor_material_direto ?? 0
   const saldoDisponivel = teto - totalAprovado
   const pctUsado = teto > 0 ? Math.round((totalAprovado / teto) * 100) : 0
+
+  // Sorted main list
+  const sortedSolicitacoes = useMemo(() => {
+    return [...solicitacoes].sort((a, b) => {
+      let cmp = 0
+      if (sortKey === 'numero') cmp = a.numero - b.numero
+      else if (sortKey === 'data_solicitacao') cmp = new Date(a.data_solicitacao).getTime() - new Date(b.data_solicitacao).getTime()
+      else if (sortKey === 'fornecedor') cmp = (a.fornecedor_razao_social || '').localeCompare(b.fornecedor_razao_social || '')
+      else if (sortKey === 'valor_total') cmp = a.valor_total - b.valor_total
+      else if (sortKey === 'status') cmp = a.status.localeCompare(b.status)
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [solicitacoes, sortKey, sortDir])
 
   // Unique fornecedores for dropdown
   const fornecedores = useMemo(() => {
@@ -403,8 +433,13 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
 
         {/* Solicitations list */}
         <Card style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base" style={{ color: 'var(--text-1)' }}>Solicitações de Autorização</CardTitle>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base" style={{ color: 'var(--text-1)' }}>Solicitações de Autorização</CardTitle>
+              {solicitacoes.length > 0 && (
+                <span className="text-xs text-[var(--text-3)]">{solicitacoes.length} registro(s)</span>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             {loading ? (
@@ -420,61 +455,82 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
                 </Link>
               </div>
             ) : (
-              <div className="divide-y divide-[var(--border)]">
-                {solicitacoes.map(sol => {
-                  const cfg = STATUS_CONFIG[sol.status] ?? STATUS_CONFIG.rascunho
-                  const nfTotal = (sol.notas_fiscais || []).filter(n => n.status !== 'rejeitada').reduce((s, n) => s + n.valor, 0)
-                  return (
-                    <Link key={sol.id} href={`/contratos/${id}/fat-direto/${sol.id}`} className="block">
-                      <div className="px-5 py-4 hover:bg-[var(--surface-2)] transition-colors flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div
-                            className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                            style={{ background: `${cfg.color}18`, border: `1px solid ${cfg.color}30` }}
-                          >
-                            <span style={{ color: cfg.color }}>{cfg.icon}</span>
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>
-                                SOL-{String(sol.numero).padStart(3, '0')}
-                              </span>
-                              <span
-                                className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide flex items-center gap-1"
-                                style={{ background: `${cfg.color}20`, color: cfg.color }}
-                              >
-                                {cfg.icon} {cfg.label}
-                              </span>
-                              {isAdmin && sol.status === 'aprovado' && (
-                                <button
-                                  onClick={e => desaprovar(e, sol.id)}
-                                  className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-red-500/20 text-red-400 hover:bg-red-500/40 transition-colors"
-                                >
-                                  Desaprovar
-                                </button>
-                              )}
+              <>
+                {/* Sortable column headers */}
+                <div className="grid grid-cols-[auto_1fr_1fr_auto_auto] gap-2 px-5 py-2 border-b text-[10px] font-bold uppercase tracking-wider select-none" style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}>
+                  <button className="flex items-center gap-1 hover:text-[var(--text-1)] transition-colors" onClick={() => toggleSort('numero')}>
+                    Nº <SortIcon col="numero" />
+                  </button>
+                  <button className="flex items-center gap-1 hover:text-[var(--text-1)] transition-colors" onClick={() => toggleSort('fornecedor')}>
+                    Fornecedor <SortIcon col="fornecedor" />
+                  </button>
+                  <button className="flex items-center gap-1 hover:text-[var(--text-1)] transition-colors" onClick={() => toggleSort('data_solicitacao')}>
+                    Data <SortIcon col="data_solicitacao" />
+                  </button>
+                  <button className="flex items-center gap-1 hover:text-[var(--text-1)] transition-colors justify-end" onClick={() => toggleSort('valor_total')}>
+                    Valor <SortIcon col="valor_total" />
+                  </button>
+                  <button className="flex items-center gap-1 hover:text-[var(--text-1)] transition-colors justify-end" onClick={() => toggleSort('status')}>
+                    Status <SortIcon col="status" />
+                  </button>
+                </div>
+
+                <div className="divide-y divide-[var(--border)]">
+                  {sortedSolicitacoes.map(sol => {
+                    const cfg = STATUS_CONFIG[sol.status] ?? STATUS_CONFIG.rascunho
+                    const nfTotal = (sol.notas_fiscais || []).filter(n => n.status !== 'rejeitada').reduce((s, n) => s + n.valor, 0)
+                    return (
+                      <Link key={sol.id} href={`/contratos/${id}/fat-direto/${sol.id}`} className="block">
+                        <div className="px-5 py-4 hover:bg-[var(--surface-2)] transition-colors flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                            <div
+                              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                              style={{ background: `${cfg.color}18`, border: `1px solid ${cfg.color}30` }}
+                            >
+                              <span style={{ color: cfg.color }}>{cfg.icon}</span>
                             </div>
-                            <p className="text-xs text-[var(--text-3)] mt-0.5">
-                              {sol.fornecedor_razao_social
-                                ? <span className="text-[var(--text-2)]">{sol.fornecedor_razao_social}</span>
-                                : sol.solicitante?.nome
-                              }
-                              {' · '}{formatDate(sol.data_solicitacao)}
-                              {sol.itens && ` · ${sol.itens.length} item(s)`}
-                            </p>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>
+                                  SOL-{String(sol.numero).padStart(3, '0')}
+                                </span>
+                                <span
+                                  className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide flex items-center gap-1"
+                                  style={{ background: `${cfg.color}20`, color: cfg.color }}
+                                >
+                                  {cfg.icon} {cfg.label}
+                                </span>
+                                {isAdmin && sol.status === 'aprovado' && (
+                                  <button
+                                    onClick={e => desaprovar(e, sol.id)}
+                                    className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-red-500/20 text-red-400 hover:bg-red-500/40 transition-colors"
+                                  >
+                                    Desaprovar
+                                  </button>
+                                )}
+                              </div>
+                              <p className="text-xs text-[var(--text-3)] mt-0.5">
+                                {sol.fornecedor_razao_social
+                                  ? <span className="text-[var(--text-2)]">{sol.fornecedor_razao_social}</span>
+                                  : sol.solicitante?.nome
+                                }
+                                {' · '}{formatDate(sol.data_solicitacao)}
+                                {sol.itens && ` · ${sol.itens.length} item(s)`}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold text-sm" style={{ color: 'var(--text-1)' }}>{formatCurrency(sol.valor_total)}</p>
+                            {nfTotal > 0 && (
+                              <p className="text-xs text-[#06B6D4]">NF: {formatCurrency(nfTotal)}</p>
+                            )}
                           </div>
                         </div>
-                        <div className="text-right">
-                          <p className="font-bold text-sm" style={{ color: 'var(--text-1)' }}>{formatCurrency(sol.valor_total)}</p>
-                          {nfTotal > 0 && (
-                            <p className="text-xs text-[#06B6D4]">NF: {formatCurrency(nfTotal)}</p>
-                          )}
-                        </div>
-                      </div>
-                    </Link>
-                  )
-                })}
-              </div>
+                      </Link>
+                    )
+                  })}
+                </div>
+              </>
             )}
           </CardContent>
         </Card>

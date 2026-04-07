@@ -195,6 +195,54 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
   const [fornContatoTel, setFornContatoTel] = useState('') // masked value
   const [numeroPedidoFip, setNumeroPedidoFip] = useState('')
 
+  // CNPJ lookup state
+  const [cnpjLookupStatus, setCnpjLookupStatus] = useState<'idle' | 'loading' | 'found' | 'not_found' | 'error' | 'inactive'>('idle')
+  const [cnpjLookupMsg, setCnpjLookupMsg] = useState('')
+
+  async function lookupCnpj(maskedValue: string) {
+    const digits = maskedValue.replace(/\D/g, '')
+    if (digits.length !== 14) return
+    setCnpjLookupStatus('loading')
+    setCnpjLookupMsg('')
+    try {
+      const res = await fetch(`/api/cnpj/${digits}`)
+      const data = await res.json()
+      if (res.status === 404) {
+        setCnpjLookupStatus('not_found')
+        setCnpjLookupMsg('CNPJ não encontrado na Receita Federal')
+        setFornRazaoSocial('')
+        return
+      }
+      if (!res.ok) {
+        setCnpjLookupStatus('error')
+        setCnpjLookupMsg(data.error || 'Erro ao consultar Receita Federal')
+        return
+      }
+      if (!data.ativa) {
+        setCnpjLookupStatus('inactive')
+        setCnpjLookupMsg(`Empresa com situação: ${data.situacao_cadastral}`)
+        setFornRazaoSocial(data.razao_social || '')
+        return
+      }
+      setCnpjLookupStatus('found')
+      setCnpjLookupMsg(`${data.municipio}/${data.uf}`)
+      setFornRazaoSocial(data.razao_social || '')
+    } catch {
+      setCnpjLookupStatus('error')
+      setCnpjLookupMsg('Falha na conexão com Receita Federal')
+    }
+  }
+
+  function handleCnpjChange(raw: string) {
+    const masked = maskCnpj(raw)
+    setFornCnpj(masked)
+    setCnpjLookupStatus('idle')
+    setCnpjLookupMsg('')
+    setFornRazaoSocial('')
+    const digits = masked.replace(/\D/g, '')
+    if (digits.length === 14) lookupCnpj(masked)
+  }
+
   const [observacoes, setObservacoes] = useState('')
   const [pedidoPdfFile, setPedidoPdfFile] = useState<File | null>(null)
   const [itens, setItens] = useState<ItemForm[]>([
@@ -472,40 +520,91 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {/* Razão Social */}
+              {/* CNPJ — lookup first */}
               <div>
-                <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-3)' }}>Razão Social *</label>
-                <input type="text" value={fornRazaoSocial} onChange={e => setFornRazaoSocial(e.target.value)}
-                  placeholder="Nome completo da empresa fornecedora" className={inputCls} style={inputStyle} {...focusHandlers} />
-              </div>
-
-              {/* CNPJ + Nº Pedido FIP */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-3)' }}>CNPJ *</label>
+                <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-3)' }}>CNPJ *</label>
+                <div className="relative">
                   <input
                     type="text"
                     value={fornCnpj}
-                    onChange={e => setFornCnpj(maskCnpj(e.target.value))}
+                    onChange={e => handleCnpjChange(e.target.value)}
                     placeholder="00.000.000/0001-00"
                     maxLength={18}
-                    className={inputCls} style={inputStyle} {...focusHandlers}
+                    className={inputCls}
+                    style={{
+                      ...inputStyle,
+                      paddingRight: '2.5rem',
+                      borderColor: cnpjLookupStatus === 'found' ? '#10B981'
+                        : cnpjLookupStatus === 'not_found' || cnpjLookupStatus === 'error' ? '#EF4444'
+                        : cnpjLookupStatus === 'inactive' ? '#F59E0B'
+                        : undefined,
+                    }}
+                    {...focusHandlers}
                   />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    {cnpjLookupStatus === 'loading' && (
+                      <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none" style={{ color: 'var(--accent)' }}>
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                      </svg>
+                    )}
+                    {cnpjLookupStatus === 'found' && <span className="text-[#10B981] text-sm font-bold">✓</span>}
+                    {(cnpjLookupStatus === 'not_found' || cnpjLookupStatus === 'error') && <span className="text-[#EF4444] text-sm font-bold">✗</span>}
+                    {cnpjLookupStatus === 'inactive' && <span className="text-[#F59E0B] text-sm font-bold">!</span>}
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs mb-1 font-medium flex items-center gap-1" style={{ color: 'var(--text-3)' }}>
-                    <Hash className="w-3 h-3" strokeWidth={1.5} /> Nº Pedido Interno FIP *
-                  </label>
-                  <input
-                    type="number"
-                    value={numeroPedidoFip}
-                    onChange={e => setNumeroPedidoFip(e.target.value)}
-                    placeholder="Ex: 1023"
-                    min="1"
-                    step="1"
-                    className={inputCls} style={inputStyle} {...focusHandlers}
-                  />
-                </div>
+                {cnpjLookupMsg && (
+                  <p className="text-[11px] mt-1 font-medium" style={{
+                    color: cnpjLookupStatus === 'found' ? '#10B981'
+                      : cnpjLookupStatus === 'inactive' ? '#F59E0B'
+                      : '#EF4444',
+                  }}>
+                    {cnpjLookupStatus === 'found' ? `✓ Empresa ativa — ${cnpjLookupMsg}` : cnpjLookupMsg}
+                  </p>
+                )}
+              </div>
+
+              {/* Razão Social — auto-filled from CNPJ lookup, editable */}
+              <div>
+                <label className="block text-xs mb-1 font-medium flex items-center gap-1.5" style={{ color: 'var(--text-3)' }}>
+                  Razão Social *
+                  {cnpjLookupStatus === 'found' && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-bold" style={{ background: 'rgba(16,185,129,0.15)', color: '#10B981' }}>
+                      preenchido automaticamente
+                    </span>
+                  )}
+                </label>
+                <input
+                  type="text"
+                  value={fornRazaoSocial}
+                  onChange={e => setFornRazaoSocial(e.target.value)}
+                  placeholder={cnpjLookupStatus === 'loading' ? 'Consultando Receita Federal...' : 'Será preenchido automaticamente pelo CNPJ'}
+                  readOnly={cnpjLookupStatus === 'found'}
+                  className={inputCls}
+                  style={{
+                    ...inputStyle,
+                    background: cnpjLookupStatus === 'found' ? 'var(--surface-3)' : inputStyle.background,
+                    color: cnpjLookupStatus === 'found' ? 'var(--text-2)' : inputStyle.color,
+                    cursor: cnpjLookupStatus === 'found' ? 'default' : undefined,
+                  }}
+                  {...(cnpjLookupStatus === 'found' ? {} : focusHandlers)}
+                />
+              </div>
+
+              {/* Nº Pedido FIP */}
+              <div>
+                <label className="block text-xs mb-1 font-medium flex items-center gap-1" style={{ color: 'var(--text-3)' }}>
+                  <Hash className="w-3 h-3" strokeWidth={1.5} /> Nº Pedido Interno FIP * <span className="ml-1 opacity-60">(será o número desta solicitação)</span>
+                </label>
+                <input
+                  type="number"
+                  value={numeroPedidoFip}
+                  onChange={e => setNumeroPedidoFip(e.target.value)}
+                  placeholder="Ex: 1023"
+                  min="1"
+                  step="1"
+                  className={inputCls} style={inputStyle} {...focusHandlers}
+                />
               </div>
 
               {/* Nome + Telefone do contato */}
