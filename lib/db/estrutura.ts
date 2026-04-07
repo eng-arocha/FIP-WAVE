@@ -1,10 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function getGruposMacro(contratoId: string) {
   const supabase = await createClient()
+  const admin = createAdminClient()
 
   const [{ data, error }, { data: saldos }] = await Promise.all([
-    supabase
+    admin
       .from('grupos_macro')
       .select(`*, tarefas(*, detalhamentos(*))`)
       .eq('contrato_id', contratoId)
