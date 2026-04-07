@@ -28,13 +28,19 @@ export async function DELETE(
     if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
     const admin = createAdminClient()
-    const { data: perfil } = await admin
+    const { data: perfil, error: perfilError } = await admin
       .from('perfis')
       .select('perfil')
       .eq('id', user.id)
       .single()
+
+    console.log('[DELETE sol] user.id:', user.id, '| perfil:', perfil, '| error:', perfilError)
+
     if (perfil?.perfil !== 'admin') {
-      return NextResponse.json({ error: 'Apenas administradores podem deletar solicitações' }, { status: 403 })
+      return NextResponse.json({
+        error: `Apenas administradores podem deletar solicitações`,
+        debug: { userId: user.id, perfil: perfil?.perfil ?? null, dbError: perfilError?.message }
+      }, { status: 403 })
     }
     // Deletar itens e NFs primeiro (cascade pode não estar ativo)
     await admin.from('itens_solicitacao_fat_direto').delete().eq('solicitacao_id', solId)
