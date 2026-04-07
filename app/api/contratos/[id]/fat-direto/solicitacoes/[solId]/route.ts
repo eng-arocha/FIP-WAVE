@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getSolicitacao } from '@/lib/db/fat-direto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { getPerfilDoUsuarioLogado } from '@/lib/db/usuarios'
 
 export async function GET(
   _req: Request,
@@ -22,26 +23,18 @@ export async function DELETE(
   try {
     const { solId } = await params
 
-    // Verificar se é admin
+    // Verificar autenticação
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
-    const admin = createAdminClient()
-    const { data: perfil, error: perfilError } = await admin
-      .from('perfis')
-      .select('perfil')
-      .eq('id', user.id)
-      .single()
-
-    console.log('[DELETE sol] user.id:', user.id, '| perfil:', perfil, '| error:', perfilError)
-
-    if (perfil?.perfil !== 'admin') {
-      return NextResponse.json({
-        error: `Apenas administradores podem deletar solicitações`,
-        debug: { userId: user.id, perfil: perfil?.perfil ?? null, dbError: perfilError?.message }
-      }, { status: 403 })
+    // Verificar perfil via admin client (mesmo mecanismo do layout)
+    const perfilData = await getPerfilDoUsuarioLogado()
+    if (perfilData?.perfil !== 'admin') {
+      return NextResponse.json({ error: 'Apenas administradores podem deletar solicitações' }, { status: 403 })
     }
+
+    const admin = createAdminClient()
     // Deletar itens e NFs primeiro (cascade pode não estar ativo)
     await admin.from('itens_solicitacao_fat_direto').delete().eq('solicitacao_id', solId)
     await admin.from('notas_fiscais_fat_direto').delete().eq('solicitacao_id', solId)
