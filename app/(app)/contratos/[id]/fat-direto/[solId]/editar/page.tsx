@@ -355,7 +355,7 @@ export default function EditarSolicitacaoPage({ params }: { params: Promise<{ id
 
   return (
     <div className="flex flex-col min-h-screen" style={{ background: 'var(--background)' }}>
-      <Topbar title={`Editar SOL-${String(solNumero).padStart(3, '0')}`} />
+      <Topbar title={`Editar FIP-${String(solNumero).padStart(4, '0')}`} />
 
       <div className="flex-1 p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-4xl mx-auto w-full">
         {/* Header */}
@@ -368,7 +368,7 @@ export default function EditarSolicitacaoPage({ params }: { params: Promise<{ id
           <div>
             <h1 className="text-base sm:text-xl font-bold flex items-center gap-2" style={{ color: 'var(--text-1)' }}>
               <Package className="w-5 h-5" strokeWidth={1.5} style={{ color: 'var(--accent)' }} />
-              Editar Solicitação SOL-{String(solNumero).padStart(3, '0')}
+              Editar Solicitação FIP-{String(solNumero).padStart(4, '0')}
             </h1>
             <p className="text-sm" style={{ color: 'var(--text-3)' }}>Corrija os dados e salve para atualizar</p>
           </div>

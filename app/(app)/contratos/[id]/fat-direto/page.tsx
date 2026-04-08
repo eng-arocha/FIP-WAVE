@@ -383,7 +383,7 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
                         <Link key={sol.id} href={`/contratos/${id}/fat-direto/${sol.id}`} className="block">
                           <div className="grid grid-cols-[2fr_1fr_2fr_1fr_1.5fr_1.2fr] gap-3 px-5 py-3 items-center hover:bg-[var(--surface-2)] transition-colors text-sm">
                             <span className="font-semibold" style={{ color: 'var(--text-1)' }}>
-                              SOL-{String(sol.numero).padStart(3, '0')}
+                              FIP-{String(sol.numero).padStart(4, '0')}
                             </span>
                             <span className="text-xs text-[var(--text-3)]">{formatDate(sol.data_solicitacao)}</span>
                             <div className="min-w-0">
@@ -492,7 +492,7 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
                             <div>
                               <div className="flex items-center gap-2">
                                 <span className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>
-                                  SOL-{String(sol.numero).padStart(3, '0')}
+                                  FIP-{String(sol.numero).padStart(4, '0')}
                                 </span>
                                 <span
                                   className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide flex items-center gap-1"
