@@ -389,11 +389,12 @@ export async function listarTarefasParaSolicitacao(contratoId: string) {
     } else if (srvUnit > 0) {
       valorMaterial = valorGlobal - qty * srvUnit
     } else {
-      // Fallback: usar proporção de material da tarefa pai
+      // Fallback: proporção de material da tarefa pai (se disponível)
+      // Se tarefa não tem breakdown (valor_material=0), usa global como teto conservador
       const t = tarefaMap[d.tarefa_id]
       const tTotal = t?.valor_total || 0
       const tMat   = t?.valor_material || 0
-      const ratio  = tTotal > 0 ? tMat / tTotal : 1
+      const ratio  = tTotal > 0 && tMat > 0 ? tMat / tTotal : 1
       valorMaterial = valorGlobal * ratio
     }
     const valorServico = valorGlobal - valorMaterial
