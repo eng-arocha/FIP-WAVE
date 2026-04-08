@@ -170,57 +170,10 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
   const [fornContatoTel, setFornContatoTel] = useState('') // masked value
   const [numeroPedidoFip, setNumeroPedidoFip] = useState('')
 
-  // CNPJ lookup state
-  const [cnpjLookupStatus, setCnpjLookupStatus] = useState<'idle' | 'loading' | 'found' | 'not_found' | 'error' | 'inactive'>('idle')
-  const [cnpjLookupMsg, setCnpjLookupMsg] = useState('')
-
-  async function lookupCnpj(maskedValue: string, fallbackRazao = '') {
-    const digits = maskedValue.replace(/\D/g, '')
-    if (digits.length !== 14) return
-    setCnpjLookupStatus('loading')
-    setCnpjLookupMsg('')
-    try {
-      const res = await fetch(`/api/cnpj/${digits}`)
-      const data = await res.json()
-      if (res.status === 404) {
-        setCnpjLookupStatus('not_found')
-        setCnpjLookupMsg('CNPJ não encontrado na Receita Federal')
-        // Preserva razão social extraída do PDF se houver
-        setFornRazaoSocial(fallbackRazao)
-        return
-      }
-      if (!res.ok) {
-        setCnpjLookupStatus('error')
-        setCnpjLookupMsg(data.error || 'Erro ao consultar Receita Federal')
-        // Preserva razão social extraída do PDF se houver
-        if (fallbackRazao) setFornRazaoSocial(fallbackRazao)
-        return
-      }
-      if (!data.ativa) {
-        setCnpjLookupStatus('inactive')
-        setCnpjLookupMsg(`Empresa com situação: ${data.situacao_cadastral}`)
-        setFornRazaoSocial(data.razao_social || fallbackRazao)
-        return
-      }
-      setCnpjLookupStatus('found')
-      setCnpjLookupMsg(`${data.municipio}/${data.uf}`)
-      setFornRazaoSocial(data.razao_social || fallbackRazao)
-    } catch {
-      setCnpjLookupStatus('error')
-      setCnpjLookupMsg('Falha na conexão com Receita Federal')
-      // Preserva razão social extraída do PDF se houver
-      if (fallbackRazao) setFornRazaoSocial(fallbackRazao)
-    }
-  }
-
   function handleCnpjChange(raw: string, fallbackRazao = '') {
     const masked = maskCnpj(raw)
     setFornCnpj(masked)
-    setCnpjLookupStatus('idle')
-    setCnpjLookupMsg('')
-    setFornRazaoSocial(fallbackRazao)
-    const digits = masked.replace(/\D/g, '')
-    if (digits.length === 14) lookupCnpj(masked, fallbackRazao)
+    if (fallbackRazao) setFornRazaoSocial(fallbackRazao)
   }
 
   const [observacoes, setObservacoes] = useState('')
@@ -654,76 +607,34 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
                     <span className="text-[10px] px-1.5 py-0.5 rounded font-bold" style={{ background: 'rgba(139,92,246,0.12)', color: '#8B5CF6' }}>via PDF</span>
                   )}
                 </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={fornCnpj}
-                    onChange={e => handleCnpjChange(e.target.value)}
-                    placeholder="00.000.000/0001-00"
-                    maxLength={18}
-                    className={inputCls}
-                    style={{
-                      ...inputStyle,
-                      paddingRight: '2.5rem',
-                      borderColor: cnpjLookupStatus === 'found' ? '#10B981'
-                        : cnpjLookupStatus === 'not_found' || cnpjLookupStatus === 'error' ? '#EF4444'
-                        : cnpjLookupStatus === 'inactive' ? '#F59E0B'
-                        : undefined,
-                    }}
-                    {...focusHandlers}
-                  />
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                    {cnpjLookupStatus === 'loading' && (
-                      <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none" style={{ color: 'var(--accent)' }}>
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                      </svg>
-                    )}
-                    {cnpjLookupStatus === 'found' && <span className="text-[#10B981] text-sm font-bold">✓</span>}
-                    {(cnpjLookupStatus === 'not_found' || cnpjLookupStatus === 'error') && <span className="text-[#EF4444] text-sm font-bold">✗</span>}
-                    {cnpjLookupStatus === 'inactive' && <span className="text-[#F59E0B] text-sm font-bold">!</span>}
-                  </div>
-                </div>
-                {cnpjLookupMsg && (
-                  <p className="text-[11px] mt-1 font-medium" style={{
-                    color: cnpjLookupStatus === 'found' ? '#10B981'
-                      : cnpjLookupStatus === 'inactive' ? '#F59E0B'
-                      : '#EF4444',
-                  }}>
-                    {cnpjLookupStatus === 'found' ? `✓ Empresa ativa — ${cnpjLookupMsg}` : cnpjLookupMsg}
-                  </p>
-                )}
+                <input
+                  type="text"
+                  value={fornCnpj}
+                  onChange={e => handleCnpjChange(e.target.value)}
+                  placeholder="00.000.000/0001-00"
+                  maxLength={18}
+                  className={inputCls}
+                  style={inputStyle}
+                  {...focusHandlers}
+                />
               </div>
 
-              {/* Razão Social — auto-filled from CNPJ lookup, editable */}
+              {/* Razão Social */}
               <div>
                 <label className="block text-xs mb-1 font-medium flex items-center gap-1.5" style={{ color: 'var(--text-3)' }}>
                   Razão Social *
-                  {cnpjLookupStatus === 'found' && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded font-bold" style={{ background: 'rgba(16,185,129,0.15)', color: '#10B981' }}>
-                      preenchido automaticamente
-                    </span>
-                  )}
-                  {parsedFields.has('razao') && cnpjLookupStatus !== 'found' && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded font-bold" style={{ background: 'rgba(139,92,246,0.12)', color: '#8B5CF6' }}>
-                      via PDF
-                    </span>
+                  {parsedFields.has('razao') && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-bold" style={{ background: 'rgba(139,92,246,0.12)', color: '#8B5CF6' }}>via PDF</span>
                   )}
                 </label>
                 <input
                   type="text"
                   value={fornRazaoSocial}
                   onChange={e => setFornRazaoSocial(e.target.value)}
-                  placeholder={cnpjLookupStatus === 'loading' ? 'Consultando Receita Federal...' : 'Será preenchido automaticamente pelo CNPJ'}
-                  readOnly={cnpjLookupStatus === 'found'}
+                  placeholder="Nome da empresa"
                   className={inputCls}
-                  style={{
-                    ...inputStyle,
-                    background: cnpjLookupStatus === 'found' ? 'var(--surface-3)' : inputStyle.background,
-                    color: cnpjLookupStatus === 'found' ? 'var(--text-2)' : inputStyle.color,
-                    cursor: cnpjLookupStatus === 'found' ? 'default' : undefined,
-                  }}
-                  {...(cnpjLookupStatus === 'found' ? {} : focusHandlers)}
+                  style={inputStyle}
+                  {...focusHandlers}
                 />
               </div>
 
@@ -752,7 +663,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs mb-1 font-medium flex items-center gap-1.5" style={{ color: 'var(--text-3)' }}>
-                    Nome do Contato *
+                    Nome do Contato
                     {parsedFields.has('contato') && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded font-bold" style={{ background: 'rgba(139,92,246,0.12)', color: '#8B5CF6' }}>via PDF</span>
                     )}
@@ -762,7 +673,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
                 </div>
                 <div>
                   <label className="block text-xs mb-1 font-medium flex items-center gap-1.5" style={{ color: 'var(--text-3)' }}>
-                    Telefone *
+                    Telefone
                     {parsedFields.has('tel') && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded font-bold" style={{ background: 'rgba(139,92,246,0.12)', color: '#8B5CF6' }}>via PDF</span>
                     )}
