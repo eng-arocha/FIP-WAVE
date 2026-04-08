@@ -318,10 +318,10 @@ export async function listarTarefasParaSolicitacao(contratoId: string) {
   const grupoIds = (grupos || []).map((g: any) => g.id)
   if (grupoIds.length === 0) return []
 
-  // Tarefas (nivel 2) — inclui valor_material/valor_servico para fallback de proporção
+  // Tarefas (nivel 2) — select('*') é seguro: retorna o que existir sem quebrar
   const { data: tarefas } = await admin
     .from('tarefas')
-    .select('id, codigo, nome, valor_total, valor_material, valor_servico')
+    .select('*')
     .in('grupo_macro_id', grupoIds)
   const tarefaIds = (tarefas || []).map((t: any) => t.id)
   const tarefaMap: Record<string, any> = {}
