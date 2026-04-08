@@ -26,6 +26,7 @@ const ICON_COLORS: Record<string, { from: string; to: string }> = {
   '/contratos':    { from: '#8B5CF6', to: '#A855F7' },  // purple
   '/contratos/novo': { from: '#8B5CF6', to: '#A855F7' },  // purple
   '/aprovacoes':   { from: '#F59E0B', to: '#EF4444' },  // amber → red
+  '/nf-fat-direto': { from: '#06B6D4', to: '#0EA5E9' }, // cyan → sky
   '/empresas':     { from: '#10B981', to: '#059669' },  // green
   '/usuarios':     { from: '#6366F1', to: '#8B5CF6' },  // indigo → purple
   '/perfis':       { from: '#F59E0B', to: '#EF4444' },  // amber → red
@@ -85,6 +86,7 @@ export function Sidebar({
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, modulo: 'dashboard' },
     { label: 'Contratos', href: '/contratos', icon: FileText, modulo: 'contratos' },
     { label: 'Aprovações', href: '/aprovacoes', icon: CheckSquare, modulo: 'aprovacoes', badge: true },
+    { label: 'NF Fat. Direto', href: '/nf-fat-direto', icon: Receipt, modulo: 'contratos' },
   ].filter(item => temPermissao(item.modulo, 'visualizar'))
 
   const cadastroItems = [
