@@ -15,7 +15,7 @@ import {
 import {
   ArrowLeft, Plus, FileText, Loader2,
   ChevronRight, ChevronDown, Layers, ArrowUpDown, Filter, Package, TrendingUp,
-  DollarSign, CheckCircle2, Wallet, ClipboardList, Search, X
+  DollarSign, CheckCircle2, Wallet, ClipboardList, Search, X, Maximize2
 } from 'lucide-react'
 import {
   formatCurrency, formatPercent, formatDate,
@@ -108,6 +108,8 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   const [aditivos, setAditivos] = useState<Aditivo[]>([])
   const [sortBy, setSortBy] = useState<'padrao' | 'valor_global_desc' | 'valor_global_asc' | 'valor_medido_desc' | 'valor_medido_asc' | 'saldo_desc' | 'saldo_asc'>('padrao')
   const [viewMode, setViewMode] = useState<'total' | 'material' | 'servico'>('total')
+  const [fullscreenChart, setFullscreenChart] = useState<'bar' | 'pedidos' | null>(null)
+  const [filtroGrupo, setFiltroGrupo] = useState<'todos' | string>('todos')
 
   // Estrutura detalhada state
   const [estruturaBusca, setEstruturaBusca] = useState('')
@@ -192,7 +194,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   const getValorView = (g: Grupo) => viewMode === 'material' ? (g.valor_material ?? 0) : viewMode === 'servico' ? (g.valor_servico ?? 0) : g.valor_contratado
 
   const gruposExibidos = useMemo(() => {
-    const list = [...grupos]
+    let list = filtroGrupo === 'todos' ? [...grupos] : grupos.filter(g => g.id === filtroGrupo)
     list.sort((a, b) => {
       const va = viewMode === 'material' ? (a.valor_material ?? 0) : viewMode === 'servico' ? (a.valor_servico ?? 0) : a.valor_contratado
       const vb = viewMode === 'material' ? (b.valor_material ?? 0) : viewMode === 'servico' ? (b.valor_servico ?? 0) : b.valor_contratado
@@ -208,7 +210,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
       }
     })
     return list
-  }, [grupos, sortBy, viewMode])
+  }, [grupos, sortBy, viewMode, filtroGrupo])
 
   // Gráfico sempre em ordem 1.0→19.0 e sem filtro de tipo (mostra tudo)
   const gruposOrdenados = useMemo(() =>
@@ -292,19 +294,19 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
         actions={
           <div className="flex gap-1 sm:gap-2 flex-wrap">
             <Link href="/contratos">
-              <Button variant="outline" size="sm" className="px-2 sm:px-3">
+              <Button variant="outline" size="sm" className="px-2 sm:px-3 border border-blue-500/40 text-blue-400 hover:bg-blue-500/10">
                 <ArrowLeft className="w-4 h-4" strokeWidth={1.5} />
                 <span className="hidden sm:inline">Contratos</span>
               </Button>
             </Link>
             <Link href={`/contratos/${id}/cronograma`}>
-              <Button variant="outline" size="sm" className="px-2 sm:px-3">
+              <Button variant="outline" size="sm" className="px-2 sm:px-3 border border-amber-500/40 text-amber-400 hover:bg-amber-500/10">
                 <span className="hidden sm:inline">Cronograma</span>
                 <span className="sm:hidden text-xs">Cron.</span>
               </Button>
             </Link>
             <Link href={`/contratos/${id}/fat-direto`}>
-              <Button variant="outline" size="sm" className="px-2 sm:px-3">
+              <Button variant="outline" size="sm" className="px-2 sm:px-3 border border-teal-500/40 text-teal-400 hover:bg-teal-500/10">
                 <span className="hidden sm:inline">Fat. Direto</span>
                 <span className="sm:hidden text-xs">Fat.</span>
               </Button>
@@ -483,8 +485,11 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
               {/* Chart grupos — Medição de Serviço */}
               <Card>
-                <CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
                   <CardTitle className="text-sm text-[var(--text-2)]">Medição de Serviço</CardTitle>
+                  <button onClick={() => setFullscreenChart('bar')} className="p-1 rounded hover:bg-[var(--surface-3)]" title="Tela cheia">
+                    <Maximize2 className="w-4 h-4" style={{ color: 'var(--text-3)' }} />
+                  </button>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={Math.max(320, gruposChart.length * 32)}>
@@ -512,7 +517,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                       <Legend iconSize={10} wrapperStyle={{ fontSize: 11, color: 'var(--text-2)' }} />
                       <Bar dataKey="contratado" name="Contratado" radius={[0, 2, 2, 0]} maxBarSize={10}>
                         {gruposChart.map((entry, i) => (
-                          <Cell key={i} fill={`${entry.color}38`} />
+                          <Cell key={i} fill={`${entry.color}65`} />
                         ))}
                       </Bar>
                       <Bar dataKey="medido" name="Medido" radius={[0, 2, 2, 0]} maxBarSize={10}>
