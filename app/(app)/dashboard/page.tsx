@@ -275,8 +275,8 @@ export default function DashboardPage() {
         }
       />
 
-      <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
-        {/* KPI Cards */}
+      {/* ── Sticky KPI bar ── */}
+      <div className="sticky top-14 z-10 px-3 sm:px-6 py-3 border-b" style={{ background: 'var(--background)', borderColor: 'var(--border)' }}>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {/* Total Contratado */}
           <div
@@ -406,7 +406,9 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+      </div>
 
+      <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
         {/* Smart Alerts */}
         {alertas.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-6">

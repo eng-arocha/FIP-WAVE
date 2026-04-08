@@ -322,8 +322,8 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
         }
       />
 
-      <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
-        {/* KPI Row */}
+      {/* ── Sticky KPI bar ── */}
+      <div className="sticky top-14 z-10 px-3 sm:px-6 py-3 border-b" style={{ background: 'var(--background)', borderColor: 'var(--border)' }}>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {/* KPI: Valor Total → abre Estrutura */}
           <div onClick={() => setActiveTab('estrutura')} className="cursor-pointer">
@@ -410,7 +410,9 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
             </Card>
           </Link>
         </div>
+      </div>
 
+      <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
         {/* Tabs */}
         {/* Resumo Medido - popup */}
         {showMedidoResumo && (
@@ -1039,13 +1041,13 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                   </div>
                   <div>
                     <p className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wide mb-0.5">Contratante</p>
-                    <p className="text-[var(--text-1)]">{contrato.contratante?.nome}</p>
-                    <p className="text-xs text-[var(--text-3)]">{contrato.contratante?.cnpj}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wide mb-0.5">Contratado</p>
                     <p className="text-[var(--text-1)]">{contrato.contratado?.nome}</p>
                     <p className="text-xs text-[var(--text-3)]">{contrato.contratado?.cnpj}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wide mb-0.5">Contratada</p>
+                    <p className="text-[var(--text-1)]">{contrato.contratante?.nome}</p>
+                    <p className="text-xs text-[var(--text-3)]">{contrato.contratante?.cnpj}</p>
                   </div>
                   <div>
                     <p className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wide mb-0.5">Início</p>
