@@ -190,17 +190,21 @@ export function Sidebar({
       >
         {showText ? (
           <>
-            <div
-              className="flex items-center justify-center cursor-pointer select-none"
-              onDoubleClick={() => window.open('https://www.wavebeiramar.com.br', '_blank')}
-              title="Duplo clique para acessar wavebeiramar.com.br"
-            >
-              <Image src="/logos/Wave.png" alt="WAVE Beira-Mar" width={110} height={62} priority className="object-contain" style={{ width: 'auto', height: 'auto', maxWidth: 110, maxHeight: 48 }} />
+            <div className="flex items-center gap-2 min-w-0">
+              <div
+                className="flex items-center justify-center cursor-pointer select-none flex-shrink-0"
+                onDoubleClick={() => window.open('https://www.wavebeiramar.com.br', '_blank')}
+                title="Duplo clique para acessar wavebeiramar.com.br"
+              >
+                <Image src="/logos/Wave.png" alt="WAVE Beira-Mar" width={90} height={50} priority className="object-contain" style={{ width: 'auto', height: 'auto', maxWidth: 90, maxHeight: 40 }} />
+              </div>
+              <div className="w-px self-stretch" style={{ background: 'var(--border)' }} />
+              <Image src="/logos/fip-logo.svg" alt="FIP Engenharia" width={72} height={28} priority className="object-contain flex-shrink-0" style={{ width: 'auto', height: 28 }} />
             </div>
             <button
               onClick={(e) => { e.stopPropagation(); onTogglePin() }}
               title={pinned ? 'Desafixar sidebar' : 'Fixar sidebar'}
-              className="p-1.5 rounded-lg transition-all hidden lg:flex items-center"
+              className="p-1.5 rounded-lg transition-all hidden lg:flex items-center flex-shrink-0"
               style={{ color: '#86868B' }}
               onMouseEnter={e => { e.currentTarget.style.color = '#1D1D1F'; e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
               onMouseLeave={e => { e.currentTarget.style.color = '#86868B'; e.currentTarget.style.background = '' }}
@@ -298,8 +302,7 @@ export function Sidebar({
         </Link>
 
         {showText && (
-          <div className="px-3 pt-2 pb-1 flex items-center justify-between">
-            <Image src="/logos/fip-logo.svg" alt="FIP Engenharia" width={110} height={32} className="object-contain opacity-80" style={{ width: 'auto', height: 28 }} />
+          <div className="px-3 pt-2 pb-1 flex items-center justify-end">
             <span className="text-[10px]" style={{ color: 'var(--text-3)', opacity: 0.5 }}>v1.0.0</span>
           </div>
         )}
