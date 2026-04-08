@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { Topbar } from '@/components/layout/topbar'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -17,7 +16,6 @@ import {
 import { CONTRATO_STATUS_LABELS, CONTRATO_TIPO_LABELS } from '@/types'
 
 export default function ContratosPage() {
-  const router = useRouter()
   const [contratos, setContratos] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
@@ -28,12 +26,6 @@ export default function ContratosPage() {
       .then(r => r.json())
       .then(async (lista) => {
         if (!Array.isArray(lista)) { setLoading(false); return }
-
-        // Se há exatamente 1 contrato, abre diretamente sem mostrar a lista
-        if (lista.length === 1) {
-          router.replace(`/contratos/${lista[0].id}`)
-          return
-        }
 
         const withResumo = await Promise.all(lista.map(async (c: any) => {
           try {
@@ -48,7 +40,7 @@ export default function ContratosPage() {
         setLoading(false)
       })
       .catch(() => setLoading(false))
-  }, [router])
+  }, [])
 
   const filtrados = contratos.filter(c => {
     const matchBusca = c.numero?.toLowerCase().includes(busca.toLowerCase()) ||
