@@ -28,8 +28,8 @@ export async function POST(
   try {
     const { solId } = await params
     const body = await req.json()
-    if (!body.numero_nf || !body.emitente || !body.valor || !body.data_emissao) {
-      return NextResponse.json({ error: 'Campos obrigatórios: numero_nf, emitente, valor, data_emissao' }, { status: 400 })
+    if (!body.numero_nf || !body.valor || !body.data_emissao) {
+      return NextResponse.json({ error: 'Campos obrigatórios: numero_nf, valor, data_emissao' }, { status: 400 })
     }
     const nf = await criarNotaFiscal({ ...body, solicitacao_id: solId })
     return NextResponse.json(nf, { status: 201 })

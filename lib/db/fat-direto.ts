@@ -287,10 +287,12 @@ export async function atualizarStatusSolicitacao(
 export async function criarNotaFiscal(input: {
   solicitacao_id: string
   numero_nf: string
-  emitente: string
+  emitente?: string
   cnpj_emitente?: string
   valor: number
   data_emissao: string
+  data_recebimento?: string
+  data_vencimento?: string
   descricao?: string
 }) {
   const admin = createAdminClient()
