@@ -199,7 +199,7 @@ export function Sidebar({
                 <Image src="/logos/Wave.png" alt="WAVE Beira-Mar" width={90} height={50} priority className="object-contain" style={{ width: 'auto', height: 'auto', maxWidth: 90, maxHeight: 40 }} />
               </div>
               <div className="w-px self-stretch" style={{ background: 'var(--border)' }} />
-              <Image src="/logos/fip-logo.svg" alt="FIP Engenharia" width={72} height={28} priority className="object-contain flex-shrink-0" style={{ width: 'auto', height: 28 }} />
+              <Image src="/logos/fip-logo.svg" alt="FIP Engenharia" width={90} height={29} priority className="object-contain flex-shrink-0" style={{ width: 'auto', height: 29 }} />
             </div>
             <button
               onClick={(e) => { e.stopPropagation(); onTogglePin() }}
