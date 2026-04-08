@@ -218,6 +218,11 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                   >
                     <XCircle className="w-4 h-4" /> Rejeitar
                   </Button>
+                  <Link href={`/contratos/${sol.contrato_id}/fat-direto/${sol.id}/editar`}>
+                    <Button variant="ghost" className="gap-2 border border-blue-500/30 text-blue-400 hover:bg-blue-500/10">
+                      <FileText className="w-4 h-4" /> Editar
+                    </Button>
+                  </Link>
                   {isAdmin && (
                     <Button
                       onClick={deletar}
