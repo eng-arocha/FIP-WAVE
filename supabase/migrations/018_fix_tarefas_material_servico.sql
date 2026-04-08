@@ -59,8 +59,12 @@ UPDATE tarefas SET valor_material = 105317.78, valor_servico = 55776.12 WHERE id
 UPDATE tarefas SET valor_material = 191601.77, valor_servico = 144323.09 WHERE id = '227ee554-792f-c9d2-4283-aff7448c4eb7';
 UPDATE tarefas SET valor_material = 866000.00, valor_servico = 0.00 WHERE id = '8b6ab969-5fb9-4e98-aa3d-31489278657c';
 
--- Agora re-aplica fix nos detalhamentos (mesma lógica da migration 017)
--- Com tarefas corrigidas, o cálculo funciona
+-- Garante colunas nos detalhamentos
+ALTER TABLE detalhamentos
+  ADD COLUMN IF NOT EXISTS valor_material_unit NUMERIC(15,4) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS valor_servico_unit  NUMERIC(15,4) NOT NULL DEFAULT 0;
+
+-- Agora re-aplica fix nos detalhamentos
 UPDATE detalhamentos d
 SET
   valor_material_unit = ROUND(
