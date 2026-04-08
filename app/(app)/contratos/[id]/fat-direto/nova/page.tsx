@@ -308,6 +308,16 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
     ))
   }
 
+  // Navegação Excel: setas movem o foco entre células da grade
+  const GRID_COLS = ['nv1', 'nv2', 'nv3', 'local', 'valor'] as const
+  function navGrid(e: React.KeyboardEvent<HTMLInputElement>, row: number, col: number) {
+    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return
+    e.preventDefault()
+    const r = e.key === 'ArrowUp' ? Math.max(0, row - 1) : e.key === 'ArrowDown' ? Math.min(itens.length - 1, row + 1) : row
+    const c = e.key === 'ArrowLeft' ? Math.max(0, col - 1) : e.key === 'ArrowRight' ? Math.min(GRID_COLS.length - 1, col + 1) : col
+    ;(document.getElementById(`${GRID_COLS[c]}-${r}`) as HTMLInputElement | null)?.focus()
+  }
+
   const total = itens.reduce((s, it) => s + (parseFloat(it.valor_total) || 0), 0)
 
   // Agrupa itens em blocos de GROUP_SIZE para exibição
@@ -870,7 +880,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
                           placeholder="1"
                           maxLength={3}
                           onChange={e => handleNivelChange(gIdx, '_nv1', e.target.value)}
-                          onKeyDown={e => { if (['.', ',', ' ', 'Enter'].includes(e.key)) { e.preventDefault(); (document.getElementById(`nv2-${gIdx}`) as HTMLInputElement | null)?.focus() } }}
+                          onKeyDown={e => { navGrid(e, gIdx, 0); if (['.', ',', ' ', 'Enter'].includes(e.key)) { e.preventDefault(); (document.getElementById(`nv2-${gIdx}`) as HTMLInputElement | null)?.focus() } }}
                           className="h-7 rounded-lg text-center text-xs outline-none w-full"
                           style={nvBorder()}
                           onFocus={e => Object.assign(e.currentTarget.style, { borderColor: 'var(--accent)', boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent)' })}
@@ -886,7 +896,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
                           placeholder="1"
                           maxLength={3}
                           onChange={e => handleNivelChange(gIdx, '_nv2', e.target.value)}
-                          onKeyDown={e => { if (['.', ',', ' ', 'Enter'].includes(e.key)) { e.preventDefault(); (document.getElementById(`nv3-${gIdx}`) as HTMLInputElement | null)?.focus() } }}
+                          onKeyDown={e => { navGrid(e, gIdx, 1); if (['.', ',', ' ', 'Enter'].includes(e.key)) { e.preventDefault(); (document.getElementById(`nv3-${gIdx}`) as HTMLInputElement | null)?.focus() } }}
                           className="h-7 rounded-lg text-center text-xs outline-none w-full"
                           style={nvBorder()}
                           onFocus={e => Object.assign(e.currentTarget.style, { borderColor: 'var(--accent)', boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent)' })}
@@ -902,7 +912,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
                           placeholder="1"
                           maxLength={3}
                           onChange={e => handleNivelChange(gIdx, '_nv3', e.target.value, item._nv1 && item._nv2 && e.target.value ? `desc-${gIdx}` : undefined)}
-                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); (document.getElementById(`nv1-${gIdx + 1}`) as HTMLInputElement | null)?.focus() } }}
+                          onKeyDown={e => { navGrid(e, gIdx, 2); if (e.key === 'Enter') { e.preventDefault(); (document.getElementById(`nv1-${gIdx + 1}`) as HTMLInputElement | null)?.focus() } }}
                           className="h-7 rounded-lg text-center text-xs outline-none w-full"
                           style={nvBorder()}
                           onFocus={e => Object.assign(e.currentTarget.style, { borderColor: 'var(--accent)', boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent)' })}
@@ -918,10 +928,12 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
 
                         {/* Local */}
                         <input
+                          id={`local-${gIdx}`}
                           type="text"
                           value={item.local}
                           placeholder="TORRE"
                           onChange={e => updateItem(gIdx, 'local', e.target.value)}
+                          onKeyDown={e => navGrid(e, gIdx, 3)}
                           className="h-7 rounded-lg px-2 text-xs outline-none w-full"
                           style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
                           onFocus={e => Object.assign(e.currentTarget.style, { borderColor: 'var(--accent)', boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent)' })}
@@ -931,11 +943,13 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
                         {/* Valor + teto de material */}
                         <div className="relative">
                           <input
+                            id={`valor-${gIdx}`}
                             type="number"
                             value={item.valor_total}
                             placeholder="0,00"
                             min="0" step="0.01"
                             onChange={e => updateItem(gIdx, 'valor_total', e.target.value)}
+                            onKeyDown={e => navGrid(e, gIdx, 4)}
                             className="h-7 rounded-lg px-2 text-xs text-right outline-none w-full"
                             style={{ background: 'var(--surface-2)', border: `1px solid ${excedeTetoMat ? 'rgba(239,68,68,0.60)' : 'var(--border)'}`, color: 'var(--text-1)' }}
                             title={tetoMat > 0 ? `Teto material: ${formatCurrency(tetoMat)}` : ''}
