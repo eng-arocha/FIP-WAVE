@@ -69,7 +69,14 @@ export function SidebarShell({ perfilAtual, nomeAtual, children }: SidebarShellP
         onMouseLeave={handleMouseLeave}
       />
 
-      <main className="flex-1 flex flex-col overflow-hidden min-w-0 transition-colors duration-300" style={{ background: 'var(--background)' }}>
+      {/*
+        main-mobile-pad: adds bottom padding on mobile so content isn't hidden
+        behind the bottom navigation bar (defined in globals.css).
+      */}
+      <main
+        className="main-mobile-pad flex-1 flex flex-col overflow-hidden min-w-0 transition-colors duration-300"
+        style={{ background: 'var(--background)' }}
+      >
         {children}
       </main>
     </div>

@@ -194,3 +194,81 @@ body {
   0%   { background-position: -200% center; }
   100% { background-position:  200% center; }
 }
+
+/* ═══════════════════════════════════════════════════
+   Mobile — Safe Areas & Touch Enhancements
+   Best-in-class mobile UX (iOS 11+ / Android notch)
+   ═══════════════════════════════════════════════════ */
+
+:root {
+  /* CSS env() safe area insets — falls back to 0 on non-notched devices */
+  --safe-top:      env(safe-area-inset-top,    0px);
+  --safe-bottom:   env(safe-area-inset-bottom, 0px);
+  --safe-left:     env(safe-area-inset-left,   0px);
+  --safe-right:    env(safe-area-inset-right,  0px);
+  /* Bottom nav dimensions */
+  --bottom-nav-h:  60px;
+}
+
+/* Remove iOS tap flash & reduce 300ms tap delay */
+* { -webkit-tap-highlight-color: transparent; }
+button, a, [role="button"], [role="tab"], input[type="submit"] {
+  touch-action: manipulation;
+}
+
+/* Prevent iOS auto-zoom on input focus (font-size < 16px triggers zoom) */
+@media screen and (max-width: 1024px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  textarea,
+  select {
+    font-size: max(16px, 1em);
+  }
+}
+
+/* Silky smooth momentum scrolling on iOS */
+.overflow-y-auto,
+.overflow-auto,
+[class*="overflow-y-"] {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
+/* Bottom nav entrance animation */
+@keyframes nav-rise {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.mobile-bottom-nav { animation: nav-rise 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+/* Bottom nav item tap feedback */
+@keyframes tap-bounce {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(0.88); }
+  100% { transform: scale(1); }
+}
+.tap-bounce:active { animation: tap-bounce 0.22s ease both; }
+
+/* Active pill indicator in bottom nav */
+@keyframes pill-in {
+  from { width: 0; opacity: 0; }
+  to   { width: 20px; opacity: 1; }
+}
+.bottom-nav-pill { animation: pill-in 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+/* Prevent overscroll rubber-band on main page */
+@media (max-width: 1024px) {
+  body { overscroll-behavior: none; }
+}
+
+/* Larger tap zones for all small interactive elements on mobile */
+@media (max-width: 1024px) {
+  .apple-icon { width: 32px !important; height: 32px !important; border-radius: 10px !important; }
+}
+
+/* Main content padding — reserves space for the bottom nav on mobile */
+.main-mobile-pad {
+  padding-bottom: calc(var(--bottom-nav-h, 60px) + env(safe-area-inset-bottom, 0px));
+}
+@media (min-width: 1024px) {
+  .main-mobile-pad { padding-bottom: 0; }
+}
