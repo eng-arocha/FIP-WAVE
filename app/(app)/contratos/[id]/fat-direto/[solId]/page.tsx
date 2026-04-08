@@ -146,7 +146,16 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
 
   return (
     <div className="flex flex-col min-h-screen bg-[var(--background)]">
-      <Topbar title={`FIP-${String(sol.numero).padStart(4, '0')}`} />
+      <Topbar
+        title={`FIP-${String(sol.numero).padStart(4, '0')}`}
+        actions={
+          <Link href={`/contratos/${id}/fat-direto/nova`}>
+            <Button size="sm" className="gap-2 bg-blue-600 hover:bg-blue-500 text-white">
+              <Plus className="w-4 h-4" /> Nova Solicitação
+            </Button>
+          </Link>
+        }
+      />
       <div className="flex-1 p-6 space-y-6 max-w-4xl mx-auto w-full">
         {/* Header */}
         <div className="flex items-center justify-between">
