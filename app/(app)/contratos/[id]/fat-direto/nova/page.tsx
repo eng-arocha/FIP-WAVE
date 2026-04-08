@@ -272,31 +272,14 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
   const [tetoViolation, setTetoViolation] = useState<any>(null)
   const [itemLimiteViolation, setItemLimiteViolation] = useState<any>(null)
 
-  // Real-time per-item limit violations (nivel 3)
-  const itemViolations = useMemo(() => {
-    const out: Record<number, { aprovado: number; emAprovacao: number; saldo: number; limite: number; codigo: string }> = {}
-    itens.forEach((item, i) => {
-      if (!item.tarefa_id) return
-      const t = tarefas.find(x => x.id === item.tarefa_id)
-      if (!t || t.valor_material <= 0) return
-      const valorAtual = parseFloat(item.valor_total) || 0
-      if (valorAtual <= 0) return
-      const aprovado = t.valor_aprovado
-      const emAprovacao = t.valor_em_aprovacao || 0
-      // Other items in this same form for same detalhamento
-      const outrosItensForm = itens.reduce((sum, other, j) => {
-        if (j === i && other.tarefa_id === item.tarefa_id) return sum
-        if (other.tarefa_id === item.tarefa_id) return sum + (parseFloat(other.valor_total) || 0)
-        return sum
-      }, 0)
-      const totalComprometido = aprovado + emAprovacao + outrosItensForm + valorAtual
-      const saldo = Math.max(0, t.valor_material - aprovado - emAprovacao)
-      if (totalComprometido > t.valor_material) {
-        out[i] = { aprovado, emAprovacao, saldo, limite: t.valor_material, codigo: t.codigo }
-      }
-    })
-    return out
-  }, [itens, tarefas])
+  // Verifica inline se algum item excede o teto de material
+  const anyViolation = useMemo(() => itens.some(item => {
+    if (!item.tarefa_id) return false
+    const t = tarefas.find(x => x.id === item.tarefa_id)
+    const mat = t?.valor_material ?? 0
+    const val = parseFloat(item.valor_total) || 0
+    return mat > 0 && val > mat
+  }), [itens, tarefas])
 
   useEffect(() => {
     fetch(`/api/contratos/${id}/fat-direto/tarefas`)
@@ -398,7 +381,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
     for (const it of filledItens) {
       if (!it.local) { setErro('Informe o local para todos os itens preenchidos.'); return }
     }
-    if (Object.keys(itemViolations).length > 0) {
+    if (anyViolation) {
       setErro('Corrija os limites por disciplina antes de enviar.')
       return
     }
@@ -940,7 +923,11 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
                   const gIdx = grupo.start + li
                   const isValid = !!item.tarefa_id
                   const hasCode = !!(item._nv1 && item._nv2 && item._nv3)
-                  const violation = itemViolations[gIdx]
+                  // Inline violation check — direto, sem depender de useMemo externo
+                  const rowTarefa = isValid ? tarefas.find(x => x.id === item.tarefa_id) : undefined
+                  const tetoMat = rowTarefa?.valor_material ?? 0
+                  const valorAtualNum = parseFloat(item.valor_total) || 0
+                  const excedeTetoMat = tetoMat > 0 && valorAtualNum > tetoMat
                   const nvBorder = (active?: boolean) => ({
                     background: 'var(--surface-2)',
                     border: `1px solid ${active ? 'var(--accent)' : hasCode && !isValid ? 'rgba(239,68,68,0.55)' : 'var(--border)'}`,
@@ -1041,19 +1028,16 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
                             min="0" step="0.01"
                             onChange={e => updateItem(gIdx, 'valor_total', e.target.value)}
                             className="h-7 rounded-lg px-2 text-xs text-right outline-none w-full"
-                            style={{ background: 'var(--surface-2)', border: `1px solid ${violation ? 'rgba(239,68,68,0.60)' : 'var(--border)'}`, color: 'var(--text-1)' }}
-                            title={isValid ? `Teto material: ${formatCurrency(tarefas.find(x => x.id === item.tarefa_id)?.valor_material ?? 0)}` : ''}
+                            style={{ background: 'var(--surface-2)', border: `1px solid ${excedeTetoMat ? 'rgba(239,68,68,0.60)' : 'var(--border)'}`, color: 'var(--text-1)' }}
+                            title={tetoMat > 0 ? `Teto material: ${formatCurrency(tetoMat)}` : ''}
                             onFocus={e => Object.assign(e.currentTarget.style, { borderColor: 'var(--accent)', boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent)' })}
-                            onBlur={e => Object.assign(e.currentTarget.style, { borderColor: violation ? 'rgba(239,68,68,0.60)' : 'var(--border)', boxShadow: 'none' })}
+                            onBlur={e => Object.assign(e.currentTarget.style, { borderColor: excedeTetoMat ? 'rgba(239,68,68,0.60)' : 'var(--border)', boxShadow: 'none' })}
                           />
-                          {isValid && (() => {
-                            const t = tarefas.find(x => x.id === item.tarefa_id)
-                            return t && t.valor_material > 0 ? (
-                              <div className="absolute left-0 right-0 -bottom-3.5 text-center text-[9px] font-medium truncate" style={{ color: 'var(--text-3)' }}>
-                                teto {formatCurrency(t.valor_material)}
-                              </div>
-                            ) : null
-                          })()}
+                          {tetoMat > 0 && (
+                            <div className="absolute left-0 right-0 -bottom-3.5 text-center text-[9px] font-medium truncate" style={{ color: excedeTetoMat ? '#EF4444' : 'var(--text-3)' }}>
+                              teto {formatCurrency(tetoMat)}
+                            </div>
+                          )}
                         </div>
 
                         {/* Limpar linha */}
@@ -1098,18 +1082,18 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
                             style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-1)' }} />
                           <input type="number" value={item.valor_total} placeholder="Valor" min="0" step="0.01" onChange={e => updateItem(gIdx, 'valor_total', e.target.value)}
                             className="w-28 h-8 rounded-lg px-2 text-xs text-right outline-none"
-                            style={{ background: 'var(--surface-2)', border: `1px solid ${violation ? 'rgba(239,68,68,0.60)' : 'var(--border)'}`, color: 'var(--text-1)' }} />
+                            style={{ background: 'var(--surface-2)', border: `1px solid ${excedeTetoMat ? 'rgba(239,68,68,0.60)' : 'var(--border)'}`, color: 'var(--text-1)' }} />
                         </div>
                       </div>
 
-                      {/* Alerta de limite */}
-                      {violation && (
+                      {/* Alerta de teto excedido */}
+                      {excedeTetoMat && rowTarefa && (
                         <div className="flex items-center gap-3 px-3 py-1.5 text-[11px] flex-wrap" style={{ background: 'rgba(239,68,68,0.07)', borderTop: '1px solid rgba(239,68,68,0.25)' }}>
                           <AlertTriangle className="w-3 h-3 flex-shrink-0" strokeWidth={2} style={{ color: '#EF4444' }} />
-                          <span style={{ color: '#EF4444', fontWeight: 700 }}>LIMITE — {violation.codigo}</span>
-                          <span style={{ color: 'var(--text-2)' }}>Aprovado: <strong>{formatCurrency(violation.aprovado)}</strong></span>
-                          <span style={{ color: 'var(--text-2)' }}>Em Aprov.: <strong>{formatCurrency(violation.emAprovacao)}</strong></span>
-                          <span style={{ color: violation.saldo <= 0 ? '#EF4444' : '#10B981' }}>Saldo: <strong>{formatCurrency(violation.saldo)}</strong></span>
+                          <span style={{ color: '#EF4444', fontWeight: 700 }}>TETO EXCEDIDO — {rowTarefa.codigo}</span>
+                          <span style={{ color: 'var(--text-2)' }}>Teto: <strong>{formatCurrency(tetoMat)}</strong></span>
+                          <span style={{ color: 'var(--text-2)' }}>Solicitado: <strong>{formatCurrency(valorAtualNum)}</strong></span>
+                          <span style={{ color: '#EF4444' }}>Excesso: <strong>+{formatCurrency(valorAtualNum - tetoMat)}</strong></span>
                         </div>
                       )}
                     </div>
@@ -1137,10 +1121,10 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
           <div className="flex items-center gap-2">
             <TrendingUp className="w-4 h-4" strokeWidth={1.5} style={{ color: 'var(--accent)' }} />
             <span className="text-sm font-semibold" style={{ color: 'var(--text-2)' }}>Total da Solicitação</span>
-            {Object.keys(itemViolations).length > 0 && (
+            {anyViolation && (
               <span className="flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(239,68,68,0.12)', color: '#EF4444' }}>
                 <AlertTriangle className="w-3 h-3" strokeWidth={2} />
-                {Object.keys(itemViolations).length} limite(s) excedido(s)
+                teto excedido
               </span>
             )}
           </div>
@@ -1154,9 +1138,9 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
           </Link>
           <Button
             onClick={salvar}
-            disabled={saving || Object.keys(itemViolations).length > 0}
+            disabled={saving || anyViolation}
             className="gap-2 text-white"
-            style={{ background: Object.keys(itemViolations).length > 0 ? 'var(--surface-3)' : 'linear-gradient(135deg, var(--accent), var(--accent-glow))' }}
+            style={{ background: anyViolation ? 'var(--surface-3)' : 'linear-gradient(135deg, var(--accent), var(--accent-glow))' }}
           >
             {saving ? (
               <>
