@@ -12,7 +12,7 @@ import {
 } from 'recharts'
 import {
   TrendingUp, FileText, Clock, CheckCircle2, AlertCircle,
-  DollarSign, ArrowRight, Loader2, Maximize2, X
+  DollarSign, ArrowRight, Loader2, Maximize2, X, Receipt
 } from 'lucide-react'
 import { formatCurrency, formatPercent, getContratoStatusColor, getMedicaoStatusColor } from '@/lib/utils'
 import { CONTRATO_STATUS_LABELS, MEDICAO_STATUS_LABELS, type MedicaoStatus } from '@/types'
@@ -80,6 +80,10 @@ export default function DashboardPage() {
   const [grupos, setGrupos] = useState<any[]>([])
   const [hierarquia, setHierarquia] = useState<any[]>([])
   const [totalNfFatDireto, setTotalNfFatDireto] = useState(0)
+  const [totalNfsLancadas, setTotalNfsLancadas] = useState(0)
+  const [totalSolAprovadas, setTotalSolAprovadas] = useState(0)
+  const [valorServicos, setValorServicos] = useState(0)
+  const [valorMaterialDireto, setValorMaterialDireto] = useState(0)
   const [loading, setLoading] = useState(true)
   const [rtConnected, setRtConnected] = useState(false)
   const [maximized, setMaximized] = useState<string | null>(null) // 'curvaS' | 'acomp' | 'contratos' | 'medicoes'
@@ -109,6 +113,10 @@ export default function DashboardPage() {
         setMedicoesRecentes(data.medicoes_recentes || [])
         setGrupos(data.grupos || [])
         setTotalNfFatDireto(data.total_nf_fat_direto || 0)
+        setTotalNfsLancadas(data.total_nfs_lancadas || 0)
+        setTotalSolAprovadas(data.total_sol_aprovadas || 0)
+        setValorServicos(data.valor_servicos || 0)
+        setValorMaterialDireto(data.valor_material_direto || 0)
       }
       if (hierRes.ok) {
         const data = await hierRes.json()
@@ -143,10 +151,20 @@ export default function DashboardPage() {
   const totalSaldo = totalContratado - totalMedidoServico - totalNfFatDireto
   const pendentesAprovacao = contratos.reduce((a, c) => a + (c.qtd_medicoes_pendentes || 0), 0)
 
-  const animatedMedidoServico = useCountUp(totalMedidoServico)
-  const animatedNfFatDireto = useCountUp(totalNfFatDireto)
-  const animatedSaldo = useCountUp(totalSaldo)
+  const animatedMedidoServico  = useCountUp(totalMedidoServico)
+  const animatedNfFatDireto    = useCountUp(totalNfFatDireto)
+  const animatedSaldo          = useCountUp(totalSaldo)
   const animatedTotalContratos = useCountUp(contratos.length)
+  const animatedNfsLancadas    = useCountUp(totalNfsLancadas)
+  const animatedSolAprovadas   = useCountUp(totalSolAprovadas)
+
+  const pctMedido    = valorServicos > 0       ? (totalMedidoServico  / valorServicos       * 100) : 0
+  const pctNfs       = valorMaterialDireto > 0 ? (totalNfsLancadas    / valorMaterialDireto * 100) : 0
+  const pctAprovadas = valorMaterialDireto > 0 ? (totalSolAprovadas   / valorMaterialDireto * 100) : 0
+  const pctSaldo     = totalContratado > 0     ? (totalSaldo          / totalContratado     * 100) : 0
+
+  // ID do primeiro contrato ativo (para link direto)
+  const primeiroContratoId = contratos[0]?.id ?? ''
 
   const alertas = useMemo(() => {
     const list: { type: 'warning' | 'danger' | 'info'; msg: string }[] = []
@@ -277,131 +295,97 @@ export default function DashboardPage() {
 
       {/* ── Sticky KPI bar ── */}
       <div className="sticky top-14 z-10 px-3 sm:px-6 py-3 border-b" style={{ background: 'var(--background)', borderColor: 'var(--border)' }}>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          {/* Total Contratado */}
-          <div
-            className="rounded-xl p-3 sm:p-5 transition-all duration-200 cursor-default"
-            style={{
-              background: 'var(--surface-2)',
-              border: '1px solid var(--border)',
-              borderBottom: '2px solid rgba(59,130,246,0.40)',
-            }}
-            onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--border-hover)')}
-            onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
-          >
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
+
+          {/* Card 1 — Total Contratado → Estrutura */}
+          <Link href={primeiroContratoId ? `/contratos/${primeiroContratoId}/estrutura` : '/contratos'}>
+            <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full"
+              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(59,130,246,0.50)' }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = '#3B82F6')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
+              <div className="flex items-start justify-between">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Total Contratado</p>
+                  <p className="text-sm sm:text-xl font-bold truncate" style={{ color: 'var(--text-1)' }}>{formatCurrency(totalContratado)}</p>
+                  <p className="text-[10px] mt-1" style={{ color: '#3B82F6' }}>{Math.round(animatedTotalContratos)} contrato(s) · ver estrutura →</p>
+                </div>
+                <FileText className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: '#3B82F6' }} />
+              </div>
+            </div>
+          </Link>
+
+          {/* Card 2 — Medição Física → Relatório medições */}
+          <Link href="/documentos/medicoes-servico">
+            <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full"
+              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(16,185,129,0.50)' }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = '#10B981')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
+              <div className="flex items-start justify-between">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Medição Física</p>
+                  <p className="text-sm sm:text-xl font-bold truncate" style={{ color: 'var(--green)' }}>{formatCurrency(animatedMedidoServico)}</p>
+                  <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
+                    <span className="font-semibold" style={{ color: '#10B981' }}>{formatPercent(pctMedido)}</span> do val. serviços → relatório
+                  </p>
+                </div>
+                <TrendingUp className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: 'var(--green)' }} />
+              </div>
+            </div>
+          </Link>
+
+          {/* Card 3 — NF Lançadas */}
+          <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-default"
+            style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(99,102,241,0.50)' }}>
             <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>
-                  Total Contratado
-                </p>
-                <p className="text-base sm:text-2xl font-bold" style={{ color: 'var(--text-1)' }}>
-                  {formatCurrency(totalContratado)}
-                </p>
-                <p className="text-xs mt-1" style={{ color: 'var(--text-3)' }}>
-                  {Math.round(animatedTotalContratos)} contrato(s) ativo(s)
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>NF Lançadas</p>
+                <p className="text-sm sm:text-xl font-bold truncate" style={{ color: '#6366F1' }}>{formatCurrency(animatedNfsLancadas)}</p>
+                <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
+                  <span className="font-semibold" style={{ color: '#6366F1' }}>{formatPercent(pctNfs)}</span> do fat. direto
                 </p>
               </div>
-              <div
-                className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center flex-shrink-0 hidden sm:flex"
-                style={{ background: 'rgba(59,130,246,0.15)' }}
-              >
-                <FileText className="w-5 h-5" style={{ color: '#3B82F6' }} />
-              </div>
+              <Receipt className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: '#6366F1' }} />
             </div>
           </div>
 
-          {/* Medição - Serviço */}
-          <div
-            className="rounded-xl p-3 sm:p-5 transition-all duration-200 cursor-default"
-            style={{
-              background: 'var(--surface-2)',
-              border: '1px solid var(--border)',
-              borderBottom: '2px solid rgba(16,185,129,0.40)',
-            }}
-            onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--border-hover)')}
-            onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
-          >
+          {/* Card 4 — Solicitações Aprovadas */}
+          <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-default"
+            style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(245,158,11,0.50)' }}>
             <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>
-                  Medição - Serviço
-                </p>
-                <p className="text-base sm:text-2xl font-bold" style={{ color: 'var(--green)' }}>
-                  {formatCurrency(animatedMedidoServico)}
-                </p>
-                <p className="text-xs mt-1" style={{ color: 'var(--text-3)' }}>
-                  {totalContratado > 0 ? formatPercent(totalMedidoServico / totalContratado * 100) : '0%'} do total
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Sol. Aprovadas</p>
+                <p className="text-sm sm:text-xl font-bold truncate" style={{ color: '#F59E0B' }}>{formatCurrency(animatedSolAprovadas)}</p>
+                <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
+                  <span className="font-semibold" style={{ color: '#F59E0B' }}>{formatPercent(pctAprovadas)}</span> do fat. direto
                 </p>
               </div>
-              <div
-                className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center flex-shrink-0 hidden sm:flex"
-                style={{ background: 'rgba(16,185,129,0.15)' }}
-              >
-                <TrendingUp className="w-5 h-5" style={{ color: 'var(--green)' }} />
-              </div>
+              <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: '#F59E0B' }} />
             </div>
           </div>
 
-          {/* Medição Faturamento Direto */}
-          <div
-            className="rounded-xl p-3 sm:p-5 transition-all duration-200 cursor-default"
-            style={{
-              background: 'var(--surface-2)',
-              border: '1px solid var(--border)',
-              borderBottom: '2px solid rgba(99,102,241,0.40)',
-            }}
-            onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--border-hover)')}
-            onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>
-                  Medição Fat. Direto
-                </p>
-                <p className="text-base sm:text-2xl font-bold" style={{ color: '#6366F1' }}>
-                  {formatCurrency(animatedNfFatDireto)}
-                </p>
-                <p className="text-xs mt-1" style={{ color: 'var(--text-3)' }}>
-                  Somatório de NFs aprovadas
-                </p>
-              </div>
-              <div
-                className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center flex-shrink-0 hidden sm:flex"
-                style={{ background: 'rgba(99,102,241,0.12)' }}
-              >
-                <DollarSign className="w-5 h-5" style={{ color: '#6366F1' }} />
-              </div>
+          {/* Card 5 — Saldo (com breakdown interno) */}
+          <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-default col-span-2 sm:col-span-1"
+            style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(71,85,105,0.50)' }}>
+            <div className="flex items-start justify-between mb-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>Saldo</p>
+              <DollarSign className="w-4 h-4 flex-shrink-0 hidden sm:block" style={{ color: 'var(--text-2)' }} />
             </div>
-          </div>
-
-          {/* Saldo */}
-          <div
-            className="rounded-xl p-3 sm:p-5 transition-all duration-200 cursor-default"
-            style={{
-              background: 'var(--surface-2)',
-              border: '1px solid var(--border)',
-              borderBottom: '2px solid rgba(71,85,105,0.50)',
-            }}
-            onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--border-hover)')}
-            onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
-          >
-            <div className="flex items-start justify-between">
+            <p className="text-sm sm:text-xl font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(animatedSaldo)}</p>
+            <p className="text-[10px] mb-2" style={{ color: 'var(--text-3)' }}>
+              <span className="font-semibold" style={{ color: 'var(--text-2)' }}>{formatPercent(pctSaldo)}</span> do contrato
+            </p>
+            <div className="grid grid-cols-3 gap-1 pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>
-                  Saldo
-                </p>
-                <p className="text-base sm:text-2xl font-bold" style={{ color: 'var(--text-1)' }}>
-                  {formatCurrency(animatedSaldo)}
-                </p>
-                <p className="text-xs mt-1" style={{ color: 'var(--text-3)' }}>
-                  {totalContratado > 0 ? formatPercent(totalSaldo / totalContratado * 100) : '0%'} do total
-                </p>
+                <p className="text-[9px]" style={{ color: 'var(--text-3)' }}>Contrato</p>
+                <p className="text-[10px] font-semibold truncate" style={{ color: 'var(--text-2)' }}>{formatCurrency(totalContratado)}</p>
               </div>
-              <div
-                className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center flex-shrink-0 hidden sm:flex"
-                style={{ background: 'rgba(71,85,105,0.12)' }}
-              >
-                <CheckCircle2 className="w-5 h-5" style={{ color: 'var(--text-2)' }} />
+              <div>
+                <p className="text-[9px]" style={{ color: 'var(--text-3)' }}>Serviços</p>
+                <p className="text-[10px] font-semibold truncate" style={{ color: '#10B981' }}>{formatCurrency(totalMedidoServico)}</p>
+              </div>
+              <div>
+                <p className="text-[9px]" style={{ color: 'var(--text-3)' }}>NFs</p>
+                <p className="text-[10px] font-semibold truncate" style={{ color: '#6366F1' }}>{formatCurrency(totalNfsLancadas)}</p>
               </div>
             </div>
           </div>
