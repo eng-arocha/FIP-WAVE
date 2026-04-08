@@ -24,6 +24,7 @@ const PERFIL_LABELS: Record<Perfil, string> = {
 const ICON_COLORS: Record<string, { from: string; to: string }> = {
   '/dashboard':    { from: '#3B82F6', to: '#06B6D4' },  // blue → cyan
   '/contratos':    { from: '#8B5CF6', to: '#A855F7' },  // purple
+  '/contratos/novo': { from: '#8B5CF6', to: '#A855F7' },  // purple
   '/aprovacoes':   { from: '#F59E0B', to: '#EF4444' },  // amber → red
   '/empresas':     { from: '#10B981', to: '#059669' },  // green
   '/usuarios':     { from: '#6366F1', to: '#8B5CF6' },  // indigo → purple
@@ -87,6 +88,7 @@ export function Sidebar({
   ].filter(item => temPermissao(item.modulo, 'visualizar'))
 
   const cadastroItems = [
+    ...(perfilAtual === 'admin' ? [{ label: 'Novo Contrato', href: '/contratos/novo', icon: FileText, modulo: 'contratos' }] : []),
     { label: 'Empresas', href: '/empresas', icon: Building2, modulo: 'empresas' },
     { label: 'Usuários', href: '/usuarios', icon: Users, modulo: 'usuarios' },
     { label: 'Perfis', href: '/perfis', icon: Shield, modulo: 'perfis' },

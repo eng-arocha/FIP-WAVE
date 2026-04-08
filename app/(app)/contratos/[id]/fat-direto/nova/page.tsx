@@ -370,8 +370,6 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
     setErro('')
     if (!fornRazaoSocial.trim()) { setErro('Informe a Razão Social do fornecedor.'); return }
     if (!fornCnpj.trim()) { setErro('Informe o CNPJ do fornecedor.'); return }
-    if (!fornContatoNome.trim()) { setErro('Informe o Nome do contato.'); return }
-    if (!fornContatoTel.trim()) { setErro('Informe o Telefone do contato.'); return }
     if (!numeroPedidoFip.trim() || isNaN(parseInt(numeroPedidoFip, 10))) {
       setErro('Informe o Nº Pedido Interno FIP (número inteiro).'); return
     }

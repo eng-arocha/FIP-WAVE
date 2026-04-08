@@ -12,7 +12,7 @@ import {
 } from 'recharts'
 import {
   TrendingUp, FileText, Clock, CheckCircle2, AlertCircle,
-  DollarSign, Plus, ArrowRight, Loader2, Maximize2, X
+  DollarSign, ArrowRight, Loader2, Maximize2, X
 } from 'lucide-react'
 import { formatCurrency, formatPercent, getContratoStatusColor, getMedicaoStatusColor } from '@/lib/utils'
 import { CONTRATO_STATUS_LABELS, MEDICAO_STATUS_LABELS, type MedicaoStatus } from '@/types'
@@ -265,14 +265,6 @@ export default function DashboardPage() {
               {rtConnected ? 'Ao Vivo' : 'Conectando...'}
             </span>
           </span>
-        }
-        actions={
-          <Link href="/contratos/novo">
-            <Button size="sm">
-              <Plus className="w-4 h-4" />
-              Novo Contrato
-            </Button>
-          </Link>
         }
       />
 
