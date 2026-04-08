@@ -13,6 +13,7 @@ import { usePermissoes } from '@/lib/context/permissoes-context'
 interface Solicitacao {
   id: string
   numero: number
+  contrato_id: string
   status: string
   data_solicitacao: string
   data_aprovacao?: string
@@ -145,7 +146,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
 
   return (
     <div className="flex flex-col min-h-screen bg-[var(--background)]">
-      <Topbar title={`SOL-${String(sol.numero).padStart(3, '0')}`} />
+      <Topbar title={`FIP-${String(sol.numero).padStart(4, '0')}`} />
       <div className="flex-1 p-6 space-y-6 max-w-4xl mx-auto w-full">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -157,7 +158,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
             </Link>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold" style={{ color: 'var(--text-1)' }}>SOL-{String(sol.numero).padStart(3, '0')}</h1>
+                <h1 className="text-xl font-bold" style={{ color: 'var(--text-1)' }}>FIP-{String(sol.numero).padStart(4, '0')}</h1>
                 <span
                   className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide"
                   style={{ background: `${statusColor}20`, color: statusColor }}

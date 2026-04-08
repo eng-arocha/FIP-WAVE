@@ -76,8 +76,8 @@ export default function MedicoesPage({ params }: { params: Promise<{ id: string 
                   <CardContent className="p-4">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex flex-col items-center justify-center flex-shrink-0">
-                        <span className="text-[10px] text-blue-400/60 font-medium">MED</span>
-                        <span className="text-base font-bold text-blue-400 leading-tight">#{String(m.numero).padStart(2, '0')}</span>
+                        <span className="text-[10px] text-blue-400/60 font-medium">FIP</span>
+                        <span className="text-base font-bold text-blue-400 leading-tight">{String(m.numero).padStart(4, '0')}</span>
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">

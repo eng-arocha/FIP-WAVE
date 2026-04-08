@@ -170,7 +170,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
   return (
     <div className="flex-1 overflow-auto">
       <Topbar
-        title={`Medição #${String(medicao.numero).padStart(3, '0')} — ${medicao.periodo_referencia}`}
+        title={`Medição FIP-${String(medicao.numero).padStart(4, '0')} — ${medicao.periodo_referencia}`}
         subtitle={medicao.contrato?.numero}
         actions={
           <div className="flex gap-2">
@@ -238,7 +238,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                     <Hash className="w-3.5 h-3.5 text-[var(--text-3)]" />
                     <div>
                       <p className="text-[var(--text-3)]">Medição</p>
-                      <p className="font-medium text-[var(--text-1)]">#{String(medicao.numero).padStart(3, '0')}</p>
+                      <p className="font-medium text-[var(--text-1)]">FIP-{String(medicao.numero).padStart(4, '0')}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -474,7 +474,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
           <DialogHeader>
             <DialogTitle className="text-emerald-400 flex items-center gap-2">
               <CheckCircle2 className="w-5 h-5" />
-              Aprovar Medição #{String(medicao.numero).padStart(3, '0')}
+              Aprovar Medição FIP-{String(medicao.numero).padStart(4, '0')}
             </DialogTitle>
             <DialogDescription className="text-[var(--text-2)]">
               Valor: <strong className="text-[var(--text-1)]">{formatCurrency(medicao.valor_total)}</strong> · Período: {medicao.periodo_referencia}
@@ -510,7 +510,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
           <DialogHeader>
             <DialogTitle className="text-red-400 flex items-center gap-2">
               <XCircle className="w-5 h-5" />
-              Rejeitar Medição #{String(medicao.numero).padStart(3, '0')}
+              Rejeitar Medição FIP-{String(medicao.numero).padStart(4, '0')}
             </DialogTitle>
             <DialogDescription className="text-[var(--text-2)]">
               Informe o motivo da rejeição. O fornecedor será notificado por e-mail.
