@@ -12,10 +12,24 @@ import {
 } from '@/components/ui/dialog'
 import {
   CheckCircle2, XCircle, Clock, AlertCircle,
-  FileText, Building2, Calendar, ArrowRight, Loader2
+  FileText, Building2, Calendar, ArrowRight, Package
 } from 'lucide-react'
 import { formatCurrency, formatDate, getMedicaoStatusColor } from '@/lib/utils'
 import { MEDICAO_STATUS_LABELS, MedicaoStatus } from '@/types'
+
+interface PendenteFip {
+  id: string
+  numero: number
+  status: string
+  data_solicitacao: string
+  valor_total: number
+  observacoes?: string
+  fornecedor_razao_social?: string
+  contrato_id: string
+  contrato: { id: string; numero: string; descricao: string }
+  solicitante?: { nome: string; email: string }
+  itens: { id: string }[]
+}
 
 interface PendenteMedicao {
   id: string
@@ -54,8 +68,12 @@ interface HistoricoMedicao {
 export default function AprovacoesPage() {
   const [pendentes, setPendentes] = useState<PendenteMedicao[]>([])
   const [historico, setHistorico] = useState<HistoricoMedicao[]>([])
+  const [pendentesFip, setPendentesFip] = useState<PendenteFip[]>([])
   const [loading, setLoading] = useState(true)
-  const [aba, setAba] = useState<'pendentes' | 'historico'>('pendentes')
+  const [aba, setAba] = useState<'medicoes' | 'fat-direto' | 'historico'>('medicoes')
+  const [motivoFip, setMotivoFip] = useState('')
+  const [rejeitandoFip, setRejeitandoFip] = useState<string | null>(null)
+  const [aprovandoFip, setAprovandoFip] = useState<string | null>(null)
   const [modalAprovar, setModalAprovar] = useState<string | null>(null)
   const [modalRejeitar, setModalRejeitar] = useState<string | null>(null)
   const [comentario, setComentario] = useState('')
@@ -67,11 +85,18 @@ export default function AprovacoesPage() {
   useEffect(() => {
     async function loadAprovacoes() {
       try {
-        const res = await fetch('/api/aprovacoes')
+        const [res, resFip] = await Promise.all([
+          fetch('/api/aprovacoes'),
+          fetch('/api/aprovacoes/fat-direto'),
+        ])
         if (res.ok) {
           const data = await res.json()
           setPendentes(data.pendentes ?? [])
           setHistorico(data.historico ?? [])
+        }
+        if (resFip.ok) {
+          const dataFip = await resFip.json()
+          setPendentesFip(dataFip.pendentes ?? [])
         }
       } finally {
         setLoading(false)
@@ -139,6 +164,35 @@ export default function AprovacoesPage() {
       }
     } finally {
       setQuickAprovando(null)
+    }
+  }
+
+  async function aprovarFip(sol: PendenteFip) {
+    setAprovandoFip(sol.id)
+    try {
+      const res = await fetch(`/api/contratos/${sol.contrato_id}/fat-direto/solicitacoes/${sol.id}/aprovar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acao: 'aprovado' }),
+      })
+      if (res.ok) setPendentesFip(prev => prev.filter(s => s.id !== sol.id))
+    } finally {
+      setAprovandoFip(null)
+    }
+  }
+
+  async function rejeitarFip(sol: PendenteFip) {
+    if (!motivoFip.trim()) return
+    setRejeitandoFip(sol.id)
+    try {
+      const res = await fetch(`/api/contratos/${sol.contrato_id}/fat-direto/solicitacoes/${sol.id}/aprovar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acao: 'rejeitado', motivo_rejeicao: motivoFip }),
+      })
+      if (res.ok) { setPendentesFip(prev => prev.filter(s => s.id !== sol.id)); setMotivoFip('') }
+    } finally {
+      setRejeitandoFip(null)
     }
   }
 
@@ -269,11 +323,13 @@ export default function AprovacoesPage() {
             <div>
               <p
                 className="text-2xl font-bold"
-                style={{ color: pendentes.length > 0 ? 'var(--amber)' : 'var(--text-1)' }}
+                style={{ color: (pendentes.length + pendentesFip.length) > 0 ? 'var(--amber)' : 'var(--text-1)' }}
               >
-                {pendentes.length}
+                {pendentes.length + pendentesFip.length}
               </p>
-              <p className="text-xs" style={{ color: 'var(--text-3)' }}>Aguardando aprovação</p>
+              <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+                {pendentes.length} medição + {pendentesFip.length} FIP
+              </p>
             </div>
           </div>
 
@@ -325,36 +381,30 @@ export default function AprovacoesPage() {
           className="flex gap-1 mb-5 w-fit p-1 rounded-xl"
           style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}
         >
-          <button
-            onClick={() => setAba('pendentes')}
-            className="px-4 py-1.5 text-sm font-medium rounded-lg transition-all duration-150 flex items-center gap-2"
-            style={
-              aba === 'pendentes'
-                ? { background: 'var(--surface-3)', color: 'var(--text-1)', boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }
-                : { color: 'var(--text-3)' }
-            }
-          >
-            Pendentes
-            {pendentes.length > 0 && (
-              <span
-                className="text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center"
-                style={{ background: '#F59E0B', color: '#fff' }}
-              >
-                {pendentes.length}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => setAba('historico')}
-            className="px-4 py-1.5 text-sm font-medium rounded-lg transition-all duration-150"
-            style={
-              aba === 'historico'
-                ? { background: 'var(--surface-3)', color: 'var(--text-1)', boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }
-                : { color: 'var(--text-3)' }
-            }
-          >
-            Histórico
-          </button>
+          {([
+            { id: 'medicoes', label: 'Medições de Serviço', count: pendentes.length },
+            { id: 'fat-direto', label: 'Faturamento Direto', count: pendentesFip.length },
+            { id: 'historico', label: 'Histórico', count: 0 },
+          ] as const).map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setAba(tab.id)}
+              className="px-4 py-1.5 text-sm font-medium rounded-lg transition-all duration-150 flex items-center gap-2"
+              style={
+                aba === tab.id
+                  ? { background: 'var(--surface-3)', color: 'var(--text-1)', boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }
+                  : { color: 'var(--text-3)' }
+              }
+            >
+              {tab.label}
+              {tab.count > 0 && (
+                <span className="text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center"
+                  style={{ background: '#F59E0B', color: '#fff' }}>
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
 
         {/* Loading skeleton */}
@@ -380,8 +430,8 @@ export default function AprovacoesPage() {
           </div>
         )}
 
-        {/* Pendentes */}
-        {!loading && aba === 'pendentes' && (
+        {/* Medições de Serviço */}
+        {!loading && aba === 'medicoes' && (
           <div className="space-y-3">
             {pendentes.length === 0 ? (
               <div className="text-center py-16">
@@ -501,6 +551,134 @@ export default function AprovacoesPage() {
                             }}
                             onMouseEnter={e => { e.currentTarget.style.borderColor = '#3B82F6'; e.currentTarget.style.color = 'var(--text-1)' }}
                             onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-2)' }}
+                          >
+                            Ver detalhes <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Fat. Direto pendentes */}
+        {!loading && aba === 'fat-direto' && (
+          <div className="space-y-3">
+            {pendentesFip.length === 0 ? (
+              <div className="text-center py-16">
+                <CheckCircle2 className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--green)', opacity: 0.6 }} />
+                <p className="font-semibold" style={{ color: 'var(--text-2)' }}>Nenhuma solicitação pendente</p>
+                <p className="text-sm mt-1" style={{ color: 'var(--text-3)' }}>Todas as solicitações foram analisadas</p>
+              </div>
+            ) : pendentesFip.map(sol => (
+              <div
+                key={sol.id}
+                className="rounded-xl transition-all duration-150"
+                style={{ background: 'var(--surface-2)', border: '1px solid rgba(6,182,212,0.25)', borderLeft: '4px solid #06B6D4' }}
+              >
+                <div className="p-5">
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ background: 'rgba(6,182,212,0.10)' }}>
+                      <Package className="w-5 h-5" style={{ color: '#06B6D4' }} />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-start justify-between mb-2">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-bold" style={{ color: 'var(--text-1)' }}>
+                              FIP-{String(sol.numero).padStart(4, '0')}
+                            </span>
+                            <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-cyan-900/40 text-cyan-300 border border-cyan-700/50">
+                              Fat. Direto
+                            </span>
+                          </div>
+                          <p className="text-sm" style={{ color: 'var(--text-2)' }}>
+                            {sol.contrato.numero} · {sol.contrato.descricao}
+                          </p>
+                          {sol.fornecedor_razao_social && (
+                            <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>{sol.fornecedor_razao_social}</p>
+                          )}
+                        </div>
+                        <p className="text-xl font-bold flex-shrink-0"
+                          style={{ background: 'linear-gradient(90deg, #06B6D4, #3B82F6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                          {formatCurrency(sol.valor_total)}
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3 text-xs mb-4" style={{ color: 'var(--text-3)' }}>
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" /> {formatDate(sol.data_solicitacao)}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <FileText className="w-3 h-3" /> {sol.itens.length} item(ns)
+                        </span>
+                        {sol.solicitante && (
+                          <span className="flex items-center gap-1">
+                            <Building2 className="w-3 h-3" /> {sol.solicitante.nome}
+                          </span>
+                        )}
+                      </div>
+                      {/* Motivo rejeição inline */}
+                      {rejeitandoFip === sol.id && (
+                        <div className="mb-3">
+                          <input
+                            type="text"
+                            value={motivoFip}
+                            onChange={e => setMotivoFip(e.target.value)}
+                            placeholder="Motivo da rejeição (obrigatório)..."
+                            autoFocus
+                            className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                            style={{ background: 'var(--background)', border: '1px solid rgba(239,68,68,0.4)', color: 'var(--text-1)' }}
+                          />
+                        </div>
+                      )}
+                      <div className="flex gap-2 flex-wrap">
+                        {rejeitandoFip !== sol.id ? (
+                          <>
+                            <button
+                              onClick={() => aprovarFip(sol)}
+                              disabled={aprovandoFip === sol.id}
+                              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-70"
+                              style={{ background: 'linear-gradient(90deg, #059669, #10B981)', color: '#fff', boxShadow: '0 0 12px rgba(16,185,129,0.25)' }}
+                            >
+                              {aprovandoFip === sol.id
+                                ? <><svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Aprovando...</>
+                                : <><CheckCircle2 className="w-3.5 h-3.5" /> Aprovar</>}
+                            </button>
+                            <button
+                              onClick={() => setRejeitandoFip(sol.id)}
+                              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold"
+                              style={{ background: '#EF4444', color: '#fff' }}
+                            >
+                              <XCircle className="w-3.5 h-3.5" /> Rejeitar
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => rejeitarFip(sol)}
+                              disabled={!motivoFip.trim()}
+                              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
+                              style={{ background: '#EF4444', color: '#fff' }}
+                            >
+                              <XCircle className="w-3.5 h-3.5" /> Confirmar Rejeição
+                            </button>
+                            <button
+                              onClick={() => { setRejeitandoFip(null); setMotivoFip('') }}
+                              className="px-4 py-2 rounded-lg text-sm"
+                              style={{ color: 'var(--text-3)', border: '1px solid var(--border)' }}
+                            >
+                              Cancelar
+                            </button>
+                          </>
+                        )}
+                        <Link href={`/contratos/${sol.contrato_id}/fat-direto/${sol.id}`}>
+                          <button
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium"
+                            style={{ border: '1px solid var(--border)', color: 'var(--text-2)' }}
                           >
                             Ver detalhes <ArrowRight className="w-3.5 h-3.5" />
                           </button>
