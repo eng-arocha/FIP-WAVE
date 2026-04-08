@@ -222,6 +222,24 @@ export async function criarSolicitacao(input: {
   return sol
 }
 
+export async function listarSolicitacoesPendentes() {
+  const admin = createAdminClient()
+  const { data, error } = await admin
+    .from('solicitacoes_fat_direto')
+    .select(`
+      id, numero, status, data_solicitacao, valor_total, observacoes,
+      fornecedor_razao_social, fornecedor_cnpj,
+      contrato_id,
+      contrato:contrato_id(id, numero, descricao),
+      solicitante:solicitante_id(nome, email),
+      itens:itens_solicitacao_fat_direto(id)
+    `)
+    .eq('status', 'aguardando_aprovacao')
+    .order('data_solicitacao', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
 export async function atualizarStatusSolicitacao(
   id: string,
   status: 'aprovado' | 'rejeitado' | 'cancelado' | 'aguardando_aprovacao',
