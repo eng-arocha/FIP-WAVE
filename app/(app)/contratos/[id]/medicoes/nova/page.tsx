@@ -2,13 +2,12 @@
 
 import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Upload, Trash2, Plus, AlertCircle, Info, Loader2, User } from 'lucide-react'
+import { ArrowLeft, Upload, Trash2, Plus, AlertCircle, Info, Loader2, User, ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { TipoAnexo } from '@/types'
 import { createClient } from '@/lib/supabase/client'
@@ -45,6 +44,20 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
 
   // % selecionado por detalhamento (representa o acumulado NOVO desejado)
   const [percentualMedicao, setPercentualMedicao] = useState<Record<string, number>>({})
+
+  // Collapse state para step 2 — começa com todos fechados
+  const [expandedGrupos, setExpandedGrupos] = useState<Set<string>>(new Set())
+
+  function toggleGrupo(id: string) {
+    setExpandedGrupos(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  function expandAll() { setExpandedGrupos(new Set(estruturaServico.map(g => g.id))) }
+  function collapseAll() { setExpandedGrupos(new Set()) }
 
   const [novasNFs, setNovasNFs] = useState<{ numero: string; emitente: string; valor: string; data: string }[]>([])
 
@@ -175,9 +188,9 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
         title="Nova Medição de Serviço"
         subtitle="WAVE-2025-001"
         actions={
-          <Link href={`/contratos/${contratoId}`}>
-            <Button variant="outline" size="sm"><ArrowLeft className="w-4 h-4" />Voltar</Button>
-          </Link>
+          <Button variant="outline" size="sm" onClick={() => router.back()}>
+            <ArrowLeft className="w-4 h-4" />Voltar
+          </Button>
         }
       />
 
@@ -265,83 +278,126 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
               <span>Selecione o <strong>percentual acumulado total</strong> executado. O valor da medição será calculado como a diferença em relação à medição anterior.</span>
             </div>
 
+            {/* Botões expandir / contrair — sempre visíveis no step 2 */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={expandAll}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-2)' }}
+              >
+                <ChevronsUpDown className="w-3.5 h-3.5" />
+                Expandir Todos
+              </button>
+              <button
+                onClick={collapseAll}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-2)' }}
+              >
+                <ChevronUp className="w-3.5 h-3.5" />
+                Contrair Todos
+              </button>
+              <span className="text-xs ml-auto" style={{ color: 'var(--text-3)' }}>
+                {expandedGrupos.size}/{estruturaServico.length} grupos abertos
+              </span>
+            </div>
+
             {loadingEstrutura ? (
               <div className="flex items-center justify-center py-16 text-[var(--text-3)]">
                 <Loader2 className="w-6 h-6 animate-spin mr-2 text-blue-400" />
                 <span>Carregando estrutura...</span>
               </div>
             ) : (
-              estruturaServico.map(grupo => (
-                <Card key={grupo.id}>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm flex items-center gap-2 text-[var(--text-1)]">
-                      <span className="text-[var(--text-3)] font-mono">{grupo.codigo}</span>
-                      {grupo.nome}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {(grupo.tarefas || []).map((tarefa: any) => (
-                      <div key={tarefa.id} className="mb-4 last:mb-0">
-                        <p className="text-xs font-semibold text-[var(--text-2)] mb-2 flex items-center gap-1">
-                          <span className="font-mono text-[var(--text-3)]">{tarefa.codigo}</span>
-                          {tarefa.nome}
-                        </p>
-                        <div className="space-y-1.5">
-                          {(tarefa.detalhamentos || []).map((det: any) => {
-                            const pct = percentualMedicao[det.id] ?? (acumulado[det.id] || 0)
-                            const pctAnt = acumulado[det.id] || 0
-                            const delta = pct - pctAnt
-                            const valorDelta = delta > 0
-                              ? (delta / 100) * (det.quantidade_contratada || 0) * (det.valor_unitario || 0)
-                              : 0
-                            return (
-                              <div key={det.id} className={`grid grid-cols-12 gap-2 p-2.5 rounded-lg text-xs items-center transition-all ${delta > 0 ? 'bg-amber-500/8 border border-amber-500/30' : pct === 100 ? 'bg-emerald-500/8 border border-emerald-500/20' : 'bg-[var(--surface-1)] border border-transparent'}`}>
-                                <div className="col-span-1 text-[var(--text-3)] font-mono text-[10px]">{det.codigo}</div>
-                                <div className="col-span-3 text-[var(--text-1)] font-medium leading-tight">{det.descricao}</div>
-                                <div className="col-span-1 text-center text-[var(--text-3)]">{det.unidade}</div>
-                                <div className="col-span-1 text-center text-[var(--text-3)]">{formatCurrency(det.valor_unitario || 0)}</div>
-                                {/* % selector */}
-                                <div className="col-span-4 flex gap-0.5">
-                                  {[0, 25, 50, 75, 100].map(p => {
-                                    const isMin    = p < pctAnt                        // abaixo do acumulado → desabilitado
-                                    const isAccum  = p === pctAnt && p > 0             // acumulado anterior → verde
-                                    const isDelta  = p > pctAnt && p <= pct && p > 0  // delta nova medição → amarelo
-                                    return (
-                                      <button
-                                        key={p}
-                                        type="button"
-                                        disabled={isMin}
-                                        onClick={() => setPercentual(det.id, p, pct)}
-                                        className={`flex-1 py-1.5 rounded text-[11px] font-bold transition-all duration-150 ${
-                                          isMin
-                                            ? 'opacity-20 cursor-not-allowed bg-[var(--surface-3)] text-[var(--text-3)]'
-                                            : isAccum
-                                            ? 'bg-emerald-600 text-white ring-1 ring-emerald-400'
-                                            : isDelta
-                                            ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/40'
-                                            : 'bg-[#1e293b] text-slate-300 hover:bg-[#334155] hover:text-white'
-                                        }`}
-                                      >
-                                        {p}%
-                                      </button>
-                                    )
-                                  })}
-                                </div>
-                                <div className="col-span-2 text-right font-bold">
-                                  {pctAnt > 0 && <span className="text-[10px] text-slate-400 block">ant: {pctAnt}%</span>}
-                                  {valorDelta > 0
-                                    ? <span className="text-blue-400">{formatCurrency(valorDelta)}</span>
-                                    : <span className="text-[var(--text-3)] font-normal">—</span>}
-                                </div>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-              ))
+              estruturaServico.map(grupo => {
+                const isOpen = expandedGrupos.has(grupo.id)
+                // Conta itens com delta neste grupo
+                const deltaCount = (grupo.tarefas || []).reduce((acc: number, t: any) =>
+                  acc + (t.detalhamentos || []).filter((d: any) => (percentualMedicao[d.id] || 0) > (acumulado[d.id] || 0)).length, 0)
+
+                return (
+                  <Card key={grupo.id}>
+                    <CardHeader
+                      className="pb-2 cursor-pointer select-none"
+                      onClick={() => toggleGrupo(grupo.id)}
+                    >
+                      <CardTitle className="text-sm flex items-center gap-2 text-[var(--text-1)]">
+                        <span className="text-[var(--text-3)] font-mono">{grupo.codigo}</span>
+                        <span className="flex-1">{grupo.nome}</span>
+                        {deltaCount > 0 && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(245,158,11,0.15)', color: '#F59E0B' }}>
+                            {deltaCount} item(ns) selecionado(s)
+                          </span>
+                        )}
+                        {isOpen
+                          ? <ChevronUp className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--text-3)' }} />
+                          : <ChevronDown className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--text-3)' }} />}
+                      </CardTitle>
+                    </CardHeader>
+                    {isOpen && (
+                      <CardContent>
+                        {(grupo.tarefas || []).map((tarefa: any) => (
+                          <div key={tarefa.id} className="mb-4 last:mb-0">
+                            <p className="text-xs font-semibold text-[var(--text-2)] mb-2 flex items-center gap-1">
+                              <span className="font-mono text-[var(--text-3)]">{tarefa.codigo}</span>
+                              {tarefa.nome}
+                            </p>
+                            <div className="space-y-1.5">
+                              {(tarefa.detalhamentos || []).map((det: any) => {
+                                const pct = percentualMedicao[det.id] ?? (acumulado[det.id] || 0)
+                                const pctAnt = acumulado[det.id] || 0
+                                const delta = pct - pctAnt
+                                const valorDelta = delta > 0
+                                  ? (delta / 100) * (det.quantidade_contratada || 0) * (det.valor_unitario || 0)
+                                  : 0
+                                return (
+                                  <div key={det.id} className={`grid grid-cols-12 gap-2 p-2.5 rounded-lg text-xs items-center transition-all ${delta > 0 ? 'bg-amber-500/8 border border-amber-500/30' : pct === 100 ? 'bg-emerald-500/8 border border-emerald-500/20' : 'bg-[var(--surface-1)] border border-transparent'}`}>
+                                    <div className="col-span-1 text-[var(--text-3)] font-mono text-[10px]">{det.codigo}</div>
+                                    <div className="col-span-3 text-[var(--text-1)] font-medium leading-tight">{det.descricao}</div>
+                                    <div className="col-span-1 text-center text-[var(--text-3)]">{det.unidade}</div>
+                                    <div className="col-span-1 text-center text-[var(--text-3)]">{formatCurrency(det.valor_unitario || 0)}</div>
+                                    {/* % selector */}
+                                    <div className="col-span-4 flex gap-0.5">
+                                      {[0, 25, 50, 75, 100].map(p => {
+                                        const isMin   = p < pctAnt
+                                        const isAccum = p === pctAnt && p > 0
+                                        const isDelta = p > pctAnt && p <= pct && p > 0
+                                        return (
+                                          <button
+                                            key={p}
+                                            type="button"
+                                            disabled={isMin}
+                                            onClick={() => setPercentual(det.id, p, pct)}
+                                            className={`flex-1 py-1.5 rounded text-[11px] font-bold transition-all duration-150 ${
+                                              isMin
+                                                ? 'opacity-20 cursor-not-allowed bg-[var(--surface-3)] text-[var(--text-3)]'
+                                                : isAccum
+                                                ? 'bg-emerald-600 text-white ring-1 ring-emerald-400'
+                                                : isDelta
+                                                ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/40'
+                                                : 'bg-[#1e293b] text-slate-300 hover:bg-[#334155] hover:text-white'
+                                            }`}
+                                          >
+                                            {p}%
+                                          </button>
+                                        )
+                                      })}
+                                    </div>
+                                    <div className="col-span-2 text-right font-bold">
+                                      {pctAnt > 0 && <span className="text-[10px] text-slate-400 block">ant: {pctAnt}%</span>}
+                                      {valorDelta > 0
+                                        ? <span className="text-blue-400">{formatCurrency(valorDelta)}</span>
+                                        : <span className="text-[var(--text-3)] font-normal">—</span>}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </CardContent>
+                    )}
+                  </Card>
+                )
+              })
             )}
 
             <Card className="border-blue-500/20 bg-blue-500/5">
