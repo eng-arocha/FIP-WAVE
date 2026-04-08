@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, FileText, Building2, CheckSquare, LogOut, X, Users,
-  Pin, PinOff, ChevronDown, FolderOpen, TrendingUp, Receipt, ClipboardList, FileArchive, Shield, Wrench, BookOpen,
+  Pin, PinOff, ChevronDown, FolderOpen, TrendingUp, Receipt, ClipboardList, FileArchive, Shield, Wrench, BookOpen, MoreHorizontal,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePermissoes } from '@/lib/context/permissoes-context'
@@ -310,30 +310,164 @@ export function Sidebar({
     </>
   )
 
+  // ── Bottom Navigation Bar (mobile only) ──────────────────────────────
+  const bottomNavBg = isDark
+    ? 'rgba(28,28,30,0.94)'
+    : 'rgba(255,255,255,0.94)'
+  const bottomNavBorder = isDark
+    ? 'rgba(255,255,255,0.08)'
+    : 'rgba(0,0,0,0.09)'
+
+  const BottomNav = () => (
+    <nav
+      className="mobile-bottom-nav fixed bottom-0 inset-x-0 z-50 lg:hidden"
+      style={{
+        background: bottomNavBg,
+        backdropFilter: 'saturate(200%) blur(28px)',
+        WebkitBackdropFilter: 'saturate(200%) blur(28px)',
+        borderTop: `0.5px solid ${bottomNavBorder}`,
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+      }}
+    >
+      <div className="flex items-stretch" style={{ height: 'var(--bottom-nav-h, 60px)' }}>
+        {mainItems.map(item => {
+          const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+          const colors = ICON_COLORS[item.href]
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={() => setMobileOpen(false)}
+              className="tap-bounce flex-1 flex flex-col items-center justify-center gap-[3px] relative"
+            >
+              {/* Icon container */}
+              <span
+                className="flex items-center justify-center transition-all duration-200"
+                style={{
+                  width: 36, height: 36, borderRadius: 11,
+                  background: isActive && colors
+                    ? `linear-gradient(135deg, ${colors.from}, ${colors.to})`
+                    : 'transparent',
+                  boxShadow: isActive && colors
+                    ? `0 3px 10px ${colors.from}50`
+                    : 'none',
+                  transform: isActive ? 'translateY(-1px)' : 'translateY(0)',
+                }}
+              >
+                <item.icon
+                  style={{
+                    width: 18, height: 18,
+                    color: isActive ? '#FFFFFF' : (isDark ? 'rgba(235,235,245,0.45)' : '#86868B'),
+                  }}
+                  strokeWidth={isActive ? 2.2 : 1.6}
+                />
+              </span>
+
+              {/* Label */}
+              <span
+                className="text-[10px] font-medium leading-none transition-colors duration-200"
+                style={{
+                  color: isActive
+                    ? (colors?.from ?? 'var(--accent)')
+                    : (isDark ? 'rgba(235,235,245,0.45)' : '#86868B'),
+                  fontWeight: isActive ? 600 : 400,
+                }}
+              >
+                {/* Shorten long labels on mobile */}
+                {item.label === 'NF Fat. Direto' ? 'Fat. Direto'
+                  : item.label === 'Aprovações' ? 'Aprovações'
+                  : item.label}
+              </span>
+
+              {/* Pending badge */}
+              {'badge' in item && item.badge && !isActive && (
+                <span
+                  className="absolute top-1 right-[22%] w-2 h-2 rounded-full"
+                  style={{ background: '#0071E3', boxShadow: '0 0 0 1.5px white' }}
+                />
+              )}
+            </Link>
+          )
+        })}
+
+        {/* "Mais" — opens the slide-over drawer for secondary nav items */}
+        <button
+          onClick={() => setMobileOpen(true)}
+          className="tap-bounce flex-1 flex flex-col items-center justify-center gap-[3px]"
+        >
+          <span
+            className="flex items-center justify-center"
+            style={{ width: 36, height: 36, borderRadius: 11 }}
+          >
+            <MoreHorizontal
+              style={{
+                width: 18, height: 18,
+                color: isDark ? 'rgba(235,235,245,0.45)' : '#86868B',
+              }}
+              strokeWidth={1.6}
+            />
+          </span>
+          <span
+            className="text-[10px] leading-none"
+            style={{ color: isDark ? 'rgba(235,235,245,0.45)' : '#86868B' }}
+          >
+            Mais
+          </span>
+        </button>
+      </div>
+    </nav>
+  )
+
   return (
     <>
+      {/* ── Mobile: slide-over drawer (secondary items / Cadastro) ── */}
       {mobileOpen && (
-        <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden" onClick={() => setMobileOpen(false)} />
+        <div
+          className="fixed inset-0 z-40 lg:hidden"
+          style={{ background: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}
+          onClick={() => setMobileOpen(false)}
+        />
       )}
 
       <aside
-        className={cn('fixed inset-y-0 left-0 z-50 w-64 flex flex-col lg:hidden overflow-hidden transition-transform duration-300 ease-in-out', mobileOpen ? 'translate-x-0' : '-translate-x-full')}
-        style={{ background: '#FFFFFF', borderRight: '1px solid rgba(0,0,0,0.06)' }}
+        className={cn(
+          'fixed inset-y-0 left-0 z-50 w-72 flex flex-col lg:hidden overflow-hidden',
+          'transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
+          mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full',
+        )}
+        style={{
+          background: isDark ? '#1C1C1E' : '#FFFFFF',
+          borderRight: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'}`,
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        }}
       >
-        <button onClick={() => setMobileOpen(false)} className="absolute top-4 right-4 p-1 rounded-lg transition-colors" style={{ color: 'var(--text-3)' }}>
-          <X className="w-4 h-4" strokeWidth={1.5} />
+        <button
+          onClick={() => setMobileOpen(false)}
+          className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center transition-colors"
+          style={{ background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', color: 'var(--text-3)' }}
+        >
+          <X className="w-4 h-4" strokeWidth={2} />
         </button>
         {renderContent(true)}
       </aside>
 
+      {/* ── Desktop: collapsible side rail ── */}
       <aside
-        className={cn('fixed inset-y-0 left-0 z-50 flex-col overflow-hidden hidden lg:flex', 'transition-all duration-300 ease-in-out', expanded ? 'w-64' : 'w-14', !pinned && expanded && 'shadow-2xl')}
-        style={{ background: '#FFFFFF', borderRight: '1px solid rgba(0,0,0,0.06)' }}
+        className={cn(
+          'fixed inset-y-0 left-0 z-50 flex-col overflow-hidden hidden lg:flex',
+          'transition-all duration-300 ease-in-out',
+          expanded ? 'w-64' : 'w-14',
+          !pinned && expanded && 'shadow-2xl',
+        )}
+        style={{ background: isDark ? '#1C1C1E' : '#FFFFFF', borderRight: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}` }}
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
       >
         {renderContent(expanded)}
       </aside>
+
+      {/* ── Mobile Bottom Navigation ── */}
+      <BottomNav />
     </>
   )
 }
