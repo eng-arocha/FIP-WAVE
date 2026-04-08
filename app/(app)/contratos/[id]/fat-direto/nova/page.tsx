@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { formatCurrency } from '@/lib/utils'
 import {
   ArrowLeft, Plus, Package, Save, AlertTriangle,
-  Building2, X, Hash, Upload, FileText, TrendingUp, Paperclip, CheckCircle2,
+  Building2, X, Hash, Upload, FileText, TrendingUp, Paperclip, CheckCircle2, Search,
 } from 'lucide-react'
 
 // ── Máscaras ───────────────────────────────────────────────────────────────
@@ -59,6 +59,100 @@ interface ItemForm {
 
 const GROUP_SIZE = 5
 const EMPTY_ITEM = (): ItemForm => ({ tarefa_id: '', descricao: '', local: '', valor_total: '', _nv1: '', _nv2: '', _nv3: '' })
+
+// ── Combobox compacto de disciplina ───────────────────────────────────────
+function ItemCombobox({ tarefas, value, onChange }: {
+  tarefas: Tarefa[]
+  value: string
+  onChange: (tarefaId: string) => void
+}) {
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const selected = tarefas.find(t => t.id === value)
+
+  useEffect(() => {
+    function h(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) { setOpen(false); setQuery('') } }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+
+  const filtered = useMemo(() => {
+    const q = query.toLowerCase()
+    if (!q) return tarefas
+    return tarefas.filter(t => t.codigo.toLowerCase().includes(q) || t.nome.toLowerCase().includes(q))
+  }, [tarefas, query])
+
+  return (
+    <div ref={ref} className="relative">
+      <div
+        className="h-7 w-full rounded-lg flex items-center gap-1.5 px-2 cursor-text"
+        style={{ background: 'var(--surface-2)', border: `1px solid ${open ? 'var(--accent)' : 'var(--border)'}`, boxShadow: open ? '0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent)' : 'none' }}
+        onClick={() => { setOpen(true); setTimeout(() => inputRef.current?.focus(), 0) }}
+      >
+        <Search className="w-3 h-3 flex-shrink-0" strokeWidth={1.5} style={{ color: 'var(--text-3)' }} />
+        {selected && !open ? (
+          <span className="flex-1 text-xs truncate min-w-0" style={{ color: 'var(--text-1)' }}>
+            <span className="font-bold" style={{ color: 'var(--accent)' }}>{selected.codigo}</span>
+            {' '}<span style={{ color: 'var(--text-2)' }}>{selected.nome.substring(0, 50)}</span>
+          </span>
+        ) : (
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={e => { setQuery(e.target.value); setOpen(true) }}
+            onFocus={() => setOpen(true)}
+            placeholder={selected ? `${selected.codigo}` : 'Buscar código ou nome…'}
+            className="flex-1 text-xs outline-none bg-transparent min-w-0"
+            style={{ color: 'var(--text-1)' }}
+          />
+        )}
+        {value && (
+          <button
+            onClick={e => { e.stopPropagation(); onChange(''); setQuery('') }}
+            className="flex-shrink-0 rounded-full"
+            style={{ color: 'var(--text-3)' }}
+          >
+            <X className="w-3 h-3" strokeWidth={2} />
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <div
+          className="absolute z-50 left-0 right-0 top-full mt-0.5 rounded-xl overflow-auto"
+          style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', maxHeight: 220, boxShadow: '0 8px 24px rgba(0,0,0,0.18)' }}
+        >
+          {filtered.length === 0 ? (
+            <div className="px-3 py-2 text-xs text-center" style={{ color: 'var(--text-3)' }}>Nenhum item encontrado</div>
+          ) : filtered.map(t => {
+            const saldo = t.valor_material - t.valor_aprovado - (t.valor_em_aprovacao || 0)
+            return (
+              <button
+                key={t.id}
+                onClick={() => { onChange(t.id); setQuery(''); setOpen(false) }}
+                className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors"
+                style={{ borderBottom: '1px solid var(--border)' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-3)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = '' }}
+              >
+                <span className="font-mono font-bold text-[10px] px-1.5 py-0.5 rounded flex-shrink-0" style={{ background: 'var(--accent)', color: 'white' }}>
+                  {t.codigo}
+                </span>
+                <span className="flex-1 truncate" style={{ color: 'var(--text-1)' }}>{t.nome.substring(0, 55)}</span>
+                <span className="flex-shrink-0 font-semibold" style={{ color: saldo <= 0 ? 'var(--red)' : 'var(--green)' }}>
+                  {formatCurrency(saldo)}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── Página Principal ──────────────────────────────────────────────────────
 export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: string }> }) {
@@ -258,6 +352,24 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
       return { ...next, tarefa_id: '' }
     }))
     if (nextInputId) setTimeout(() => (document.getElementById(nextInputId) as HTMLInputElement | null)?.focus(), 0)
+  }
+
+  // Seleção via combobox — preenche NV1/NV2/NV3 e demais campos
+  function onTarefaChange(i: number, tarefaId: string) {
+    const t = tarefas.find(x => x.id === tarefaId)
+    const parts = (t?.codigo || '').split('.')
+    setItens(prev => prev.map((item, idx) =>
+      idx !== i ? item : {
+        ...item,
+        tarefa_id: tarefaId,
+        _nv1: parts[0] || '',
+        _nv2: parts[1] || '',
+        _nv3: parts[2] || '',
+        descricao: t?.nome?.substring(0, 80) || item.descricao,
+        local: item.local || t?.locais?.[0] || '',
+        valor_total: item.valor_total || (t && t.valor_material > 0 ? String(t.valor_material) : ''),
+      }
+    ))
   }
 
   const total = itens.reduce((s, it) => s + (parseFloat(it.valor_total) || 0), 0)
@@ -812,7 +924,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
               className="hidden sm:grid mb-1 px-1"
               style={{ gridTemplateColumns: '26px 46px 40px 46px 1fr 108px 88px 24px', gap: '4px' }}
             >
-              {['#','NV1','NV2','NV3','Descrição','Local','Valor (R$)',''].map((h, idx) => (
+              {['#','NV1','NV2','NV3','Disciplina / Descrição','Local','Valor (R$)',''].map((h, idx) => (
                 <span key={idx} className="text-[10px] font-semibold uppercase tracking-wide text-center" style={{ color: 'var(--text-3)' }}>{h}</span>
               ))}
             </div>
@@ -840,10 +952,11 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
                     <div key={gIdx}>
                       {/* Linha compacta (desktop) */}
                       <div
-                        className="hidden sm:grid items-center px-1 py-1"
+                        className="hidden sm:grid items-center px-1"
                         style={{
                           gridTemplateColumns: '26px 46px 40px 46px 1fr 108px 88px 24px',
                           gap: '4px',
+                          paddingTop: 6, paddingBottom: isValid ? 18 : 6,
                           background: gIdx % 2 === 0 ? 'var(--surface-3)' : 'var(--surface-2)',
                         }}
                       >
@@ -900,17 +1013,11 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
                           onBlur={e => Object.assign(e.currentTarget.style, { borderColor: hasCode && !isValid ? 'rgba(239,68,68,0.55)' : 'var(--border)', boxShadow: 'none' })}
                         />
 
-                        {/* Descrição */}
-                        <input
-                          id={`desc-${gIdx}`}
-                          type="text"
-                          value={item.descricao}
-                          placeholder={isValid ? '' : 'Selecione NV1.NV2.NV3…'}
-                          onChange={e => updateItem(gIdx, 'descricao', e.target.value)}
-                          className="h-7 rounded-lg px-2 text-xs outline-none w-full"
-                          style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
-                          onFocus={e => Object.assign(e.currentTarget.style, { borderColor: 'var(--accent)', boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent)' })}
-                          onBlur={e => Object.assign(e.currentTarget.style, { borderColor: 'var(--border)', boxShadow: 'none' })}
+                        {/* Combobox de disciplina (busca + NV1/NV2/NV3 sincronizados) */}
+                        <ItemCombobox
+                          tarefas={tarefas}
+                          value={item.tarefa_id}
+                          onChange={(tid) => onTarefaChange(gIdx, tid)}
                         />
 
                         {/* Local */}
@@ -925,18 +1032,29 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
                           onBlur={e => Object.assign(e.currentTarget.style, { borderColor: 'var(--border)', boxShadow: 'none' })}
                         />
 
-                        {/* Valor */}
-                        <input
-                          type="number"
-                          value={item.valor_total}
-                          placeholder="0,00"
-                          min="0" step="0.01"
-                          onChange={e => updateItem(gIdx, 'valor_total', e.target.value)}
-                          className="h-7 rounded-lg px-2 text-xs text-right outline-none w-full"
-                          style={{ background: 'var(--surface-2)', border: `1px solid ${violation ? 'rgba(239,68,68,0.60)' : 'var(--border)'}`, color: 'var(--text-1)' }}
-                          onFocus={e => Object.assign(e.currentTarget.style, { borderColor: 'var(--accent)', boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent)' })}
-                          onBlur={e => Object.assign(e.currentTarget.style, { borderColor: violation ? 'rgba(239,68,68,0.60)' : 'var(--border)', boxShadow: 'none' })}
-                        />
+                        {/* Valor + teto de material */}
+                        <div className="relative">
+                          <input
+                            type="number"
+                            value={item.valor_total}
+                            placeholder="0,00"
+                            min="0" step="0.01"
+                            onChange={e => updateItem(gIdx, 'valor_total', e.target.value)}
+                            className="h-7 rounded-lg px-2 text-xs text-right outline-none w-full"
+                            style={{ background: 'var(--surface-2)', border: `1px solid ${violation ? 'rgba(239,68,68,0.60)' : 'var(--border)'}`, color: 'var(--text-1)' }}
+                            title={isValid ? `Teto material: ${formatCurrency(tarefas.find(x => x.id === item.tarefa_id)?.valor_material ?? 0)}` : ''}
+                            onFocus={e => Object.assign(e.currentTarget.style, { borderColor: 'var(--accent)', boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent)' })}
+                            onBlur={e => Object.assign(e.currentTarget.style, { borderColor: violation ? 'rgba(239,68,68,0.60)' : 'var(--border)', boxShadow: 'none' })}
+                          />
+                          {isValid && (() => {
+                            const t = tarefas.find(x => x.id === item.tarefa_id)
+                            return t && t.valor_material > 0 ? (
+                              <div className="absolute left-0 right-0 -bottom-3.5 text-center text-[9px] font-medium truncate" style={{ color: 'var(--text-3)' }}>
+                                teto {formatCurrency(t.valor_material)}
+                              </div>
+                            ) : null
+                          })()}
+                        </div>
 
                         {/* Limpar linha */}
                         <button
