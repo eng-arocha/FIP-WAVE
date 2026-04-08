@@ -2,6 +2,11 @@
 -- A migration 011 usou ON CONFLICT DO NOTHING e não atualizou linhas já existentes.
 -- Cole no Supabase SQL Editor.
 
+-- Garante que as colunas existem
+ALTER TABLE tarefas
+  ADD COLUMN IF NOT EXISTS valor_material NUMERIC(15,2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS valor_servico  NUMERIC(15,2) NOT NULL DEFAULT 0;
+
 UPDATE tarefas SET valor_material = 14403.44, valor_servico = 16344.34 WHERE id = '8ef2c00c-8472-fe20-c5a3-5e090f71bc82';
 UPDATE tarefas SET valor_material = 6453.21, valor_servico = 2442.20 WHERE id = 'efe17ea8-dee6-6267-d7ac-0738c6349726';
 UPDATE tarefas SET valor_material = 320380.45, valor_servico = 28550.94 WHERE id = '266d1573-d5ac-c3ae-8d44-502d8749f403';
