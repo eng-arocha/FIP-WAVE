@@ -222,6 +222,25 @@ export async function criarSolicitacao(input: {
   return sol
 }
 
+export async function listarSolicitacoesAprovadas() {
+  const admin = createAdminClient()
+  const { data, error } = await admin
+    .from('solicitacoes_fat_direto')
+    .select(`
+      id, numero, status, data_solicitacao, data_aprovacao, valor_total,
+      fornecedor_razao_social, fornecedor_cnpj,
+      contrato_id,
+      contrato:contrato_id(id, numero, descricao),
+      solicitante:solicitante_id(nome),
+      notas_fiscais:notas_fiscais_fat_direto(id, numero_nf, valor, status),
+      itens:itens_solicitacao_fat_direto(id)
+    `)
+    .in('status', ['aprovado', 'aguardando_aprovacao'])
+    .order('data_solicitacao', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
 export async function listarSolicitacoesPendentes() {
   const admin = createAdminClient()
   const { data, error } = await admin
