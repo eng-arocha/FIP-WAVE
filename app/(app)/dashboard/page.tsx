@@ -7,7 +7,7 @@ import { Topbar } from '@/components/layout/topbar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell,
   AreaChart, Area
 } from 'recharts'
 import {
@@ -202,28 +202,35 @@ export default function DashboardPage() {
   const opcoesN3: any[] = tarefaSelecionada?.detalhamentos ?? []
 
   // Dados do gráfico conforme filtro ativo
+  const GROUP_PALETTE = [
+    '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444',
+    '#06B6D4', '#EC4899', '#F97316', '#14B8A6', '#6366F1',
+    '#84CC16', '#A855F7', '#FB923C', '#34D399', '#FBBF24',
+    '#38BDF8', '#E879F9', '#4ADE80', '#FCA5A5', '#93C5FD',
+  ]
+
   const chartAcompData = useMemo(() => {
     if (filtroN2 && tarefaSelecionada) {
-      // Nível 3: detalhamentos da tarefa selecionada
-      return (tarefaSelecionada.detalhamentos || []).map((d: any) => ({
+      return (tarefaSelecionada.detalhamentos || []).map((d: any, i: number) => ({
         nome: `${d.codigo} ${d.descricao}`.substring(0, 40),
         contratado: d.valor_total,
         medido: d.valor_medido,
+        color: GROUP_PALETTE[i % GROUP_PALETTE.length],
       }))
     }
     if (filtroN1 && grupoSelecionado) {
-      // Nível 2: tarefas do grupo selecionado
-      return (grupoSelecionado.tarefas || []).map((t: any) => ({
+      return (grupoSelecionado.tarefas || []).map((t: any, i: number) => ({
         nome: `${t.codigo} ${t.nome}`.substring(0, 40),
         contratado: t.valor_total,
         medido: t.valor_medido,
+        color: GROUP_PALETTE[i % GROUP_PALETTE.length],
       }))
     }
-    // Nível 1 (Global): todos os grupos
-    return hierarquia.map((g: any) => ({
+    return hierarquia.map((g: any, i: number) => ({
       nome: g.nome.substring(0, 40),
       contratado: g.valor_contratado,
       medido: g.valor_medido,
+      color: GROUP_PALETTE[i % GROUP_PALETTE.length],
     }))
   }, [hierarquia, filtroN1, filtroN2, grupoSelecionado, tarefaSelecionada])
 
@@ -605,8 +612,12 @@ export default function DashboardPage() {
                     iconSize={10}
                     wrapperStyle={{ fontSize: 11, color: 'var(--text-2)' }}
                   />
-                  <Bar dataKey="contratado" name="Contratado" fill="#64748B" radius={[0, 3, 3, 0]} />
-                  <Bar dataKey="medido" name="Medido" fill="#3B82F6" radius={[0, 3, 3, 0]} />
+                  <Bar dataKey="contratado" name="Contratado" radius={[0, 3, 3, 0]}>
+                    {chartAcompData.map((entry: any, i: number) => <Cell key={i} fill={`${entry.color}BB`} />)}
+                  </Bar>
+                  <Bar dataKey="medido" name="Medido" radius={[0, 3, 3, 0]}>
+                    {chartAcompData.map((entry: any, i: number) => <Cell key={i} fill={entry.color} />)}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -835,8 +846,12 @@ export default function DashboardPage() {
                     <YAxis type="category" dataKey="nome" tick={{ fontSize: 11, fill: '#424245' }} width={160} axisLine={{ stroke: 'rgba(0,0,0,0.06)' }} tickLine={false} />
                     <Tooltip contentStyle={{ background: 'white', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 8, fontSize: 12 }} formatter={(v) => formatCurrency(v as number)} />
                     <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }} />
-                    <Bar dataKey="contratado" name="Contratado" fill="#86868B" radius={[0, 4, 4, 0]} />
-                    <Bar dataKey="medido" name="Medido" fill="#0071E3" radius={[0, 4, 4, 0]} />
+                    <Bar dataKey="contratado" name="Contratado" radius={[0, 4, 4, 0]}>
+                      {chartAcompData.map((entry: any, i: number) => <Cell key={i} fill={`${entry.color}BB`} />)}
+                    </Bar>
+                    <Bar dataKey="medido" name="Medido" radius={[0, 4, 4, 0]}>
+                      {chartAcompData.map((entry: any, i: number) => <Cell key={i} fill={entry.color} />)}
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
