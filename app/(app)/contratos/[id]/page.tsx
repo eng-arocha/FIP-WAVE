@@ -472,9 +472,41 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
         {fullscreenChart && (
           <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'var(--background)' }}>
             <div className="flex items-center justify-between px-6 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
-              <h2 className="text-base font-bold" style={{ color: 'var(--text-1)' }}>
-                {fullscreenChart === 'bar' ? 'Medição de Serviço' : 'Pedidos Aprovados'}
-              </h2>
+              <div className="flex items-center gap-4">
+                <h2 className="text-base font-bold" style={{ color: 'var(--text-1)' }}>
+                  {fullscreenChart === 'bar' ? 'Medição de Serviço' : 'Pedidos Aprovados'}
+                </h2>
+                {fullscreenChart === 'bar' && (
+                  <div className="flex gap-2">
+                    {(['total', 'material', 'servico'] as const).map(m => (
+                      <button key={m} onClick={() => setViewMode(m)}
+                        className="text-xs px-3 py-1 rounded-lg font-medium transition-colors"
+                        style={{
+                          background: viewMode === m ? 'var(--accent)' : 'var(--surface-2)',
+                          color: viewMode === m ? '#fff' : 'var(--text-2)',
+                          border: `1px solid ${viewMode === m ? 'var(--accent)' : 'var(--border)'}`,
+                        }}>
+                        {VIEW_MODE_LABELS[m]}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {fullscreenChart === 'pedidos' && (
+                  <div className="flex gap-2">
+                    {(['total', 'material', 'servico'] as const).map(m => (
+                      <button key={m} onClick={() => setViewMode(m)}
+                        className="text-xs px-3 py-1 rounded-lg font-medium transition-colors"
+                        style={{
+                          background: viewMode === m ? 'var(--accent)' : 'var(--surface-2)',
+                          color: viewMode === m ? '#fff' : 'var(--text-2)',
+                          border: `1px solid ${viewMode === m ? 'var(--accent)' : 'var(--border)'}`,
+                        }}>
+                        {VIEW_MODE_LABELS[m]}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button onClick={() => setFullscreenChart(null)} className="p-2 rounded-lg hover:bg-[var(--surface-2)]">
                 <X className="w-5 h-5" style={{ color: 'var(--text-2)' }} />
               </button>
@@ -501,7 +533,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                     }} />
                     <Legend iconSize={10} wrapperStyle={{ fontSize: 12, color: 'var(--text-2)' }} />
                     <Bar dataKey="contratado" name="Contratado" radius={[0, 3, 3, 0]} maxBarSize={14}>
-                      {gruposChart.map((entry, i) => <Cell key={i} fill={`${entry.color}65`} />)}
+                      {gruposChart.map((entry, i) => <Cell key={i} fill={`${entry.color}BB`} />)}
                     </Bar>
                     <Bar dataKey="medido" name="Medido" radius={[0, 3, 3, 0]} maxBarSize={14}>
                       {gruposChart.map((entry, i) => <Cell key={i} fill={entry.color} />)}
@@ -589,7 +621,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                       <Legend iconSize={10} wrapperStyle={{ fontSize: 11, color: 'var(--text-2)' }} />
                       <Bar dataKey="contratado" name="Contratado" radius={[0, 2, 2, 0]} maxBarSize={10}>
                         {gruposChart.map((entry, i) => (
-                          <Cell key={i} fill={`${entry.color}65`} />
+                          <Cell key={i} fill={`${entry.color}BB`} />
                         ))}
                       </Bar>
                       <Bar dataKey="medido" name="Medido" radius={[0, 2, 2, 0]} maxBarSize={10}>
