@@ -5,6 +5,7 @@ import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Plus, Loader2, X, Shield, Trash2, ChevronDown, ChevronUp, Lock } from 'lucide-react'
+import { usePermissoes } from '@/lib/context/permissoes-context'
 import {
   MODULOS_CONFIG, MODULOS_LABELS, ACOES_LABELS, ALL_ACOES,
   type Permissao,
@@ -32,6 +33,9 @@ function contarPermissoes(permissoes: Permissao[]) {
 }
 
 export default function PerfisPage() {
+  const { perfilAtual } = usePermissoes()
+  const isAdmin = perfilAtual === 'admin'
+
   const [templates, setTemplates]           = useState<Template[]>([])
   const [loading, setLoading]               = useState(true)
   const [showForm, setShowForm]             = useState(false)
@@ -120,30 +124,35 @@ export default function PerfisPage() {
         title="Perfis de Acesso"
         subtitle="Gerencie os perfis e permissões disponíveis no sistema"
         actions={
-          <Button size="sm" onClick={() => { setShowForm(true); setErro('') }}>
-            <Plus className="w-4 h-4" />
-            Novo Perfil
-          </Button>
+          isAdmin ? (
+            <Button size="sm" onClick={() => { setShowForm(true); setErro('') }}>
+              <Plus className="w-4 h-4" />
+              Novo Perfil
+            </Button>
+          ) : undefined
         }
       />
 
       <div className="p-3 sm:p-6 space-y-6">
-        {/* KPIs */}
-        <div className="grid grid-cols-2 gap-4">
-          <Card><CardContent className="pt-5">
-            <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Total de perfis</p>
-            <p className="text-2xl font-bold mt-1" style={{ color: 'var(--text-1)' }}>{templates.length}</p>
-          </CardContent></Card>
-          <Card><CardContent className="pt-5">
-            <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Perfis customizados</p>
-            <p className="text-2xl font-bold mt-1" style={{ color: 'var(--accent)' }}>
-              {templates.filter(t => !t.sistema).length}
-            </p>
-          </CardContent></Card>
-        </div>
+        {/* KPI — Total de perfis (full width) */}
+        <Card>
+          <CardContent className="pt-5 pb-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Total de perfis</p>
+                <p className="text-3xl font-bold mt-1" style={{ color: 'var(--text-1)' }}>
+                  {loading ? <Loader2 className="w-6 h-6 animate-spin inline" /> : templates.length}
+                </p>
+              </div>
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #6366F1, #8B5CF6)' }}>
+                <Shield className="w-6 h-6 text-white" strokeWidth={1.5} />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* Formulário de criação */}
-        {showForm && (
+        {/* Formulário de criação — apenas admin */}
+        {showForm && isAdmin && (
           <Card style={{ borderColor: 'rgba(99,102,241,0.3)' }}>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
@@ -253,19 +262,19 @@ export default function PerfisPage() {
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => abrirPerfil(t)}
-                            title="Editar permissões"
+                            title={isAdmin ? 'Editar permissões' : 'Visualizar permissões'}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
                             style={{
                               background: isOpen ? 'rgba(99,102,241,0.12)' : 'var(--surface-3)',
                               color: isOpen ? '#818CF8' : 'var(--text-2)',
                             }}
                           >
-                            Permissões
+                            {isAdmin ? 'Permissões' : 'Ver permissões'}
                             {isOpen
                               ? <ChevronUp className="w-3.5 h-3.5" />
                               : <ChevronDown className="w-3.5 h-3.5" />}
                           </button>
-                          {!t.sistema && (
+                          {isAdmin && !t.sistema && (
                             <button
                               onClick={() => excluirPerfil(t)}
                               title="Excluir perfil"
@@ -330,7 +339,8 @@ export default function PerfisPage() {
                                                 type="checkbox"
                                                 checked={marcado}
                                                 onChange={() => togglePerm(t.id, modulo, acao)}
-                                                className="w-4 h-4 cursor-pointer accent-blue-500"
+                                                disabled={!isAdmin}
+                                                className="w-4 h-4 cursor-pointer accent-blue-500 disabled:cursor-not-allowed disabled:opacity-70"
                                               />
                                             ) : (
                                               <span style={{ color: 'var(--border)' }}>—</span>
@@ -346,10 +356,14 @@ export default function PerfisPage() {
                           </div>
 
                           <div className="flex justify-end gap-3 mt-5">
-                            <Button variant="outline" size="sm" onClick={() => setAberto(null)}>Cancelar</Button>
-                            <Button size="sm" disabled={salvandoPerm} onClick={() => salvarPermissoes(t)}>
-                              {salvandoPerm ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Salvar permissões'}
+                            <Button variant="outline" size="sm" onClick={() => setAberto(null)}>
+                              {isAdmin ? 'Cancelar' : 'Fechar'}
                             </Button>
+                            {isAdmin && (
+                              <Button size="sm" disabled={salvandoPerm} onClick={() => salvarPermissoes(t)}>
+                                {salvandoPerm ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Salvar permissões'}
+                              </Button>
+                            )}
                           </div>
                         </div>
                       )}
