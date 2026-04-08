@@ -294,6 +294,7 @@ export async function criarNotaFiscal(input: {
   data_recebimento?: string
   data_vencimento?: string
   descricao?: string
+  arquivo_url?: string
 }) {
   const admin = createAdminClient()
   const { data, error } = await admin
