@@ -469,6 +469,78 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
           </div>
         )}
 
+        {fullscreenChart && (
+          <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'var(--background)' }}>
+            <div className="flex items-center justify-between px-6 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
+              <h2 className="text-base font-bold" style={{ color: 'var(--text-1)' }}>
+                {fullscreenChart === 'bar' ? 'Medição de Serviço' : 'Pedidos Aprovados'}
+              </h2>
+              <button onClick={() => setFullscreenChart(null)} className="p-2 rounded-lg hover:bg-[var(--surface-2)]">
+                <X className="w-5 h-5" style={{ color: 'var(--text-2)' }} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-6">
+              {fullscreenChart === 'bar' && (
+                <ResponsiveContainer width="100%" height={Math.max(600, gruposChart.length * 42)}>
+                  <BarChart data={gruposChart} layout="vertical" margin={{ top: 0, right: 32, left: 8, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+                    <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--text-3)' }} tickFormatter={v => `${(v / 1000000).toFixed(1)}M`} axisLine={false} tickLine={false} />
+                    <YAxis type="category" dataKey="nome" tick={{ fontSize: 11, fill: 'var(--text-2)' }} width={40} axisLine={false} tickLine={false} />
+                    <Tooltip content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null
+                      const d = payload[0]?.payload
+                      const color = d?.color ?? '#3B82F6'
+                      return (
+                        <div style={{ background: '#0D1421', border: `1px solid ${color}60`, borderRadius: 8, padding: '8px 12px', fontSize: 12, minWidth: 200 }}>
+                          <p style={{ color, fontWeight: 700, marginBottom: 6 }}>{d?.nomeFull}</p>
+                          {payload.map((p: any) => (
+                            <p key={p.dataKey} style={{ color: '#FFFFFF', margin: '2px 0' }}>{p.name}: {formatCurrency(p.value as number)}</p>
+                          ))}
+                        </div>
+                      )
+                    }} />
+                    <Legend iconSize={10} wrapperStyle={{ fontSize: 12, color: 'var(--text-2)' }} />
+                    <Bar dataKey="contratado" name="Contratado" radius={[0, 3, 3, 0]} maxBarSize={14}>
+                      {gruposChart.map((entry, i) => <Cell key={i} fill={`${entry.color}65`} />)}
+                    </Bar>
+                    <Bar dataKey="medido" name="Medido" radius={[0, 3, 3, 0]} maxBarSize={14}>
+                      {gruposChart.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+              {fullscreenChart === 'pedidos' && (
+                <div className="max-w-3xl mx-auto space-y-4">
+                  {gruposExibidos.map(g => {
+                    const vBase = getValorView(g)
+                    const pct = vBase > 0 ? (g.valor_medido / vBase) * 100 : 0
+                    const color = groupColorMap[g.id] ?? '#3B82F6'
+                    return (
+                      <div key={g.id}>
+                        <div className="flex justify-between mb-1">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm font-bold flex-shrink-0" style={{ color }}>{g.codigo}</span>
+                            <span className="text-sm font-medium text-[var(--text-2)] truncate">{g.nome}</span>
+                          </div>
+                          <span className="text-sm font-bold flex-shrink-0 ml-2" style={{ color }}>{formatPercent(pct)}</span>
+                        </div>
+                        <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--surface-3)' }}>
+                          <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, background: color }} />
+                        </div>
+                        <div className="flex justify-between text-xs text-[var(--text-3)] mt-0.5">
+                          <span>{VIEW_MODE_LABELS[viewMode]}: {formatCurrency(vBase)}</span>
+                          <span>Medido: {formatCurrency(g.valor_medido ?? 0)}</span>
+                          <span>Saldo: {formatCurrency(vBase - (g.valor_medido ?? 0))}</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
             <TabsTrigger value="visao-geral">Visão Geral</TabsTrigger>
@@ -532,44 +604,62 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
 
               {/* Grupos progress — Pedidos Aprovados */}
               <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm text-[var(--text-2)]">Pedidos Aprovados</CardTitle>
-                  {/* Controles inline */}
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    <Select value={sortBy} onValueChange={v => setSortBy(v as typeof sortBy)}>
-                      <SelectTrigger className="h-7 text-[11px] w-48 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]">
-                        <ArrowUpDown className="w-3 h-3 mr-1 flex-shrink-0" />
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="padrao">Padrão (1.0 → 19.0)</SelectItem>
-                        <SelectItem value="valor_global_desc">Valor ↓</SelectItem>
-                        <SelectItem value="valor_global_asc">Valor ↑</SelectItem>
-                        <SelectItem value="valor_medido_desc">Medido ↓</SelectItem>
-                        <SelectItem value="valor_medido_asc">Medido ↑</SelectItem>
-                        <SelectItem value="saldo_desc">Saldo ↓</SelectItem>
-                        <SelectItem value="saldo_asc">Saldo ↑</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Select value={viewMode} onValueChange={v => setViewMode(v as typeof viewMode)}>
-                      <SelectTrigger className="h-7 text-[11px] w-36 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]">
-                        <Filter className="w-3 h-3 mr-1 flex-shrink-0" />
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="total">Total</SelectItem>
-                        <SelectItem value="material">Material</SelectItem>
-                        <SelectItem value="servico">Serviço</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {(sortBy !== 'padrao' || viewMode !== 'total') && (
-                      <button
-                        onClick={() => { setSortBy('padrao'); setViewMode('total') }}
-                        className="text-[11px] text-[var(--text-3)] hover:text-[var(--text-2)] px-2"
-                      >
-                        Limpar
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm text-[var(--text-2)]">Pedidos Aprovados</CardTitle>
+                      <button onClick={() => setFullscreenChart('pedidos')} className="p-1 rounded hover:bg-[var(--surface-3)]" title="Tela cheia">
+                        <Maximize2 className="w-4 h-4" style={{ color: 'var(--text-3)' }} />
                       </button>
-                    )}
+                    </div>
+                    {/* Controles inline */}
+                    <div className="flex flex-wrap gap-2 pt-2">
+                      <Select value={filtroGrupo} onValueChange={v => setFiltroGrupo(v)}>
+                        <SelectTrigger className="h-7 text-[11px] w-44 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]">
+                          <SelectValue placeholder="Todos os grupos" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="todos">Todos os grupos</SelectItem>
+                          {gruposOrdenados.map(g => (
+                            <SelectItem key={g.id} value={g.id}>{g.codigo} — {g.nome.substring(0, 30)}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={sortBy} onValueChange={v => setSortBy(v as typeof sortBy)}>
+                        <SelectTrigger className="h-7 text-[11px] w-48 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]">
+                          <ArrowUpDown className="w-3 h-3 mr-1 flex-shrink-0" />
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="padrao">Padrão (1.0 → 19.0)</SelectItem>
+                          <SelectItem value="valor_global_desc">Valor ↓</SelectItem>
+                          <SelectItem value="valor_global_asc">Valor ↑</SelectItem>
+                          <SelectItem value="valor_medido_desc">Medido ↓</SelectItem>
+                          <SelectItem value="valor_medido_asc">Medido ↑</SelectItem>
+                          <SelectItem value="saldo_desc">Saldo ↓</SelectItem>
+                          <SelectItem value="saldo_asc">Saldo ↑</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Select value={viewMode} onValueChange={v => setViewMode(v as typeof viewMode)}>
+                        <SelectTrigger className="h-7 text-[11px] w-36 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]">
+                          <Filter className="w-3 h-3 mr-1 flex-shrink-0" />
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="total">Total</SelectItem>
+                          <SelectItem value="material">Material</SelectItem>
+                          <SelectItem value="servico">Serviço</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {(sortBy !== 'padrao' || viewMode !== 'total' || filtroGrupo !== 'todos') && (
+                        <button
+                          onClick={() => { setSortBy('padrao'); setViewMode('total'); setFiltroGrupo('todos') }}
+                          className="text-[11px] text-[var(--text-3)] hover:text-[var(--text-2)] px-2"
+                        >
+                          Limpar
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3 max-h-[360px] overflow-y-auto">
