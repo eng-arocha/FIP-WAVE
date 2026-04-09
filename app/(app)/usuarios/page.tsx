@@ -21,6 +21,9 @@ interface Usuario {
   perfil: Perfil
   ativo: boolean
   criado_em: string
+  template_id?: string | null
+  permissoes_customizadas?: boolean
+  template?: { id: string; nome: string } | null
 }
 
 interface TemplateOption {
@@ -95,12 +98,24 @@ export default function UsuariosPage() {
   }
   useEffect(() => { carregar() }, [])
 
-  // Resolve perfil base + nome do template selecionado
-  function resolveTemplate(template_id: string) {
+  // Resolve perfil base + nome do template selecionado.
+  // IMPORTANTE: para templates customizados (não-nativos), retorna perfil=null
+  // — quem chama deve OMITIR o campo `perfil` no body do PUT, para não
+  // sobrescrever o enum atual do usuário. O enum só é atualizado quando o
+  // template escolhido é um dos 3 nativos (admin/engenheiro_fip/visualizador).
+  function resolveTemplate(template_id: string): {
+    perfil: Perfil | null
+    template_nome: string
+    permissoes?: Permissao[]
+  } {
     const tpl = templates.find(t => t.id === template_id)
-    if (!tpl) return { perfil: 'visualizador' as Perfil, template_nome: '' }
-    const perfil = (TEMPLATE_BASE_PERFIL[tpl.nome] || 'visualizador') as Perfil
-    return { perfil, template_nome: tpl.nome, permissoes: tpl.permissoes }
+    if (!tpl) return { perfil: 'visualizador', template_nome: '' }
+    const perfilBase = TEMPLATE_BASE_PERFIL[tpl.nome] as Perfil | undefined
+    return {
+      perfil: perfilBase ?? null, // null = template custom, não mexe no enum
+      template_nome: tpl.nome,
+      permissoes: tpl.permissoes,
+    }
   }
 
   async function criarUsuario(e: React.FormEvent) {
@@ -108,10 +123,18 @@ export default function UsuariosPage() {
     setSaving(true); setErro('')
     if (!form.template_id) { setErro('Selecione um perfil de acesso.'); setSaving(false); return }
     const { perfil, permissoes } = resolveTemplate(form.template_id)
+    // Para templates custom, perfil é null → default visualizador só no INSERT
+    // inicial (não vai afetar permissões, que vêm do template via LIVE resolver).
+    const perfilParaInsert: Perfil = perfil ?? 'visualizador'
     const res = await fetch('/api/usuarios', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, perfil, template_id: form.template_id, permissoes_custom: permissoes }),
+      body: JSON.stringify({
+        ...form,
+        perfil: perfilParaInsert,
+        template_id: form.template_id,
+        permissoes_custom: permissoes,
+      }),
     })
     if (res.ok) { setForm(EMPTY_FORM); setShowForm(false); await carregar() }
     else { const d = await res.json(); setErro(d.error || 'Erro ao criar usuário') }
@@ -131,8 +154,16 @@ export default function UsuariosPage() {
     e.preventDefault()
     if (!editando) return
     setSaving(true); setErro('')
-    const { perfil, permissoes } = resolveTemplate(editForm.template_id)
-    const body: Record<string, unknown> = { nome: editForm.nome, perfil, template_id: editForm.template_id, permissoes_custom: permissoes }
+    const { perfil } = resolveTemplate(editForm.template_id)
+    // Para templates CUSTOM (perfil === null), NÃO enviamos o campo 'perfil'
+    // no body — preserva o enum atual do usuário. Para nativos, atualiza o enum.
+    // Permissões NÃO são alteradas por este fluxo — use o painel de permissões
+    // (ícone Shield) que chama /api/usuarios/[id]/permissoes separadamente.
+    const body: Record<string, unknown> = {
+      nome: editForm.nome,
+      template_id: editForm.template_id,
+    }
+    if (perfil) body.perfil = perfil
     if (editForm.nova_senha) body.nova_senha = editForm.nova_senha
     const res = await fetch(`/api/usuarios/${editando.id}`, {
       method: 'PUT',
@@ -473,9 +504,24 @@ export default function UsuariosPage() {
                         <p className="font-medium text-sm text-[var(--text-1)]">{u.nome}</p>
                         <p className="text-xs text-[var(--text-3)]">{u.email}</p>
                       </div>
-                      <Badge className={PERFIL_COLORS[u.perfil] || 'bg-slate-800/60 text-slate-400 border-slate-700/50'}>
-                        {PERFIL_LABELS[u.perfil] || u.perfil}
-                      </Badge>
+                      {(() => {
+                        // Preferimos o nome do template ligado ao usuário (inclusive
+                        // customizados tipo "Administrativo Wave"). Se não tiver
+                        // template linkado, cai para o label do enum legado.
+                        const templateNome = u.template?.nome
+                        const label = templateNome || PERFIL_LABELS[u.perfil] || u.perfil
+                        // Cor: mantém mapeamento pelo enum (cores conhecidas).
+                        // Templates customizados recebem cor padrão discreta.
+                        const corClass = templateNome && !TEMPLATE_BASE_PERFIL[templateNome]
+                          ? 'bg-slate-100 text-slate-700 border-slate-200'
+                          : PERFIL_COLORS[u.perfil] || 'bg-slate-100 text-slate-700 border-slate-200'
+                        return (
+                          <Badge className={corClass} title={u.permissoes_customizadas ? 'Permissões específicas ativas' : undefined}>
+                            {label}
+                            {u.permissoes_customizadas && ' ★'}
+                          </Badge>
+                        )
+                      })()}
                       {u.ativo
                         ? <span className="flex items-center gap-1.5 text-emerald-400 text-xs w-16"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />Ativo</span>
                         : <span className="flex items-center gap-1.5 text-[var(--text-3)] text-xs w-16"><span className="w-1.5 h-1.5 rounded-full bg-[#475569] flex-shrink-0" />Inativo</span>
@@ -490,10 +536,15 @@ export default function UsuariosPage() {
                           <Shield className="w-3.5 h-3.5" />
                         </button>
                         <button onClick={() => {
-                          // Resolve o template_id do usuário pelo nome do perfil
-                          const tpl = templates.find(t => TEMPLATE_BASE_PERFIL[t.nome] === u.perfil && t.sistema) || templates[0]
+                          // Usa o template_id REAL do usuário (se existir).
+                          // Só cai para o derivado do enum se não houver template ligado
+                          // (usuário legado sem backfill da migration 026).
+                          const tplId = u.template_id
+                            || templates.find(t => TEMPLATE_BASE_PERFIL[t.nome] === u.perfil && t.sistema)?.id
+                            || templates[0]?.id
+                            || ''
                           setEditando(u)
-                          setEditForm({ nome: u.nome, template_id: tpl?.id || '', nova_senha: '' })
+                          setEditForm({ nome: u.nome, template_id: tplId, nova_senha: '' })
                           setErro('')
                         }} title="Editar"
                           className="p-1.5 rounded-lg transition-colors text-[var(--text-3)] hover:text-[var(--text-2)] hover:bg-[var(--surface-3)]">
