@@ -55,6 +55,12 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: updateError.message }, { status: 400 })
     }
 
+    // 4) Limpa a flag deve_trocar_senha — a troca obrigatória foi cumprida
+    await admin
+      .from('perfis')
+      .update({ deve_trocar_senha: false })
+      .eq('id', user.id)
+
     return NextResponse.json({ ok: true })
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Erro inesperado' }, { status: 500 })

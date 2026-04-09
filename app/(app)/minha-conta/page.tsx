@@ -5,7 +5,8 @@ import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Loader2, Eye, EyeOff, Lock, CheckCircle2, AlertCircle, User, Mail, Shield } from 'lucide-react'
+import { Loader2, Eye, EyeOff, Lock, CheckCircle2, AlertCircle, User, Mail, Shield, Check, X as XIcon } from 'lucide-react'
+import { avaliarSenha, senhaEhForte, validarSenhaForte } from '@/lib/auth/senha'
 
 type Perfil = 'visualizador' | 'engenheiro_fip' | 'admin'
 
@@ -62,8 +63,9 @@ export default function MinhaContaPage() {
       setErro('Preencha todos os campos.')
       return
     }
-    if (novaSenha.length < 8) {
-      setErro('A nova senha deve ter pelo menos 8 caracteres.')
+    const erroForte = validarSenhaForte(novaSenha)
+    if (erroForte) {
+      setErro(erroForte)
       return
     }
     if (novaSenha !== confirmarSenha) {
@@ -189,8 +191,7 @@ export default function MinhaContaPage() {
                     type={mostrarNova ? 'text' : 'password'}
                     value={novaSenha}
                     onChange={e => setNovaSenha(e.target.value)}
-                    placeholder="Mínimo 8 caracteres"
-                    minLength={8}
+                    placeholder="Digite sua nova senha"
                     autoComplete="new-password"
                     className={inputClass}
                   />
@@ -201,6 +202,30 @@ export default function MinhaContaPage() {
                   </button>
                 </div>
               </div>
+
+              {/* Checklist de requisitos — amigável e visual */}
+              {(() => {
+                const r = avaliarSenha(novaSenha)
+                const Regra = ({ ok, texto }: { ok: boolean; texto: string }) => (
+                  <div className="flex items-center gap-2 text-xs transition-colors" style={{ color: ok ? '#16A34A' : '#86868B' }}>
+                    <span className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 transition-all"
+                      style={{ background: ok ? '#DCFCE7' : '#E5E5EA' }}>
+                      {ok
+                        ? <Check className="w-3 h-3" strokeWidth={3} />
+                        : <XIcon className="w-3 h-3" strokeWidth={2.5} style={{ color: '#B8B8BF' }} />}
+                    </span>
+                    <span>{texto}</span>
+                  </div>
+                )
+                return (
+                  <div className="rounded-xl p-3 space-y-1.5" style={{ background: '#F5F5F7' }}>
+                    <Regra ok={r.minLength}    texto="Pelo menos 8 caracteres" />
+                    <Regra ok={r.temMaiuscula} texto="Pelo menos 1 letra MAIÚSCULA (A-Z)" />
+                    <Regra ok={r.temMinuscula} texto="Pelo menos 1 letra minúscula (a-z)" />
+                    <Regra ok={r.temEspecial}  texto="Pelo menos 1 caractere especial (! @ # $ %)" />
+                  </div>
+                )
+              })()}
 
               <div className="space-y-1.5">
                 <label className="text-xs text-[var(--text-3)] uppercase tracking-wide font-medium">Confirmar nova senha</label>
@@ -223,7 +248,11 @@ export default function MinhaContaPage() {
               </div>
 
               <div className="flex justify-end pt-2">
-                <Button type="submit" size="sm" disabled={salvando}>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={salvando || !senhaAtual || !senhaEhForte(novaSenha) || novaSenha !== confirmarSenha}
+                >
                   {salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Salvar nova senha'}
                 </Button>
               </div>
