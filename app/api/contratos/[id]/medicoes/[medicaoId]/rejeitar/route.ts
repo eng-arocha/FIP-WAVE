@@ -1,13 +1,37 @@
 import { NextResponse } from 'next/server'
+import { assertPermissao } from '@/lib/api/auth'
 import { rejeitarMedicao } from '@/lib/db/medicoes'
 import { sendEmail } from '@/lib/email/send'
 import { templateMedicaoRejeitada } from '@/lib/email/templates'
 
 export async function POST(req: Request, { params }: { params: Promise<{ medicaoId: string }> }) {
   try {
+    // SEGURANÇA: exige autenticação E permissão `medicoes.aprovar`.
+    // O nome/email do aprovador é derivado da SESSÃO, não do body.
+    const check = await assertPermissao('medicoes', 'aprovar')
+    if (!check.ok) {
+      return NextResponse.json(
+        { error: 'Apenas usuários com permissão de aprovação podem rejeitar medições.' },
+        { status: check.status }
+      )
+    }
+
     const { medicaoId } = await params
-    const { aprovadorNome, aprovadorEmail, motivo, medicao } = await req.json()
+    const { motivo, medicao } = await req.json()
+
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    const admin = createAdminClient()
+    const { data: perfilAprovador } = await admin
+      .from('perfis')
+      .select('nome, email')
+      .eq('id', check.userId)
+      .single()
+
+    const aprovadorNome  = perfilAprovador?.nome  ?? check.userEmail ?? 'Aprovador'
+    const aprovadorEmail = perfilAprovador?.email ?? check.userEmail ?? ''
+
     await rejeitarMedicao(medicaoId, aprovadorNome, aprovadorEmail, motivo)
+
     if (medicao?.contrato) {
       const tpl = templateMedicaoRejeitada(medicao, medicao.contrato, motivo)
       await sendEmail({
