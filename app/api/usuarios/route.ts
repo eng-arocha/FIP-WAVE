@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listarUsuarios } from '@/lib/db/usuarios'
-import { setPermissoesUsuario, TEMPLATES } from '@/lib/db/permissoes'
+import { setPermissoesUsuario } from '@/lib/db/permissoes'
 import { assertAdmin } from '@/lib/api/auth'
 import { isSenhaPadrao } from '@/lib/auth/senha'
 
@@ -86,13 +86,23 @@ export async function POST(req: Request) {
       if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
-    // Aplica permissões: custom (do template DB) > hardcoded TEMPLATES
+    // Novo modelo: usuários criados herdam do template automaticamente
+    // (resolução LIVE via getPermissoesEfetivas). Não precisamos mais
+    // copiar as permissões para permissoes_usuario no momento da criação.
+    // permissoes_customizadas começa como false por padrão (da coluna).
+    //
+    // Se o frontend mandar um array permissoes_custom explícito
+    // (ex: admin quis criar o usuário já com uma ilha customizada),
+    // ainda damos suporte. Isso seta a flag true via PUT /permissoes.
     if (permissoes_custom && Array.isArray(permissoes_custom) && permissoes_custom.length > 0) {
       await setPermissoesUsuario(authData.user.id, permissoes_custom)
-    } else {
-      const templateKey = perfilEfetivo as keyof typeof TEMPLATES
-      if (TEMPLATES[templateKey]) await setPermissoesUsuario(authData.user.id, TEMPLATES[templateKey])
+      // Marca como ilha customizada
+      await admin.from('perfis')
+        .update({ permissoes_customizadas: true })
+        .eq('id', authData.user.id)
     }
+    // Caso contrário: não mexe em permissoes_usuario. O resolver vai ler
+    // do template_id vinculado automaticamente.
 
     return NextResponse.json({ id: authData.user.id }, { status: 201 })
   } catch (e: any) {

@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
-interface Contrato { id: string; codigo: string; nome: string }
+interface Contrato { id: string; numero: string; descricao: string }
 interface PerfilMini { id: string; nome: string | null; email: string | null }
 interface Pedido {
   id: string
@@ -284,8 +284,11 @@ function PedidosFatDiretoContent() {
   const [loading, setLoading] = useState(true)
 
   // Filtros simples (busca NF e intervalo de datas)
-  const [dataInicio, setDataInicio] = useState('')
-  const [dataFim, setDataFim] = useState('')
+  // Para a view "aprovadas" (vinda do card do Dashboard), o usuário pediu
+  // default de 01/01/2026 até hoje — garante que tudo aparece já no load.
+  const hojeISO = new Date().toISOString().slice(0, 10)
+  const [dataInicio, setDataInicio] = useState(view === 'aprovadas' ? '2026-01-01' : '')
+  const [dataFim, setDataFim]       = useState(view === 'aprovadas' ? hojeISO     : '')
   const [nfBusca, setNfBusca] = useState('')
 
   // Filtros tipo Excel — um Set<string> por coluna (vazio = tudo selecionado)

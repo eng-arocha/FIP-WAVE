@@ -66,6 +66,21 @@ interface HistoricoMedicao {
   aprovacoes?: { aprovador_nome: string }[]
 }
 
+interface HistoricoFip {
+  id: string
+  numero: number
+  numero_pedido_fip: number | null
+  status: string
+  data_solicitacao: string
+  data_aprovacao: string | null
+  valor_total: number
+  fornecedor_razao_social: string
+  motivo_rejeicao: string | null
+  contrato: { id: string; numero: string; descricao: string } | null
+  solicitante: { id: string; nome: string | null; email: string | null } | null
+  aprovador:   { id: string; nome: string | null; email: string | null } | null
+}
+
 export default function AprovacoesPage() {
   const { temPermissao, perfilAtual } = usePermissoes()
   const podeAprovarMedicoes = perfilAtual === 'admin' || temPermissao('medicoes', 'aprovar')
@@ -73,6 +88,7 @@ export default function AprovacoesPage() {
 
   const [pendentes, setPendentes] = useState<PendenteMedicao[]>([])
   const [historico, setHistorico] = useState<HistoricoMedicao[]>([])
+  const [historicoFip, setHistoricoFip] = useState<HistoricoFip[]>([])
   const [pendentesFip, setPendentesFip] = useState<PendenteFip[]>([])
   const [loading, setLoading] = useState(true)
   const [aba, setAba] = useState<'medicoes' | 'fat-direto' | 'historico'>('medicoes')
@@ -98,6 +114,7 @@ export default function AprovacoesPage() {
           const data = await res.json()
           setPendentes(data.pendentes ?? [])
           setHistorico(data.historico ?? [])
+          setHistoricoFip(data.historicoFip ?? [])
         }
         if (resFip.ok) {
           const dataFip = await resFip.json()
@@ -281,8 +298,13 @@ export default function AprovacoesPage() {
     misto: 'bg-teal-900/40 text-teal-300 border border-teal-700/50',
   }
 
-  const totalAprovado = [...historico].reduce((a, m) => a + m.valor_total, 0)
-  const qtdAprovadas = historico.filter(h => h.status === 'aprovado').length
+  // Stats: soma de todos os aprovados (medições + FIP)
+  const totalAprovado =
+      historico.filter(h => h.status === 'aprovado').reduce((a, m) => a + (m.valor_total || 0), 0)
+    + historicoFip.filter(h => h.status === 'aprovado').reduce((a, m) => a + (m.valor_total || 0), 0)
+  const qtdAprovadas =
+      historico.filter(h => h.status === 'aprovado').length
+    + historicoFip.filter(h => h.status === 'aprovado').length
 
   return (
     <div className="flex-1 overflow-auto" style={{ background: 'var(--background)' }}>
@@ -389,7 +411,7 @@ export default function AprovacoesPage() {
           {([
             { id: 'medicoes', label: 'Medições de Serviço', count: pendentes.length },
             { id: 'fat-direto', label: 'Faturamento Direto', count: pendentesFip.length },
-            { id: 'historico', label: 'Histórico', count: 0 },
+            { id: 'historico', label: 'Histórico', count: historico.length + historicoFip.length },
           ] as const).map(tab => (
             <button
               key={tab.id}
@@ -778,6 +800,99 @@ export default function AprovacoesPage() {
                 </div>
               )
             })}
+
+            {/* Histórico de Faturamento Direto (aprovadas/rejeitadas/canceladas) */}
+            {historicoFip.map(f => {
+              const isAprovado  = f.status === 'aprovado'
+              const isRejeitado = f.status === 'rejeitado'
+              const fipNum = f.numero_pedido_fip
+                ? `FIP-${String(f.numero_pedido_fip).padStart(4, '0')}`
+                : `#${f.numero}`
+              const nomeExibido = (p: { nome: string | null; email: string | null } | null) =>
+                p?.nome?.trim() || (p?.email ? p.email.split('@')[0] : '—')
+              return (
+                <div
+                  key={`fip-${f.id}`}
+                  className="rounded-xl transition-all duration-150"
+                  style={{
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--border)',
+                  }}
+                >
+                  <div className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                        style={{
+                          background: isAprovado ? 'rgba(16,185,129,0.15)' : isRejeitado ? 'rgba(239,68,68,0.15)' : 'rgba(148,163,184,0.15)',
+                        }}
+                      >
+                        {isAprovado ? <CheckCircle2 className="w-4 h-4" style={{ color: 'var(--green)' }} />
+                          : isRejeitado ? <XCircle className="w-4 h-4" style={{ color: 'var(--red)' }} />
+                          : <Clock className="w-4 h-4" style={{ color: 'var(--text-3)' }} />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-sm" style={{ color: 'var(--text-1)' }}>
+                            {fipNum}
+                          </span>
+                          <span
+                            className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
+                            style={{
+                              background: isAprovado ? 'rgba(16,185,129,0.12)' : isRejeitado ? 'rgba(239,68,68,0.12)' : 'rgba(148,163,184,0.12)',
+                              color: isAprovado ? '#10B981' : isRejeitado ? '#EF4444' : 'var(--text-3)',
+                            }}
+                          >
+                            {isAprovado ? 'Aprovada' : isRejeitado ? 'Rejeitada' : 'Cancelada'}
+                          </span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-medium" style={{ background: 'rgba(245,158,11,0.12)', color: '#F59E0B' }}>
+                            Fat. Direto
+                          </span>
+                        </div>
+                        <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-3)' }}>
+                          {f.contrato?.numero ?? '—'} · {f.fornecedor_razao_social} · Sol: {nomeExibido(f.solicitante)}{f.aprovador ? <> · Apr: {nomeExibido(f.aprovador)}</> : null}
+                        </p>
+                        {isRejeitado && f.motivo_rejeicao && (
+                          <p className="text-[11px] mt-0.5 italic" style={{ color: 'var(--red)' }}>
+                            Motivo: {f.motivo_rejeicao}
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>
+                          {formatCurrency(f.valor_total)}
+                        </p>
+                        <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+                          {isAprovado ? 'Aprovada' : isRejeitado ? 'Rejeitada' : 'Cancelada'} em{' '}
+                          {f.data_aprovacao ? formatDate(f.data_aprovacao) : '—'}
+                        </p>
+                      </div>
+                      {f.contrato && (
+                        <Link href={`/contratos/${f.contrato.id}/fat-direto`}>
+                          <button
+                            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                            style={{ color: 'var(--text-3)' }}
+                            onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-3)'; e.currentTarget.style.color = 'var(--text-1)' }}
+                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)' }}
+                          >
+                            <ArrowRight className="w-4 h-4" />
+                          </button>
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+
+            {/* Estado vazio quando nem medições nem FIPs têm histórico */}
+            {historico.length === 0 && historicoFip.length === 0 && (
+              <div className="text-center py-12" style={{ color: 'var(--text-3)' }}>
+                <Clock className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                <p className="text-sm">Nenhuma aprovação concluída ainda.</p>
+                <p className="text-xs mt-1">Medições e solicitações aprovadas/rejeitadas aparecerão aqui.</p>
+              </div>
+            )}
           </div>
         )}
       </div>

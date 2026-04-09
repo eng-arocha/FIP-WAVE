@@ -2,7 +2,6 @@
 
 import React, { createContext, useContext, useMemo } from 'react'
 import type { Permissao } from '@/lib/permissoes-config'
-import { TEMPLATES } from '@/lib/permissoes-config'
 
 interface PermissoesContextValue {
   permissoes: Permissao[]
@@ -16,6 +15,17 @@ const PermissoesContext = createContext<PermissoesContextValue>({
   perfilAtual: 'visualizador',
 })
 
+/**
+ * Provider com as permissões EFETIVAS já resolvidas no servidor
+ * (via getPermissoesEfetivas em lib/db/permissoes.ts).
+ *
+ * Lógica cliente:
+ *   - admin → sempre true
+ *   - outros → permissão precisa estar no set recebido do servidor
+ *
+ * Não faz fallback para TEMPLATES hardcoded aqui: o servidor é a
+ * única fonte de verdade e já aplicou a resolução correta.
+ */
 export function PermissoesProvider({
   permissoes,
   perfilAtual = 'visualizador',
@@ -30,20 +40,10 @@ export function PermissoesProvider({
     [permissoes]
   )
 
-  // Set das permissões do template padrão do perfil — usado como fallback
-  // para usuários cuja tabela permissoes_usuario não foi backfillada após
-  // uma migration ter adicionado novas entradas ao template.
-  const templateSet = useMemo(() => {
-    const perfilKey = perfilAtual as keyof typeof TEMPLATES
-    const tpl = TEMPLATES[perfilKey] ?? []
-    return new Set(tpl.map(p => `${p.modulo}:${p.acao}`))
-  }, [perfilAtual])
-
   const temPermissao = useMemo(() => (modulo: string, acao: string) => {
     if (perfilAtual === 'admin') return true
-    const key = `${modulo}:${acao}`
-    return set.has(key) || templateSet.has(key)
-  }, [set, templateSet, perfilAtual])
+    return set.has(`${modulo}:${acao}`)
+  }, [set, perfilAtual])
 
   const value = useMemo(() => ({ permissoes, temPermissao, perfilAtual }), [permissoes, temPermissao, perfilAtual])
 

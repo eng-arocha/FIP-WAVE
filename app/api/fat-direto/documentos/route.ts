@@ -27,6 +27,10 @@ export async function GET(req: Request) {
     const aprovadorId   = searchParams.get('aprovador_id')
 
     const admin = createAdminClient()
+    // IMPORTANTE: disambiguação explícita das FKs para perfis.
+    // solicitacoes_fat_direto tem DUAS colunas apontando para perfis
+    // (solicitante_id e aprovador_id). Sem o !<fk> o PostgREST retorna
+    // erro "embedding disambiguation", deixando a página vazia.
     let query = admin
       .from('solicitacoes_fat_direto')
       .select(`
@@ -36,9 +40,9 @@ export async function GET(req: Request) {
         nf_numero, nf_data, nf_pdf_url,
         status_documento, created_at,
         solicitante_id, aprovador_id,
-        contrato:contrato_id(id, codigo, nome),
-        solicitante:solicitante_id(id, nome, email),
-        aprovador:aprovador_id(id, nome, email)
+        contrato:contratos(id, numero, descricao),
+        solicitante:perfis!solicitante_id(id, nome, email),
+        aprovador:perfis!aprovador_id(id, nome, email)
       `)
       .eq('status', 'aprovado')
       .order('data_solicitacao', { ascending: false })

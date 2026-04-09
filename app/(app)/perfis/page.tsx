@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Plus, Loader2, X, Shield, Trash2, ChevronDown, ChevronUp, Lock } from 'lucide-react'
+import { Plus, Loader2, X, Shield, Trash2, ChevronDown, ChevronUp, Lock, Users, AlertCircle } from 'lucide-react'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 import {
   MODULOS_CONFIG, MODULOS_LABELS, ACOES_LABELS, ALL_ACOES,
@@ -46,6 +46,9 @@ export default function PerfisPage() {
   const [permMap, setPermMap]               = useState<Record<string, Set<string>>>({})
   const [salvandoPerm, setSalvandoPerm]     = useState(false)
   const [excluindo, setExcluindo]           = useState<string | null>(null)
+  // Impacto por template: { total, afetados, ilhas }
+  const [impacto, setImpacto] = useState<Record<string, { total: number; afetados: number; ilhas: number }>>({})
+  const [confirmando, setConfirmando] = useState<Template | null>(null)
 
   const modulos = Object.keys(MODULOS_CONFIG) as ModuloKey[]
 
@@ -82,11 +85,21 @@ export default function PerfisPage() {
     await carregar()
   }
 
-  function abrirPerfil(t: Template) {
+  async function abrirPerfil(t: Template) {
     if (aberto === t.id) { setAberto(null); return }
     setAberto(t.id)
     if (!permMap[t.id]) {
       setPermMap(prev => ({ ...prev, [t.id]: buildInitialSet(t.permissoes) }))
+    }
+    // Busca o impacto (total/afetados/ilhas) em background
+    if (!impacto[t.id]) {
+      try {
+        const r = await fetch(`/api/perfis/${t.id}/impacto`)
+        if (r.ok) {
+          const data = await r.json()
+          setImpacto(prev => ({ ...prev, [t.id]: data }))
+        }
+      } catch {}
     }
   }
 
@@ -97,6 +110,17 @@ export default function PerfisPage() {
       s.has(key) ? s.delete(key) : s.add(key)
       return { ...prev, [id]: s }
     })
+  }
+
+  // Clique no botão "Salvar permissões": se há impacto, abre confirm dialog.
+  function pedirConfirmacao(t: Template) {
+    const info = impacto[t.id]
+    // Se não sabe o impacto ou é zero, salva direto
+    if (!info || info.afetados === 0) {
+      salvarPermissoes(t)
+      return
+    }
+    setConfirmando(t)
   }
 
   async function salvarPermissoes(t: Template) {
@@ -114,6 +138,15 @@ export default function PerfisPage() {
     if (res.ok) {
       await carregar()
       setAberto(null)
+      setConfirmando(null)
+      // Refresca o impacto (não mudou o número, mas garante consistência)
+      try {
+        const r = await fetch(`/api/perfis/${t.id}/impacto`)
+        if (r.ok) {
+          const data = await r.json()
+          setImpacto(prev => ({ ...prev, [t.id]: data }))
+        }
+      } catch {}
     }
     setSalvandoPerm(false)
   }
@@ -355,15 +388,29 @@ export default function PerfisPage() {
                             </table>
                           </div>
 
-                          <div className="flex justify-end gap-3 mt-5">
-                            <Button variant="outline" size="sm" onClick={() => setAberto(null)}>
-                              {isAdmin ? 'Cancelar' : 'Fechar'}
-                            </Button>
-                            {isAdmin && (
-                              <Button size="sm" disabled={salvandoPerm} onClick={() => salvarPermissoes(t)}>
-                                {salvandoPerm ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Salvar permissões'}
-                              </Button>
+                          <div className="flex items-center justify-between mt-5 gap-3 flex-wrap">
+                            {/* Contagem de impacto */}
+                            {impacto[t.id] && impacto[t.id].total > 0 && (
+                              <div className="flex items-center gap-2 text-[11px]" style={{ color: 'var(--text-3)' }}>
+                                <Users className="w-3.5 h-3.5" />
+                                <span>
+                                  <strong style={{ color: 'var(--text-2)' }}>{impacto[t.id].afetados}</strong> usuário(s) receberão a mudança
+                                  {impacto[t.id].ilhas > 0 && (
+                                    <> · <strong style={{ color: 'var(--text-2)' }}>{impacto[t.id].ilhas}</strong> com permissões específicas (não afetados)</>
+                                  )}
+                                </span>
+                              </div>
                             )}
+                            <div className="flex gap-3 ml-auto">
+                              <Button variant="outline" size="sm" onClick={() => setAberto(null)}>
+                                {isAdmin ? 'Cancelar' : 'Fechar'}
+                              </Button>
+                              {isAdmin && (
+                                <Button size="sm" disabled={salvandoPerm} onClick={() => pedirConfirmacao(t)}>
+                                  {salvandoPerm ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Salvar permissões'}
+                                </Button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       )}
@@ -375,6 +422,61 @@ export default function PerfisPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Confirm modal: aviso de impacto antes de salvar mudanças globais */}
+      {confirmando && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)' }}
+          onClick={() => !salvandoPerm && setConfirmando(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl overflow-hidden"
+            style={{ background: '#FFFFFF', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-6 pt-6 pb-4 text-center">
+              <div
+                className="mx-auto mb-3 w-12 h-12 rounded-2xl flex items-center justify-center"
+                style={{ background: 'linear-gradient(135deg, #FEF3C7, #FDE68A)' }}
+              >
+                <AlertCircle className="w-6 h-6" style={{ color: '#D97706' }} />
+              </div>
+              <h2 className="text-lg font-bold" style={{ color: '#1D1D1F' }}>
+                Confirmar alteração global
+              </h2>
+              <p className="text-sm mt-2" style={{ color: '#86868B' }}>
+                Esta mudança vai afetar <strong style={{ color: '#1D1D1F' }}>{impacto[confirmando.id]?.afetados ?? 0} usuário(s)</strong> que usam o perfil
+                {' '}<strong style={{ color: '#1D1D1F' }}>{confirmando.nome}</strong>.
+              </p>
+              {(impacto[confirmando.id]?.ilhas ?? 0) > 0 && (
+                <p className="text-xs mt-1.5" style={{ color: '#86868B' }}>
+                  {impacto[confirmando.id]?.ilhas} usuário(s) com permissões específicas <strong>não</strong> serão afetados.
+                </p>
+              )}
+            </div>
+            <div className="px-6 pb-6 flex gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                disabled={salvandoPerm}
+                onClick={() => setConfirmando(null)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                className="flex-1"
+                disabled={salvandoPerm}
+                onClick={() => salvarPermissoes(confirmando)}
+              >
+                {salvandoPerm ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Aplicar a todos'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
