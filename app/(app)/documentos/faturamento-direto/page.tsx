@@ -11,7 +11,7 @@ import { formatCurrency } from '@/lib/utils'
 import {
   FileText, Search, Filter, Download, Clock, CheckCircle2, Banknote,
   X, Upload, RefreshCw, FolderOpen, Receipt,
-  Paperclip, FileCheck, Trash2, Loader2,
+  Paperclip, FileCheck, Trash2, Loader2, Undo2,
 } from 'lucide-react'
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
@@ -277,8 +277,9 @@ function PedidosFatDiretoContent() {
   const view = (searchParams?.get('view') ?? '') as 'com-nf' | 'aprovadas' | ''
   const viewCfg = VIEW_CONFIG[view] ?? VIEW_CONFIG['']
 
-  const { perfilAtual } = usePermissoes()
+  const { perfilAtual, temPermissao } = usePermissoes()
   const isAdmin = perfilAtual === 'admin'
+  const podeDesaprovar = isAdmin || temPermissao('aprovacoes', 'aprovar')
 
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
@@ -304,6 +305,7 @@ function PedidosFatDiretoContent() {
   const [pdfModal, setPdfModal] = useState<{ url: string; nome: string } | null>(null)
   const [anexarNfPedido, setAnexarNfPedido] = useState<Pedido | null>(null)
   const [excluindoId, setExcluindoId] = useState<string | null>(null)
+  const [desaprovandoId, setDesaprovandoId] = useState<string | null>(null)
 
   async function carregar() {
     setLoading(true)
@@ -346,6 +348,37 @@ function PedidosFatDiretoContent() {
       }
     } finally {
       setExcluindoId(null)
+    }
+  }
+
+  async function desaprovarPedido(pedido: Pedido) {
+    const fip = pedido.numero_pedido_fip ? `FIP-${String(pedido.numero_pedido_fip).padStart(4,'0')}` : `#${pedido.numero}`
+    const motivo = prompt(
+      `Desaprovar o pedido ${fip} de ${pedido.fornecedor_razao_social}?\n\n` +
+      `Ele voltará ao status "Rascunho" e só o solicitante original (ou admin) poderá editar/excluir.\n\n` +
+      `Informe o MOTIVO da desaprovação:`
+    )
+    if (motivo === null) return            // cancelado
+    if (!motivo.trim()) {
+      alert('O motivo é obrigatório.')
+      return
+    }
+    setDesaprovandoId(pedido.id)
+    try {
+      const res = await fetch(`/api/fat-direto/solicitacoes/${pedido.id}/desaprovar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ motivo: motivo.trim() }),
+      })
+      if (res.ok) {
+        // Remove da listagem atual (volta pra rascunho, some de aprovadas)
+        setPedidos(prev => prev.filter(p => p.id !== pedido.id))
+      } else {
+        const d = await res.json().catch(() => ({}))
+        alert(d.error || 'Não foi possível desaprovar o pedido.')
+      }
+    } finally {
+      setDesaprovandoId(null)
     }
   }
 
@@ -506,10 +539,16 @@ function PedidosFatDiretoContent() {
 
         {/* Tabela */}
         <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-          {/* Grid template: Pedido | Fornecedor | Solicitante | Data Sol. | Aprovador | Data Apr. | Valor | Status | Pedido PDF | NF PDF | (Admin) X */}
+          {/* Grid template: Pedido | Fornecedor | Solicitante | Data Sol. | Aprovador | Data Apr. | Valor | Status | Pedido PDF | NF PDF | (Ações) */}
           {(() => {
-            const gridCols = isAdmin
-              ? '110px 1.6fr 1fr 90px 1fr 90px 110px 130px 72px 72px 40px'
+            // A coluna de ações aparece se:
+            //  - Admin (pode excluir) OU
+            //  - Usuário com permissão de aprovação (pode desaprovar)
+            const mostrarAcoes = isAdmin || podeDesaprovar
+            // Largura da coluna ações: 40px se só 1 botão, 80px se 2
+            const larguraAcoes = (isAdmin && podeDesaprovar) ? '80px' : '40px'
+            const gridCols = mostrarAcoes
+              ? `110px 1.6fr 1fr 90px 1fr 90px 110px 130px 72px 72px ${larguraAcoes}`
               : '110px 1.6fr 1fr 90px 1fr 90px 110px 130px 72px 72px'
             return (
               <>
@@ -549,7 +588,7 @@ function PedidosFatDiretoContent() {
                   </span>
                   <span className="text-center">Pedido PDF</span>
                   <span className="text-center">NF PDF</span>
-                  {isAdmin && <span className="text-center" title="Admin">·</span>}
+                  {mostrarAcoes && <span className="text-center" title="Ações">·</span>}
                 </div>
 
                 {/* Linhas */}
@@ -674,22 +713,39 @@ function PedidosFatDiretoContent() {
                           )}
                         </div>
 
-                        {/* Coluna admin — X vermelho de exclusão */}
-                        {isAdmin && (
-                          <div className="flex justify-center">
-                            <button
-                              onClick={() => excluirPedido(pedido)}
-                              disabled={excluindoId === pedido.id}
-                              title="Excluir pedido (apenas admin)"
-                              className="inline-flex items-center justify-center w-7 h-7 rounded-lg transition-all"
-                              style={{ background: 'rgba(239,68,68,0.10)', color: '#EF4444' }}
-                              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.22)' }}
-                              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.10)' }}
-                            >
-                              {excluindoId === pedido.id
-                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                : <Trash2 className="w-3.5 h-3.5" strokeWidth={1.8} />}
-                            </button>
+                        {/* Coluna de ações: desaprovar (permissão aprovar) + excluir (admin) */}
+                        {mostrarAcoes && (
+                          <div className="flex justify-center gap-1">
+                            {podeDesaprovar && (
+                              <button
+                                onClick={() => desaprovarPedido(pedido)}
+                                disabled={desaprovandoId === pedido.id}
+                                title="Desaprovar pedido (volta para rascunho)"
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg transition-all"
+                                style={{ background: 'rgba(245,158,11,0.10)', color: '#F59E0B' }}
+                                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(245,158,11,0.22)' }}
+                                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(245,158,11,0.10)' }}
+                              >
+                                {desaprovandoId === pedido.id
+                                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  : <Undo2 className="w-3.5 h-3.5" strokeWidth={1.8} />}
+                              </button>
+                            )}
+                            {isAdmin && (
+                              <button
+                                onClick={() => excluirPedido(pedido)}
+                                disabled={excluindoId === pedido.id}
+                                title="Excluir pedido (apenas admin)"
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg transition-all"
+                                style={{ background: 'rgba(239,68,68,0.10)', color: '#EF4444' }}
+                                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.22)' }}
+                                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.10)' }}
+                              >
+                                {excluindoId === pedido.id
+                                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  : <Trash2 className="w-3.5 h-3.5" strokeWidth={1.8} />}
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>
