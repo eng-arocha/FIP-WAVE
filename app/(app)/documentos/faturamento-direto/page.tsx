@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Topbar } from '@/components/layout/topbar'
 import { Button } from '@/components/ui/button'
@@ -255,8 +255,24 @@ const VIEW_CONFIG: Record<string, { title: string; subtitle: string; icon: any; 
   },
 }
 
-// ── Página Principal ──────────────────────────────────────────────────────
+// ── Wrapper com Suspense ──────────────────────────────────────────────────
+// useSearchParams() precisa estar dentro de um Suspense boundary para
+// que o Next.js consiga pre-renderizar a página sem fazer bailout de CSR.
 export default function PedidosFatDiretoPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center py-24" style={{ color: 'var(--text-3)' }}>
+        <RefreshCw className="w-5 h-5 animate-spin mr-2" strokeWidth={1.5} />
+        <span className="text-sm">Carregando...</span>
+      </div>
+    }>
+      <PedidosFatDiretoContent />
+    </Suspense>
+  )
+}
+
+// ── Conteúdo real da página ───────────────────────────────────────────────
+function PedidosFatDiretoContent() {
   const searchParams = useSearchParams()
   const view = (searchParams?.get('view') ?? '') as 'com-nf' | 'aprovadas' | ''
   const viewCfg = VIEW_CONFIG[view] ?? VIEW_CONFIG['']
