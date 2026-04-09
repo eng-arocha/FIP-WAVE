@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { listarUsuarios } from '@/lib/db/usuarios'
 import { setPermissoesUsuario, TEMPLATES } from '@/lib/db/permissoes'
 import { assertAdmin } from '@/lib/api/auth'
+import { isSenhaPadrao } from '@/lib/auth/senha'
 
 export async function GET() {
   if (!(await assertAdmin())) return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
@@ -41,7 +42,15 @@ export async function POST(req: Request) {
     if (authError) return NextResponse.json({ error: authError.message }, { status: 400 })
 
     // Garante que o perfil foi criado com os valores corretos
-    const perfilUpsert: Record<string, unknown> = { id: authData.user.id, nome, email, perfil: perfilEfetivo, ativo: true }
+    const perfilUpsert: Record<string, unknown> = {
+      id: authData.user.id,
+      nome,
+      email,
+      perfil: perfilEfetivo,
+      ativo: true,
+      // Se o admin criou com a senha padrão, força troca no primeiro acesso
+      deve_trocar_senha: isSenhaPadrao(senha),
+    }
     if (template_id) perfilUpsert.template_id = template_id
     await admin.from('perfis').upsert(perfilUpsert)
 

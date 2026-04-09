@@ -6,7 +6,7 @@ export async function getPerfil(userId: string) {
   const admin = createAdminClient()
   const { data } = await admin
     .from('perfis')
-    .select('id, nome, email, perfil, ativo')
+    .select('id, nome, email, perfil, ativo, deve_trocar_senha')
     .eq('id', userId)
     .single()
   return data

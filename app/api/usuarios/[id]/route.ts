@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { assertAdmin } from '@/lib/api/auth'
+import { isSenhaPadrao } from '@/lib/auth/senha'
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!(await assertAdmin())) return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
@@ -15,8 +16,15 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     if (body.ativo !== undefined) updates.ativo = body.ativo
     if (body.template_id !== undefined) updates.template_id = body.template_id || null
 
-    const { error } = await admin.from('perfis').update(updates).eq('id', id)
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    // Se o admin definiu uma nova senha padrão, força troca no próximo acesso
+    if (body.nova_senha && isSenhaPadrao(body.nova_senha)) {
+      updates.deve_trocar_senha = true
+    }
+
+    if (Object.keys(updates).length > 0) {
+      const { error } = await admin.from('perfis').update(updates).eq('id', id)
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    }
 
     // Atualiza permissões se fornecidas
     if (body.permissoes_custom && Array.isArray(body.permissoes_custom) && body.permissoes_custom.length > 0) {

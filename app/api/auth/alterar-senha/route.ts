@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server'
 import { createClient as createSbClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { validarSenhaForte } from '@/lib/auth/senha'
 
 // PUT /api/auth/alterar-senha
 // Permite que o usuário autenticado troque a própria senha.
-// Verifica a senha atual antes de atualizar.
+// Verifica a senha atual antes de atualizar e exige senha forte.
 export async function PUT(req: Request) {
   try {
     const body = await req.json().catch(() => ({}))
@@ -15,8 +16,9 @@ export async function PUT(req: Request) {
     if (!senha_atual || !nova_senha) {
       return NextResponse.json({ error: 'Informe a senha atual e a nova senha.' }, { status: 400 })
     }
-    if (nova_senha.length < 8) {
-      return NextResponse.json({ error: 'A nova senha deve ter pelo menos 8 caracteres.' }, { status: 400 })
+    const erroForte = validarSenhaForte(nova_senha)
+    if (erroForte) {
+      return NextResponse.json({ error: erroForte }, { status: 400 })
     }
     if (senha_atual === nova_senha) {
       return NextResponse.json({ error: 'A nova senha deve ser diferente da atual.' }, { status: 400 })
