@@ -600,11 +600,31 @@ function PedidosFatDiretoContent() {
                 ) : pedidosFiltrados.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ color: 'var(--text-3)' }}>
                     <FolderOpen className="w-10 h-10 opacity-30" strokeWidth={1} />
-                    <div className="text-center">
+                    <div className="text-center max-w-md">
                       <p className="text-sm font-medium">Nenhum pedido encontrado</p>
-                      <p className="text-xs mt-0.5">
-                        {temFiltroAtivo ? 'Tente ajustar os filtros' : 'Pedidos aprovados aparecerão aqui'}
-                      </p>
+                      {(dataInicio || dataFim) ? (
+                        <>
+                          <p className="text-xs mt-0.5">
+                            Nenhuma solicitação entre <strong>{dataInicio ? formatDateBR(dataInicio) : '—'}</strong> e <strong>{dataFim ? formatDateBR(dataFim) : 'hoje'}</strong>.
+                          </p>
+                          <button
+                            onClick={() => { setDataInicio(''); setDataFim(''); setTimeout(carregar, 0) }}
+                            className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all"
+                            style={{
+                              background: 'linear-gradient(135deg, var(--accent), var(--accent-glow))',
+                              color: '#FFFFFF',
+                              boxShadow: '0 2px 8px rgba(0,113,227,0.25)',
+                            }}
+                          >
+                            <X className="w-3.5 h-3.5" strokeWidth={2.5} />
+                            Limpar filtro de data e ver tudo
+                          </button>
+                        </>
+                      ) : temFiltroAtivo ? (
+                        <p className="text-xs mt-0.5">Tente ajustar os filtros das colunas</p>
+                      ) : (
+                        <p className="text-xs mt-0.5">Pedidos aprovados aparecerão aqui</p>
+                      )}
                     </div>
                   </div>
                 ) : (
