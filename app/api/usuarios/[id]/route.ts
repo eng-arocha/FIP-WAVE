@@ -27,20 +27,42 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       }
     }
 
-    const updates: Record<string, unknown> = {}
-    if (body.nome !== undefined) updates.nome = body.nome
-    if (body.perfil !== undefined) updates.perfil = body.perfil
-    if (body.ativo !== undefined) updates.ativo = body.ativo
-    if (body.template_id !== undefined) updates.template_id = body.template_id || null
+    // Atualizamos a tabela perfis em DUAS chamadas separadas:
+    //   (1) campos "core" (nome, perfil, ativo, deve_trocar_senha) — sempre presentes
+    //   (2) campos "opcionais" que dependem de migrations posteriores
+    //       (template_id da migration 012, deve_trocar_senha da 022)
+    // Se a coluna opcional não existir no schema cache do PostgREST, fazemos
+    // fallback gracioso e seguimos a vida — sem 400 para o usuário final.
+    const coreUpdates: Record<string, unknown> = {}
+    if (body.nome   !== undefined) coreUpdates.nome   = body.nome
+    if (body.perfil !== undefined) coreUpdates.perfil = body.perfil
+    if (body.ativo  !== undefined) coreUpdates.ativo  = body.ativo
 
-    // Se o admin definiu uma nova senha padrão, força troca no próximo acesso
-    if (body.nova_senha && isSenhaPadrao(body.nova_senha)) {
-      updates.deve_trocar_senha = true
+    if (Object.keys(coreUpdates).length > 0) {
+      const { error } = await admin.from('perfis').update(coreUpdates).eq('id', id)
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
-    if (Object.keys(updates).length > 0) {
-      const { error } = await admin.from('perfis').update(updates).eq('id', id)
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    // Atualiza template_id em chamada separada (tolera coluna ausente)
+    if (body.template_id !== undefined) {
+      const { error } = await admin.from('perfis')
+        .update({ template_id: body.template_id || null })
+        .eq('id', id)
+      if (error && !/template_id/.test(error.message)) {
+        return NextResponse.json({ error: error.message }, { status: 400 })
+      }
+      // Se o erro foi sobre template_id, ignora — provavelmente a migration
+      // 012 / 024 ainda não rodou no Supabase. O perfil base já foi salvo.
+    }
+
+    // Atualiza deve_trocar_senha em chamada separada (tolera coluna ausente)
+    if (body.nova_senha && isSenhaPadrao(body.nova_senha)) {
+      const { error } = await admin.from('perfis')
+        .update({ deve_trocar_senha: true })
+        .eq('id', id)
+      if (error && !/deve_trocar_senha/.test(error.message)) {
+        return NextResponse.json({ error: error.message }, { status: 400 })
+      }
     }
 
     // Atualiza permissões se fornecidas

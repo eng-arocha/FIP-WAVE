@@ -55,18 +55,36 @@ export async function POST(req: Request) {
     })
     if (authError) return NextResponse.json({ error: authError.message }, { status: 400 })
 
-    // Garante que o perfil foi criado com os valores corretos
-    const perfilUpsert: Record<string, unknown> = {
+    // Garante que o perfil foi criado com os valores corretos.
+    // Faz upsert em duas tentativas para tolerar colunas opcionais ausentes
+    // (template_id da migration 012, deve_trocar_senha da 022).
+    const perfilCore: Record<string, unknown> = {
       id: authData.user.id,
       nome,
       email,
       perfil: perfilEfetivo,
       ativo: true,
-      // Se o admin criou com a senha padrão, força troca no primeiro acesso
-      deve_trocar_senha: isSenhaPadrao(senha),
     }
-    if (template_id) perfilUpsert.template_id = template_id
-    await admin.from('perfis').upsert(perfilUpsert)
+    const perfilExtras: Record<string, unknown> = {}
+    if (template_id) perfilExtras.template_id = template_id
+    if (isSenhaPadrao(senha)) perfilExtras.deve_trocar_senha = true
+
+    // Tentativa 1: tudo junto
+    let upsertOk = false
+    if (Object.keys(perfilExtras).length > 0) {
+      const { error } = await admin.from('perfis').upsert({ ...perfilCore, ...perfilExtras })
+      if (!error) upsertOk = true
+      else if (!/template_id|deve_trocar_senha/.test(error.message)) {
+        return NextResponse.json({ error: error.message }, { status: 400 })
+      }
+      // se o erro foi sobre coluna opcional, cai para o fallback
+    }
+
+    if (!upsertOk) {
+      // Fallback: salva só os campos core
+      const { error } = await admin.from('perfis').upsert(perfilCore)
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    }
 
     // Aplica permissões: custom (do template DB) > hardcoded TEMPLATES
     if (permissoes_custom && Array.isArray(permissoes_custom) && permissoes_custom.length > 0) {
