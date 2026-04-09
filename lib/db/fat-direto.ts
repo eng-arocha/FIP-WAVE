@@ -5,11 +5,11 @@ export async function listarSolicitacoes(contratoId: string) {
   const { data, error } = await admin
     .from('solicitacoes_fat_direto')
     .select(`
-      id, numero, status, data_solicitacao, data_aprovacao,
+      id, numero, numero_pedido_fip, status, data_solicitacao, data_aprovacao,
       observacoes, motivo_rejeicao, valor_total, created_at,
       fornecedor_razao_social, fornecedor_cnpj, fornecedor_contato,
-      solicitante:solicitante_id(nome, email),
-      aprovador:aprovador_id(nome, email),
+      solicitante:perfis!solicitante_id(nome, email),
+      aprovador:perfis!aprovador_id(nome, email),
       itens:itens_solicitacao_fat_direto(
         id, descricao, local, qtde_solicitada, valor_unitario, valor_total,
         tarefa:tarefa_id(codigo, nome)
@@ -29,8 +29,8 @@ export async function getSolicitacao(id: string) {
       id, numero, status, data_solicitacao, data_aprovacao,
       observacoes, motivo_rejeicao, valor_total, contrato_id, created_at,
       fornecedor_razao_social, fornecedor_cnpj, fornecedor_contato,
-      solicitante:solicitante_id(nome, email),
-      aprovador:aprovador_id(nome, email),
+      solicitante:perfis!solicitante_id(nome, email),
+      aprovador:perfis!aprovador_id(nome, email),
       itens:itens_solicitacao_fat_direto(
         id, descricao, local, qtde_solicitada, valor_unitario, valor_total,
         tarefa:tarefa_id(id, codigo, nome, grupo_macro_id)
@@ -231,7 +231,7 @@ export async function listarSolicitacoesAprovadas() {
       fornecedor_razao_social, fornecedor_cnpj,
       contrato_id,
       contrato:contrato_id(id, numero, descricao),
-      solicitante:solicitante_id(nome),
+      solicitante:perfis!solicitante_id(nome),
       notas_fiscais:notas_fiscais_fat_direto(id, numero_nf, valor, status),
       itens:itens_solicitacao_fat_direto(id)
     `)
@@ -250,7 +250,7 @@ export async function listarSolicitacoesPendentes() {
       fornecedor_razao_social, fornecedor_cnpj,
       contrato_id,
       contrato:contrato_id(id, numero, descricao),
-      solicitante:solicitante_id(nome, email),
+      solicitante:perfis!solicitante_id(nome, email),
       itens:itens_solicitacao_fat_direto(id)
     `)
     .eq('status', 'aguardando_aprovacao')

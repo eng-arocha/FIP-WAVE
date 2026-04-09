@@ -510,13 +510,23 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
                                 )}
                               </div>
                               <p className="text-xs text-[var(--text-3)] mt-0.5">
-                                {sol.fornecedor_razao_social
-                                  ? <span className="text-[var(--text-2)]">{sol.fornecedor_razao_social}</span>
-                                  : sol.solicitante?.nome
-                                }
+                                {sol.fornecedor_razao_social && (
+                                  <span className="text-[var(--text-2)]">{sol.fornecedor_razao_social}</span>
+                                )}
+                                {sol.fornecedor_razao_social && ' · '}
+                                <span>Sol: {sol.solicitante?.nome || '—'}</span>
                                 {' · '}{formatDate(sol.data_solicitacao)}
                                 {sol.itens && ` · ${sol.itens.length} item(s)`}
                               </p>
+                              {sol.observacoes && sol.observacoes.trim() && (
+                                <p
+                                  className="text-[11px] mt-1 truncate italic"
+                                  style={{ color: 'var(--text-3)' }}
+                                  title={sol.observacoes}
+                                >
+                                  💬 {sol.observacoes}
+                                </p>
+                              )}
                             </div>
                           </div>
                           <div className="text-right">

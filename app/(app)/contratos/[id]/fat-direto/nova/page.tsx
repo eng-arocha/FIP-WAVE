@@ -709,8 +709,8 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
           </CardHeader>
           <CardContent>
             <textarea value={observacoes} onChange={e => setObservacoes(e.target.value)}
-              placeholder="Justificativa ou observações para esta solicitação..." rows={3}
-              className="w-full rounded-xl px-4 py-3 text-sm outline-none resize-none transition-all"
+              placeholder="Justificativa ou observações para esta solicitação..." rows={10}
+              className="w-full rounded-xl px-4 py-3 text-sm outline-none resize-y transition-all min-h-[240px] leading-relaxed"
               style={inputStyle} {...focusHandlers} />
           </CardContent>
         </Card>

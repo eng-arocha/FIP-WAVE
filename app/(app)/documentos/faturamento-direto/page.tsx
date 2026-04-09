@@ -284,11 +284,13 @@ function PedidosFatDiretoContent() {
   const [loading, setLoading] = useState(true)
 
   // Filtros simples (busca NF e intervalo de datas)
-  // Para a view "aprovadas" (vinda do card do Dashboard), o usuário pediu
-  // default de 01/01/2026 até hoje — garante que tudo aparece já no load.
+  // Para as views vindas do Dashboard (aprovadas e com-nf), o default é
+  // 01/01/2026 → hoje — garante janela clara já no load. A view padrão
+  // (sem query param) começa sem filtro de data.
   const hojeISO = new Date().toISOString().slice(0, 10)
-  const [dataInicio, setDataInicio] = useState(view === 'aprovadas' ? '2026-01-01' : '')
-  const [dataFim, setDataFim]       = useState(view === 'aprovadas' ? hojeISO     : '')
+  const temDefaultData = view === 'aprovadas' || view === 'com-nf'
+  const [dataInicio, setDataInicio] = useState(temDefaultData ? '2026-01-01' : '')
+  const [dataFim, setDataFim]       = useState(temDefaultData ? hojeISO      : '')
   const [nfBusca, setNfBusca] = useState('')
 
   // Filtros tipo Excel — um Set<string> por coluna (vazio = tudo selecionado)
