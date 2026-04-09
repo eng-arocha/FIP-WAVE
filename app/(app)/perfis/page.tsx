@@ -142,7 +142,10 @@ export default function PerfisPage() {
       // Refresca o impacto (não mudou o número, mas garante consistência)
       try {
         const r = await fetch(`/api/perfis/${t.id}/impacto`)
-        if (r.ok) setImpacto(prev => ({ ...prev, [t.id]: await r.json() }))
+        if (r.ok) {
+          const data = await r.json()
+          setImpacto(prev => ({ ...prev, [t.id]: data }))
+        }
       } catch {}
     }
     setSalvandoPerm(false)
