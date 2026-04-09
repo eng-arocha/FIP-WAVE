@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Plus, Loader2, UserCheck, UserX, Pencil, X, Eye, EyeOff, Shield, Trash2, Link2, Wand2, Copy, Building2, CheckCircle2 } from 'lucide-react'
 import {
-  MODULOS_CONFIG, MODULOS_LABELS, ACOES_LABELS, ALL_ACOES, TEMPLATES,
+  MODULOS_CONFIG, MODULOS_LABELS, ACOES_LABELS, ALL_ACOES,
   type Permissao,
 } from '@/lib/permissoes-config'
 import { gerarSenhaForte } from '@/lib/auth/senha'
@@ -70,6 +70,10 @@ export default function UsuariosPage() {
   const [editForm, setEditForm]             = useState({ nome: '', template_id: '', nova_senha: '' })
   const [permissaoAberta, setPermissaoAberta] = useState<string | null>(null)
   const [permissoesMap, setPermissoesMap]   = useState<Record<string, Set<string>>>({})
+  // Estado da flag "Permissões específicas" por usuário (true = ilha)
+  const [customizadasMap, setCustomizadasMap] = useState<Record<string, boolean>>({})
+  // Nome do template herdado (só pra mostrar na mensagem "Herdando de X")
+  const [templateNomeMap, setTemplateNomeMap] = useState<Record<string, string | null>>({})
   const [salvandoPerm, setSalvandoPerm]     = useState(false)
   const [excluindo, setExcluindo]           = useState<string | null>(null)
   // Vínculo usuário × contrato
@@ -143,28 +147,71 @@ export default function UsuariosPage() {
   async function abrirPermissoes(userId: string) {
     setPermissaoAberta(permissaoAberta === userId ? null : userId)
     setContratoAberto(null) // fecha o painel de contratos
-    if (permissoesMap[userId]) return
+    // Sempre recarrega ao abrir (para refletir mudanças externas no template)
     const res = await fetch(`/api/usuarios/${userId}/permissoes`)
     if (res.ok) {
-      const data: Permissao[] = await res.json()
-      setPermissoesMap(prev => ({ ...prev, [userId]: new Set(data.map(p => `${p.modulo}:${p.acao}`)) }))
+      const data = await res.json()
+      // Nova resposta: { permissoes, permissoes_customizadas, template_id, template_nome, fonte }
+      const permissoes: Permissao[] = data.permissoes ?? []
+      setPermissoesMap(prev => ({
+        ...prev,
+        [userId]: new Set(permissoes.map(p => `${p.modulo}:${p.acao}`))
+      }))
+      setCustomizadasMap(prev => ({ ...prev, [userId]: data.permissoes_customizadas === true }))
+      setTemplateNomeMap(prev => ({ ...prev, [userId]: data.template_nome ?? null }))
+    }
+  }
+
+  /**
+   * Alterna a flag "Permissões específicas" para um usuário.
+   * - Ao MARCAR: o estado atual da matriz vira a ilha de customização
+   *   (snapshot das permissões herdadas do template no momento da marca)
+   * - Ao DESMARCAR: confirma e volta a herdar do template em tempo real.
+   *   As permissões salvas em permissoes_usuario são apagadas.
+   */
+  async function toggleCustomizadas(userId: string, userName: string, templateNome: string | null) {
+    const atual = customizadasMap[userId] === true
+    if (atual) {
+      // Desmarcando
+      const msg = `Voltar a herdar do perfil "${templateNome ?? '—'}"? As permissões específicas de ${userName} serão descartadas e ele passará a acompanhar automaticamente as mudanças no perfil.`
+      if (!confirm(msg)) return
+      setSalvandoPerm(true)
+      const res = await fetch(`/api/usuarios/${userId}/permissoes`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ permissoes_customizadas: false }),
+      })
+      if (res.ok) {
+        // Recarrega pra pegar as permissões do template agora
+        const r = await fetch(`/api/usuarios/${userId}/permissoes`)
+        if (r.ok) {
+          const data = await r.json()
+          setPermissoesMap(prev => ({
+            ...prev,
+            [userId]: new Set((data.permissoes ?? []).map((p: Permissao) => `${p.modulo}:${p.acao}`))
+          }))
+          setCustomizadasMap(prev => ({ ...prev, [userId]: false }))
+          setTemplateNomeMap(prev => ({ ...prev, [userId]: data.template_nome ?? null }))
+        }
+      }
+      setSalvandoPerm(false)
+    } else {
+      // Marcando — apenas atualiza o estado local, o salvamento acontece quando admin
+      // clicar "Salvar permissões". Até lá o admin pode editar a matriz.
+      setCustomizadasMap(prev => ({ ...prev, [userId]: true }))
     }
   }
 
   function togglePerm(userId: string, modulo: string, acao: string) {
+    // Só permite editar se a flag de customização está marcada.
+    // Caso contrário, o usuário está herdando do template (read-only).
+    if (!customizadasMap[userId]) return
     const key = `${modulo}:${acao}`
     setPermissoesMap(prev => {
       const s = new Set(prev[userId] || [])
       s.has(key) ? s.delete(key) : s.add(key)
       return { ...prev, [userId]: s }
     })
-  }
-
-  function aplicarTemplate(userId: string, tpl: keyof typeof TEMPLATES) {
-    setPermissoesMap(prev => ({
-      ...prev,
-      [userId]: new Set(TEMPLATES[tpl].map(p => `${p.modulo}:${p.acao}`)),
-    }))
   }
 
   async function deletarUsuario(u: Usuario) {
@@ -182,10 +229,14 @@ export default function UsuariosPage() {
       const [modulo, acao] = k.split(':')
       return { modulo, acao }
     })
+    // Envia a flag junto: true = salva como ilha, false = volta a herdar
     await fetch(`/api/usuarios/${userId}/permissoes`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ permissoes }),
+      body: JSON.stringify({
+        permissoes,
+        permissoes_customizadas: customizadasMap[userId] === true,
+      }),
     })
     setSalvandoPerm(false)
     setPermissaoAberta(null)
@@ -461,24 +512,41 @@ export default function UsuariosPage() {
                     </div>
 
                     {/* Painel de permissões */}
-                    {permissaoAberta === u.id && (
+                    {permissaoAberta === u.id && (() => {
+                      const customizadas = customizadasMap[u.id] === true
+                      const templateNome = templateNomeMap[u.id]
+                      return (
                       <div className="bg-[var(--background)] border-b border-[var(--border)] px-6 py-5">
-                        <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center justify-between mb-3">
                           <p className="text-xs font-semibold text-[var(--text-2)] uppercase tracking-wide">Permissões — {u.nome}</p>
-                          <div className="flex flex-wrap gap-2">
-                            <span className="text-xs text-[var(--text-3)]">Perfis:</span>
-                            {templates.map(tpl => (
-                              <button key={tpl.id}
-                                onClick={() => setPermissoesMap(prev => ({
-                                  ...prev,
-                                  [u.id]: new Set(tpl.permissoes.map((p: any) => `${p.modulo}:${p.acao}`)),
-                                }))}
-                                className="text-[11px] px-2 py-1 rounded border border-[var(--border)] text-[var(--text-3)] hover:text-[var(--text-2)] hover:border-[#475569] transition-colors">
-                                {tpl.nome}
-                              </button>
-                            ))}
-                          </div>
                         </div>
+
+                        {/* Caixinha "Permissões específicas" */}
+                        <label
+                          className="flex items-start gap-3 p-3 rounded-xl mb-4 cursor-pointer transition-colors"
+                          style={{
+                            background: customizadas ? 'rgba(245,158,11,0.08)' : 'var(--surface-3)',
+                            border: `1px solid ${customizadas ? 'rgba(245,158,11,0.35)' : 'var(--border)'}`,
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={customizadas}
+                            onChange={() => toggleCustomizadas(u.id, u.nome, templateNome ?? null)}
+                            className="mt-0.5 w-4 h-4 accent-amber-500 cursor-pointer flex-shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold" style={{ color: customizadas ? '#B45309' : 'var(--text-2)' }}>
+                              Permissões específicas para este usuário
+                            </p>
+                            <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-3)' }}>
+                              {customizadas
+                                ? <>Este usuário <strong>não</strong> é afetado por mudanças no perfil {templateNome ? <>"<strong>{templateNome}</strong>"</> : 'herdado'}. As permissões abaixo são exclusivas dele.</>
+                                : <>Herdando do perfil {templateNome ? <>"<strong>{templateNome}</strong>"</> : '—'}. Mudanças feitas em <strong>/perfis</strong> afetam este usuário automaticamente. Marque esta caixinha para trancar as permissões dele.</>
+                              }
+                            </p>
+                          </div>
+                        </label>
 
                         {/* Matriz */}
                         <div className="overflow-x-auto">
@@ -508,7 +576,9 @@ export default function UsuariosPage() {
                                               type="checkbox"
                                               checked={marcado}
                                               onChange={() => togglePerm(u.id, modulo, acao)}
-                                              className="w-4 h-4 accent-blue-500 cursor-pointer"
+                                              disabled={!customizadas}
+                                              title={!customizadas ? 'Marque "Permissões específicas" acima para editar' : undefined}
+                                              className="w-4 h-4 accent-blue-500 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                                             />
                                           ) : (
                                             <span className="text-[#1E293B]">—</span>
@@ -524,13 +594,18 @@ export default function UsuariosPage() {
                         </div>
 
                         <div className="flex justify-end gap-3 mt-4">
-                          <Button variant="outline" size="sm" onClick={() => setPermissaoAberta(null)}>Cancelar</Button>
-                          <Button size="sm" disabled={salvandoPerm} onClick={() => salvarPermissoes(u.id)}>
-                            {salvandoPerm ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Salvar permissões'}
+                          <Button variant="outline" size="sm" onClick={() => setPermissaoAberta(null)}>
+                            {customizadas ? 'Cancelar' : 'Fechar'}
                           </Button>
+                          {customizadas && (
+                            <Button size="sm" disabled={salvandoPerm} onClick={() => salvarPermissoes(u.id)}>
+                              {salvandoPerm ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Salvar permissões específicas'}
+                            </Button>
+                          )}
                         </div>
                       </div>
-                    )}
+                      )
+                    })()}
 
                     {/* Painel de vínculo com contratos */}
                     {contratoAberto === u.id && (
