@@ -50,9 +50,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         nf_numero, nf_data, nf_pdf_url,
         status_documento,
         solicitante_id, aprovador_id,
-        contrato:contrato_id(id, codigo, nome),
-        solicitante:solicitante_id(id, nome, email),
-        aprovador:aprovador_id(id, nome, email)
+        contrato:contratos(id, numero, descricao),
+        solicitante:perfis!solicitante_id(id, nome, email),
+        aprovador:perfis!aprovador_id(id, nome, email)
       `)
       .eq('id', id)
       .single()
