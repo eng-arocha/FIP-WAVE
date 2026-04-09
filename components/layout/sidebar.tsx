@@ -263,7 +263,15 @@ export function Sidebar({
       <div className={cn('pt-3 pb-4 space-y-0.5', showText ? 'px-3' : 'px-2')} style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }}>
         {nomeAtual && (
           showText ? (
-            <div className="flex items-center gap-2.5 px-3 py-2 mb-1 rounded-xl" style={{ background: '#F5F5F7' }}>
+            <Link
+              href="/minha-conta"
+              onClick={() => setMobileOpen(false)}
+              title="Minha conta"
+              className="flex items-center gap-2.5 px-3 py-2 mb-1 rounded-xl transition-colors"
+              style={{ background: '#F5F5F7' }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#EAEAEF' }}
+              onMouseLeave={e => { e.currentTarget.style.background = '#F5F5F7' }}
+            >
               <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-[11px]" style={{ background: 'linear-gradient(135deg, #0071E3, #42A5F5)', color: 'white' }}>
                 {nomeAtual.charAt(0).toUpperCase()}
               </div>
@@ -271,13 +279,18 @@ export function Sidebar({
                 <p className="text-xs font-medium truncate" style={{ color: '#1D1D1F' }}>{nomeAtual}</p>
                 <p className="text-[10px]" style={{ color: '#86868B' }}>{PERFIL_LABELS[perfilAtual]}</p>
               </div>
-            </div>
+            </Link>
           ) : (
-            <div className="flex justify-center mb-1">
-              <div className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-[11px] text-white" title={nomeAtual} style={{ background: 'linear-gradient(135deg, #0071E3, #42A5F5)' }}>
+            <Link
+              href="/minha-conta"
+              onClick={() => setMobileOpen(false)}
+              title={`${nomeAtual} — Minha conta`}
+              className="flex justify-center mb-1"
+            >
+              <div className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-[11px] text-white cursor-pointer" style={{ background: 'linear-gradient(135deg, #0071E3, #42A5F5)' }}>
                 {nomeAtual.charAt(0).toUpperCase()}
               </div>
-            </div>
+            </Link>
           )
         )}
 
