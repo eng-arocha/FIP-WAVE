@@ -1,23 +1,28 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Topbar } from '@/components/layout/topbar'
 import { Button } from '@/components/ui/button'
 import { PdfPreviewModal } from '@/components/pdf-preview-modal'
+import { ColumnFilter, passaFiltro } from '@/components/ui/column-filter'
+import { usePermissoes } from '@/lib/context/permissoes-context'
 import { formatCurrency } from '@/lib/utils'
 import {
   FileText, Search, Filter, Download, Clock, CheckCircle2, Banknote,
-  X, Upload, RefreshCw, FolderOpen, Receipt, ChevronDown,
-  Paperclip, FileCheck,
+  X, Upload, RefreshCw, FolderOpen, Receipt,
+  Paperclip, FileCheck, Trash2, Loader2,
 } from 'lucide-react'
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
 interface Contrato { id: string; codigo: string; nome: string }
+interface PerfilMini { id: string; nome: string | null; email: string | null }
 interface Pedido {
   id: string
   numero: number
   status: string
   data_solicitacao: string
+  data_aprovacao: string | null
   valor_total: number
   fornecedor_razao_social: string
   fornecedor_cnpj: string
@@ -29,6 +34,16 @@ interface Pedido {
   nf_pdf_url: string | null
   status_documento: string
   contrato: Contrato | null
+  solicitante: PerfilMini | null
+  aprovador:   PerfilMini | null
+}
+
+// Preferimos o nome do perfil; se faltar, cai para o prefixo do e-mail
+function nomeExibicao(p: PerfilMini | null | undefined): string {
+  if (!p) return '—'
+  if (p.nome && p.nome.trim()) return p.nome.trim()
+  if (p.email) return p.email.split('@')[0]
+  return '—'
 }
 
 // ── Status config ──────────────────────────────────────────────────────────
@@ -218,53 +233,99 @@ function AnexarNfModal({
   )
 }
 
+// ── Configuração por view (query param ?view=) ───────────────────────────
+const VIEW_CONFIG: Record<string, { title: string; subtitle: string; icon: any; gradient: string }> = {
+  'com-nf': {
+    title: 'NFs Lançadas — Faturamento Direto',
+    subtitle: 'Pedidos que já possuem nota fiscal anexada',
+    icon: Receipt,
+    gradient: 'linear-gradient(135deg, #3B82F6, #6366F1)',
+  },
+  'aprovadas': {
+    title: 'Solicitações Aprovadas — Faturamento Direto',
+    subtitle: 'Todos os pedidos aprovados, com ou sem NF',
+    icon: CheckCircle2,
+    gradient: 'linear-gradient(135deg, #F59E0B, #EAB308)',
+  },
+  '': {
+    title: 'Pedidos Aprovados — Faturamento Direto',
+    subtitle: 'Gerencie PDFs de pedidos, vincule notas fiscais e acompanhe pagamentos',
+    icon: FolderOpen,
+    gradient: 'linear-gradient(135deg, #EF4444, #F97316)',
+  },
+}
+
 // ── Página Principal ──────────────────────────────────────────────────────
 export default function PedidosFatDiretoPage() {
+  const searchParams = useSearchParams()
+  const view = (searchParams?.get('view') ?? '') as 'com-nf' | 'aprovadas' | ''
+  const viewCfg = VIEW_CONFIG[view] ?? VIEW_CONFIG['']
+
+  const { perfilAtual } = usePermissoes()
+  const isAdmin = perfilAtual === 'admin'
+
   const [pedidos, setPedidos] = useState<Pedido[]>([])
-  const [contratos, setContratos] = useState<Contrato[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Filtros
+  // Filtros simples (busca NF e intervalo de datas)
   const [dataInicio, setDataInicio] = useState('')
   const [dataFim, setDataFim] = useState('')
   const [nfBusca, setNfBusca] = useState('')
-  const [contratoFiltro, setContratoFiltro] = useState('')
-  const [statusFiltro, setStatusFiltro] = useState('')
+
+  // Filtros tipo Excel — um Set<string> por coluna (vazio = tudo selecionado)
+  const [filtroPedido,      setFiltroPedido]      = useState<Set<string>>(new Set())
+  const [filtroFornecedor,  setFiltroFornecedor]  = useState<Set<string>>(new Set())
+  const [filtroSolicitante, setFiltroSolicitante] = useState<Set<string>>(new Set())
+  const [filtroAprovador,   setFiltroAprovador]   = useState<Set<string>>(new Set())
+  const [filtroStatus,      setFiltroStatus]      = useState<Set<string>>(new Set())
 
   // Modais
   const [pdfModal, setPdfModal] = useState<{ url: string; nome: string } | null>(null)
   const [anexarNfPedido, setAnexarNfPedido] = useState<Pedido | null>(null)
+  const [excluindoId, setExcluindoId] = useState<string | null>(null)
 
   async function carregar() {
     setLoading(true)
     const params = new URLSearchParams()
+    if (view) params.set('view', view)
     if (dataInicio) params.set('data_inicio', dataInicio)
     if (dataFim) params.set('data_fim', dataFim)
     if (nfBusca) params.set('nf_numero', nfBusca)
-    if (contratoFiltro) params.set('contrato_id', contratoFiltro)
-    if (statusFiltro) params.set('status_documento', statusFiltro)
 
     const res = await fetch(`/api/fat-direto/documentos?${params}`)
     if (res.ok) setPedidos(await res.json())
     setLoading(false)
   }
 
-  // Carregar contratos para o filtro
-  async function carregarContratos() {
-    const res = await fetch('/api/contratos')
-    if (res.ok) {
-      const data = await res.json()
-      setContratos(Array.isArray(data) ? data : data.contratos ?? [])
-    }
-  }
-
   useEffect(() => {
-    carregarContratos()
     carregar()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view])
 
   function limparFiltros() {
-    setDataInicio(''); setDataFim(''); setNfBusca(''); setContratoFiltro(''); setStatusFiltro('')
+    setDataInicio(''); setDataFim(''); setNfBusca('')
+    setFiltroPedido(new Set())
+    setFiltroFornecedor(new Set())
+    setFiltroSolicitante(new Set())
+    setFiltroAprovador(new Set())
+    setFiltroStatus(new Set())
+  }
+
+  async function excluirPedido(pedido: Pedido) {
+    const fip = pedido.numero_pedido_fip ? `FIP-${String(pedido.numero_pedido_fip).padStart(4,'0')}` : `#${pedido.numero}`
+    if (!confirm(`Excluir o pedido ${fip} de ${pedido.fornecedor_razao_social}?\n\nEsta é uma exclusão lógica (soft-delete) — o registro continua no banco para auditoria, mas some das listagens.`)) return
+    setExcluindoId(pedido.id)
+    try {
+      const res = await fetch(`/api/fat-direto/documentos/${pedido.id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setPedidos(prev => prev.filter(p => p.id !== pedido.id))
+      } else {
+        const d = await res.json().catch(() => ({}))
+        alert(d.error || 'Não foi possível excluir o pedido.')
+      }
+    } finally {
+      setExcluindoId(null)
+    }
   }
 
   async function marcarPago(pedido: Pedido) {
@@ -282,15 +343,17 @@ export default function PedidosFatDiretoPage() {
     setPedidos(prev => prev.map(p => p.id === updated.id ? { ...p, ...updated } : p))
   }
 
-  // Exportar CSV
+  // Exportar CSV (respeita os filtros de coluna aplicados na UI)
   function exportCsv() {
-    const cols = ['Data', 'Nº FIP', 'Contrato', 'Fornecedor', 'CNPJ', 'Valor Total', 'Nº NF', 'Data NF', 'Status']
-    const rows = pedidos.map(p => [
-      formatDateBR(p.data_solicitacao),
+    const cols = ['Pedido', 'Fornecedor', 'CNPJ', 'Solicitante', 'Data Solicit.', 'Aprovador', 'Data Aprov.', 'Valor Total', 'Nº NF', 'Data NF', 'Status']
+    const rows = pedidosFiltrados.map(p => [
       p.numero_pedido_fip ? `FIP-${String(p.numero_pedido_fip).padStart(4,'0')}` : p.numero,
-      p.contrato?.codigo ?? '',
       p.fornecedor_razao_social,
       formatCnpj(p.fornecedor_cnpj),
+      nomeExibicao(p.solicitante),
+      formatDateBR(p.data_solicitacao),
+      nomeExibicao(p.aprovador),
+      p.data_aprovacao ? formatDateBR(p.data_aprovacao) : '',
       p.valor_total,
       p.nf_numero ?? '',
       p.nf_data ? formatDateBR(p.nf_data) : '',
@@ -300,32 +363,63 @@ export default function PedidosFatDiretoPage() {
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
-    a.download = `pedidos-faturamento-direto-${new Date().toISOString().slice(0,10)}.csv`
+    a.download = `pedidos-faturamento-direto-${view || 'todos'}-${new Date().toISOString().slice(0,10)}.csv`
     a.click()
   }
 
-  const totalFiltrado = pedidos.reduce((s, p) => s + (p.valor_total || 0), 0)
-  const temFiltroAtivo = !!(dataInicio || dataFim || nfBusca || contratoFiltro || statusFiltro)
+  // Valores únicos por coluna (para popular os filtros estilo Excel)
+  const valoresUnicos = useMemo(() => {
+    return {
+      pedido:      pedidos.map(p => p.numero_pedido_fip ? `FIP-${String(p.numero_pedido_fip).padStart(4,'0')}` : `#${p.numero}`),
+      fornecedor:  pedidos.map(p => p.fornecedor_razao_social || '—'),
+      solicitante: pedidos.map(p => nomeExibicao(p.solicitante)),
+      aprovador:   pedidos.map(p => nomeExibicao(p.aprovador)),
+      status:      pedidos.map(p => STATUS_DOC[p.status_documento]?.label ?? p.status_documento),
+    }
+  }, [pedidos])
+
+  // Lista final aplicando os filtros estilo Excel no client
+  const pedidosFiltrados = useMemo(() => {
+    return pedidos.filter(p => {
+      const pedidoStr      = p.numero_pedido_fip ? `FIP-${String(p.numero_pedido_fip).padStart(4,'0')}` : `#${p.numero}`
+      const statusStr      = STATUS_DOC[p.status_documento]?.label ?? p.status_documento
+      if (!passaFiltro(filtroPedido,      pedidoStr))                         return false
+      if (!passaFiltro(filtroFornecedor,  p.fornecedor_razao_social || '—'))  return false
+      if (!passaFiltro(filtroSolicitante, nomeExibicao(p.solicitante)))       return false
+      if (!passaFiltro(filtroAprovador,   nomeExibicao(p.aprovador)))         return false
+      if (!passaFiltro(filtroStatus,      statusStr))                         return false
+      return true
+    })
+  }, [pedidos, filtroPedido, filtroFornecedor, filtroSolicitante, filtroAprovador, filtroStatus])
+
+  const totalFiltrado = pedidosFiltrados.reduce((s, p) => s + (p.valor_total || 0), 0)
+  const temFiltroAtivo = !!(
+    dataInicio || dataFim || nfBusca ||
+    filtroPedido.size || filtroFornecedor.size || filtroSolicitante.size ||
+    filtroAprovador.size || filtroStatus.size
+  )
 
   const inputCls = 'rounded-xl px-3 py-2 text-sm outline-none transition-all'
   const inputStyle = { background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-1)' }
 
+  const ViewIcon = viewCfg.icon
+
   return (
     <div className="flex flex-col min-h-screen" style={{ background: 'var(--background)' }}>
-      <Topbar title="Pedidos Aprovados — Faturamento Direto" />
+      <Topbar title={viewCfg.title} />
 
       <div className="flex-1 p-6 space-y-5 max-w-7xl mx-auto w-full">
         {/* Header */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-xl font-bold flex items-center gap-2" style={{ color: 'var(--text-1)' }}>
-              <span className="apple-icon" style={{ background: 'linear-gradient(135deg, #EF4444, #F97316)' }}>
-                <FolderOpen className="w-3.5 h-3.5 text-white" strokeWidth={1.5} />
+              <span className="apple-icon" style={{ background: viewCfg.gradient }}>
+                <ViewIcon className="w-3.5 h-3.5 text-white" strokeWidth={1.5} />
               </span>
-              Pedidos Aprovados — Faturamento Direto
+              {viewCfg.title}
             </h1>
             <p className="text-sm mt-0.5" style={{ color: 'var(--text-3)' }}>
-              Gerencie PDFs de pedidos, vincule notas fiscais e acompanhe pagamentos
+              {viewCfg.subtitle}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -338,19 +432,22 @@ export default function PedidosFatDiretoPage() {
           </div>
         </div>
 
-        {/* Filtros */}
+        {/* Filtros globais (data + busca NF). Os filtros por coluna estão no cabeçalho da tabela. */}
         <div className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
           <div className="flex items-center gap-2 mb-1">
             <Filter className="w-3.5 h-3.5" strokeWidth={1.5} style={{ color: 'var(--text-3)' }} />
-            <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Filtros</span>
+            <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Filtros rápidos</span>
+            <span className="text-[11px]" style={{ color: 'var(--text-3)' }}>
+              · Para filtrar pedido / fornecedor / solicitante / aprovador / status use o ícone 🔽 no cabeçalho de cada coluna
+            </span>
             {temFiltroAtivo && (
               <button onClick={limparFiltros} className="ml-auto flex items-center gap-1 text-xs" style={{ color: 'var(--accent)' }}>
-                <X className="w-3 h-3" strokeWidth={2} /> Limpar
+                <X className="w-3 h-3" strokeWidth={2} /> Limpar tudo
               </button>
             )}
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {/* Período */}
             <div className="flex flex-col gap-1">
               <label className="text-[11px] font-medium" style={{ color: 'var(--text-3)' }}>Data início</label>
@@ -373,207 +470,230 @@ export default function PedidosFatDiretoPage() {
               </div>
             </div>
 
-            {/* Contrato */}
-            <div className="flex flex-col gap-1">
-              <label className="text-[11px] font-medium" style={{ color: 'var(--text-3)' }}>Contrato</label>
-              <select value={contratoFiltro} onChange={e => setContratoFiltro(e.target.value)}
-                className={`${inputCls} w-full`} style={inputStyle}>
-                <option value="">Todos</option>
-                {contratos.map(c => <option key={c.id} value={c.id}>{c.codigo}</option>)}
-              </select>
+            <div className="flex items-end">
+              <Button
+                onClick={carregar}
+                size="sm"
+                className="gap-1.5 text-white w-full"
+                style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-glow))' }}
+              >
+                <Search className="w-3.5 h-3.5" strokeWidth={1.5} /> Buscar
+              </Button>
             </div>
-
-            {/* Status */}
-            <div className="flex flex-col gap-1">
-              <label className="text-[11px] font-medium" style={{ color: 'var(--text-3)' }}>Status</label>
-              <select value={statusFiltro} onChange={e => setStatusFiltro(e.target.value)}
-                className={`${inputCls} w-full`} style={inputStyle}>
-                <option value="">Todos</option>
-                {Object.entries(STATUS_DOC).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-              </select>
-            </div>
-          </div>
-
-          <div className="flex justify-end">
-            <Button
-              onClick={carregar}
-              size="sm"
-              className="gap-1.5 text-white"
-              style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-glow))' }}
-            >
-              <Search className="w-3.5 h-3.5" strokeWidth={1.5} /> Buscar
-            </Button>
           </div>
         </div>
 
         {/* Tabela */}
         <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-          {/* Header da tabela */}
-          <div
-            className="grid text-[11px] font-semibold uppercase tracking-wide px-4 py-2.5"
-            style={{
-              gridTemplateColumns: '90px 80px 100px 1fr 90px 80px 80px 90px 80px 80px',
-              gap: '8px',
-              background: 'var(--surface-3)',
-              borderBottom: '1px solid var(--border)',
-              color: 'var(--text-3)',
-            }}
-          >
-            <span>Data</span>
-            <span>Nº FIP</span>
-            <span>Contrato</span>
-            <span>Fornecedor</span>
-            <span className="text-right">Valor</span>
-            <span>Nº NF</span>
-            <span>Data NF</span>
-            <span>Status</span>
-            <span className="text-center">Pedido</span>
-            <span className="text-center">NF</span>
-          </div>
+          {/* Grid template: Pedido | Fornecedor | Solicitante | Data Sol. | Aprovador | Data Apr. | Valor | Status | Pedido PDF | NF PDF | (Admin) X */}
+          {(() => {
+            const gridCols = isAdmin
+              ? '110px 1.6fr 1fr 90px 1fr 90px 110px 130px 72px 72px 40px'
+              : '110px 1.6fr 1fr 90px 1fr 90px 110px 130px 72px 72px'
+            return (
+              <>
+                {/* Header da tabela com filtros estilo Excel */}
+                <div
+                  className="grid text-[11px] font-semibold uppercase tracking-wide px-4 py-2.5"
+                  style={{
+                    gridTemplateColumns: gridCols,
+                    gap: '8px',
+                    background: 'var(--surface-3)',
+                    borderBottom: '1px solid var(--border)',
+                    color: 'var(--text-3)',
+                  }}
+                >
+                  <span className="flex items-center gap-1">
+                    Pedido
+                    <ColumnFilter label="Pedido" values={valoresUnicos.pedido} selected={filtroPedido} onChange={setFiltroPedido} />
+                  </span>
+                  <span className="flex items-center gap-1">
+                    Fornecedor
+                    <ColumnFilter label="Fornecedor" values={valoresUnicos.fornecedor} selected={filtroFornecedor} onChange={setFiltroFornecedor} />
+                  </span>
+                  <span className="flex items-center gap-1">
+                    Solicitante
+                    <ColumnFilter label="Solicitante" values={valoresUnicos.solicitante} selected={filtroSolicitante} onChange={setFiltroSolicitante} />
+                  </span>
+                  <span>Data solicit.</span>
+                  <span className="flex items-center gap-1">
+                    Aprovador
+                    <ColumnFilter label="Aprovador" values={valoresUnicos.aprovador} selected={filtroAprovador} onChange={setFiltroAprovador} />
+                  </span>
+                  <span>Data aprov.</span>
+                  <span className="text-right">Valor</span>
+                  <span className="flex items-center gap-1">
+                    Status
+                    <ColumnFilter label="Status" values={valoresUnicos.status} selected={filtroStatus} onChange={setFiltroStatus} />
+                  </span>
+                  <span className="text-center">Pedido PDF</span>
+                  <span className="text-center">NF PDF</span>
+                  {isAdmin && <span className="text-center" title="Admin">·</span>}
+                </div>
 
-          {/* Linhas */}
-          {loading ? (
-            <div className="flex items-center justify-center py-16 gap-3" style={{ color: 'var(--text-3)' }}>
-              <RefreshCw className="w-5 h-5 animate-spin" strokeWidth={1.5} />
-              <span className="text-sm">Carregando...</span>
-            </div>
-          ) : pedidos.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ color: 'var(--text-3)' }}>
-              <FolderOpen className="w-10 h-10 opacity-30" strokeWidth={1} />
-              <div className="text-center">
-                <p className="text-sm font-medium">Nenhum pedido encontrado</p>
-                <p className="text-xs mt-0.5">
-                  {temFiltroAtivo ? 'Tente ajustar os filtros' : 'Pedidos aprovados com PDF aparecerão aqui'}
-                </p>
-              </div>
-            </div>
-          ) : (
-            <>
-              {pedidos.map((pedido, idx) => {
-                const fipNum = pedido.numero_pedido_fip
-                  ? `FIP-${String(pedido.numero_pedido_fip).padStart(4, '0')}`
-                  : `#${pedido.numero}`
-                return (
-                  <div
-                    key={pedido.id}
-                    className="grid items-center px-4 py-3 transition-colors"
-                    style={{
-                      gridTemplateColumns: '90px 80px 100px 1fr 90px 80px 80px 90px 80px 80px',
-                      gap: '8px',
-                      background: idx % 2 === 0 ? 'var(--surface-1)' : 'var(--surface-2)',
-                      borderBottom: '1px solid var(--border)',
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-3)' }}
-                    onMouseLeave={e => { e.currentTarget.style.background = idx % 2 === 0 ? 'var(--surface-1)' : 'var(--surface-2)' }}
-                  >
-                    {/* Data */}
-                    <span className="text-xs" style={{ color: 'var(--text-2)' }}>
-                      {formatDateBR(pedido.data_solicitacao)}
-                    </span>
-
-                    {/* Nº FIP */}
-                    <span className="text-xs font-bold font-mono px-1.5 py-0.5 rounded-md text-center" style={{ background: 'var(--surface-3)', color: 'var(--accent)' }}>
-                      {fipNum}
-                    </span>
-
-                    {/* Contrato */}
-                    <span className="text-xs font-medium truncate" style={{ color: 'var(--text-2)' }}>
-                      {pedido.contrato?.codigo ?? '—'}
-                    </span>
-
-                    {/* Fornecedor */}
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium truncate" style={{ color: 'var(--text-1)' }}>
-                        {pedido.fornecedor_razao_social}
+                {/* Linhas */}
+                {loading ? (
+                  <div className="flex items-center justify-center py-16 gap-3" style={{ color: 'var(--text-3)' }}>
+                    <RefreshCw className="w-5 h-5 animate-spin" strokeWidth={1.5} />
+                    <span className="text-sm">Carregando...</span>
+                  </div>
+                ) : pedidosFiltrados.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ color: 'var(--text-3)' }}>
+                    <FolderOpen className="w-10 h-10 opacity-30" strokeWidth={1} />
+                    <div className="text-center">
+                      <p className="text-sm font-medium">Nenhum pedido encontrado</p>
+                      <p className="text-xs mt-0.5">
+                        {temFiltroAtivo ? 'Tente ajustar os filtros' : 'Pedidos aprovados aparecerão aqui'}
                       </p>
-                      <p className="text-[10px] truncate" style={{ color: 'var(--text-3)' }}>
-                        {formatCnpj(pedido.fornecedor_cnpj)}
-                      </p>
-                    </div>
-
-                    {/* Valor */}
-                    <span className="text-xs font-semibold text-right" style={{ color: 'var(--text-1)' }}>
-                      {formatCurrency(pedido.valor_total)}
-                    </span>
-
-                    {/* Nº NF */}
-                    <span className="text-xs" style={{ color: pedido.nf_numero ? 'var(--text-2)' : 'var(--text-3)' }}>
-                      {pedido.nf_numero ?? '—'}
-                    </span>
-
-                    {/* Data NF */}
-                    <span className="text-xs" style={{ color: 'var(--text-3)' }}>
-                      {formatDateBR(pedido.nf_data)}
-                    </span>
-
-                    {/* Status */}
-                    <div className="flex items-center gap-1">
-                      <StatusBadge status={pedido.status_documento} />
-                      {pedido.status_documento === 'nf_recebida' && (
-                        <button
-                          onClick={() => marcarPago(pedido)}
-                          title="Marcar como Pago"
-                          className="w-5 h-5 rounded-full flex items-center justify-center transition-all"
-                          style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981' }}
-                          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.25)' }}
-                          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.12)' }}
-                        >
-                          <Banknote className="w-3 h-3" strokeWidth={2} />
-                        </button>
-                      )}
-                    </div>
-
-                    {/* PDF Pedido */}
-                    <div className="flex justify-center">
-                      <PdfIcon
-                        url={pedido.pedido_pdf_url}
-                        nome={pedido.pedido_pdf_nome}
-                        onClick={() => setPdfModal({ url: pedido.pedido_pdf_url!, nome: pedido.pedido_pdf_nome ?? fipNum })}
-                      />
-                    </div>
-
-                    {/* PDF NF / Anexar NF */}
-                    <div className="flex justify-center">
-                      {pedido.nf_pdf_url ? (
-                        <PdfIcon
-                          url={pedido.nf_pdf_url}
-                          nome={`NF-${pedido.nf_numero ?? 'doc'}.pdf`}
-                          onClick={() => setPdfModal({ url: pedido.nf_pdf_url!, nome: `NF-${pedido.nf_numero ?? 'doc'}.pdf` })}
-                        />
-                      ) : (
-                        <button
-                          onClick={() => setAnexarNfPedido(pedido)}
-                          title="Anexar Nota Fiscal"
-                          className="inline-flex items-center justify-center w-8 h-8 rounded-lg transition-all"
-                          style={{ background: 'rgba(245,158,11,0.10)', color: '#F59E0B' }}
-                          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(245,158,11,0.22)' }}
-                          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(245,158,11,0.10)' }}
-                        >
-                          <Paperclip className="w-4 h-4" strokeWidth={1.5} />
-                        </button>
-                      )}
                     </div>
                   </div>
-                )
-              })}
-            </>
-          )}
+                ) : (
+                  pedidosFiltrados.map((pedido, idx) => {
+                    const fipNum = pedido.numero_pedido_fip
+                      ? `FIP-${String(pedido.numero_pedido_fip).padStart(4, '0')}`
+                      : `#${pedido.numero}`
+                    return (
+                      <div
+                        key={pedido.id}
+                        className="grid items-center px-4 py-3 transition-colors"
+                        style={{
+                          gridTemplateColumns: gridCols,
+                          gap: '8px',
+                          background: idx % 2 === 0 ? 'var(--surface-1)' : 'var(--surface-2)',
+                          borderBottom: '1px solid var(--border)',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-3)' }}
+                        onMouseLeave={e => { e.currentTarget.style.background = idx % 2 === 0 ? 'var(--surface-1)' : 'var(--surface-2)' }}
+                      >
+                        {/* Pedido (Nº FIP) */}
+                        <span className="text-xs font-bold font-mono px-1.5 py-0.5 rounded-md text-center" style={{ background: 'var(--surface-3)', color: 'var(--accent)' }}>
+                          {fipNum}
+                        </span>
 
-          {/* Footer com total */}
-          {pedidos.length > 0 && (
-            <div
-              className="flex items-center justify-between px-4 py-3"
-              style={{ background: 'var(--surface-3)', borderTop: '1px solid var(--border)' }}
-            >
-              <span className="text-xs" style={{ color: 'var(--text-3)' }}>
-                {pedidos.length} pedido{pedidos.length !== 1 ? 's' : ''} encontrado{pedidos.length !== 1 ? 's' : ''}
-              </span>
-              <div className="flex items-center gap-2">
-                <span className="text-xs" style={{ color: 'var(--text-3)' }}>Total filtrado:</span>
-                <span className="text-sm font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(totalFiltrado)}</span>
-              </div>
-            </div>
-          )}
+                        {/* Fornecedor */}
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium truncate" style={{ color: 'var(--text-1)' }}>
+                            {pedido.fornecedor_razao_social}
+                          </p>
+                          <p className="text-[10px] truncate" style={{ color: 'var(--text-3)' }}>
+                            {formatCnpj(pedido.fornecedor_cnpj)}
+                          </p>
+                        </div>
+
+                        {/* Solicitante */}
+                        <span className="text-xs truncate" style={{ color: 'var(--text-2)' }} title={pedido.solicitante?.email ?? undefined}>
+                          {nomeExibicao(pedido.solicitante)}
+                        </span>
+
+                        {/* Data solicitação */}
+                        <span className="text-xs" style={{ color: 'var(--text-3)' }}>
+                          {formatDateBR(pedido.data_solicitacao)}
+                        </span>
+
+                        {/* Aprovador */}
+                        <span className="text-xs truncate" style={{ color: 'var(--text-2)' }} title={pedido.aprovador?.email ?? undefined}>
+                          {nomeExibicao(pedido.aprovador)}
+                        </span>
+
+                        {/* Data aprovação */}
+                        <span className="text-xs" style={{ color: 'var(--text-3)' }}>
+                          {formatDateBR(pedido.data_aprovacao)}
+                        </span>
+
+                        {/* Valor */}
+                        <span className="text-xs font-semibold text-right" style={{ color: 'var(--text-1)' }}>
+                          {formatCurrency(pedido.valor_total)}
+                        </span>
+
+                        {/* Status */}
+                        <div className="flex items-center gap-1">
+                          <StatusBadge status={pedido.status_documento} />
+                          {pedido.status_documento === 'nf_recebida' && (
+                            <button
+                              onClick={() => marcarPago(pedido)}
+                              title="Marcar como Pago"
+                              className="w-5 h-5 rounded-full flex items-center justify-center transition-all"
+                              style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981' }}
+                              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.25)' }}
+                              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.12)' }}
+                            >
+                              <Banknote className="w-3 h-3" strokeWidth={2} />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* PDF Pedido */}
+                        <div className="flex justify-center">
+                          <PdfIcon
+                            url={pedido.pedido_pdf_url}
+                            nome={pedido.pedido_pdf_nome}
+                            onClick={() => setPdfModal({ url: pedido.pedido_pdf_url!, nome: pedido.pedido_pdf_nome ?? fipNum })}
+                          />
+                        </div>
+
+                        {/* PDF NF / Anexar NF */}
+                        <div className="flex justify-center">
+                          {pedido.nf_pdf_url ? (
+                            <PdfIcon
+                              url={pedido.nf_pdf_url}
+                              nome={`NF-${pedido.nf_numero ?? 'doc'}.pdf`}
+                              onClick={() => setPdfModal({ url: pedido.nf_pdf_url!, nome: `NF-${pedido.nf_numero ?? 'doc'}.pdf` })}
+                            />
+                          ) : (
+                            <button
+                              onClick={() => setAnexarNfPedido(pedido)}
+                              title="Anexar Nota Fiscal"
+                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg transition-all"
+                              style={{ background: 'rgba(245,158,11,0.10)', color: '#F59E0B' }}
+                              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(245,158,11,0.22)' }}
+                              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(245,158,11,0.10)' }}
+                            >
+                              <Paperclip className="w-4 h-4" strokeWidth={1.5} />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Coluna admin — X vermelho de exclusão */}
+                        {isAdmin && (
+                          <div className="flex justify-center">
+                            <button
+                              onClick={() => excluirPedido(pedido)}
+                              disabled={excluindoId === pedido.id}
+                              title="Excluir pedido (apenas admin)"
+                              className="inline-flex items-center justify-center w-7 h-7 rounded-lg transition-all"
+                              style={{ background: 'rgba(239,68,68,0.10)', color: '#EF4444' }}
+                              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.22)' }}
+                              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.10)' }}
+                            >
+                              {excluindoId === pedido.id
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : <Trash2 className="w-3.5 h-3.5" strokeWidth={1.8} />}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                )}
+
+                {/* Footer com total */}
+                {pedidosFiltrados.length > 0 && (
+                  <div
+                    className="flex items-center justify-between px-4 py-3"
+                    style={{ background: 'var(--surface-3)', borderTop: '1px solid var(--border)' }}
+                  >
+                    <span className="text-xs" style={{ color: 'var(--text-3)' }}>
+                      {pedidosFiltrados.length} de {pedidos.length} pedido{pedidos.length !== 1 ? 's' : ''}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs" style={{ color: 'var(--text-3)' }}>Total filtrado:</span>
+                      <span className="text-sm font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(totalFiltrado)}</span>
+                    </div>
+                  </div>
+                )}
+              </>
+            )
+          })()}
         </div>
       </div>
 
