@@ -50,7 +50,7 @@ export function SidebarShell({ perfilAtual, nomeAtual, children }: SidebarShellP
   const expanded = isPinned || hovered
 
   return (
-    <div className="flex min-h-screen overflow-x-hidden">
+    <div className="flex h-screen overflow-hidden">
       {/* Spacer: pushes content right when sidebar is pinned */}
       <div
         className={cn(
