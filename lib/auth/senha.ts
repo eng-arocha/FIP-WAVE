@@ -43,3 +43,39 @@ export function validarSenhaForte(senha: string): string | null {
   if (!/[^A-Za-z0-9]/.test(senha)) return 'A senha deve conter pelo menos 1 caractere especial (ex: ! @ # $ %).'
   return null
 }
+
+/**
+ * Gera uma senha forte aleatória de 12 caracteres garantindo:
+ * - 1 letra maiúscula
+ * - 1 letra minúscula
+ * - 1 dígito
+ * - 1 caractere especial
+ * Evita caracteres ambíguos (O, 0, I, l, 1) para facilitar a digitação.
+ */
+export function gerarSenhaForte(tamanho = 12): string {
+  const MAIUSCULAS = 'ABCDEFGHJKLMNPQRSTUVWXYZ'  // sem I, O
+  const MINUSCULAS = 'abcdefghijkmnpqrstuvwxyz'   // sem l, o
+  const DIGITOS    = '23456789'                   // sem 0, 1
+  const ESPECIAIS  = '!@#$%&*?+-'
+
+  const rand = (str: string) => str[Math.floor(Math.random() * str.length)]
+
+  // Garante ao menos 1 de cada categoria
+  const obrigatorios = [
+    rand(MAIUSCULAS),
+    rand(MINUSCULAS),
+    rand(DIGITOS),
+    rand(ESPECIAIS),
+  ]
+
+  const todos = MAIUSCULAS + MINUSCULAS + DIGITOS + ESPECIAIS
+  const restante = Array.from({ length: Math.max(0, tamanho - obrigatorios.length) }, () => rand(todos))
+
+  // Embaralha (Fisher-Yates)
+  const arr = [...obrigatorios, ...restante]
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[arr[i], arr[j]] = [arr[j], arr[i]]
+  }
+  return arr.join('')
+}

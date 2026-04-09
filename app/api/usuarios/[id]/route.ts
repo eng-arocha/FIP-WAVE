@@ -10,6 +10,23 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     const body = await req.json()
     const admin = createAdminClient()
 
+    // Nome único (excluindo o próprio registro)
+    if (body.nome !== undefined) {
+      const nomeNormalizado = String(body.nome).trim()
+      const { data: existentes } = await admin
+        .from('perfis')
+        .select('id')
+        .ilike('nome', nomeNormalizado)
+        .neq('id', id)
+        .limit(1)
+      if (existentes && existentes.length > 0) {
+        return NextResponse.json(
+          { error: `Já existe outro usuário com o nome "${nomeNormalizado}". Use um nome único para manter a rastreabilidade.` },
+          { status: 409 }
+        )
+      }
+    }
+
     const updates: Record<string, unknown> = {}
     if (body.nome !== undefined) updates.nome = body.nome
     if (body.perfil !== undefined) updates.perfil = body.perfil

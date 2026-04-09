@@ -32,6 +32,20 @@ export async function POST(req: Request) {
     const perfilEfetivo = perfil || 'visualizador'
     const admin = createAdminClient()
 
+    // Impede nome duplicado — cada usuário precisa ser rastreável por nome
+    const nomeNormalizado = String(nome).trim()
+    const { data: existentes } = await admin
+      .from('perfis')
+      .select('id')
+      .ilike('nome', nomeNormalizado)
+      .limit(1)
+    if (existentes && existentes.length > 0) {
+      return NextResponse.json(
+        { error: `Já existe um usuário com o nome "${nomeNormalizado}". Use um nome único para manter a rastreabilidade.` },
+        { status: 409 }
+      )
+    }
+
     // Cria o usuário no Supabase Auth
     const { data: authData, error: authError } = await admin.auth.admin.createUser({
       email,
