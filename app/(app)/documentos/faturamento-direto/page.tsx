@@ -11,7 +11,7 @@ import { formatCurrency } from '@/lib/utils'
 import {
   FileText, Search, Filter, Download, Clock, CheckCircle2, Banknote,
   X, Upload, RefreshCw, FolderOpen, Receipt,
-  Paperclip, FileCheck, Trash2, Loader2,
+  Paperclip, FileCheck, Trash2, Loader2, Undo2,
 } from 'lucide-react'
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
@@ -277,18 +277,21 @@ function PedidosFatDiretoContent() {
   const view = (searchParams?.get('view') ?? '') as 'com-nf' | 'aprovadas' | ''
   const viewCfg = VIEW_CONFIG[view] ?? VIEW_CONFIG['']
 
-  const { perfilAtual } = usePermissoes()
+  const { perfilAtual, temPermissao } = usePermissoes()
   const isAdmin = perfilAtual === 'admin'
+  const podeDesaprovar = isAdmin || temPermissao('aprovacoes', 'aprovar')
 
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
 
   // Filtros simples (busca NF e intervalo de datas)
-  // Para a view "aprovadas" (vinda do card do Dashboard), o usuário pediu
-  // default de 01/01/2026 até hoje — garante que tudo aparece já no load.
+  // Para as views vindas do Dashboard (aprovadas e com-nf), o default é
+  // 01/01/2026 → hoje — garante janela clara já no load. A view padrão
+  // (sem query param) começa sem filtro de data.
   const hojeISO = new Date().toISOString().slice(0, 10)
-  const [dataInicio, setDataInicio] = useState(view === 'aprovadas' ? '2026-01-01' : '')
-  const [dataFim, setDataFim]       = useState(view === 'aprovadas' ? hojeISO     : '')
+  const temDefaultData = view === 'aprovadas' || view === 'com-nf'
+  const [dataInicio, setDataInicio] = useState(temDefaultData ? '2026-01-01' : '')
+  const [dataFim, setDataFim]       = useState(temDefaultData ? hojeISO      : '')
   const [nfBusca, setNfBusca] = useState('')
 
   // Filtros tipo Excel — um Set<string> por coluna (vazio = tudo selecionado)
@@ -302,6 +305,7 @@ function PedidosFatDiretoContent() {
   const [pdfModal, setPdfModal] = useState<{ url: string; nome: string } | null>(null)
   const [anexarNfPedido, setAnexarNfPedido] = useState<Pedido | null>(null)
   const [excluindoId, setExcluindoId] = useState<string | null>(null)
+  const [desaprovandoId, setDesaprovandoId] = useState<string | null>(null)
 
   async function carregar() {
     setLoading(true)
@@ -344,6 +348,37 @@ function PedidosFatDiretoContent() {
       }
     } finally {
       setExcluindoId(null)
+    }
+  }
+
+  async function desaprovarPedido(pedido: Pedido) {
+    const fip = pedido.numero_pedido_fip ? `FIP-${String(pedido.numero_pedido_fip).padStart(4,'0')}` : `#${pedido.numero}`
+    const motivo = prompt(
+      `Desaprovar o pedido ${fip} de ${pedido.fornecedor_razao_social}?\n\n` +
+      `Ele voltará ao status "Rascunho" e só o solicitante original (ou admin) poderá editar/excluir.\n\n` +
+      `Informe o MOTIVO da desaprovação:`
+    )
+    if (motivo === null) return            // cancelado
+    if (!motivo.trim()) {
+      alert('O motivo é obrigatório.')
+      return
+    }
+    setDesaprovandoId(pedido.id)
+    try {
+      const res = await fetch(`/api/fat-direto/solicitacoes/${pedido.id}/desaprovar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ motivo: motivo.trim() }),
+      })
+      if (res.ok) {
+        // Remove da listagem atual (volta pra rascunho, some de aprovadas)
+        setPedidos(prev => prev.filter(p => p.id !== pedido.id))
+      } else {
+        const d = await res.json().catch(() => ({}))
+        alert(d.error || 'Não foi possível desaprovar o pedido.')
+      }
+    } finally {
+      setDesaprovandoId(null)
     }
   }
 
@@ -504,10 +539,16 @@ function PedidosFatDiretoContent() {
 
         {/* Tabela */}
         <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-          {/* Grid template: Pedido | Fornecedor | Solicitante | Data Sol. | Aprovador | Data Apr. | Valor | Status | Pedido PDF | NF PDF | (Admin) X */}
+          {/* Grid template: Pedido | Fornecedor | Solicitante | Data Sol. | Aprovador | Data Apr. | Valor | Status | Pedido PDF | NF PDF | (Ações) */}
           {(() => {
-            const gridCols = isAdmin
-              ? '110px 1.6fr 1fr 90px 1fr 90px 110px 130px 72px 72px 40px'
+            // A coluna de ações aparece se:
+            //  - Admin (pode excluir) OU
+            //  - Usuário com permissão de aprovação (pode desaprovar)
+            const mostrarAcoes = isAdmin || podeDesaprovar
+            // Largura da coluna ações: 40px se só 1 botão, 80px se 2
+            const larguraAcoes = (isAdmin && podeDesaprovar) ? '80px' : '40px'
+            const gridCols = mostrarAcoes
+              ? `110px 1.6fr 1fr 90px 1fr 90px 110px 130px 72px 72px ${larguraAcoes}`
               : '110px 1.6fr 1fr 90px 1fr 90px 110px 130px 72px 72px'
             return (
               <>
@@ -547,7 +588,7 @@ function PedidosFatDiretoContent() {
                   </span>
                   <span className="text-center">Pedido PDF</span>
                   <span className="text-center">NF PDF</span>
-                  {isAdmin && <span className="text-center" title="Admin">·</span>}
+                  {mostrarAcoes && <span className="text-center" title="Ações">·</span>}
                 </div>
 
                 {/* Linhas */}
@@ -559,11 +600,31 @@ function PedidosFatDiretoContent() {
                 ) : pedidosFiltrados.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ color: 'var(--text-3)' }}>
                     <FolderOpen className="w-10 h-10 opacity-30" strokeWidth={1} />
-                    <div className="text-center">
+                    <div className="text-center max-w-md">
                       <p className="text-sm font-medium">Nenhum pedido encontrado</p>
-                      <p className="text-xs mt-0.5">
-                        {temFiltroAtivo ? 'Tente ajustar os filtros' : 'Pedidos aprovados aparecerão aqui'}
-                      </p>
+                      {(dataInicio || dataFim) ? (
+                        <>
+                          <p className="text-xs mt-0.5">
+                            Nenhuma solicitação entre <strong>{dataInicio ? formatDateBR(dataInicio) : '—'}</strong> e <strong>{dataFim ? formatDateBR(dataFim) : 'hoje'}</strong>.
+                          </p>
+                          <button
+                            onClick={() => { setDataInicio(''); setDataFim(''); setTimeout(carregar, 0) }}
+                            className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all"
+                            style={{
+                              background: 'linear-gradient(135deg, var(--accent), var(--accent-glow))',
+                              color: '#FFFFFF',
+                              boxShadow: '0 2px 8px rgba(0,113,227,0.25)',
+                            }}
+                          >
+                            <X className="w-3.5 h-3.5" strokeWidth={2.5} />
+                            Limpar filtro de data e ver tudo
+                          </button>
+                        </>
+                      ) : temFiltroAtivo ? (
+                        <p className="text-xs mt-0.5">Tente ajustar os filtros das colunas</p>
+                      ) : (
+                        <p className="text-xs mt-0.5">Pedidos aprovados aparecerão aqui</p>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -672,22 +733,39 @@ function PedidosFatDiretoContent() {
                           )}
                         </div>
 
-                        {/* Coluna admin — X vermelho de exclusão */}
-                        {isAdmin && (
-                          <div className="flex justify-center">
-                            <button
-                              onClick={() => excluirPedido(pedido)}
-                              disabled={excluindoId === pedido.id}
-                              title="Excluir pedido (apenas admin)"
-                              className="inline-flex items-center justify-center w-7 h-7 rounded-lg transition-all"
-                              style={{ background: 'rgba(239,68,68,0.10)', color: '#EF4444' }}
-                              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.22)' }}
-                              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.10)' }}
-                            >
-                              {excluindoId === pedido.id
-                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                : <Trash2 className="w-3.5 h-3.5" strokeWidth={1.8} />}
-                            </button>
+                        {/* Coluna de ações: desaprovar (permissão aprovar) + excluir (admin) */}
+                        {mostrarAcoes && (
+                          <div className="flex justify-center gap-1">
+                            {podeDesaprovar && (
+                              <button
+                                onClick={() => desaprovarPedido(pedido)}
+                                disabled={desaprovandoId === pedido.id}
+                                title="Desaprovar pedido (volta para rascunho)"
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg transition-all"
+                                style={{ background: 'rgba(245,158,11,0.10)', color: '#F59E0B' }}
+                                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(245,158,11,0.22)' }}
+                                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(245,158,11,0.10)' }}
+                              >
+                                {desaprovandoId === pedido.id
+                                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  : <Undo2 className="w-3.5 h-3.5" strokeWidth={1.8} />}
+                              </button>
+                            )}
+                            {isAdmin && (
+                              <button
+                                onClick={() => excluirPedido(pedido)}
+                                disabled={excluindoId === pedido.id}
+                                title="Excluir pedido (apenas admin)"
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg transition-all"
+                                style={{ background: 'rgba(239,68,68,0.10)', color: '#EF4444' }}
+                                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.22)' }}
+                                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.10)' }}
+                              >
+                                {excluindoId === pedido.id
+                                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  : <Trash2 className="w-3.5 h-3.5" strokeWidth={1.8} />}
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>

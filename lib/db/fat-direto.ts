@@ -5,11 +5,11 @@ export async function listarSolicitacoes(contratoId: string) {
   const { data, error } = await admin
     .from('solicitacoes_fat_direto')
     .select(`
-      id, numero, status, data_solicitacao, data_aprovacao,
+      id, numero, numero_pedido_fip, status, data_solicitacao, data_aprovacao,
       observacoes, motivo_rejeicao, valor_total, created_at,
       fornecedor_razao_social, fornecedor_cnpj, fornecedor_contato,
-      solicitante:solicitante_id(nome, email),
-      aprovador:aprovador_id(nome, email),
+      solicitante:perfis!solicitante_id(nome, email),
+      aprovador:perfis!aprovador_id(nome, email),
       itens:itens_solicitacao_fat_direto(
         id, descricao, local, qtde_solicitada, valor_unitario, valor_total,
         tarefa:tarefa_id(codigo, nome)
@@ -29,8 +29,8 @@ export async function getSolicitacao(id: string) {
       id, numero, status, data_solicitacao, data_aprovacao,
       observacoes, motivo_rejeicao, valor_total, contrato_id, created_at,
       fornecedor_razao_social, fornecedor_cnpj, fornecedor_contato,
-      solicitante:solicitante_id(nome, email),
-      aprovador:aprovador_id(nome, email),
+      solicitante:perfis!solicitante_id(nome, email),
+      aprovador:perfis!aprovador_id(nome, email),
       itens:itens_solicitacao_fat_direto(
         id, descricao, local, qtde_solicitada, valor_unitario, valor_total,
         tarefa:tarefa_id(id, codigo, nome, grupo_macro_id)
@@ -231,7 +231,7 @@ export async function listarSolicitacoesAprovadas() {
       fornecedor_razao_social, fornecedor_cnpj,
       contrato_id,
       contrato:contrato_id(id, numero, descricao),
-      solicitante:solicitante_id(nome),
+      solicitante:perfis!solicitante_id(nome),
       notas_fiscais:notas_fiscais_fat_direto(id, numero_nf, valor, status),
       itens:itens_solicitacao_fat_direto(id)
     `)
@@ -250,7 +250,7 @@ export async function listarSolicitacoesPendentes() {
       fornecedor_razao_social, fornecedor_cnpj,
       contrato_id,
       contrato:contrato_id(id, numero, descricao),
-      solicitante:solicitante_id(nome, email),
+      solicitante:perfis!solicitante_id(nome, email),
       itens:itens_solicitacao_fat_direto(id)
     `)
     .eq('status', 'aguardando_aprovacao')
@@ -273,6 +273,10 @@ export async function atualizarStatusSolicitacao(
   if (status === 'aprovado') {
     updates.aprovador_id = aprovador_id
     updates.data_aprovacao = new Date().toISOString()
+    // Ao re-aprovar, limpa qualquer registro de desaprovação anterior
+    updates.desaprovado_em = null
+    updates.desaprovado_por = null
+    updates.motivo_desaprovacao = null
   }
   if (status === 'aguardando_aprovacao') {
     updates.aprovador_id = null
@@ -281,7 +285,55 @@ export async function atualizarStatusSolicitacao(
   if (motivo_rejeicao) updates.motivo_rejeicao = motivo_rejeicao
 
   const { error } = await admin.from('solicitacoes_fat_direto').update(updates).eq('id', id)
-  if (error) throw error
+  if (error) {
+    // Tolera colunas de desaprovação ausentes (migration 027 ainda não rodada)
+    if (/desaprovado_em|desaprovado_por|motivo_desaprovacao/.test(error.message)) {
+      delete updates.desaprovado_em
+      delete updates.desaprovado_por
+      delete updates.motivo_desaprovacao
+      const retry = await admin.from('solicitacoes_fat_direto').update(updates).eq('id', id)
+      if (retry.error) throw retry.error
+      return
+    }
+    throw error
+  }
+}
+
+/**
+ * Desaprovar uma solicitação já aprovada: volta ao rascunho e registra
+ * auditoria (quem, quando, motivo). Depois o solicitante original pode
+ * editar e re-submeter, ou o admin pode cancelar/excluir.
+ */
+export async function desaprovarSolicitacao(
+  id: string,
+  desaprovado_por: string,
+  motivo: string,
+) {
+  const admin = createAdminClient()
+  const agora = new Date().toISOString()
+
+  const updates: Record<string, unknown> = {
+    status: 'rascunho',
+    aprovador_id: null,
+    data_aprovacao: null,
+    desaprovado_em: agora,
+    desaprovado_por,
+    motivo_desaprovacao: motivo,
+    updated_at: agora,
+  }
+
+  const { error } = await admin
+    .from('solicitacoes_fat_direto')
+    .update(updates)
+    .eq('id', id)
+
+  if (error) {
+    // Se a migration 027 ainda não foi aplicada, reporta 503 amigável
+    if (/desaprovado_em|desaprovado_por|motivo_desaprovacao/.test(error.message)) {
+      throw new Error('MIGRATION_027_PENDING')
+    }
+    throw error
+  }
 }
 
 export async function criarNotaFiscal(input: {

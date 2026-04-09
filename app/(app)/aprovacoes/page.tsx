@@ -1,18 +1,19 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { Topbar } from '@/components/layout/topbar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { ColumnFilter, passaFiltro } from '@/components/ui/column-filter'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
 } from '@/components/ui/dialog'
 import {
   CheckCircle2, XCircle, Clock, AlertCircle,
-  FileText, Building2, Calendar, ArrowRight, Package
+  FileText, Building2, Calendar, ArrowRight, Package, Undo2, Loader2,
 } from 'lucide-react'
 import { formatCurrency, formatDate, getMedicaoStatusColor } from '@/lib/utils'
 import { MEDICAO_STATUS_LABELS, MedicaoStatus } from '@/types'
@@ -90,6 +91,16 @@ export default function AprovacoesPage() {
   const [historico, setHistorico] = useState<HistoricoMedicao[]>([])
   const [historicoFip, setHistoricoFip] = useState<HistoricoFip[]>([])
   const [pendentesFip, setPendentesFip] = useState<PendenteFip[]>([])
+
+  // Filtros estilo Excel do histórico unificado
+  const [hfTipo,        setHfTipo]        = useState<Set<string>>(new Set())
+  const [hfContrato,    setHfContrato]    = useState<Set<string>>(new Set())
+  const [hfSolicitante, setHfSolicitante] = useState<Set<string>>(new Set())
+  const [hfAprovador,   setHfAprovador]   = useState<Set<string>>(new Set())
+  const [hfStatus,      setHfStatus]      = useState<Set<string>>(new Set())
+
+  // ID da linha do histórico sendo desaprovada (loading)
+  const [desaprovandoHistId, setDesaprovandoHistId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [aba, setAba] = useState<'medicoes' | 'fat-direto' | 'historico'>('medicoes')
   const [motivoFip, setMotivoFip] = useState('')
@@ -305,6 +316,123 @@ export default function AprovacoesPage() {
   const qtdAprovadas =
       historico.filter(h => h.status === 'aprovado').length
     + historicoFip.filter(h => h.status === 'aprovado').length
+
+  // ── Histórico unificado: tabela estilo Excel ─────────────────────────
+  const podeDesaprovarFip = podeAprovarFip
+  const nomeExibido = (p: { nome: string | null; email: string | null } | null | undefined) =>
+    p?.nome?.trim() || (p?.email ? p.email.split('@')[0] : '—')
+
+  interface HistRow {
+    id: string
+    kind: 'medicao' | 'fip'
+    tipo: string
+    numero: string
+    contrato: string
+    detalhe: string
+    solicitante: string
+    aprovador: string
+    data: string // ISO ou ''
+    valor: number
+    status: string
+    statusLabel: string
+    linkHref: string
+    // FIP-specific
+    raw?: HistoricoFip
+  }
+
+  const rowsUnificadas: HistRow[] = useMemo(() => {
+    const rows: HistRow[] = []
+    for (const m of historico) {
+      rows.push({
+        id: `med-${m.id}`,
+        kind: 'medicao',
+        tipo: 'Medição',
+        numero: `Med #${String(m.numero).padStart(3, '0')}`,
+        contrato: m.contrato?.numero ?? '—',
+        detalhe: m.periodo_referencia || '—',
+        solicitante: '—', // Medições não têm solicitante no shape atual
+        aprovador: m.aprovacoes?.[0]?.aprovador_nome || '—',
+        data: m.updated_at || '',
+        valor: m.valor_total || 0,
+        status: m.status,
+        statusLabel: m.status === 'aprovado' ? 'Aprovada' : m.status === 'rejeitado' ? 'Rejeitada' : 'Cancelada',
+        linkHref: `/contratos/${m.contrato.id}/medicoes/${m.id}`,
+      })
+    }
+    for (const f of historicoFip) {
+      rows.push({
+        id: `fip-${f.id}`,
+        kind: 'fip',
+        tipo: 'Fat. Direto',
+        numero: f.numero_pedido_fip ? `FIP-${String(f.numero_pedido_fip).padStart(4, '0')}` : `#${f.numero}`,
+        contrato: f.contrato?.numero ?? '—',
+        detalhe: f.fornecedor_razao_social || '—',
+        solicitante: nomeExibido(f.solicitante),
+        aprovador: nomeExibido(f.aprovador),
+        data: f.data_aprovacao || '',
+        valor: f.valor_total || 0,
+        status: f.status,
+        statusLabel: f.status === 'aprovado' ? 'Aprovada' : f.status === 'rejeitado' ? 'Rejeitada' : 'Cancelada',
+        linkHref: f.contrato ? `/contratos/${f.contrato.id}/fat-direto` : '#',
+        raw: f,
+      })
+    }
+    // Ordena por data desc (mais recente primeiro)
+    rows.sort((a, b) => (b.data || '').localeCompare(a.data || ''))
+    return rows
+  }, [historico, historicoFip])
+
+  const valoresHistUnicos = useMemo(() => ({
+    tipo:        rowsUnificadas.map(r => r.tipo),
+    contrato:    rowsUnificadas.map(r => r.contrato),
+    solicitante: rowsUnificadas.map(r => r.solicitante),
+    aprovador:   rowsUnificadas.map(r => r.aprovador),
+    status:      rowsUnificadas.map(r => r.statusLabel),
+  }), [rowsUnificadas])
+
+  const rowsFiltradas = useMemo(() => {
+    return rowsUnificadas.filter(r => {
+      if (!passaFiltro(hfTipo,        r.tipo))        return false
+      if (!passaFiltro(hfContrato,    r.contrato))    return false
+      if (!passaFiltro(hfSolicitante, r.solicitante)) return false
+      if (!passaFiltro(hfAprovador,   r.aprovador))   return false
+      if (!passaFiltro(hfStatus,      r.statusLabel)) return false
+      return true
+    })
+  }, [rowsUnificadas, hfTipo, hfContrato, hfSolicitante, hfAprovador, hfStatus])
+
+  async function desaprovarDoHistorico(row: HistRow) {
+    if (row.kind !== 'fip') {
+      alert('Desaprovar medição ainda não está disponível — use o botão de rejeitar no painel da medição.')
+      return
+    }
+    const motivo = prompt(
+      `Desaprovar ${row.numero} de ${row.detalhe}?\n\n` +
+      `Ela voltará ao status "Rascunho" e só o solicitante original (ou admin) poderá editar/excluir.\n\n` +
+      `Informe o MOTIVO da desaprovação:`
+    )
+    if (motivo === null) return
+    if (!motivo.trim()) { alert('O motivo é obrigatório.'); return }
+
+    // row.id = "fip-<uuid>" → extrai o uuid puro
+    const fipId = row.id.replace(/^fip-/, '')
+    setDesaprovandoHistId(row.id)
+    try {
+      const res = await fetch(`/api/fat-direto/solicitacoes/${fipId}/desaprovar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ motivo: motivo.trim() }),
+      })
+      if (res.ok) {
+        setHistoricoFip(prev => prev.filter(f => f.id !== fipId))
+      } else {
+        const d = await res.json().catch(() => ({}))
+        alert(d.error || 'Não foi possível desaprovar.')
+      }
+    } finally {
+      setDesaprovandoHistId(null)
+    }
+  }
 
   return (
     <div className="flex-1 overflow-auto" style={{ background: 'var(--background)' }}>
@@ -727,172 +855,172 @@ export default function AprovacoesPage() {
           </div>
         )}
 
-        {/* Histórico */}
+        {/* Histórico — tabela unificada estilo Excel */}
         {!loading && aba === 'historico' && (
-          <div className="space-y-2">
-            {historico.map(m => {
-              const dataAprovacao = m.updated_at
-              const aprovadorNome = m.aprovacoes?.[0]?.aprovador_nome || '—'
-              const isAprovado = m.status === 'aprovado'
+          <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+            {(() => {
+              const gridCols = podeDesaprovarFip
+                ? '100px 110px 120px 1fr 1fr 1fr 110px 130px 110px 48px'
+                : '100px 110px 120px 1fr 1fr 1fr 110px 130px 110px'
               return (
-                <div
-                  key={m.id}
-                  className="rounded-xl transition-all duration-150"
-                  style={{
-                    background: 'var(--surface-2)',
-                    border: '1px solid var(--border)',
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.background = '#1a2236')}
-                  onMouseLeave={e => (e.currentTarget.style.background = '#111827')}
-                >
-                  <div className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-                        style={{
-                          background: isAprovado ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
-                        }}
-                      >
-                        {isAprovado
-                          ? <CheckCircle2 className="w-4 h-4" style={{ color: 'var(--green)' }} />
-                          : <XCircle className="w-4 h-4" style={{ color: 'var(--red)' }} />
-                        }
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm" style={{ color: 'var(--text-1)' }}>
-                            Medição #{String(m.numero).padStart(3, '0')}
-                          </span>
-                          <Badge className={getMedicaoStatusColor(m.status as MedicaoStatus)}>
-                            {MEDICAO_STATUS_LABELS[m.status as MedicaoStatus]}
-                          </Badge>
-                          <span
-                            className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${TIPO_COLORS[m.tipo]}`}
-                          >
-                            {TIPO_LABELS[m.tipo]}
-                          </span>
-                        </div>
-                        <p className="text-xs" style={{ color: 'var(--text-3)' }}>
-                          {m.contrato.numero} · {m.periodo_referencia}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>
-                          {formatCurrency(m.valor_total)}
-                        </p>
-                        <p className="text-xs" style={{ color: 'var(--text-3)' }}>
-                          {isAprovado ? 'Aprovado' : 'Rejeitado'} em{' '}
-                          {dataAprovacao ? formatDate(dataAprovacao) : '—'}
-                        </p>
-                      </div>
-                      <Link href={`/contratos/${m.contrato.id}/medicoes/${m.id}`}>
-                        <button
-                          className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
-                          style={{ color: 'var(--text-3)' }}
-                          onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-3)'; e.currentTarget.style.color = 'var(--text-1)' }}
-                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)' }}
-                        >
-                          <ArrowRight className="w-4 h-4" />
-                        </button>
-                      </Link>
-                    </div>
+                <>
+                  {/* Header com filtros Excel */}
+                  <div
+                    className="grid text-[11px] font-semibold uppercase tracking-wide px-4 py-2.5"
+                    style={{
+                      gridTemplateColumns: gridCols,
+                      gap: '8px',
+                      background: 'var(--surface-3)',
+                      borderBottom: '1px solid var(--border)',
+                      color: 'var(--text-3)',
+                    }}
+                  >
+                    <span className="flex items-center gap-1">
+                      Tipo
+                      <ColumnFilter label="Tipo" values={valoresHistUnicos.tipo} selected={hfTipo} onChange={setHfTipo} />
+                    </span>
+                    <span>Número</span>
+                    <span className="flex items-center gap-1">
+                      Contrato
+                      <ColumnFilter label="Contrato" values={valoresHistUnicos.contrato} selected={hfContrato} onChange={setHfContrato} />
+                    </span>
+                    <span>Fornecedor/Período</span>
+                    <span className="flex items-center gap-1">
+                      Solicitante
+                      <ColumnFilter label="Solicitante" values={valoresHistUnicos.solicitante} selected={hfSolicitante} onChange={setHfSolicitante} />
+                    </span>
+                    <span className="flex items-center gap-1">
+                      Aprovador
+                      <ColumnFilter label="Aprovador" values={valoresHistUnicos.aprovador} selected={hfAprovador} onChange={setHfAprovador} />
+                    </span>
+                    <span>Data aprov.</span>
+                    <span className="text-right">Valor</span>
+                    <span className="flex items-center gap-1">
+                      Status
+                      <ColumnFilter label="Status" values={valoresHistUnicos.status} selected={hfStatus} onChange={setHfStatus} />
+                    </span>
+                    {podeDesaprovarFip && <span className="text-center" title="Ações">·</span>}
                   </div>
-                </div>
-              )
-            })}
 
-            {/* Histórico de Faturamento Direto (aprovadas/rejeitadas/canceladas) */}
-            {historicoFip.map(f => {
-              const isAprovado  = f.status === 'aprovado'
-              const isRejeitado = f.status === 'rejeitado'
-              const fipNum = f.numero_pedido_fip
-                ? `FIP-${String(f.numero_pedido_fip).padStart(4, '0')}`
-                : `#${f.numero}`
-              const nomeExibido = (p: { nome: string | null; email: string | null } | null) =>
-                p?.nome?.trim() || (p?.email ? p.email.split('@')[0] : '—')
-              return (
-                <div
-                  key={`fip-${f.id}`}
-                  className="rounded-xl transition-all duration-150"
-                  style={{
-                    background: 'var(--surface-2)',
-                    border: '1px solid var(--border)',
-                  }}
-                >
-                  <div className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-                        style={{
-                          background: isAprovado ? 'rgba(16,185,129,0.15)' : isRejeitado ? 'rgba(239,68,68,0.15)' : 'rgba(148,163,184,0.15)',
-                        }}
-                      >
-                        {isAprovado ? <CheckCircle2 className="w-4 h-4" style={{ color: 'var(--green)' }} />
-                          : isRejeitado ? <XCircle className="w-4 h-4" style={{ color: 'var(--red)' }} />
-                          : <Clock className="w-4 h-4" style={{ color: 'var(--text-3)' }} />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium text-sm" style={{ color: 'var(--text-1)' }}>
-                            {fipNum}
-                          </span>
+                  {/* Linhas */}
+                  {rowsFiltradas.length === 0 ? (
+                    <div className="text-center py-12" style={{ color: 'var(--text-3)' }}>
+                      <Clock className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                      <p className="text-sm">
+                        {rowsUnificadas.length === 0
+                          ? 'Nenhuma aprovação concluída ainda.'
+                          : 'Nenhum resultado com os filtros aplicados.'}
+                      </p>
+                    </div>
+                  ) : (
+                    rowsFiltradas.map((row, idx) => {
+                      const isAprovada = row.status === 'aprovado'
+                      const isRejeitada = row.status === 'rejeitado'
+                      return (
+                        <div
+                          key={row.id}
+                          className="grid items-center px-4 py-3 transition-colors"
+                          style={{
+                            gridTemplateColumns: gridCols,
+                            gap: '8px',
+                            background: idx % 2 === 0 ? 'var(--surface-1)' : 'var(--surface-2)',
+                            borderBottom: '1px solid var(--border)',
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-3)' }}
+                          onMouseLeave={e => { e.currentTarget.style.background = idx % 2 === 0 ? 'var(--surface-1)' : 'var(--surface-2)' }}
+                        >
+                          {/* Tipo */}
                           <span
-                            className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
+                            className="text-[10px] px-2 py-0.5 rounded-full font-medium text-center truncate"
                             style={{
-                              background: isAprovado ? 'rgba(16,185,129,0.12)' : isRejeitado ? 'rgba(239,68,68,0.12)' : 'rgba(148,163,184,0.12)',
-                              color: isAprovado ? '#10B981' : isRejeitado ? '#EF4444' : 'var(--text-3)',
+                              background: row.kind === 'fip' ? 'rgba(245,158,11,0.12)' : 'rgba(139,92,246,0.12)',
+                              color: row.kind === 'fip' ? '#F59E0B' : '#8B5CF6',
                             }}
                           >
-                            {isAprovado ? 'Aprovada' : isRejeitado ? 'Rejeitada' : 'Cancelada'}
+                            {row.tipo}
                           </span>
-                          <span className="text-[10px] px-2 py-0.5 rounded-full font-medium" style={{ background: 'rgba(245,158,11,0.12)', color: '#F59E0B' }}>
-                            Fat. Direto
+                          {/* Número */}
+                          <span className="text-xs font-bold font-mono truncate" style={{ color: 'var(--accent)' }}>
+                            {row.numero}
                           </span>
-                        </div>
-                        <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-3)' }}>
-                          {f.contrato?.numero ?? '—'} · {f.fornecedor_razao_social} · Sol: {nomeExibido(f.solicitante)}{f.aprovador ? <> · Apr: {nomeExibido(f.aprovador)}</> : null}
-                        </p>
-                        {isRejeitado && f.motivo_rejeicao && (
-                          <p className="text-[11px] mt-0.5 italic" style={{ color: 'var(--red)' }}>
-                            Motivo: {f.motivo_rejeicao}
-                          </p>
-                        )}
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <p className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>
-                          {formatCurrency(f.valor_total)}
-                        </p>
-                        <p className="text-xs" style={{ color: 'var(--text-3)' }}>
-                          {isAprovado ? 'Aprovada' : isRejeitado ? 'Rejeitada' : 'Cancelada'} em{' '}
-                          {f.data_aprovacao ? formatDate(f.data_aprovacao) : '—'}
-                        </p>
-                      </div>
-                      {f.contrato && (
-                        <Link href={`/contratos/${f.contrato.id}/fat-direto`}>
-                          <button
-                            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
-                            style={{ color: 'var(--text-3)' }}
-                            onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-3)'; e.currentTarget.style.color = 'var(--text-1)' }}
-                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)' }}
+                          {/* Contrato */}
+                          <span className="text-xs truncate" style={{ color: 'var(--text-2)' }}>{row.contrato}</span>
+                          {/* Detalhe (fornecedor ou período) */}
+                          <span className="text-xs truncate" style={{ color: 'var(--text-1)' }} title={row.detalhe}>
+                            {row.detalhe}
+                          </span>
+                          {/* Solicitante */}
+                          <span className="text-xs truncate" style={{ color: 'var(--text-2)' }}>{row.solicitante}</span>
+                          {/* Aprovador */}
+                          <span className="text-xs truncate" style={{ color: 'var(--text-2)' }}>{row.aprovador}</span>
+                          {/* Data aprov */}
+                          <span className="text-xs" style={{ color: 'var(--text-3)' }}>{formatDate(row.data)}</span>
+                          {/* Valor */}
+                          <span className="text-xs font-semibold text-right" style={{ color: 'var(--text-1)' }}>
+                            {formatCurrency(row.valor)}
+                          </span>
+                          {/* Status */}
+                          <span
+                            className="text-[10px] px-2 py-0.5 rounded-full font-semibold text-center truncate inline-flex items-center gap-1 justify-center"
+                            style={{
+                              background: isAprovada ? 'rgba(16,185,129,0.12)' : isRejeitada ? 'rgba(239,68,68,0.12)' : 'rgba(148,163,184,0.12)',
+                              color: isAprovada ? '#10B981' : isRejeitada ? '#EF4444' : 'var(--text-3)',
+                            }}
                           >
-                            <ArrowRight className="w-4 h-4" />
-                          </button>
-                        </Link>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
+                            {isAprovada ? <CheckCircle2 className="w-3 h-3" /> : isRejeitada ? <XCircle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                            {row.statusLabel}
+                          </span>
+                          {/* Ações */}
+                          {podeDesaprovarFip && (
+                            <div className="flex justify-center">
+                              {row.kind === 'fip' && isAprovada ? (
+                                <button
+                                  onClick={() => desaprovarDoHistorico(row)}
+                                  disabled={desaprovandoHistId === row.id}
+                                  title="Desaprovar — volta para rascunho"
+                                  className="inline-flex items-center justify-center w-7 h-7 rounded-lg transition-all"
+                                  style={{ background: 'rgba(245,158,11,0.10)', color: '#F59E0B' }}
+                                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(245,158,11,0.22)' }}
+                                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(245,158,11,0.10)' }}
+                                >
+                                  {desaprovandoHistId === row.id
+                                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    : <Undo2 className="w-3.5 h-3.5" strokeWidth={1.8} />}
+                                </button>
+                              ) : (
+                                <Link href={row.linkHref}>
+                                  <button
+                                    title="Ver detalhes"
+                                    className="inline-flex items-center justify-center w-7 h-7 rounded-lg transition-all"
+                                    style={{ color: 'var(--text-3)' }}
+                                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-3)'; e.currentTarget.style.color = 'var(--text-1)' }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-3)' }}
+                                  >
+                                    <ArrowRight className="w-3.5 h-3.5" />
+                                  </button>
+                                </Link>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })
+                  )}
 
-            {/* Estado vazio quando nem medições nem FIPs têm histórico */}
-            {historico.length === 0 && historicoFip.length === 0 && (
-              <div className="text-center py-12" style={{ color: 'var(--text-3)' }}>
-                <Clock className="w-10 h-10 mx-auto mb-3 opacity-40" />
-                <p className="text-sm">Nenhuma aprovação concluída ainda.</p>
-                <p className="text-xs mt-1">Medições e solicitações aprovadas/rejeitadas aparecerão aqui.</p>
-              </div>
-            )}
+                  {/* Footer com contagem */}
+                  {rowsFiltradas.length > 0 && (
+                    <div
+                      className="flex items-center justify-between px-4 py-3"
+                      style={{ background: 'var(--surface-3)', borderTop: '1px solid var(--border)' }}
+                    >
+                      <span className="text-xs" style={{ color: 'var(--text-3)' }}>
+                        {rowsFiltradas.length} de {rowsUnificadas.length} item(ns)
+                      </span>
+                    </div>
+                  )}
+                </>
+              )
+            })()}
           </div>
         )}
       </div>

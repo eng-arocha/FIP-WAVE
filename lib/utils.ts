@@ -19,13 +19,36 @@ export function formatPercent(value: number, decimals = 1): string {
   return `${value.toFixed(decimals)}%`
 }
 
-export function formatDate(date: string | Date): string {
-  const d = typeof date === 'string' ? new Date(date + 'T00:00:00') : date
+/**
+ * Formata uma data para dd/mm/aaaa (pt-BR).
+ * Retorna "—" para entradas inválidas/nulas em vez de "Invalid Date".
+ * Aceita:
+ *   - Date
+ *   - ISO curta:    "2026-04-09"           → parseia como 00:00 local
+ *   - ISO completa: "2026-04-09T14:30:00Z" → parseia direto (sem corromper)
+ *   - null/undefined/"" → "—"
+ */
+export function formatDate(date: string | Date | null | undefined): string {
+  if (date == null || date === '') return '—'
+  let d: Date
+  if (typeof date === 'string') {
+    // Se não contém 'T', é uma data pura — adiciona hora zero LOCAL
+    // para evitar off-by-one de timezone. Se já contém 'T', parseia direto.
+    d = date.includes('T') ? new Date(date) : new Date(date + 'T00:00:00')
+  } else {
+    d = date
+  }
+  if (isNaN(d.getTime())) return '—'
   return d.toLocaleDateString('pt-BR')
 }
 
-export function formatDatetime(date: string | Date): string {
+/**
+ * Formata data e hora (pt-BR). Mesmo tratamento robusto do formatDate.
+ */
+export function formatDatetime(date: string | Date | null | undefined): string {
+  if (date == null || date === '') return '—'
   const d = typeof date === 'string' ? new Date(date) : date
+  if (isNaN(d.getTime())) return '—'
   return d.toLocaleString('pt-BR')
 }
 
