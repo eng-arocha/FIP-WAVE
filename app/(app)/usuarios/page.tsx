@@ -5,11 +5,12 @@ import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Plus, Loader2, UserCheck, UserX, Pencil, X, Eye, EyeOff, Shield, Trash2 } from 'lucide-react'
+import { Plus, Loader2, UserCheck, UserX, Pencil, X, Eye, EyeOff, Shield, Trash2, Link2, Wand2, Copy, Building2, CheckCircle2 } from 'lucide-react'
 import {
   MODULOS_CONFIG, MODULOS_LABELS, ACOES_LABELS, ALL_ACOES, TEMPLATES,
   type Permissao,
 } from '@/lib/permissoes-config'
+import { gerarSenhaForte } from '@/lib/auth/senha'
 
 type Perfil = 'visualizador' | 'engenheiro_fip' | 'admin'
 
@@ -27,6 +28,12 @@ interface TemplateOption {
   nome: string
   sistema: boolean
   permissoes: Array<{ modulo: string; acao: string }>
+}
+
+interface ContratoOption {
+  id: string
+  numero: string
+  descricao: string
 }
 
 // Base perfil para templates customizados (acesso básico ao sistema)
@@ -51,10 +58,12 @@ const EMPTY_FORM = { nome: '', email: '', senha: '', template_id: '' }
 export default function UsuariosPage() {
   const [usuarios, setUsuarios]             = useState<Usuario[]>([])
   const [templates, setTemplates]           = useState<TemplateOption[]>([])
+  const [contratos, setContratos]           = useState<ContratoOption[]>([])
   const [loading, setLoading]               = useState(true)
   const [showForm, setShowForm]             = useState(false)
   const [form, setForm]                     = useState(EMPTY_FORM)
   const [showSenha, setShowSenha]           = useState(false)
+  const [senhaCopiada, setSenhaCopiada]     = useState(false)
   const [saving, setSaving]                 = useState(false)
   const [erro, setErro]                     = useState('')
   const [editando, setEditando]             = useState<Usuario | null>(null)
@@ -63,15 +72,21 @@ export default function UsuariosPage() {
   const [permissoesMap, setPermissoesMap]   = useState<Record<string, Set<string>>>({})
   const [salvandoPerm, setSalvandoPerm]     = useState(false)
   const [excluindo, setExcluindo]           = useState<string | null>(null)
+  // Vínculo usuário × contrato
+  const [contratoAberto, setContratoAberto] = useState<string | null>(null)
+  const [contratosMap, setContratosMap]     = useState<Record<string, Set<string>>>({})
+  const [salvandoContratos, setSalvandoContratos] = useState(false)
 
   async function carregar() {
     setLoading(true)
-    const [resU, resT] = await Promise.all([
+    const [resU, resT, resC] = await Promise.all([
       fetch('/api/usuarios'),
       fetch('/api/perfis'),
+      fetch('/api/contratos'),
     ])
     if (resU.ok) setUsuarios(await resU.json())
     if (resT.ok) setTemplates(await resT.json())
+    if (resC.ok) setContratos(await resC.json())
     setLoading(false)
   }
   useEffect(() => { carregar() }, [])
@@ -127,6 +142,7 @@ export default function UsuariosPage() {
 
   async function abrirPermissoes(userId: string) {
     setPermissaoAberta(permissaoAberta === userId ? null : userId)
+    setContratoAberto(null) // fecha o painel de contratos
     if (permissoesMap[userId]) return
     const res = await fetch(`/api/usuarios/${userId}/permissoes`)
     if (res.ok) {
@@ -173,6 +189,61 @@ export default function UsuariosPage() {
     })
     setSalvandoPerm(false)
     setPermissaoAberta(null)
+  }
+
+  // ── Vínculo usuário × contrato ─────────────────────────────
+  async function abrirContratos(userId: string) {
+    const novo = contratoAberto === userId ? null : userId
+    setContratoAberto(novo)
+    setPermissaoAberta(null) // fecha o outro painel
+    if (!novo) return
+    if (contratosMap[userId]) return
+    const res = await fetch(`/api/usuarios/${userId}/contratos`)
+    if (res.ok) {
+      const ids: string[] = await res.json()
+      setContratosMap(prev => ({ ...prev, [userId]: new Set(ids) }))
+    }
+  }
+
+  function toggleContrato(userId: string, contratoId: string) {
+    setContratosMap(prev => {
+      const s = new Set(prev[userId] || [])
+      s.has(contratoId) ? s.delete(contratoId) : s.add(contratoId)
+      return { ...prev, [userId]: s }
+    })
+  }
+
+  async function salvarContratos(userId: string) {
+    setSalvandoContratos(true)
+    const contrato_ids = Array.from(contratosMap[userId] || new Set<string>())
+    await fetch(`/api/usuarios/${userId}/contratos`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contrato_ids }),
+    })
+    setSalvandoContratos(false)
+    setContratoAberto(null)
+  }
+
+  // ── Gerador de senha + cópia ────────────────────────────────
+  function gerarECopiarSenha() {
+    const nova = gerarSenhaForte(12)
+    setForm(f => ({ ...f, senha: nova }))
+    setShowSenha(true)
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(nova).catch(() => {})
+    }
+    setSenhaCopiada(true)
+    setTimeout(() => setSenhaCopiada(false), 2500)
+  }
+
+  async function copiarSenhaAtual() {
+    if (!form.senha) return
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      await navigator.clipboard.writeText(form.senha).catch(() => {})
+    }
+    setSenhaCopiada(true)
+    setTimeout(() => setSenhaCopiada(false), 2500)
   }
 
   const ativos = usuarios.filter(u => u.ativo).length
@@ -231,15 +302,42 @@ export default function UsuariosPage() {
                     className="w-full px-3 py-2 rounded-lg text-sm bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-1)] outline-none focus:border-blue-500" />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs text-[var(--text-3)] uppercase tracking-wide font-medium">Senha inicial</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs text-[var(--text-3)] uppercase tracking-wide font-medium">Senha inicial</label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={gerarECopiarSenha}
+                        title="Gerar senha forte aleatória e copiar"
+                        className="text-[11px] font-medium text-blue-600 hover:text-blue-700 inline-flex items-center gap-1"
+                      >
+                        <Wand2 className="w-3 h-3" />
+                        Gerar senha forte
+                      </button>
+                      {form.senha && (
+                        <button
+                          type="button"
+                          onClick={copiarSenhaAtual}
+                          title="Copiar senha atual"
+                          className="text-[11px] font-medium text-[var(--text-3)] hover:text-[var(--text-1)] inline-flex items-center gap-1"
+                        >
+                          {senhaCopiada ? <CheckCircle2 className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                          {senhaCopiada ? 'Copiada!' : 'Copiar'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   <div className="relative">
                     <input required type={showSenha ? 'text' : 'password'} value={form.senha} minLength={8}
                       onChange={e => setForm(f => ({ ...f, senha: e.target.value }))} placeholder="Mínimo 8 caracteres"
-                      className="w-full px-3 py-2 pr-10 rounded-lg text-sm bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-1)] outline-none focus:border-blue-500" />
+                      className="w-full px-3 py-2 pr-10 rounded-lg text-sm bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-1)] outline-none focus:border-blue-500 font-mono" />
                     <button type="button" onClick={() => setShowSenha(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-3)]">
                       {showSenha ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
+                  <p className="text-[11px] text-[var(--text-3)]">
+                    Dica: clique em <strong>Gerar senha forte</strong> para criar e copiar automaticamente, envie ao usuário por um canal seguro e ele será obrigado a trocar no primeiro acesso.
+                  </p>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs text-[var(--text-3)] uppercase tracking-wide font-medium">Perfil de acesso *</label>
@@ -332,6 +430,10 @@ export default function UsuariosPage() {
                         : <span className="flex items-center gap-1.5 text-[var(--text-3)] text-xs w-16"><span className="w-1.5 h-1.5 rounded-full bg-[#475569] flex-shrink-0" />Inativo</span>
                       }
                       <div className="flex items-center gap-1">
+                        <button onClick={() => abrirContratos(u.id)} title="Vincular a contratos"
+                          className={`p-1.5 rounded-lg transition-colors ${contratoAberto === u.id ? 'text-emerald-600 bg-emerald-50' : 'text-[var(--text-3)] hover:text-emerald-600 hover:bg-emerald-50'}`}>
+                          <Link2 className="w-3.5 h-3.5" />
+                        </button>
                         <button onClick={() => abrirPermissoes(u.id)} title="Permissões"
                           className={`p-1.5 rounded-lg transition-colors ${permissaoAberta === u.id ? 'text-blue-400 bg-blue-900/20' : 'text-[var(--text-3)] hover:text-blue-400 hover:bg-blue-900/20'}`}>
                           <Shield className="w-3.5 h-3.5" />
@@ -425,6 +527,59 @@ export default function UsuariosPage() {
                           <Button variant="outline" size="sm" onClick={() => setPermissaoAberta(null)}>Cancelar</Button>
                           <Button size="sm" disabled={salvandoPerm} onClick={() => salvarPermissoes(u.id)}>
                             {salvandoPerm ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Salvar permissões'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Painel de vínculo com contratos */}
+                    {contratoAberto === u.id && (
+                      <div className="bg-[var(--background)] border-b border-[var(--border)] px-6 py-5">
+                        <div className="flex items-center justify-between mb-4">
+                          <p className="text-xs font-semibold text-[var(--text-2)] uppercase tracking-wide flex items-center gap-2">
+                            <Building2 className="w-3.5 h-3.5" />
+                            Contratos vinculados — {u.nome}
+                          </p>
+                          <span className="text-[11px] text-[var(--text-3)]">
+                            {(contratosMap[u.id]?.size || 0)} de {contratos.length} selecionado(s)
+                          </span>
+                        </div>
+
+                        {contratos.length === 0 ? (
+                          <p className="text-sm text-[var(--text-3)] py-2">Nenhum contrato cadastrado no sistema ainda.</p>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto">
+                            {contratos.map(c => {
+                              const marcado = contratosMap[u.id]?.has(c.id) ?? false
+                              return (
+                                <label
+                                  key={c.id}
+                                  className={`flex items-start gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
+                                    marcado
+                                      ? 'border-emerald-400 bg-emerald-50'
+                                      : 'border-[var(--border)] hover:border-[var(--border-hover)] hover:bg-[var(--surface-3)]'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={marcado}
+                                    onChange={() => toggleContrato(u.id, c.id)}
+                                    className="mt-0.5 w-4 h-4 accent-emerald-600 cursor-pointer flex-shrink-0"
+                                  />
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-xs font-semibold text-[var(--text-1)] truncate">{c.numero}</p>
+                                    <p className="text-[11px] text-[var(--text-3)] truncate">{c.descricao}</p>
+                                  </div>
+                                </label>
+                              )
+                            })}
+                          </div>
+                        )}
+
+                        <div className="flex justify-end gap-3 mt-4">
+                          <Button variant="outline" size="sm" onClick={() => setContratoAberto(null)}>Cancelar</Button>
+                          <Button size="sm" disabled={salvandoContratos} onClick={() => salvarContratos(u.id)}>
+                            {salvandoContratos ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Salvar vínculos'}
                           </Button>
                         </div>
                       </div>

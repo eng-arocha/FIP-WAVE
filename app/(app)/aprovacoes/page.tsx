@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { formatCurrency, formatDate, getMedicaoStatusColor } from '@/lib/utils'
 import { MEDICAO_STATUS_LABELS, MedicaoStatus } from '@/types'
+import { usePermissoes } from '@/lib/context/permissoes-context'
 
 interface PendenteFip {
   id: string
@@ -66,6 +67,10 @@ interface HistoricoMedicao {
 }
 
 export default function AprovacoesPage() {
+  const { temPermissao, perfilAtual } = usePermissoes()
+  const podeAprovarMedicoes = perfilAtual === 'admin' || temPermissao('medicoes', 'aprovar')
+  const podeAprovarFip      = perfilAtual === 'admin' || temPermissao('aprovacoes', 'aprovar')
+
   const [pendentes, setPendentes] = useState<PendenteMedicao[]>([])
   const [historico, setHistorico] = useState<HistoricoMedicao[]>([])
   const [pendentesFip, setPendentesFip] = useState<PendenteFip[]>([])
@@ -505,42 +510,46 @@ export default function AprovacoesPage() {
                         </span>
                       </div>
                       <div className="flex gap-2 flex-wrap">
-                        <button
-                          onClick={() => quickAprovar(m)}
-                          disabled={quickAprovando === m.id}
-                          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-150 disabled:opacity-70"
-                          style={{
-                            background: quickAprovando === m.id ? 'rgba(16,185,129,0.40)' : 'linear-gradient(90deg, #059669, #10B981)',
-                            color: '#fff',
-                            boxShadow: quickAprovando === m.id ? 'none' : '0 0 12px rgba(16,185,129,0.25)',
-                          }}
-                          onMouseEnter={e => { if (quickAprovando !== m.id) e.currentTarget.style.boxShadow = '0 0 24px rgba(16,185,129,0.50)' }}
-                          onMouseLeave={e => { if (quickAprovando !== m.id) e.currentTarget.style.boxShadow = '0 0 12px rgba(16,185,129,0.25)' }}
-                        >
-                          {quickAprovando === m.id ? (
-                            <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                            </svg>
-                          ) : (
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                          )}
-                          {quickAprovando === m.id ? 'Aprovando...' : 'Aprovar'}
-                        </button>
-                        <button
-                          onClick={() => setModalRejeitar(m.id)}
-                          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-150"
-                          style={{
-                            background: '#EF4444',
-                            color: '#fff',
-                            boxShadow: '0 0 12px rgba(239,68,68,0.20)',
-                          }}
-                          onMouseEnter={e => (e.currentTarget.style.background = '#DC2626')}
-                          onMouseLeave={e => (e.currentTarget.style.background = '#EF4444')}
-                        >
-                          <XCircle className="w-3.5 h-3.5" />
-                          Rejeitar
-                        </button>
+                        {podeAprovarMedicoes && (
+                          <>
+                            <button
+                              onClick={() => quickAprovar(m)}
+                              disabled={quickAprovando === m.id}
+                              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-150 disabled:opacity-70"
+                              style={{
+                                background: quickAprovando === m.id ? 'rgba(16,185,129,0.40)' : 'linear-gradient(90deg, #059669, #10B981)',
+                                color: '#fff',
+                                boxShadow: quickAprovando === m.id ? 'none' : '0 0 12px rgba(16,185,129,0.25)',
+                              }}
+                              onMouseEnter={e => { if (quickAprovando !== m.id) e.currentTarget.style.boxShadow = '0 0 24px rgba(16,185,129,0.50)' }}
+                              onMouseLeave={e => { if (quickAprovando !== m.id) e.currentTarget.style.boxShadow = '0 0 12px rgba(16,185,129,0.25)' }}
+                            >
+                              {quickAprovando === m.id ? (
+                                <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                                </svg>
+                              ) : (
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                              )}
+                              {quickAprovando === m.id ? 'Aprovando...' : 'Aprovar'}
+                            </button>
+                            <button
+                              onClick={() => setModalRejeitar(m.id)}
+                              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-150"
+                              style={{
+                                background: '#EF4444',
+                                color: '#fff',
+                                boxShadow: '0 0 12px rgba(239,68,68,0.20)',
+                              }}
+                              onMouseEnter={e => (e.currentTarget.style.background = '#DC2626')}
+                              onMouseLeave={e => (e.currentTarget.style.background = '#EF4444')}
+                            >
+                              <XCircle className="w-3.5 h-3.5" />
+                              Rejeitar
+                            </button>
+                          </>
+                        )}
                         <Link href={`/contratos/${m.contrato.id}/medicoes/${m.id}`}>
                           <button
                             className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150"
@@ -636,7 +645,11 @@ export default function AprovacoesPage() {
                         </div>
                       )}
                       <div className="flex gap-2 flex-wrap">
-                        {rejeitandoFip !== sol.id ? (
+                        {!podeAprovarFip ? (
+                          <span className="text-xs italic px-3 py-1.5 rounded-lg" style={{ background: 'var(--surface-3)', color: 'var(--text-3)' }}>
+                            Sem permissão para aprovar — apenas administradores Wave podem aprovar solicitações.
+                          </span>
+                        ) : rejeitandoFip !== sol.id ? (
                           <>
                             <button
                               onClick={() => aprovarFip(sol)}

@@ -2,26 +2,52 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { ChevronRight, Loader2, ClipboardList } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { ChevronRight, Loader2, ClipboardList, Plus, Building2, X } from 'lucide-react'
 import { formatCurrency, formatDate, getMedicaoStatusColor } from '@/lib/utils'
 import { MEDICAO_STATUS_LABELS, MedicaoStatus } from '@/types'
 
 const STATUS_FILTER = ['todos', 'submetido', 'em_analise', 'aprovado', 'rejeitado']
 
+interface MeuContrato {
+  id: string
+  numero: string
+  descricao: string
+}
+
 export default function MedicoesServicoPage() {
+  const router = useRouter()
   const [medicoes, setMedicoes] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [filtro, setFiltro] = useState('todos')
+
+  // Contratos vinculados ao usuário (para o botão "Nova medição")
+  const [meusContratos, setMeusContratos] = useState<MeuContrato[]>([])
+  const [modalContrato, setModalContrato] = useState(false)
 
   useEffect(() => {
     fetch('/api/medicoes/servico')
       .then(r => r.ok ? r.json() : [])
       .then(setMedicoes)
       .finally(() => setLoading(false))
+    fetch('/api/auth/meus-contratos')
+      .then(r => r.ok ? r.json() : [])
+      .then(setMeusContratos)
+      .catch(() => setMeusContratos([]))
   }, [])
+
+  function iniciarNovaMedicao() {
+    if (meusContratos.length === 0) return
+    if (meusContratos.length === 1) {
+      router.push(`/contratos/${meusContratos[0].id}/medicoes/nova`)
+    } else {
+      setModalContrato(true)
+    }
+  }
 
   const lista = filtro === 'todos' ? medicoes : medicoes.filter(m => m.status === filtro)
 
@@ -32,9 +58,70 @@ export default function MedicoesServicoPage() {
     { label: 'Valor Total', value: formatCurrency(medicoes.filter(m => m.status === 'aprovado').reduce((s, m) => s + (m.valor_total || 0), 0)), color: 'text-blue-400' },
   ]
 
+  const podeCriarMedicao = meusContratos.length > 0
+
   return (
     <div className="flex-1 overflow-auto">
-      <Topbar title="Controle de Medições de Serviço" subtitle="Todas as medições" />
+      <Topbar
+        title="Controle de Medições de Serviço"
+        subtitle="Todas as medições"
+        actions={podeCriarMedicao ? (
+          <Button size="sm" onClick={iniciarNovaMedicao}>
+            <Plus className="w-4 h-4" />
+            Nova medição
+          </Button>
+        ) : undefined}
+      />
+
+      {/* Modal de seleção de contrato (quando usuário tem mais de 1) */}
+      {modalContrato && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setModalContrato(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl overflow-hidden"
+            style={{ background: '#FFFFFF', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-6 pt-6 pb-4 flex items-start justify-between">
+              <div>
+                <h2 className="text-lg font-bold" style={{ color: '#1D1D1F' }}>Nova medição</h2>
+                <p className="text-xs mt-1" style={{ color: '#86868B' }}>Para qual contrato você quer criar a medição?</p>
+              </div>
+              <button
+                onClick={() => setModalContrato(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-[#F5F5F7]"
+                style={{ color: '#86868B' }}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="px-6 pb-6 space-y-2 max-h-96 overflow-y-auto">
+              {meusContratos.map(c => (
+                <Link key={c.id} href={`/contratos/${c.id}/medicoes/nova`} onClick={() => setModalContrato(false)}>
+                  <div
+                    className="flex items-start gap-3 px-4 py-3 rounded-xl border border-[#E5E5EA] hover:border-[#0071E3] hover:bg-[#F5F5F7] transition-colors cursor-pointer"
+                  >
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ background: '#EFF6FF' }}
+                    >
+                      <Building2 className="w-4 h-4" style={{ color: '#0071E3' }} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold truncate" style={{ color: '#1D1D1F' }}>{c.numero}</p>
+                      <p className="text-xs truncate" style={{ color: '#86868B' }}>{c.descricao}</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 flex-shrink-0 mt-2.5" style={{ color: '#86868B' }} />
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="p-6 space-y-6 max-w-5xl">
         {/* KPIs */}

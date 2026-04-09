@@ -333,62 +333,74 @@ export default function DashboardPage() {
             </div>
           </Link>
 
-          {/* Card 3 — NF Lançadas */}
-          <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-default"
-            style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(99,102,241,0.50)' }}>
-            <div className="flex items-start justify-between">
-              <div className="min-w-0">
-                <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>NF Lançadas</p>
-                <p className="text-sm sm:text-xl font-bold truncate" style={{ color: '#6366F1' }}>{formatCurrency(animatedNfsLancadas)}</p>
-                <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
-                  <span className="font-semibold" style={{ color: '#6366F1' }}>{formatPercent(pctNfs)}</span> do fat. direto
-                </p>
+          {/* Card 3 — NF Lançadas → Faturamento Direto (filtro com NF) */}
+          <Link href="/documentos/faturamento-direto?view=com-nf">
+            <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full"
+              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(99,102,241,0.50)' }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = '#6366F1')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
+              <div className="flex items-start justify-between">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>NF Lançadas</p>
+                  <p className="text-sm sm:text-xl font-bold truncate" style={{ color: '#6366F1' }}>{formatCurrency(animatedNfsLancadas)}</p>
+                  <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
+                    <span className="font-semibold" style={{ color: '#6366F1' }}>{formatPercent(pctNfs)}</span> do fat. direto → ver NFs
+                  </p>
+                </div>
+                <Receipt className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: '#6366F1' }} />
               </div>
-              <Receipt className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: '#6366F1' }} />
             </div>
-          </div>
+          </Link>
 
-          {/* Card 4 — Solicitações Aprovadas */}
-          <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-default"
-            style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(245,158,11,0.50)' }}>
-            <div className="flex items-start justify-between">
-              <div className="min-w-0">
-                <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Sol. Aprovadas</p>
-                <p className="text-sm sm:text-xl font-bold truncate" style={{ color: '#F59E0B' }}>{formatCurrency(animatedSolAprovadas)}</p>
-                <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
-                  <span className="font-semibold" style={{ color: '#F59E0B' }}>{formatPercent(pctAprovadas)}</span> do fat. direto
-                </p>
+          {/* Card 4 — Solicitações Aprovadas → Faturamento Direto (view aprovadas) */}
+          <Link href="/documentos/faturamento-direto?view=aprovadas">
+            <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full"
+              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(245,158,11,0.50)' }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = '#F59E0B')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
+              <div className="flex items-start justify-between">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Sol. Aprovadas</p>
+                  <p className="text-sm sm:text-xl font-bold truncate" style={{ color: '#F59E0B' }}>{formatCurrency(animatedSolAprovadas)}</p>
+                  <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
+                    <span className="font-semibold" style={{ color: '#F59E0B' }}>{formatPercent(pctAprovadas)}</span> do fat. direto → ver aprovadas
+                  </p>
+                </div>
+                <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: '#F59E0B' }} />
               </div>
-              <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: '#F59E0B' }} />
             </div>
-          </div>
+          </Link>
 
-          {/* Card 5 — Saldo (com breakdown interno) */}
-          <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-default col-span-2 sm:col-span-1"
-            style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(71,85,105,0.50)' }}>
-            <div className="flex items-start justify-between mb-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>Saldo</p>
-              <DollarSign className="w-4 h-4 flex-shrink-0 hidden sm:block" style={{ color: 'var(--text-2)' }} />
+          {/* Card 5 — Saldo → Estrutura do 1º contrato (aba financeira) */}
+          <Link href={primeiroContratoId ? `/contratos/${primeiroContratoId}/estrutura?tab=financeiro` : '/contratos'}>
+            <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer col-span-2 sm:col-span-1 h-full"
+              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(71,85,105,0.50)' }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = '#475569')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
+              <div className="flex items-start justify-between mb-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>Saldo</p>
+                <DollarSign className="w-4 h-4 flex-shrink-0 hidden sm:block" style={{ color: 'var(--text-2)' }} />
+              </div>
+              <p className="text-sm sm:text-xl font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(animatedSaldo)}</p>
+              <p className="text-[10px] mb-2" style={{ color: 'var(--text-3)' }}>
+                <span className="font-semibold" style={{ color: 'var(--text-2)' }}>{formatPercent(pctSaldo)}</span> do contrato → ver estrutura
+              </p>
+              <div className="grid grid-cols-3 gap-1 pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
+                <div>
+                  <p className="text-[9px]" style={{ color: 'var(--text-3)' }}>Contrato</p>
+                  <p className="text-[10px] font-semibold truncate" style={{ color: 'var(--text-2)' }}>{formatCurrency(totalContratado)}</p>
+                </div>
+                <div>
+                  <p className="text-[9px]" style={{ color: 'var(--text-3)' }}>Serviços</p>
+                  <p className="text-[10px] font-semibold truncate" style={{ color: '#10B981' }}>{formatCurrency(totalMedidoServico)}</p>
+                </div>
+                <div>
+                  <p className="text-[9px]" style={{ color: 'var(--text-3)' }}>NFs</p>
+                  <p className="text-[10px] font-semibold truncate" style={{ color: '#6366F1' }}>{formatCurrency(totalNfsLancadas)}</p>
+                </div>
+              </div>
             </div>
-            <p className="text-sm sm:text-xl font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(animatedSaldo)}</p>
-            <p className="text-[10px] mb-2" style={{ color: 'var(--text-3)' }}>
-              <span className="font-semibold" style={{ color: 'var(--text-2)' }}>{formatPercent(pctSaldo)}</span> do contrato
-            </p>
-            <div className="grid grid-cols-3 gap-1 pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
-              <div>
-                <p className="text-[9px]" style={{ color: 'var(--text-3)' }}>Contrato</p>
-                <p className="text-[10px] font-semibold truncate" style={{ color: 'var(--text-2)' }}>{formatCurrency(totalContratado)}</p>
-              </div>
-              <div>
-                <p className="text-[9px]" style={{ color: 'var(--text-3)' }}>Serviços</p>
-                <p className="text-[10px] font-semibold truncate" style={{ color: '#10B981' }}>{formatCurrency(totalMedidoServico)}</p>
-              </div>
-              <div>
-                <p className="text-[9px]" style={{ color: 'var(--text-3)' }}>NFs</p>
-                <p className="text-[10px] font-semibold truncate" style={{ color: '#6366F1' }}>{formatCurrency(totalNfsLancadas)}</p>
-              </div>
-            </div>
-          </div>
+          </Link>
         </div>
       </div>
 

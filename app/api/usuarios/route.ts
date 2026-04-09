@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { listarUsuarios } from '@/lib/db/usuarios'
 import { setPermissoesUsuario, TEMPLATES } from '@/lib/db/permissoes'
 import { assertAdmin } from '@/lib/api/auth'
+import { isSenhaPadrao } from '@/lib/auth/senha'
 
 export async function GET() {
   if (!(await assertAdmin())) return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
@@ -31,6 +32,20 @@ export async function POST(req: Request) {
     const perfilEfetivo = perfil || 'visualizador'
     const admin = createAdminClient()
 
+    // Impede nome duplicado — cada usuário precisa ser rastreável por nome
+    const nomeNormalizado = String(nome).trim()
+    const { data: existentes } = await admin
+      .from('perfis')
+      .select('id')
+      .ilike('nome', nomeNormalizado)
+      .limit(1)
+    if (existentes && existentes.length > 0) {
+      return NextResponse.json(
+        { error: `Já existe um usuário com o nome "${nomeNormalizado}". Use um nome único para manter a rastreabilidade.` },
+        { status: 409 }
+      )
+    }
+
     // Cria o usuário no Supabase Auth
     const { data: authData, error: authError } = await admin.auth.admin.createUser({
       email,
@@ -40,10 +55,36 @@ export async function POST(req: Request) {
     })
     if (authError) return NextResponse.json({ error: authError.message }, { status: 400 })
 
-    // Garante que o perfil foi criado com os valores corretos
-    const perfilUpsert: Record<string, unknown> = { id: authData.user.id, nome, email, perfil: perfilEfetivo, ativo: true }
-    if (template_id) perfilUpsert.template_id = template_id
-    await admin.from('perfis').upsert(perfilUpsert)
+    // Garante que o perfil foi criado com os valores corretos.
+    // Faz upsert em duas tentativas para tolerar colunas opcionais ausentes
+    // (template_id da migration 012, deve_trocar_senha da 022).
+    const perfilCore: Record<string, unknown> = {
+      id: authData.user.id,
+      nome,
+      email,
+      perfil: perfilEfetivo,
+      ativo: true,
+    }
+    const perfilExtras: Record<string, unknown> = {}
+    if (template_id) perfilExtras.template_id = template_id
+    if (isSenhaPadrao(senha)) perfilExtras.deve_trocar_senha = true
+
+    // Tentativa 1: tudo junto
+    let upsertOk = false
+    if (Object.keys(perfilExtras).length > 0) {
+      const { error } = await admin.from('perfis').upsert({ ...perfilCore, ...perfilExtras })
+      if (!error) upsertOk = true
+      else if (!/template_id|deve_trocar_senha/.test(error.message)) {
+        return NextResponse.json({ error: error.message }, { status: 400 })
+      }
+      // se o erro foi sobre coluna opcional, cai para o fallback
+    }
+
+    if (!upsertOk) {
+      // Fallback: salva só os campos core
+      const { error } = await admin.from('perfis').upsert(perfilCore)
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    }
 
     // Aplica permissões: custom (do template DB) > hardcoded TEMPLATES
     if (permissoes_custom && Array.isArray(permissoes_custom) && permissoes_custom.length > 0) {

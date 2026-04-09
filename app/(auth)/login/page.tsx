@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { isSenhaPadrao } from '@/lib/auth/senha'
 import { Lock, Mail, AlertCircle, ArrowRight } from 'lucide-react'
 import Image from 'next/image'
 
@@ -19,6 +20,13 @@ export default function LoginPage() {
     const supabase = createClient()
     const { error } = await supabase.auth.signInWithPassword({ email, password: senha })
     if (error) { setErro('E-mail ou senha inválidos. Tente novamente.'); setLoading(false); return }
+
+    // Se o usuário entrou com a senha padrão, marca a flag para forçar troca
+    // no próximo carregamento (o layout autenticado bloqueia a UI até trocar).
+    if (isSenhaPadrao(senha)) {
+      try { await fetch('/api/auth/marcar-troca-senha', { method: 'POST' }) } catch {}
+    }
+
     router.push('/dashboard')
     router.refresh()
   }
