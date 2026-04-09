@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { TEMPLATES } from '@/lib/permissoes-config'
 
 // Verifica se o usuário logado é admin usando o admin client (ignora RLS)
 export async function assertAdmin(): Promise<boolean> {
@@ -31,12 +32,23 @@ export async function getUsuarioLogado() {
 
 /**
  * Verifica se o usuário logado tem uma permissão específica (modulo+acao).
- * Admin SEMPRE passa.
- * Para os demais perfis, consulta a tabela `permissoes_usuario` (que é a
- * fonte de verdade — pode ter sido editada por admin).
+ *
+ * Ordem de verificação:
+ *   1) Admin SEMPRE passa.
+ *   2) Permissão explícita na tabela `permissoes_usuario` → passa.
+ *   3) Fallback: template padrão do perfil do usuário
+ *      (TEMPLATES[user.perfil]) — cobre usuários antigos criados antes de
+ *      uma migration adicionar a permissão ao template, e que nunca
+ *      tiveram suas permissões manualmente ajustadas pelo admin.
+ *   4) Caso contrário, nega.
+ *
+ * Tradeoff conhecido: se um admin REMOVER explicitamente uma permissão
+ * que está no template padrão, o fallback #3 vai devolver a permissão.
+ * Para negar de verdade, o admin precisa (a) mudar o perfil do usuário
+ * ou (b) usar um template customizado via templates_permissao.
  *
  * Retorna { ok: false } se não autenticado ou sem permissão.
- * Retorna { ok: true, user, isAdmin } caso contrário.
+ * Retorna { ok: true, userId, userEmail, isAdmin } caso contrário.
  */
 export async function assertPermissao(modulo: string, acao: string): Promise<
   { ok: true; userId: string; userEmail: string | null; isAdmin: boolean }
@@ -47,18 +59,19 @@ export async function assertPermissao(modulo: string, acao: string): Promise<
 
   const admin = createAdminClient()
 
-  // Admin sempre pode
+  // Lê o perfil do usuário (admin / engenheiro_fip / visualizador / etc.)
   const { data: perfil } = await admin
     .from('perfis')
     .select('perfil')
     .eq('id', user.id)
     .single()
 
+  // 1) Admin SEMPRE pode
   if (perfil?.perfil === 'admin') {
     return { ok: true, userId: user.id, userEmail: user.email ?? null, isAdmin: true }
   }
 
-  // Permissão explícita
+  // 2) Permissão explícita na tabela
   const { data: perms } = await admin
     .from('permissoes_usuario')
     .select('modulo')
@@ -71,5 +84,14 @@ export async function assertPermissao(modulo: string, acao: string): Promise<
     return { ok: true, userId: user.id, userEmail: user.email ?? null, isAdmin: false }
   }
 
+  // 3) Fallback: template padrão do perfil
+  const perfilTipo = (perfil?.perfil ?? 'visualizador') as keyof typeof TEMPLATES
+  const templatePerms = TEMPLATES[perfilTipo] ?? []
+  const noTemplate = templatePerms.some(p => p.modulo === modulo && p.acao === acao)
+  if (noTemplate) {
+    return { ok: true, userId: user.id, userEmail: user.email ?? null, isAdmin: false }
+  }
+
+  // 4) Nega
   return { ok: false, status: 403, error: `Sem permissão para ${acao} em ${modulo}` }
 }
