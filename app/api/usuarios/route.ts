@@ -9,10 +9,24 @@ export async function GET() {
   if (!(await assertAdmin())) return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
   try {
     const admin = createAdminClient()
-    const { data, error } = await admin
+    // Traz também template_id + nome do template para a UI mostrar o rótulo
+    // correto quando o usuário está ligado a um template customizado.
+    // Tenta com o join; se falhar (migration 012 não aplicada ou schema cache
+    // sem FK), cai para o select legado sem o join.
+    let { data, error } = await admin
       .from('perfis')
-      .select('id, nome, email, perfil, ativo, criado_em')
+      .select('id, nome, email, perfil, ativo, criado_em, template_id, permissoes_customizadas, template:templates_permissao(id, nome)')
       .order('criado_em', { ascending: false })
+
+    if (error && /template_id|templates_permissao|permissoes_customizadas/.test(error.message)) {
+      const fb = await admin
+        .from('perfis')
+        .select('id, nome, email, perfil, ativo, criado_em')
+        .order('criado_em', { ascending: false })
+      data = fb.data as any
+      error = fb.error as any
+    }
+
     if (error) throw error
     return NextResponse.json(data || [])
   } catch (e: any) {
