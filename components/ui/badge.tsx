@@ -4,11 +4,14 @@ interface BadgeProps {
   children: React.ReactNode
   className?: string
   variant?: 'default' | 'outline' | 'success' | 'warning' | 'destructive'
+  /** Tooltip nativo (atributo HTML title). */
+  title?: string
 }
 
-export function Badge({ children, className, variant = 'default' }: BadgeProps) {
+export function Badge({ children, className, variant = 'default', title }: BadgeProps) {
   return (
     <span
+      title={title}
       className={cn(
         'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border transition-colors',
         variant === 'default'     && 'bg-[var(--surface-3)] text-[var(--text-2)] border-[#2d3f5c]',
