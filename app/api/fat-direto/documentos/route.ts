@@ -5,7 +5,10 @@ import { createAdminClient } from '@/lib/supabase/admin'
 //
 // Query params aceitos:
 //   - view: 'com-nf' (só com NF anexada) | 'aprovadas' (todos aprovados) | '' (padrão)
-//   - data_inicio, data_fim (data_solicitacao)
+//   - data_inicio, data_fim: por padrão filtra data_solicitacao; para
+//     views 'aprovadas' e 'com-nf' filtra data_aprovacao (faz mais sentido
+//     no contexto de histórico de aprovação / NF — a data relevante é
+//     quando o pedido foi aprovado, não quando o rascunho foi criado).
 //   - nf_numero (ilike)
 //   - contrato_id
 //   - status_documento
@@ -53,8 +56,13 @@ export async function GET(req: Request) {
     }
     // "aprovadas" = todos os aprovados (comportamento padrão do endpoint)
 
-    if (dataInicio) query = query.gte('data_solicitacao', dataInicio)
-    if (dataFim) query = query.lte('data_solicitacao', dataFim + 'T23:59:59')
+    // Para aprovadas/com-nf, o range de datas se aplica a data_aprovacao;
+    // para a view padrão (rascunhos/outros), mantém data_solicitacao.
+    const campoData = (view === 'aprovadas' || view === 'com-nf')
+      ? 'data_aprovacao'
+      : 'data_solicitacao'
+    if (dataInicio) query = query.gte(campoData, dataInicio)
+    if (dataFim) query = query.lte(campoData, dataFim + 'T23:59:59')
     if (nfNumero) query = query.ilike('nf_numero', `%${nfNumero}%`)
     if (contratoId) query = query.eq('contrato_id', contratoId)
     if (statusDoc) query = query.eq('status_documento', statusDoc)

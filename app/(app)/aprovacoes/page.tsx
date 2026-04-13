@@ -94,9 +94,12 @@ export default function AprovacoesPage() {
 
   // Filtros estilo Excel do histórico unificado
   const [hfTipo,        setHfTipo]        = useState<Set<string>>(new Set())
+  const [hfNumero,      setHfNumero]      = useState<Set<string>>(new Set())
   const [hfContrato,    setHfContrato]    = useState<Set<string>>(new Set())
+  const [hfDetalhe,     setHfDetalhe]     = useState<Set<string>>(new Set())
   const [hfSolicitante, setHfSolicitante] = useState<Set<string>>(new Set())
   const [hfAprovador,   setHfAprovador]   = useState<Set<string>>(new Set())
+  const [hfDataAprov,   setHfDataAprov]   = useState<Set<string>>(new Set())
   const [hfStatus,      setHfStatus]      = useState<Set<string>>(new Set())
 
   // ID da linha do histórico sendo desaprovada (loading)
@@ -384,22 +387,29 @@ export default function AprovacoesPage() {
 
   const valoresHistUnicos = useMemo(() => ({
     tipo:        rowsUnificadas.map(r => r.tipo),
+    numero:      rowsUnificadas.map(r => r.numero),
     contrato:    rowsUnificadas.map(r => r.contrato),
+    detalhe:     rowsUnificadas.map(r => r.detalhe),
     solicitante: rowsUnificadas.map(r => r.solicitante),
     aprovador:   rowsUnificadas.map(r => r.aprovador),
+    // Data exibida em dd/mm/yyyy — filtro trabalha sobre o mesmo texto
+    dataAprov:   rowsUnificadas.map(r => r.data ? formatDate(r.data) : '—'),
     status:      rowsUnificadas.map(r => r.statusLabel),
   }), [rowsUnificadas])
 
   const rowsFiltradas = useMemo(() => {
     return rowsUnificadas.filter(r => {
       if (!passaFiltro(hfTipo,        r.tipo))        return false
+      if (!passaFiltro(hfNumero,      r.numero))      return false
       if (!passaFiltro(hfContrato,    r.contrato))    return false
+      if (!passaFiltro(hfDetalhe,     r.detalhe))     return false
       if (!passaFiltro(hfSolicitante, r.solicitante)) return false
       if (!passaFiltro(hfAprovador,   r.aprovador))   return false
+      if (!passaFiltro(hfDataAprov,   r.data ? formatDate(r.data) : '—')) return false
       if (!passaFiltro(hfStatus,      r.statusLabel)) return false
       return true
     })
-  }, [rowsUnificadas, hfTipo, hfContrato, hfSolicitante, hfAprovador, hfStatus])
+  }, [rowsUnificadas, hfTipo, hfNumero, hfContrato, hfDetalhe, hfSolicitante, hfAprovador, hfDataAprov, hfStatus])
 
   async function desaprovarDoHistorico(row: HistRow) {
     if (row.kind !== 'fip') {
@@ -879,12 +889,18 @@ export default function AprovacoesPage() {
                       Tipo
                       <ColumnFilter label="Tipo" values={valoresHistUnicos.tipo} selected={hfTipo} onChange={setHfTipo} />
                     </span>
-                    <span>Número</span>
+                    <span className="flex items-center gap-1">
+                      Número
+                      <ColumnFilter label="Número" values={valoresHistUnicos.numero} selected={hfNumero} onChange={setHfNumero} />
+                    </span>
                     <span className="flex items-center gap-1">
                       Contrato
                       <ColumnFilter label="Contrato" values={valoresHistUnicos.contrato} selected={hfContrato} onChange={setHfContrato} />
                     </span>
-                    <span>Fornecedor/Período</span>
+                    <span className="flex items-center gap-1">
+                      Fornecedor/Período
+                      <ColumnFilter label="Fornecedor/Período" values={valoresHistUnicos.detalhe} selected={hfDetalhe} onChange={setHfDetalhe} />
+                    </span>
                     <span className="flex items-center gap-1">
                       Solicitante
                       <ColumnFilter label="Solicitante" values={valoresHistUnicos.solicitante} selected={hfSolicitante} onChange={setHfSolicitante} />
@@ -893,7 +909,10 @@ export default function AprovacoesPage() {
                       Aprovador
                       <ColumnFilter label="Aprovador" values={valoresHistUnicos.aprovador} selected={hfAprovador} onChange={setHfAprovador} />
                     </span>
-                    <span>Data aprov.</span>
+                    <span className="flex items-center gap-1">
+                      Data aprov.
+                      <ColumnFilter label="Data aprov." values={valoresHistUnicos.dataAprov} selected={hfDataAprov} onChange={setHfDataAprov} />
+                    </span>
                     <span className="text-right">Valor</span>
                     <span className="flex items-center gap-1">
                       Status
