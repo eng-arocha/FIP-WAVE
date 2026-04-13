@@ -2,19 +2,14 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { withSchemaFallback } from '@/lib/db/resilient'
 
-export interface Perfil {
-  id: string
-  nome: string
-  email: string
-  perfil: string
-  ativo: boolean
-  deve_trocar_senha?: boolean
-}
-
-export async function getPerfil(userId: string): Promise<Perfil | null> {
+export async function getPerfil(userId: string): Promise<any> {
   // Usa admin client para ignorar RLS e garantir leitura do perfil.
   // Tenta primeiro com deve_trocar_senha (migration 022). Se a coluna ainda
   // não existir no schema cache, faz fallback para o select sem ela.
+  //
+  // Tipo de retorno propositalmente `any` — o campo `perfil` é consumido em
+  // vários sites como union literal ('admin' | 'engenheiro_fip' | ...),
+  // e tipar estritamente como `string` aqui quebra atribuições upstream.
   const admin = createAdminClient()
   const { data } = await withSchemaFallback({
     context: 'getPerfil',
@@ -22,7 +17,7 @@ export async function getPerfil(userId: string): Promise<Perfil | null> {
     primary:  () => admin.from('perfis').select('id, nome, email, perfil, ativo, deve_trocar_senha').eq('id', userId).single(),
     fallback: () => admin.from('perfis').select('id, nome, email, perfil, ativo').eq('id', userId).single(),
   })
-  return data as Perfil | null
+  return data as any
 }
 
 export async function getPerfilDoUsuarioLogado() {
