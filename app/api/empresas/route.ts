@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server'
 import { getEmpresas, createEmpresa, updateEmpresa } from '@/lib/db/empresas'
+import { apiError } from '@/lib/api/error-response'
 
 export async function GET() {
   try {
     const data = await getEmpresas()
     return NextResponse.json(data)
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }
 
@@ -16,6 +17,6 @@ export async function POST(req: Request) {
     const data = await createEmpresa(body)
     return NextResponse.json(data)
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }

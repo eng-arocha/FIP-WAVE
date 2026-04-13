@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { apiError } from '@/lib/api/error-response'
 
 // POST /api/auth/marcar-troca-senha
 // Marca o usuário logado como "deve trocar a senha".
@@ -16,6 +17,6 @@ export async function POST() {
     .update({ deve_trocar_senha: true })
     .eq('id', user.id)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return apiError(error)
   return NextResponse.json({ ok: true })
 }

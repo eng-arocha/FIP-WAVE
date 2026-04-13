@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { criarNotaFiscal } from '@/lib/db/fat-direto'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { apiError } from '@/lib/api/error-response'
 
 const BUCKET = 'contratos-documentos'
 
@@ -19,7 +20,7 @@ export async function GET(
     if (error) throw error
     return NextResponse.json(data || [])
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }
 
@@ -85,6 +86,6 @@ export async function POST(
     })
     return NextResponse.json(nf, { status: 201 })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }

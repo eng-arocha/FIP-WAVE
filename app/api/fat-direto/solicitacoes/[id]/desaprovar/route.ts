@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { assertPermissao } from '@/lib/api/auth'
 import { desaprovarSolicitacao } from '@/lib/db/fat-direto'
+import { apiError } from '@/lib/api/error-response'
 
 /**
  * POST /api/fat-direto/solicitacoes/[id]/desaprovar
@@ -51,6 +52,6 @@ export async function POST(
         { status: 503 }
       )
     }
-    return NextResponse.json({ error: e?.message || 'Erro inesperado' }, { status: 500 })
+    return apiError(e)
   }
 }

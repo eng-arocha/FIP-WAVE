@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { assertAdmin } from '@/lib/api/auth'
 import { isSenhaPadrao } from '@/lib/auth/senha'
+import { apiError } from '@/lib/api/error-response'
+import { isSchemaMissingError } from '@/lib/db/resilient'
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!(await assertAdmin())) return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
@@ -40,7 +42,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
     if (Object.keys(coreUpdates).length > 0) {
       const { error } = await admin.from('perfis').update(coreUpdates).eq('id', id)
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+      if (error) return apiError(error, { status: 400 })
     }
 
     // Atualiza template_id em chamada separada (tolera coluna ausente)
@@ -48,8 +50,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       const { error } = await admin.from('perfis')
         .update({ template_id: body.template_id || null })
         .eq('id', id)
-      if (error && !/template_id/.test(error.message)) {
-        return NextResponse.json({ error: error.message }, { status: 400 })
+      if (error && !isSchemaMissingError(error, ['template_id'])) {
+        return apiError(error, { status: 400 })
       }
       // Se o erro foi sobre template_id, ignora — provavelmente a migration
       // 012 / 024 ainda não rodou no Supabase. O perfil base já foi salvo.
@@ -60,8 +62,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       const { error } = await admin.from('perfis')
         .update({ deve_trocar_senha: true })
         .eq('id', id)
-      if (error && !/deve_trocar_senha/.test(error.message)) {
-        return NextResponse.json({ error: error.message }, { status: 400 })
+      if (error && !isSchemaMissingError(error, ['deve_trocar_senha'])) {
+        return apiError(error, { status: 400 })
       }
     }
 
@@ -74,12 +76,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     // Atualiza senha se fornecida
     if (body.nova_senha) {
       const { error: authError } = await admin.auth.admin.updateUserById(id, { password: body.nova_senha })
-      if (authError) return NextResponse.json({ error: authError.message }, { status: 400 })
+      if (authError) return apiError(authError, { status: 400 })
     }
 
     return NextResponse.json({ ok: true })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }
 
@@ -90,9 +92,9 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     const admin = createAdminClient()
     // Exclui permanentemente do Supabase Auth (cascateia para perfis via FK)
     const { error } = await admin.auth.admin.deleteUser(id)
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    if (error) return apiError(error, { status: 400 })
     return NextResponse.json({ ok: true })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }

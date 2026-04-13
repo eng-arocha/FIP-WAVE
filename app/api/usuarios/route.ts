@@ -4,6 +4,8 @@ import { listarUsuarios } from '@/lib/db/usuarios'
 import { setPermissoesUsuario } from '@/lib/db/permissoes'
 import { assertAdmin } from '@/lib/api/auth'
 import { isSenhaPadrao } from '@/lib/auth/senha'
+import { apiError } from '@/lib/api/error-response'
+import { isSchemaMissingError } from '@/lib/db/resilient'
 
 export async function GET() {
   if (!(await assertAdmin())) return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
@@ -18,7 +20,7 @@ export async function GET() {
       .select('id, nome, email, perfil, ativo, criado_em, template_id, permissoes_customizadas, template:templates_permissao(id, nome)')
       .order('criado_em', { ascending: false })
 
-    if (error && /template_id|templates_permissao|permissoes_customizadas/.test(error.message)) {
+    if (error && isSchemaMissingError(error, ['template_id', 'templates_permissao', 'permissoes_customizadas'])) {
       const fb = await admin
         .from('perfis')
         .select('id, nome, email, perfil, ativo, criado_em')
@@ -30,7 +32,7 @@ export async function GET() {
     if (error) throw error
     return NextResponse.json(data || [])
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }
 
@@ -67,7 +69,7 @@ export async function POST(req: Request) {
       email_confirm: true,
       user_metadata: { nome, perfil: perfilEfetivo },
     })
-    if (authError) return NextResponse.json({ error: authError.message }, { status: 400 })
+    if (authError) return apiError(authError, { status: 400 })
 
     // Garante que o perfil foi criado com os valores corretos.
     // Faz upsert em duas tentativas para tolerar colunas opcionais ausentes
@@ -88,8 +90,8 @@ export async function POST(req: Request) {
     if (Object.keys(perfilExtras).length > 0) {
       const { error } = await admin.from('perfis').upsert({ ...perfilCore, ...perfilExtras })
       if (!error) upsertOk = true
-      else if (!/template_id|deve_trocar_senha/.test(error.message)) {
-        return NextResponse.json({ error: error.message }, { status: 400 })
+      else if (!isSchemaMissingError(error, ['template_id', 'deve_trocar_senha'])) {
+        return apiError(error, { status: 400 })
       }
       // se o erro foi sobre coluna opcional, cai para o fallback
     }
@@ -97,7 +99,7 @@ export async function POST(req: Request) {
     if (!upsertOk) {
       // Fallback: salva só os campos core
       const { error } = await admin.from('perfis').upsert(perfilCore)
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+      if (error) return apiError(error, { status: 400 })
     }
 
     // Novo modelo: usuários criados herdam do template automaticamente
@@ -120,6 +122,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ id: authData.user.id }, { status: 201 })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { apiError } from '@/lib/api/error-response'
 
 const BUCKET = 'faturamento-direto'
 
@@ -88,6 +89,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, uploaded })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }

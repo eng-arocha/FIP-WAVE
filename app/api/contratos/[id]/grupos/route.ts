@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getGruposMacro, createGrupoMacro } from '@/lib/db/estrutura'
+import { apiError } from '@/lib/api/error-response'
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -7,7 +8,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const data = await getGruposMacro(id)
     return NextResponse.json(data)
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }
 
@@ -18,6 +19,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const data = await createGrupoMacro({ ...body, contrato_id: id })
     return NextResponse.json(data)
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }

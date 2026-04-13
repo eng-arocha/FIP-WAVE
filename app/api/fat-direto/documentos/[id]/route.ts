@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { assertAdmin, getUsuarioLogado } from '@/lib/api/auth'
+import { apiError } from '@/lib/api/error-response'
+import { isSchemaMissingError } from '@/lib/db/resilient'
 
 export async function PATCH(
   req: Request,
@@ -31,7 +33,7 @@ export async function PATCH(
     if (error) throw error
     return NextResponse.json(data)
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }
 
@@ -59,7 +61,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     if (error) throw error
     return NextResponse.json(data)
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }
 
@@ -86,17 +88,17 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
 
     if (error) {
       // Se a migration 025 ainda não foi aplicada, retorna mensagem clara
-      if (/deletado_em|deletado_por/.test(error.message)) {
+      if (isSchemaMissingError(error, ['deletado_em', 'deletado_por'])) {
         return NextResponse.json(
           { error: 'A funcionalidade de exclusão ainda não está ativa. Rode a migration 025 no Supabase SQL Editor.' },
           { status: 503 }
         )
       }
-      return NextResponse.json({ error: error.message }, { status: 400 })
+      return apiError(error, { status: 400 })
     }
 
     return NextResponse.json({ ok: true })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }

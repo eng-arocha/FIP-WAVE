@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { assertAdmin } from '@/lib/api/auth'
+import { apiError } from '@/lib/api/error-response'
 
 /**
  * GET /api/perfis/[id]/impacto
@@ -42,6 +43,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       ilhas,
     })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }

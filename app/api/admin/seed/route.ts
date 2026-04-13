@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { assertAdmin } from '@/lib/api/auth'
 import { SEED_TAREFAS, SEED_DETALHAMENTOS } from '@/lib/seed-data'
+import { apiError } from '@/lib/api/error-response'
 
 export async function POST() {
   if (!(await assertAdmin())) return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
@@ -43,7 +44,7 @@ export async function POST() {
     })
   } catch (e: any) {
     console.error('[admin/seed]', e.message)
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }
 
@@ -62,6 +63,6 @@ export async function GET() {
       precisa_seed: (dCount ?? 0) < SEED_DETALHAMENTOS.length,
     })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }

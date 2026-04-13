@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { assertAdmin } from '@/lib/api/auth'
+import { apiError } from '@/lib/api/error-response'
 
 /**
  * Conta quantos usuários SERIAM afetados por uma mudança neste template:
@@ -64,7 +65,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
     return NextResponse.json({ ...data, usuarios_afetados })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }
 
@@ -104,6 +105,6 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     if (error) throw error
     return NextResponse.json({ ok: true })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }

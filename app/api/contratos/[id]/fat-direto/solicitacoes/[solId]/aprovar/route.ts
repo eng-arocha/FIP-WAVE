@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { assertPermissao, getUsuarioLogado } from '@/lib/api/auth'
 import { atualizarStatusSolicitacao } from '@/lib/db/fat-direto'
+import { apiError } from '@/lib/api/error-response'
 
 export async function POST(
   req: Request,
@@ -34,6 +35,6 @@ export async function POST(
     await atualizarStatusSolicitacao(solId, acao, user.id, motivo_rejeicao)
     return NextResponse.json({ ok: true })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }

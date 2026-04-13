@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getContrato, getContratoResumo } from '@/lib/db/contratos'
+import { apiError } from '@/lib/api/error-response'
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -10,6 +11,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     ])
     return NextResponse.json({ ...contrato, ...resumo })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }

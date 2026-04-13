@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { getPermissoesEfetivas, setPermissoesUsuario } from '@/lib/db/permissoes'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { assertAdmin } from '@/lib/api/auth'
+import { apiError } from '@/lib/api/error-response'
+import { isSchemaMissingError } from '@/lib/db/resilient'
 
 /**
  * GET /api/usuarios/[id]/permissoes
@@ -46,7 +48,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       fonte: efetivas.fonte,
     })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }
 
@@ -86,8 +88,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         .from('perfis')
         .update({ permissoes_customizadas: false })
         .eq('id', id)
-      if (error && !/permissoes_customizadas/.test(error.message)) {
-        return NextResponse.json({ error: error.message }, { status: 400 })
+      if (error && !isSchemaMissingError(error, ['permissoes_customizadas'])) {
+        return apiError(error, { status: 400 })
       }
       return NextResponse.json({ ok: true, permissoes_customizadas: false })
     }
@@ -104,13 +106,13 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         .from('perfis')
         .update({ permissoes_customizadas: true })
         .eq('id', id)
-      if (error && !/permissoes_customizadas/.test(error.message)) {
-        return NextResponse.json({ error: error.message }, { status: 400 })
+      if (error && !isSchemaMissingError(error, ['permissoes_customizadas'])) {
+        return apiError(error, { status: 400 })
       }
     }
 
     return NextResponse.json({ ok: true, permissoes_customizadas: setFlag })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }
