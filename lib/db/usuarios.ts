@@ -2,7 +2,16 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { withSchemaFallback } from '@/lib/db/resilient'
 
-export async function getPerfil(userId: string) {
+export interface Perfil {
+  id: string
+  nome: string
+  email: string
+  perfil: string
+  ativo: boolean
+  deve_trocar_senha?: boolean
+}
+
+export async function getPerfil(userId: string): Promise<Perfil | null> {
   // Usa admin client para ignorar RLS e garantir leitura do perfil.
   // Tenta primeiro com deve_trocar_senha (migration 022). Se a coluna ainda
   // não existir no schema cache, faz fallback para o select sem ela.
@@ -13,7 +22,7 @@ export async function getPerfil(userId: string) {
     primary:  () => admin.from('perfis').select('id, nome, email, perfil, ativo, deve_trocar_senha').eq('id', userId).single(),
     fallback: () => admin.from('perfis').select('id, nome, email, perfil, ativo').eq('id', userId).single(),
   })
-  return data
+  return data as Perfil | null
 }
 
 export async function getPerfilDoUsuarioLogado() {
