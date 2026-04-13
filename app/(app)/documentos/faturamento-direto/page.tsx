@@ -502,14 +502,20 @@ function PedidosFatDiretoContent() {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {/* Período */}
+            {/* Período — em views de aprovadas/com-nf filtramos pela data de
+                 aprovação (faz mais sentido pro histórico de NF); na view
+                 padrão o filtro é sobre a data da solicitação. */}
             <div className="flex flex-col gap-1">
-              <label className="text-[11px] font-medium" style={{ color: 'var(--text-3)' }}>Data início</label>
+              <label className="text-[11px] font-medium" style={{ color: 'var(--text-3)' }}>
+                {temDefaultData ? 'Data aprovação início' : 'Data início'}
+              </label>
               <input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)}
                 className={inputCls} style={inputStyle} />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[11px] font-medium" style={{ color: 'var(--text-3)' }}>Data fim</label>
+              <label className="text-[11px] font-medium" style={{ color: 'var(--text-3)' }}>
+                {temDefaultData ? 'Data aprovação fim' : 'Data fim'}
+              </label>
               <input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)}
                 className={inputCls} style={inputStyle} />
             </div>
