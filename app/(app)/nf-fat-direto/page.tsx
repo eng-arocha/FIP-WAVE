@@ -125,7 +125,7 @@ export default function NfFatDiretoPage() {
 
   const valoresUnicos = useMemo(() => ({
     numero:     [...new Set(filtradasStatus.map(s => String(s.numero)))],
-    fornecedor: [...new Set(filtradasStatus.map(s => s.empresa?.razao_social || '—'))],
+    fornecedor: [...new Set(filtradasStatus.map(s => s.fornecedor_razao_social || '—'))],
     data:       [...new Set(filtradasStatus.map(s => s.data_solicitacao ? formatDate(s.data_solicitacao) : '—'))],
     valor:      [...new Set(filtradasStatus.map(s => formatCurrency(s.valor_total || 0)))],
     status:     [...new Set(filtradasStatus.map(s => STATUS_BADGE_RAW[s.status]?.label ?? s.status))],
@@ -133,7 +133,7 @@ export default function NfFatDiretoPage() {
 
   const filtradas = filtradasStatus.filter(s =>
     passaFiltro(fNumero,     String(s.numero)) &&
-    passaFiltro(fFornecedor, s.empresa?.razao_social || '—') &&
+    passaFiltro(fFornecedor, s.fornecedor_razao_social || '—') &&
     passaFiltro(fData,       s.data_solicitacao ? formatDate(s.data_solicitacao) : '—') &&
     passaFiltro(fValor,      formatCurrency(s.valor_total || 0)) &&
     passaFiltro(fStatusCol,  STATUS_BADGE_RAW[s.status]?.label ?? s.status)
