@@ -416,7 +416,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
   }
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto" style={{ background: 'var(--background)' }}>
+    <div className="flex-1 overflow-auto" style={{ background: 'var(--background)' }}>
       <Topbar title="Nova Solicitação" />
 
       {/* Sticky banner */}
@@ -434,7 +434,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
         </div>
       </div>
 
-      <div className="flex-1 p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-4xl mx-auto w-full">
+      <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-4xl mx-auto w-full">
         {/* Header */}
         <div className="flex items-center gap-2">
           <Link href={`/contratos/${id}/fat-direto`}>
