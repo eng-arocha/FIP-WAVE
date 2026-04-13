@@ -21,7 +21,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className="h-full dark" suppressHydrationWarning>
+    <html lang="pt-BR" className="min-h-full dark" suppressHydrationWarning>
       {/* Prevent flash of wrong theme — runs before React hydration */}
       <head>
         <script
@@ -30,7 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body className="h-full antialiased">
+      <body className="min-h-screen antialiased">
         <ThemeProvider>
           {children}
         </ThemeProvider>

@@ -429,6 +429,8 @@ export default function DashboardPage() {
           <div
             className="rounded-xl overflow-hidden group"
             style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
+            onDoubleClick={() => setMaximized('curvaS')}
+            title="Duplo clique para maximizar"
           >
             <div className="px-5 pt-5 pb-3 flex items-center justify-between">
               <h3 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
@@ -498,6 +500,8 @@ export default function DashboardPage() {
           <div
             className="rounded-xl overflow-hidden group"
             style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
+            onDoubleClick={() => setMaximized('acomp')}
+            title="Duplo clique para maximizar"
           >
             {/* Cabeçalho + filtros */}
             <div className="px-5 pt-5 pb-4" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -628,6 +632,8 @@ export default function DashboardPage() {
           <div
             className="rounded-xl overflow-hidden group"
             style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
+            onDoubleClick={() => setMaximized('contratos')}
+            title="Duplo clique para maximizar"
           >
             <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid var(--border)' }}>
               <h3 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>Contratos Ativos</h3>
@@ -714,6 +720,8 @@ export default function DashboardPage() {
           <div
             className="rounded-xl overflow-hidden group"
             style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
+            onDoubleClick={() => setMaximized('medicoes')}
+            title="Duplo clique para maximizar"
           >
             <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid var(--border)' }}>
               <h3 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>Medições Recentes</h3>
