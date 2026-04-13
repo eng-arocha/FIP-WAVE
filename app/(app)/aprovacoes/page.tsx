@@ -18,6 +18,7 @@ import {
 import { formatCurrency, formatDate, getMedicaoStatusColor } from '@/lib/utils'
 import { MEDICAO_STATUS_LABELS, MedicaoStatus } from '@/types'
 import { usePermissoes } from '@/lib/context/permissoes-context'
+import { MaximizableCard } from '@/components/ui/maximizable-card'
 
 interface PendenteFip {
   id: string
@@ -867,7 +868,7 @@ export default function AprovacoesPage() {
 
         {/* Histórico — tabela unificada estilo Excel */}
         {!loading && aba === 'historico' && (
-          <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+          <MaximizableCard title="Histórico de Aprovações" className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
             {(() => {
               const gridCols = podeDesaprovarFip
                 ? '100px 110px 120px 1fr 1fr 1fr 110px 130px 110px 48px'
@@ -1040,7 +1041,7 @@ export default function AprovacoesPage() {
                 </>
               )
             })()}
-          </div>
+          </MaximizableCard>
         )}
       </div>
 
