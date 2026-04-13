@@ -3,7 +3,6 @@
 import { use, useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { formatCurrency } from '@/lib/utils'
@@ -159,8 +158,6 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
   const { id } = use(params)
   const router = useRouter()
   const [tarefas, setTarefas] = useState<Tarefa[]>([])
-  const supplierCardRef = useRef<HTMLDivElement>(null)
-  const [stickyVisible, setStickyVisible] = useState(false)
   const pdfInputRef = useRef<HTMLInputElement>(null)
 
   // Dados do Fornecedor
@@ -239,16 +236,6 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
       .then(r => r.json())
       .then(data => setTarefas(Array.isArray(data) ? data : []))
   }, [id])
-
-  useEffect(() => {
-    if (!supplierCardRef.current) return
-    const observer = new IntersectionObserver(
-      ([entry]) => setStickyVisible(!entry.isIntersecting),
-      { threshold: 0, rootMargin: '-56px 0px 0px 0px' }
-    )
-    observer.observe(supplierCardRef.current)
-    return () => observer.disconnect()
-  }, [])
 
   // Adiciona mais GROUP_SIZE linhas vazias
   function addGroup() {
@@ -416,23 +403,20 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
   }
 
   return (
-    <div className="flex-1 overflow-auto" style={{ background: 'var(--background)' }}>
-      <Topbar title="Nova Solicitação" />
-
-      {/* Sticky banner */}
-      <div
-        className="sticky top-14 z-20 transition-all duration-300 overflow-hidden"
-        style={{ maxHeight: stickyVisible && fornRazaoSocial ? 48 : 0, opacity: stickyVisible && fornRazaoSocial ? 1 : 0 }}
+    // Wrapper com altura fixa (absolute inset-0) para eliminar qualquer
+    // dependência de cálculo do flex-col pai. Nenhum sticky/fixed
+    // interno — a página rola 100% livre dentro do scroll container.
+    <div className="flex-1 relative" style={{ background: 'var(--background)' }}>
+      <div className="absolute inset-0 overflow-y-auto">
+      {/* Cabeçalho simples, rola junto com o conteúdo (sem sticky) */}
+      <header
+        className="h-14 border-b flex items-center px-4 sm:px-6"
+        style={{ background: 'var(--topbar-bg)', borderColor: 'rgba(0,0,0,0.08)' }}
       >
-        <div className="flex items-center gap-3 px-3 sm:px-6 py-2.5 border-b" style={{ background: 'var(--surface-2)', borderColor: 'var(--border)' }}>
-          <div className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, #3B82F6, #06B6D4)' }}>
-            <Building2 className="w-3.5 h-3.5 text-white" strokeWidth={1.5} />
-          </div>
-          <span className="text-xs font-medium" style={{ color: 'var(--text-3)' }}>Fornecedor:</span>
-          <span className="text-sm font-semibold truncate" style={{ color: 'var(--text-1)' }}>{fornRazaoSocial}</span>
-          {fornCnpj && <span className="text-xs ml-1 hidden sm:block" style={{ color: 'var(--text-3)' }}>· CNPJ {fornCnpj}</span>}
-        </div>
-      </div>
+        <h2 className="font-semibold text-[15px]" style={{ color: 'var(--text-1)' }}>
+          Nova Solicitação
+        </h2>
+      </header>
 
       <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-4xl mx-auto w-full">
         {/* Header */}
@@ -598,7 +582,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
         </Card>
 
         {/* ── Dados do Fornecedor ── */}
-        <div ref={supplierCardRef}>
+        <div>
           <Card style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm flex items-center gap-2" style={{ color: 'var(--text-1)' }}>
@@ -1078,6 +1062,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
             )}
           </Button>
         </div>
+      </div>
       </div>
     </div>
   )
