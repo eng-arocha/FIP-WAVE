@@ -72,9 +72,14 @@ export function SidebarShell({ perfilAtual, nomeAtual, children }: SidebarShellP
       {/*
         main-mobile-pad: adds bottom padding on mobile so content isn't hidden
         behind the bottom navigation bar (defined in globals.css).
+
+        overflow-y-auto direto no main: o PRÓPRIO main é o scroll container.
+        Simplifica — páginas não precisam se preocupar com cálculo de altura
+        via flex-col + overflow-hidden + flex-1 no filho. Qualquer elemento
+        sticky dentro do main funciona naturalmente relativo a ele.
       */}
       <main
-        className="main-mobile-pad flex-1 flex flex-col overflow-hidden min-w-0 transition-colors duration-300"
+        className="main-mobile-pad flex-1 min-w-0 overflow-y-auto overflow-x-hidden transition-colors duration-300"
         style={{ background: 'var(--background)' }}
       >
         {children}
