@@ -4,6 +4,7 @@ import * as React from 'react'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { pushMaximized, popMaximized } from '@/lib/maximize-state'
 
 /**
  * Card — wrapper padrão de seções/cards da app.
@@ -50,13 +51,24 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
 
     useEffect(() => {
       if (!max) return
-      function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setMax(false) }
-      window.addEventListener('keydown', onKey)
+      pushMaximized()
+      // Usa capture phase + stopImmediatePropagation pra garantir que o
+      // ESC fecha a ampliação ANTES de qualquer outro listener (ex: o
+      // <EscBack> global que faz router.back()).
+      function onKey(e: KeyboardEvent) {
+        if (e.key === 'Escape') {
+          e.stopImmediatePropagation()
+          e.preventDefault()
+          setMax(false)
+        }
+      }
+      window.addEventListener('keydown', onKey, true)
       const prev = document.body.style.overflow
       document.body.style.overflow = 'hidden'
       return () => {
-        window.removeEventListener('keydown', onKey)
+        window.removeEventListener('keydown', onKey, true)
         document.body.style.overflow = prev
+        popMaximized()
       }
     }, [max])
 

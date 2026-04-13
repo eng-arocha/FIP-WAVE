@@ -308,7 +308,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
               </CardHeader>
               <CardContent>
                 <table className="w-full text-xs">
-                  <thead>
+                  <thead className="sticky top-0 z-10" style={{ background: 'var(--surface-2)' }}>
                     <tr className="border-b border-[var(--border)]">
                       <th className="text-left py-2 text-[var(--text-3)] font-medium">Código</th>
                       <th className="text-left py-2 text-[var(--text-3)] font-medium">Descrição</th>

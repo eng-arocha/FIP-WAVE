@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, ReactNode, CSSProperties, MouseEvent } from 'react'
 import { X } from 'lucide-react'
+import { pushMaximized, popMaximized } from '@/lib/maximize-state'
 
 /**
  * MaximizableCard — wrapper que adiciona comportamento de "duplo-clique
@@ -51,14 +52,23 @@ export function MaximizableCard({
 
   useEffect(() => {
     if (!max) return
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setMax(false) }
-    window.addEventListener('keydown', onKey)
-    // Trava scroll do body enquanto maximizado
+    pushMaximized()
+    // Capture phase + stopImmediatePropagation: o ESC fecha a ampliação
+    // sem disparar o <EscBack> global (router.back).
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.stopImmediatePropagation()
+        e.preventDefault()
+        setMax(false)
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
-      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('keydown', onKey, true)
       document.body.style.overflow = prevOverflow
+      popMaximized()
     }
   }, [max])
 
