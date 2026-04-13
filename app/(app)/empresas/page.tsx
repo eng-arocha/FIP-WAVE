@@ -116,7 +116,7 @@ export default function EmpresasPage() {
   }
 
   return (
-    <div className="flex-1 overflow-auto" style={{ background: 'var(--background)' }}>
+    <div className="flex-1" style={{ background: 'var(--background)' }}>
       <Topbar
         title="Empresas"
         subtitle="Gerenciamento de contratantes e contratados"

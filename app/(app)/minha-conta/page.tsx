@@ -101,7 +101,7 @@ export default function MinhaContaPage() {
   const inputClass = 'w-full px-3 py-2 pr-10 rounded-lg text-sm bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-1)] outline-none focus:border-blue-500'
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="flex-1">
       <Topbar title="Minha Conta" subtitle="Suas informações e segurança" />
 
       <div className="p-3 sm:p-6 space-y-6 max-w-3xl">

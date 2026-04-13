@@ -332,7 +332,7 @@ export default function UsuariosPage() {
   const modulos = Object.keys(MODULOS_CONFIG) as Array<keyof typeof MODULOS_CONFIG>
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="flex-1">
       <Topbar
         title="Usuários"
         subtitle="Gerenciamento de acessos ao sistema"

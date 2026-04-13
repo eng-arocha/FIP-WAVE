@@ -58,7 +58,7 @@ export default function ContratosPage() {
   ]
 
   return (
-    <div className="flex-1 overflow-auto" style={{ background: 'var(--background)' }}>
+    <div className="flex-1" style={{ background: 'var(--background)' }}>
       <Topbar
         title="Contratos"
         subtitle={`${contratos.length} contrato(s) cadastrado(s)`}

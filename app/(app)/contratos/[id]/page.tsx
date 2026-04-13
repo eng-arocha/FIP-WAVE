@@ -234,7 +234,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
 
   if (loading) {
     return (
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1">
         <Topbar title="Carregando..." subtitle="" />
         <div className="flex items-center justify-center h-64">
           <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
@@ -245,7 +245,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
 
   if (!contrato) {
     return (
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1">
         <Topbar title="Contrato não encontrado" subtitle="" />
         <div className="p-3 sm:p-6">
           <Link href="/contratos">
@@ -280,7 +280,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   })
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="flex-1">
       <Topbar
         title={
           <span className="flex items-center gap-2">
@@ -513,7 +513,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                 <X className="w-5 h-5" style={{ color: 'var(--text-2)' }} />
               </button>
             </div>
-            <div className="flex-1 overflow-auto p-6">
+            <div className="flex-1 p-6">
               {fullscreenChart === 'bar' && (
                 <ResponsiveContainer width="100%" height={Math.max(600, gruposChart.length * 42)}>
                   <BarChart data={gruposChart} layout="vertical" margin={{ top: 0, right: 32, left: 8, bottom: 0 }}>

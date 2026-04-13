@@ -165,7 +165,7 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
   }
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="flex-1">
       <Topbar
         title="Estrutura do Contrato"
         subtitle="Grupos Macro → Tarefas → Detalhamentos"

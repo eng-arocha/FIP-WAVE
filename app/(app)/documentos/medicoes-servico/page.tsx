@@ -61,7 +61,7 @@ export default function MedicoesServicoPage() {
   const podeCriarMedicao = meusContratos.length > 0
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="flex-1">
       <Topbar
         title="Controle de Medições de Serviço"
         subtitle="Todas as medições"

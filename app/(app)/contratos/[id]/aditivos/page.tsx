@@ -85,7 +85,7 @@ export default function AditivosPage({ params }: { params: Promise<{ id: string 
   }
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="flex-1">
       <Topbar
         title="Aditivos Contratuais"
         subtitle="WAVE-2025-001"

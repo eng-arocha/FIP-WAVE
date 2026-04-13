@@ -445,7 +445,7 @@ export default function AprovacoesPage() {
   }
 
   return (
-    <div className="flex-1 overflow-auto" style={{ background: 'var(--background)' }}>
+    <div className="flex-1" style={{ background: 'var(--background)' }}>
       <Topbar
         title="Fila de Aprovações"
         subtitle={

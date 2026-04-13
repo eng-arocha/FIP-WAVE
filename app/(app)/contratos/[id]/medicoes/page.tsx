@@ -29,7 +29,7 @@ export default function MedicoesPage({ params }: { params: Promise<{ id: string 
   }, [id])
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="flex-1">
       <Topbar
         title="Medições de Serviço"
         subtitle="Histórico e andamento"

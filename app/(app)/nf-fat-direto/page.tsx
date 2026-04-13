@@ -250,7 +250,7 @@ export default function NfFatDiretoPage() {
   }
 
   return (
-    <div className="flex-1 overflow-auto" style={{ background: 'var(--background)' }}>
+    <div className="flex-1" style={{ background: 'var(--background)' }}>
       <Topbar title="NF — Faturamento Direto" subtitle="Registrar notas fiscais para solicitações aprovadas" />
 
       <div className="p-4 sm:p-6 space-y-5">
