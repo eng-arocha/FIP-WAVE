@@ -168,7 +168,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
   }
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="flex-1">
       <Topbar
         title={`Medição FIP-${String(medicao.numero).padStart(4, '0')} — ${medicao.periodo_referencia}`}
         subtitle={medicao.contrato?.numero}

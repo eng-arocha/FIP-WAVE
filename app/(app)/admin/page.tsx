@@ -44,7 +44,7 @@ export default function AdminPage() {
   useEffect(() => { checkStatus() }, [])
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="flex-1">
       <Topbar title="Administração" subtitle="Ferramentas de manutenção do sistema" />
 
       <div className="p-6 max-w-2xl space-y-6">

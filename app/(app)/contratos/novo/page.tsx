@@ -104,7 +104,7 @@ export default function NovoContratoPage() {
   }
 
   return (
-    <div className="flex-1 overflow-auto bg-[var(--surface-1)]">
+    <div className="flex-1 bg-[var(--surface-1)]">
       <Topbar
         title="Novo Contrato"
         subtitle="Cadastro de contrato"

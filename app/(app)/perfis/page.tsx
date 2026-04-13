@@ -152,7 +152,7 @@ export default function PerfisPage() {
   }
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="flex-1">
       <Topbar
         title="Perfis de Acesso"
         subtitle="Gerencie os perfis e permissões disponíveis no sistema"

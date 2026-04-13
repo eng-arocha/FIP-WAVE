@@ -100,7 +100,7 @@ export default function DocumentosPage() {
   const totalSize = docs.reduce((s, d) => s + (d.tamanho_bytes ?? 0), 0)
 
   return (
-    <div className="flex-1 overflow-auto theme-page">
+    <div className="flex-1 theme-page">
       <Topbar
         title={
           <span className="flex items-center gap-2">

@@ -183,7 +183,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
   const itensFilled = Object.entries(percentualMedicao).some(([id, pct]) => pct > (acumulado[id] || 0))
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="flex-1">
       <Topbar
         title="Nova Medição de Serviço"
         subtitle="WAVE-2025-001"

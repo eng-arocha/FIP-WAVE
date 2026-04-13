@@ -276,7 +276,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="flex-1 overflow-auto" style={{ background: 'var(--background)' }}>
+    <div className="flex-1" style={{ background: 'var(--background)' }}>
       <Topbar
         title="Dashboard Geral"
         subtitle={
@@ -816,7 +816,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-auto p-6">
+          <div className="flex-1 p-6">
             {maximized === 'curvaS' && (
               <div className="rounded-xl p-6" style={{ background: 'white', border: '1px solid rgba(0,0,0,0.06)' }}>
                 <ResponsiveContainer width="100%" height={window.innerHeight - 150}>
