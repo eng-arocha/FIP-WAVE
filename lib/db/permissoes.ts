@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isSchemaMissingError } from '@/lib/db/resilient'
 import type { Permissao } from '@/lib/permissoes-config'
 import { MODULOS_CONFIG, TEMPLATES } from '@/lib/permissoes-config'
 
@@ -73,7 +74,7 @@ async function getPerfilHeader(userId: string): Promise<PerfilDoUsuario> {
   if (!r1.error) data = r1.data
   else error = r1.error
 
-  if (!data && /permissoes_customizadas/.test(error?.message ?? '')) {
+  if (!data && isSchemaMissingError(error, ['permissoes_customizadas'])) {
     const r2 = await admin
       .from('perfis')
       .select('perfil, template_id')
@@ -83,7 +84,7 @@ async function getPerfilHeader(userId: string): Promise<PerfilDoUsuario> {
     else error = r2.error
   }
 
-  if (!data && /template_id/.test(error?.message ?? '')) {
+  if (!data && isSchemaMissingError(error, ['template_id'])) {
     const r3 = await admin
       .from('perfis')
       .select('perfil')

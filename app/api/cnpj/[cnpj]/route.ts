@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { apiError } from '@/lib/api/error-response'
 
 export async function GET(_req: Request, { params }: { params: Promise<{ cnpj: string }> }) {
   try {
@@ -32,6 +33,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ cnpj: s
       uf: data.uf,
     })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }

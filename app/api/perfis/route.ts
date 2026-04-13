@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { assertAdmin } from '@/lib/api/auth'
+import { apiError } from '@/lib/api/error-response'
 
 export async function GET() {
   if (!(await assertAdmin())) return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
@@ -14,7 +15,7 @@ export async function GET() {
     if (error) throw error
     return NextResponse.json(data || [])
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }
 
@@ -35,6 +36,6 @@ export async function POST(req: Request) {
     }
     return NextResponse.json(data, { status: 201 })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }

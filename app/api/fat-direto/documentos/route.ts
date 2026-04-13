@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { apiError } from '@/lib/api/error-response'
 
 // GET /api/fat-direto/documentos
 //
@@ -74,13 +75,13 @@ export async function GET(req: Request) {
       // Se o erro menciona deletado_em ou solicitante/aprovador, pode ser
       // que as migrations 005 (FKs) ou 025 (soft-delete) ainda não rodaram.
       // Reporta como 500 com a mensagem original para facilitar diagnóstico.
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return apiError(error)
     }
 
     // Filtra soft-deleted no código (não falha se a coluna ainda não existe)
     const ativos = (data ?? []).filter((d: any) => !d.deletado_em)
     return NextResponse.json(ativos)
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }

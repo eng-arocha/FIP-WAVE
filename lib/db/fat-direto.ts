@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isSchemaMissingError } from '@/lib/db/resilient'
 
 export async function listarSolicitacoes(contratoId: string) {
   const admin = createAdminClient()
@@ -287,7 +288,7 @@ export async function atualizarStatusSolicitacao(
   const { error } = await admin.from('solicitacoes_fat_direto').update(updates).eq('id', id)
   if (error) {
     // Tolera colunas de desaprovação ausentes (migration 027 ainda não rodada)
-    if (/desaprovado_em|desaprovado_por|motivo_desaprovacao/.test(error.message)) {
+    if (isSchemaMissingError(error, ['desaprovado_em', 'desaprovado_por', 'motivo_desaprovacao'])) {
       delete updates.desaprovado_em
       delete updates.desaprovado_por
       delete updates.motivo_desaprovacao
@@ -329,7 +330,7 @@ export async function desaprovarSolicitacao(
 
   if (error) {
     // Se a migration 027 ainda não foi aplicada, reporta 503 amigável
-    if (/desaprovado_em|desaprovado_por|motivo_desaprovacao/.test(error.message)) {
+    if (isSchemaMissingError(error, ['desaprovado_em', 'desaprovado_por', 'motivo_desaprovacao'])) {
       throw new Error('MIGRATION_027_PENDING')
     }
     throw error

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { apiError } from '@/lib/api/error-response'
 
 const BUCKET = 'contratos-documentos'
 
@@ -19,7 +20,7 @@ export async function GET(
     if (error) throw error
     return NextResponse.json(data ?? [])
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }
 
@@ -70,7 +71,7 @@ export async function POST(
     if (dbError) throw dbError
     return NextResponse.json(doc, { status: 201 })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }
 
@@ -106,6 +107,6 @@ export async function DELETE(
     if (error) throw error
     return NextResponse.json({ ok: true })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }

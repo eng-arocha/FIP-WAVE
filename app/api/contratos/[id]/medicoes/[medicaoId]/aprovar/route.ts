@@ -3,6 +3,7 @@ import { assertPermissao } from '@/lib/api/auth'
 import { aprovarMedicao } from '@/lib/db/medicoes'
 import { sendEmail } from '@/lib/email/send'
 import { templateMedicaoAprovada } from '@/lib/email/templates'
+import { apiError } from '@/lib/api/error-response'
 
 export async function POST(req: Request, { params }: { params: Promise<{ medicaoId: string }> }) {
   try {
@@ -46,6 +47,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ medicao
     }
     return NextResponse.json({ ok: true })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }

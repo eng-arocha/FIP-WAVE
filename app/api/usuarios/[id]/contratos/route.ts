@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { assertAdmin } from '@/lib/api/auth'
+import { apiError } from '@/lib/api/error-response'
 
 // GET /api/usuarios/[id]/contratos
 // Lista os contratos vinculados a um usuário. Apenas admin.
@@ -13,10 +14,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       .from('usuarios_contratos')
       .select('contrato_id')
       .eq('usuario_id', id)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return apiError(error)
     return NextResponse.json((data || []).map(d => d.contrato_id))
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }
 
@@ -37,16 +38,16 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       .from('usuarios_contratos')
       .delete()
       .eq('usuario_id', id)
-    if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 })
+    if (delErr) return apiError(delErr)
 
     if (contrato_ids.length > 0) {
       const rows = contrato_ids.map(contrato_id => ({ usuario_id: id, contrato_id }))
       const { error: insErr } = await admin.from('usuarios_contratos').insert(rows)
-      if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 })
+      if (insErr) return apiError(insErr)
     }
 
     return NextResponse.json({ ok: true, total: contrato_ids.length })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }

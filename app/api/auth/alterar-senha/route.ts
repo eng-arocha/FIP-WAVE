@@ -3,6 +3,7 @@ import { createClient as createSbClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { validarSenhaForte } from '@/lib/auth/senha'
+import { apiError } from '@/lib/api/error-response'
 
 // PUT /api/auth/alterar-senha
 // Permite que o usuário autenticado troque a própria senha.
@@ -52,7 +53,7 @@ export async function PUT(req: Request) {
       password: nova_senha,
     })
     if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 400 })
+      return apiError(updateError, { status: 400 })
     }
 
     // 4) Limpa a flag deve_trocar_senha — a troca obrigatória foi cumprida
@@ -63,6 +64,6 @@ export async function PUT(req: Request) {
 
     return NextResponse.json({ ok: true })
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || 'Erro inesperado' }, { status: 500 })
+    return apiError(e)
   }
 }

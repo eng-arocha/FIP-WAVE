@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server'
 import { getContratos, createContrato } from '@/lib/db/contratos'
+import { apiError } from '@/lib/api/error-response'
 
 export async function GET() {
   try {
     const data = await getContratos()
     return NextResponse.json(data)
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }
 
@@ -16,6 +17,6 @@ export async function POST(req: Request) {
     const data = await createContrato(body)
     return NextResponse.json(data)
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }

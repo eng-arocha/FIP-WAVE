@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getSolicitacao } from '@/lib/db/fat-direto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { apiError } from '@/lib/api/error-response'
 
 const ADMIN_EMAILS = ['eng.arocha@gmail.com']
 
@@ -13,7 +14,7 @@ export async function GET(
     const { solId } = await params
     return NextResponse.json(await getSolicitacao(solId))
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }
 
@@ -58,7 +59,7 @@ export async function PUT(
 
     return NextResponse.json({ ok: true })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }
 
@@ -93,7 +94,7 @@ export async function DELETE(
 
     return NextResponse.json({ ok: true })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }
 

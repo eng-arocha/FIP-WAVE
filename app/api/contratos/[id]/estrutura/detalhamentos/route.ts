@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createDetalhamento } from '@/lib/db/estrutura'
+import { apiError } from '@/lib/api/error-response'
 
 export async function POST(req: Request) {
   try {
@@ -7,6 +8,6 @@ export async function POST(req: Request) {
     const data = await createDetalhamento(body)
     return NextResponse.json(data)
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }

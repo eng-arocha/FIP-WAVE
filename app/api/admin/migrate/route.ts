@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { runMigrations } from '@/lib/db/auto-migrate'
+import { apiError } from '@/lib/api/error-response'
 
 export async function POST(req: Request) {
   const auth = req.headers.get('authorization') ?? ''
@@ -14,7 +15,7 @@ export async function POST(req: Request) {
     await runMigrations()
     return NextResponse.json({ ok: true, message: 'Migrations executadas com sucesso.' })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }
 

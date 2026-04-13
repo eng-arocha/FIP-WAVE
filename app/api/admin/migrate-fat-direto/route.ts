@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import postgres from 'postgres'
+import { apiError } from '@/lib/api/error-response'
 
 const MIGRATION_SQL = `
 -- Tabela principal de solicitações fat direto
@@ -159,7 +160,7 @@ export async function POST(req: Request) {
     })
   } catch (e: any) {
     await sql?.end()
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return apiError(e)
   }
 }
 
