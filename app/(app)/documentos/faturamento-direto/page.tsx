@@ -545,7 +545,7 @@ function PedidosFatDiretoContent() {
         </MaximizableCard>
 
         {/* Tabela */}
-        <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+        <MaximizableCard title="Documentos de Faturamento Direto" className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
           {/* Grid template: Pedido | Fornecedor | Solicitante | Data Sol. | Aprovador | Data Apr. | Valor | Status | Pedido PDF | NF PDF | (Ações) */}
           {(() => {
             // A coluna de ações aparece se:
@@ -798,7 +798,7 @@ function PedidosFatDiretoContent() {
               </>
             )
           })()}
-        </div>
+        </MaximizableCard>
       </div>
 
       {/* Modal de preview PDF */}

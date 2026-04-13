@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
+import { MaximizableCard } from '@/components/ui/maximizable-card'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import {
   Receipt, Clock, CheckCircle2, Plus,
@@ -301,7 +302,7 @@ export default function NfFatDiretoPage() {
         </div>
 
         {/* Tabela */}
-        <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+        <MaximizableCard title="Solicitações de Autorização" className="rounded-2xl overflow-hidden" style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <div className="px-5 py-3 flex items-center justify-between border-b" style={{ borderColor: 'var(--border)', background: 'var(--surface-2)' }}>
             <h3 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>Solicitações de Autorização</h3>
             <span className="text-xs" style={{ color: 'var(--text-3)' }}>{filtradas.length} registro(s)</span>
@@ -526,7 +527,7 @@ export default function NfFatDiretoPage() {
               </div>
             )
           })}
-        </div>
+        </MaximizableCard>
       </div>
     </div>
   )
