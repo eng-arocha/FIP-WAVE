@@ -50,7 +50,7 @@ export function SidebarShell({ perfilAtual, nomeAtual, children }: SidebarShellP
   const expanded = isPinned || hovered
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex min-h-screen">
       {/* Spacer: pushes content right when sidebar is pinned */}
       <div
         className={cn(
@@ -70,16 +70,15 @@ export function SidebarShell({ perfilAtual, nomeAtual, children }: SidebarShellP
       />
 
       {/*
-        main-mobile-pad: adds bottom padding on mobile so content isn't hidden
-        behind the bottom navigation bar (defined in globals.css).
+        Scroll acontece no <html>/<body> (comportamento padrão do browser).
+        A sidebar é position:fixed, então sai do fluxo — o main ocupa o resto
+        naturalmente. Wheel funciona sobre QUALQUER pixel da página, porque
+        o body é o root scrolling element.
 
-        overflow-y-auto direto no main: o PRÓPRIO main é o scroll container.
-        Simplifica — páginas não precisam se preocupar com cálculo de altura
-        via flex-col + overflow-hidden + flex-1 no filho. Qualquer elemento
-        sticky dentro do main funciona naturalmente relativo a ele.
+        main-mobile-pad: padding-bottom pra não ficar atrás do nav inferior.
       */}
       <main
-        className="main-mobile-pad flex-1 min-w-0 overflow-y-auto overflow-x-hidden transition-colors duration-300"
+        className="main-mobile-pad flex-1 min-w-0 transition-colors duration-300"
         style={{ background: 'var(--background)' }}
       >
         {children}
