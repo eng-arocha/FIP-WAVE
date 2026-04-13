@@ -233,8 +233,8 @@ export default function CronogramaPage({ params }: { params: Promise<{ id: strin
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
-                  <thead>
-                    <tr style={{ background: 'var(--background)', borderBottom: '1px solid var(--border)' }}>
+                  <thead className="sticky top-0 z-10" style={{ background: 'var(--background)' }}>
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
                       <th className="px-4 py-2.5 text-left text-[var(--text-3)] font-semibold uppercase tracking-wide">Mês</th>
                       <th className="px-4 py-2.5 text-right text-[var(--text-3)] font-semibold uppercase tracking-wide">Serviço</th>
                       <th className="px-4 py-2.5 text-right text-[var(--text-3)] font-semibold uppercase tracking-wide">Material</th>

@@ -875,9 +875,9 @@ export default function AprovacoesPage() {
                 : '100px 110px 120px 1fr 1fr 1fr 110px 130px 110px'
               return (
                 <>
-                  {/* Header com filtros Excel */}
+                  {/* Header com filtros Excel — sticky pra ficar visível no scroll (especialmente quando maximizado) */}
                   <div
-                    className="grid text-[11px] font-semibold uppercase tracking-wide px-4 py-2.5"
+                    className="grid text-[11px] font-semibold uppercase tracking-wide px-4 py-2.5 sticky top-0 z-10"
                     style={{
                       gridTemplateColumns: gridCols,
                       gap: '8px',

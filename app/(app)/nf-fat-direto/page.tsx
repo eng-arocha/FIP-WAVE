@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
 import { MaximizableCard } from '@/components/ui/maximizable-card'
+import { ColumnFilter, passaFiltro } from '@/components/ui/column-filter'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import {
   Receipt, Clock, CheckCircle2, Plus,
@@ -13,6 +14,12 @@ import {
 
 // ── Tolerância de saldo ─────────────────────────────────────────────────────
 const TOLERANCE = 100 // R$ 100,00
+
+// Precisa ser módulo-level pra poder ser usado em useMemo no topo do componente
+const STATUS_BADGE_RAW: Record<string, { label: string; color: string; bg: string }> = {
+  aprovado:             { label: 'APROVADO',   color: '#10B981', bg: 'rgba(16,185,129,0.12)' },
+  aguardando_aprovacao: { label: 'AGUARDANDO', color: '#F59E0B', bg: 'rgba(245,158,11,0.12)' },
+}
 
 // ── Máscara CNPJ ────────────────────────────────────────────────────────────
 function maskCnpj(v: string): string {
@@ -103,11 +110,34 @@ export default function NfFatDiretoPage() {
   const totalNFs        = solicitacoes.reduce((a, s) => a + getTotalNfs(s), 0)
   const totalSol        = solicitacoes.length
 
-  const filtradas = solicitacoes.filter(s => {
+  // ── Filtros estilo Excel por coluna ────────────────────────────
+  const [fNumero, setFNumero] = useState<Set<string>>(new Set())
+  const [fFornecedor, setFFornecedor] = useState<Set<string>>(new Set())
+  const [fData, setFData] = useState<Set<string>>(new Set())
+  const [fValor, setFValor] = useState<Set<string>>(new Set())
+  const [fStatusCol, setFStatusCol] = useState<Set<string>>(new Set())
+
+  const filtradasStatus = solicitacoes.filter(s => {
     if (filtroStatus === 'com_saldo') return s.status === 'aprovado' && temSaldo(s)
     if (filtroStatus === 'sem_saldo') return !temSaldo(s)
     return true
   })
+
+  const valoresUnicos = useMemo(() => ({
+    numero:     [...new Set(filtradasStatus.map(s => String(s.numero)))],
+    fornecedor: [...new Set(filtradasStatus.map(s => s.empresa?.razao_social || '—'))],
+    data:       [...new Set(filtradasStatus.map(s => s.data_solicitacao ? formatDate(s.data_solicitacao) : '—'))],
+    valor:      [...new Set(filtradasStatus.map(s => formatCurrency(s.valor_total || 0)))],
+    status:     [...new Set(filtradasStatus.map(s => STATUS_BADGE_RAW[s.status]?.label ?? s.status))],
+  }), [filtradasStatus])
+
+  const filtradas = filtradasStatus.filter(s =>
+    passaFiltro(fNumero,     String(s.numero)) &&
+    passaFiltro(fFornecedor, s.empresa?.razao_social || '—') &&
+    passaFiltro(fData,       s.data_solicitacao ? formatDate(s.data_solicitacao) : '—') &&
+    passaFiltro(fValor,      formatCurrency(s.valor_total || 0)) &&
+    passaFiltro(fStatusCol,  STATUS_BADGE_RAW[s.status]?.label ?? s.status)
+  )
 
   const STATUS_BADGE: Record<string, { label: string; color: string; bg: string }> = {
     aprovado:             { label: 'APROVADO',   color: '#10B981', bg: 'rgba(16,185,129,0.12)' },
@@ -303,12 +333,18 @@ export default function NfFatDiretoPage() {
 
         {/* Tabela */}
         <MaximizableCard title="Solicitações de Autorização" className="rounded-2xl overflow-hidden" style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
-          <div className="px-5 py-3 flex items-center justify-between border-b" style={{ borderColor: 'var(--border)', background: 'var(--surface-2)' }}>
-            <h3 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>Solicitações de Autorização</h3>
-            <span className="text-xs" style={{ color: 'var(--text-3)' }}>{filtradas.length} registro(s)</span>
-          </div>
-          <div className="grid grid-cols-[auto_1fr_auto_auto_auto] gap-4 px-5 py-2 text-[10px] font-bold uppercase tracking-widest border-b" style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}>
-            <span>Nº</span><span>Fornecedor</span><span>Data</span><span>Valor</span><span>Status</span>
+          <div className="sticky top-0 z-10" style={{ background: 'var(--surface-2)' }}>
+            <div className="px-5 py-3 flex items-center justify-between border-b" style={{ borderColor: 'var(--border)' }}>
+              <h3 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>Solicitações de Autorização</h3>
+              <span className="text-xs" style={{ color: 'var(--text-3)' }}>{filtradas.length} registro(s)</span>
+            </div>
+            <div className="grid grid-cols-[auto_1fr_auto_auto_auto] gap-4 px-5 py-2 text-[10px] font-bold uppercase tracking-widest border-b" style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}>
+              <span className="flex items-center gap-1">Nº <ColumnFilter label="Nº" values={valoresUnicos.numero} selected={fNumero} onChange={setFNumero} /></span>
+              <span className="flex items-center gap-1">Fornecedor <ColumnFilter label="Fornecedor" values={valoresUnicos.fornecedor} selected={fFornecedor} onChange={setFFornecedor} /></span>
+              <span className="flex items-center gap-1">Data <ColumnFilter label="Data" values={valoresUnicos.data} selected={fData} onChange={setFData} /></span>
+              <span className="flex items-center gap-1">Valor <ColumnFilter label="Valor" values={valoresUnicos.valor} selected={fValor} onChange={setFValor} /></span>
+              <span className="flex items-center gap-1">Status <ColumnFilter label="Status" values={valoresUnicos.status} selected={fStatusCol} onChange={setFStatusCol} /></span>
+            </div>
           </div>
 
           {loading ? (

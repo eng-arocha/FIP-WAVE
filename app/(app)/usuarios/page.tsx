@@ -602,7 +602,7 @@ export default function UsuariosPage() {
                         {/* Matriz */}
                         <div className="overflow-x-auto">
                           <table className="w-full text-xs">
-                            <thead>
+                            <thead className="sticky top-0 z-10" style={{ background: 'var(--surface-2)' }}>
                               <tr>
                                 <th className="text-left py-2 pr-4 text-[var(--text-3)] font-medium w-32">Módulo</th>
                                 {ALL_ACOES.map(acao => (

@@ -12,10 +12,11 @@ import {
 } from 'recharts'
 import {
   TrendingUp, FileText, Clock, CheckCircle2, AlertCircle,
-  DollarSign, ArrowRight, Loader2, Maximize2, X, Receipt
+  DollarSign, ArrowRight, Loader2, Receipt
 } from 'lucide-react'
 import { formatCurrency, formatPercent, getContratoStatusColor, getMedicaoStatusColor } from '@/lib/utils'
 import { CONTRATO_STATUS_LABELS, MEDICAO_STATUS_LABELS, type MedicaoStatus } from '@/types'
+import { MaximizableCard } from '@/components/ui/maximizable-card'
 
 // Dados extraídos do Excel: Cronograma Físico Financeiro WAVE - FIP rev 07
 // Linha ACUMULADO (%) — mar/26 a out/27
@@ -86,15 +87,9 @@ export default function DashboardPage() {
   const [valorMaterialDireto, setValorMaterialDireto] = useState(0)
   const [loading, setLoading] = useState(true)
   const [rtConnected, setRtConnected] = useState(false)
-  const [maximized, setMaximized] = useState<string | null>(null) // 'curvaS' | 'acomp' | 'contratos' | 'medicoes'
-
-  // ESC closes maximized
-  useEffect(() => {
-    if (!maximized) return
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setMaximized(null) }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [maximized])
+  // Nota: a ampliação dos cards usa agora o comportamento global do
+  // <MaximizableCard> — duplo-clique. Removemos o state/overlay local
+  // que existia aqui pra não conflitar.
 
   // Filtros cascata do gráfico de acompanhamento
   const [filtroN1, setFiltroN1] = useState<string>('')
@@ -251,21 +246,6 @@ export default function DashboardPage() {
       color: GROUP_PALETTE[i % GROUP_PALETTE.length],
     }))
   }, [hierarquia, filtroN1, filtroN2, grupoSelecionado, tarefaSelecionada])
-
-  function MaxBtn({ id }: { id: string }) {
-    return (
-      <button
-        onClick={() => setMaximized(id)}
-        className="w-7 h-7 rounded-lg flex items-center justify-center transition-all opacity-0 group-hover:opacity-100"
-        style={{ color: '#86868B' }}
-        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; e.currentTarget.style.color = '#1D1D1F' }}
-        onMouseLeave={e => { e.currentTarget.style.background = ''; e.currentTarget.style.color = '#86868B' }}
-        title="Maximizar"
-      >
-        <Maximize2 className="w-3.5 h-3.5" strokeWidth={1.5} />
-      </button>
-    )
-  }
 
   if (loading) {
     return (
@@ -426,17 +406,15 @@ export default function DashboardPage() {
         {/* Charts row */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {/* Curva S */}
-          <div
+          <MaximizableCard
+            title="Curva S — Avanço Físico-Financeiro Acumulado (%)"
             className="rounded-xl overflow-hidden group"
             style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
-            onDoubleClick={() => setMaximized('curvaS')}
-            title="Duplo clique para maximizar"
           >
-            <div className="px-5 pt-5 pb-3 flex items-center justify-between">
+            <div className="px-5 pt-5 pb-3">
               <h3 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
                 Curva S — Avanço Físico-Financeiro Acumulado (%)
               </h3>
-              <MaxBtn id="curvaS" />
             </div>
             <div className="px-4 pb-5" style={{ background: 'var(--surface-1)', margin: '0 12px 12px', borderRadius: '10px' }}>
               <ResponsiveContainer width="100%" height={260}>
@@ -494,14 +472,13 @@ export default function DashboardPage() {
                 </AreaChart>
               </ResponsiveContainer>
             </div>
-          </div>
+          </MaximizableCard>
 
           {/* Acompanhamento Medição Serviço */}
-          <div
+          <MaximizableCard
+            title="Acompanhamento Medição Serviço"
             className="rounded-xl overflow-hidden group"
             style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
-            onDoubleClick={() => setMaximized('acomp')}
-            title="Duplo clique para maximizar"
           >
             {/* Cabeçalho + filtros */}
             <div className="px-5 pt-5 pb-4" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -510,7 +487,6 @@ export default function DashboardPage() {
                   Acompanhamento Medição Serviço
                 </h3>
                 <div className="flex items-center gap-1">
-                  <MaxBtn id="acomp" />
                   {(filtroN1 || filtroN2 || filtroN3) && (
                     <button
                       onClick={() => { setFiltroN1(''); setFiltroN2(''); setFiltroN3('') }}
@@ -623,22 +599,20 @@ export default function DashboardPage() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-          </div>
+          </MaximizableCard>
         </div>
 
         {/* Contratos + Medições recentes */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {/* Contratos */}
-          <div
+          <MaximizableCard
+            title="Contratos Ativos"
             className="rounded-xl overflow-hidden group"
             style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
-            onDoubleClick={() => setMaximized('contratos')}
-            title="Duplo clique para maximizar"
           >
             <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid var(--border)' }}>
               <h3 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>Contratos Ativos</h3>
               <div className="flex items-center gap-1">
-                <MaxBtn id="contratos" />
               <Link href="/contratos">
                 <button
                   className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg transition-colors"
@@ -714,19 +688,17 @@ export default function DashboardPage() {
                 </Link>
               ))}
             </div>
-          </div>
+          </MaximizableCard>
 
           {/* Medições Recentes */}
-          <div
+          <MaximizableCard
+            title="Medições Recentes"
             className="rounded-xl overflow-hidden group"
             style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}
-            onDoubleClick={() => setMaximized('medicoes')}
-            title="Duplo clique para maximizar"
           >
             <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid var(--border)' }}>
               <h3 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>Medições Recentes</h3>
               <div className="flex items-center gap-1">
-                <MaxBtn id="medicoes" />
               <Link href="/aprovacoes">
                 <button
                   className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg transition-colors"
@@ -789,142 +761,10 @@ export default function DashboardPage() {
                 ))}
               </div>
             </div>
-          </div>
+          </MaximizableCard>
         </div>
       </div>
 
-      {/* Fullscreen overlay */}
-      {maximized && (
-        <div className="fixed inset-0 z-50 flex flex-col" style={{ background: '#F5F5F7' }}>
-          {/* Header bar */}
-          <div className="flex items-center justify-between px-6 py-3" style={{ background: 'white', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
-            <h2 className="text-sm font-semibold" style={{ color: '#1D1D1F' }}>
-              {maximized === 'curvaS' && 'Curva S — Avanço Físico-Financeiro Acumulado (%)'}
-              {maximized === 'acomp' && 'Acompanhamento Medição Serviço'}
-              {maximized === 'contratos' && 'Contratos Ativos'}
-              {maximized === 'medicoes' && 'Medições Recentes'}
-            </h2>
-            <button
-              onClick={() => setMaximized(null)}
-              className="w-8 h-8 rounded-full flex items-center justify-center transition-all"
-              style={{ color: '#86868B' }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; e.currentTarget.style.color = '#1D1D1F' }}
-              onMouseLeave={e => { e.currentTarget.style.background = ''; e.currentTarget.style.color = '#86868B' }}
-            >
-              <X className="w-4 h-4" strokeWidth={2} />
-            </button>
-          </div>
-
-          {/* Content */}
-          <div className="flex-1 p-6">
-            {maximized === 'curvaS' && (
-              <div className="rounded-xl p-6" style={{ background: 'white', border: '1px solid rgba(0,0,0,0.06)' }}>
-                <ResponsiveContainer width="100%" height={window.innerHeight - 150}>
-                  <AreaChart data={curvaSData} margin={{ top: 12, right: 30, left: 10, bottom: 5 }}>
-                    <defs>
-                      <linearGradient id="gradPrevMax" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#2d3f5c" stopOpacity={0.4} />
-                        <stop offset="95%" stopColor="#2d3f5c" stopOpacity={0.0} />
-                      </linearGradient>
-                      <linearGradient id="gradRealMax" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#0071E3" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#0071E3" stopOpacity={0.0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
-                    <XAxis dataKey="mes" tick={{ fontSize: 11, fill: '#86868B' }} axisLine={{ stroke: 'rgba(0,0,0,0.06)' }} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: '#86868B' }} unit="%" axisLine={{ stroke: 'rgba(0,0,0,0.06)' }} tickLine={false} />
-                    <Tooltip contentStyle={{ background: 'white', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 8, fontSize: 12 }} formatter={(v) => v !== null ? `${v}%` : 'N/D'} />
-                    <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }} />
-                    <Area type="monotone" dataKey="acumulado_prev" name="Previsto" stroke="#2d3f5c" fill="url(#gradPrevMax)" strokeDasharray="5 3" strokeWidth={2} />
-                    <Area type="monotone" dataKey="acumulado_real" name="Realizado" stroke="#0071E3" fill="url(#gradRealMax)" strokeWidth={2} connectNulls={false} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-
-            {maximized === 'acomp' && (
-              <div className="rounded-xl p-6" style={{ background: 'white', border: '1px solid rgba(0,0,0,0.06)' }}>
-                <ResponsiveContainer width="100%" height={window.innerHeight - 150}>
-                  <BarChart data={chartAcompData} layout="vertical" margin={{ top: 8, right: 30, left: 20, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" horizontal={false} />
-                    <XAxis type="number" tick={{ fontSize: 11, fill: '#86868B' }} tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`} axisLine={{ stroke: 'rgba(0,0,0,0.06)' }} tickLine={false} />
-                    <YAxis type="category" dataKey="nome" tick={{ fontSize: 11, fill: '#424245' }} width={160} axisLine={{ stroke: 'rgba(0,0,0,0.06)' }} tickLine={false} />
-                    <Tooltip contentStyle={{ background: 'white', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 8, fontSize: 12 }} formatter={(v) => formatCurrency(v as number)} />
-                    <Legend iconSize={10} wrapperStyle={{ fontSize: 12 }} />
-                    <Bar dataKey="contratado" name="Contratado" radius={[0, 4, 4, 0]}>
-                      {chartAcompData.map((entry: any, i: number) => <Cell key={i} fill={`${entry.color}BB`} />)}
-                    </Bar>
-                    <Bar dataKey="medido" name="Medido" radius={[0, 4, 4, 0]}>
-                      {chartAcompData.map((entry: any, i: number) => <Cell key={i} fill={entry.color} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-
-            {maximized === 'contratos' && (
-              <div className="rounded-xl overflow-hidden" style={{ background: 'white', border: '1px solid rgba(0,0,0,0.06)' }}>
-                <div className="p-4 space-y-3">
-                  {contratos.map((c: any) => (
-                    <Link key={c.contrato_id} href={`/contratos/${c.contrato_id}`}>
-                      <div className="p-4 rounded-xl transition-all cursor-pointer" style={{ background: '#F5F5F7', border: '1px solid rgba(0,0,0,0.06)' }}
-                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(0,113,227,0.3)' }}
-                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(0,0,0,0.06)' }}
-                      >
-                        <div className="flex items-start justify-between mb-3">
-                          <div>
-                            <p className="font-semibold text-sm" style={{ color: '#1D1D1F' }}>{c.numero}</p>
-                            <p className="text-xs mt-0.5" style={{ color: '#86868B' }}>{c.descricao}</p>
-                          </div>
-                          <Badge className={getContratoStatusColor(c.status)}>{CONTRATO_STATUS_LABELS[c.status as keyof typeof CONTRATO_STATUS_LABELS]}</Badge>
-                        </div>
-                        <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.06)' }}>
-                          <div className="h-full rounded-full" style={{ width: `${Math.min(c.percentual_medido || 0, 100)}%`, background: 'linear-gradient(90deg, #0071E3, #42A5F5)' }} />
-                        </div>
-                        <div className="flex justify-between text-xs mt-2">
-                          <span style={{ color: '#86868B' }}>Medido: <strong style={{ color: '#424245' }}>{formatCurrency(c.valor_medido || 0)}</strong></span>
-                          <span style={{ color: '#86868B' }}>Saldo: <strong style={{ color: '#424245' }}>{formatCurrency(c.saldo || 0)}</strong></span>
-                          <span style={{ color: '#0071E3' }}>{formatPercent(c.percentual_medido || 0)}</span>
-                        </div>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {maximized === 'medicoes' && (
-              <div className="rounded-xl overflow-hidden" style={{ background: 'white', border: '1px solid rgba(0,0,0,0.06)' }}>
-                <div className="p-4 space-y-1">
-                  {medicoesRecentes.map((m: any) => (
-                    <Link key={m.id} href={`/contratos/${m.contrato?.id}/medicoes/${m.id}`}>
-                      <div className="flex items-center gap-4 p-3 rounded-xl transition-all cursor-pointer" style={{ border: '1px solid transparent' }}
-                        onMouseEnter={e => { e.currentTarget.style.background = '#F5F5F7'; e.currentTarget.style.borderColor = 'rgba(0,0,0,0.06)' }}
-                        onMouseLeave={e => { e.currentTarget.style.background = ''; e.currentTarget.style.borderColor = 'transparent' }}
-                      >
-                        <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: 'rgba(0,113,227,0.08)' }}>
-                          <span className="text-xs font-bold" style={{ color: '#0071E3' }}>#{String(m.numero).padStart(2, '0')}</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium" style={{ color: '#1D1D1F' }}>Medição {m.periodo_referencia}</span>
-                            <Badge className={`${getMedicaoStatusColor(m.status as MedicaoStatus)} text-[10px]`}>
-                              {MEDICAO_STATUS_LABELS[m.status as MedicaoStatus]}
-                            </Badge>
-                          </div>
-                          <p className="text-xs" style={{ color: '#86868B' }}>{m.contrato?.numero} · {m.solicitante_nome}</p>
-                        </div>
-                        <span className="text-sm font-semibold" style={{ color: '#1D1D1F' }}>{formatCurrency(m.valor_total)}</span>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
