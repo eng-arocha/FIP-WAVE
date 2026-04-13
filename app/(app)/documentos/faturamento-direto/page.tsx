@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Topbar } from '@/components/layout/topbar'
 import { Button } from '@/components/ui/button'
+import { MaximizableCard } from '@/components/ui/maximizable-card'
 import { PdfPreviewModal } from '@/components/pdf-preview-modal'
 import { ColumnFilter, passaFiltro } from '@/components/ui/column-filter'
 import { usePermissoes } from '@/lib/context/permissoes-context'
@@ -487,7 +488,7 @@ function PedidosFatDiretoContent() {
         </div>
 
         {/* Filtros globais (data + busca NF). Os filtros por coluna estão no cabeçalho da tabela. */}
-        <div className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+        <MaximizableCard title="Filtros rápidos" className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
           <div className="flex items-center gap-2 mb-1">
             <Filter className="w-3.5 h-3.5" strokeWidth={1.5} style={{ color: 'var(--text-3)' }} />
             <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Filtros rápidos</span>
@@ -541,7 +542,7 @@ function PedidosFatDiretoContent() {
               </Button>
             </div>
           </div>
-        </div>
+        </MaximizableCard>
 
         {/* Tabela */}
         <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
