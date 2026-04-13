@@ -3,6 +3,7 @@
 import { use, useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { formatCurrency } from '@/lib/utils'
@@ -403,20 +404,10 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
   }
 
   return (
-    // Wrapper com altura fixa (absolute inset-0) para eliminar qualquer
-    // dependência de cálculo do flex-col pai. Nenhum sticky/fixed
-    // interno — a página rola 100% livre dentro do scroll container.
-    <div className="flex-1 relative" style={{ background: 'var(--background)' }}>
-      <div className="absolute inset-0 overflow-y-auto">
-      {/* Cabeçalho simples, rola junto com o conteúdo (sem sticky) */}
-      <header
-        className="h-14 border-b flex items-center px-4 sm:px-6"
-        style={{ background: 'var(--topbar-bg)', borderColor: 'rgba(0,0,0,0.08)' }}
-      >
-        <h2 className="font-semibold text-[15px]" style={{ color: 'var(--text-1)' }}>
-          Nova Solicitação
-        </h2>
-      </header>
+    // Estrutura simples — o scroll vem do <main> do SidebarShell.
+    // Nada de flex, nada de overflow, nada de sticky interno.
+    <div style={{ background: 'var(--background)' }}>
+      <Topbar title="Nova Solicitação" />
 
       <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-4xl mx-auto w-full">
         {/* Header */}
@@ -1062,7 +1053,6 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
             )}
           </Button>
         </div>
-      </div>
       </div>
     </div>
   )
