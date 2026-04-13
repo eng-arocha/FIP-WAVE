@@ -416,7 +416,7 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
   }
 
   return (
-    <div className="flex-1 overflow-y-auto" style={{ background: 'var(--background)' }}>
+    <div className="flex-1 min-h-0 overflow-y-auto" style={{ background: 'var(--background)' }}>
       <Topbar title="Nova Solicitação" />
 
       {/* Sticky banner */}
