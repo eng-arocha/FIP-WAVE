@@ -5,12 +5,16 @@ import { listarSolicitacoes, criarSolicitacao } from '@/lib/db/fat-direto'
 import { apiError } from '@/lib/api/error-response'
 import { parseBody, uuid, cnpj } from '@/lib/api/schema'
 
+// Schema do item espelha exatamente o que `criarSolicitacao` espera em
+// lib/db/fat-direto.ts. O campo `valor_total` é o total da linha (qtde *
+// unitário), calculado no cliente. O DB grava qtde_solicitada=1 e
+// valor_unitario=valor_total — convenção interna.
 const Item = z.object({
   tarefa_id: uuid(),
+  detalhamento_id: uuid().optional(),
   descricao: z.string().min(1).max(1000),
-  local: z.string().max(100).optional(),
-  qtde_solicitada: z.number().positive('Quantidade deve ser positiva.'),
-  valor_unitario: z.number().positive('Valor unitário deve ser positivo.'),
+  local: z.string().min(1).max(100),
+  valor_total: z.number().positive('Valor da linha deve ser positivo.'),
 })
 
 const Body = z.object({

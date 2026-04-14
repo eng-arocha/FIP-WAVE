@@ -4,6 +4,7 @@ import { assertPermissao, getUsuarioLogado } from '@/lib/api/auth'
 import { atualizarStatusSolicitacao } from '@/lib/db/fat-direto'
 import { apiError } from '@/lib/api/error-response'
 import { parseBody } from '@/lib/api/schema'
+import { audit } from '@/lib/api/audit'
 
 const Body = z.object({
   acao: z.enum(['aprovado', 'rejeitado', 'cancelado', 'aguardando_aprovacao']),
@@ -34,6 +35,15 @@ export async function POST(
         )
       }
       await atualizarStatusSolicitacao(solId, acao, check.userId, motivo_rejeicao)
+      await audit({
+        event: acao === 'aprovado' ? 'solicitacao.aprovada' : 'solicitacao.rejeitada',
+        entity_type: 'solicitacao_fat_direto',
+        entity_id: solId,
+        actor_id: check.userId,
+        actor_email: check.userEmail ?? null,
+        metadata: acao === 'rejeitado' ? { motivo_rejeicao } : null,
+        request: req,
+      })
       return NextResponse.json({ ok: true })
     }
 
@@ -41,6 +51,14 @@ export async function POST(
     const user = await getUsuarioLogado()
     if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
     await atualizarStatusSolicitacao(solId, acao, user.id, motivo_rejeicao)
+    await audit({
+      event: `solicitacao.${acao === 'cancelado' ? 'cancelada' : 'reenviada'}`,
+      entity_type: 'solicitacao_fat_direto',
+      entity_id: solId,
+      actor_id: user.id,
+      actor_email: user.email ?? null,
+      request: req,
+    })
     return NextResponse.json({ ok: true })
   } catch (e: any) {
     return apiError(e)

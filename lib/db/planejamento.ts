@@ -123,12 +123,15 @@ export async function getCurvaS(contratoId: string): Promise<CurvaSPoint[]> {
   const allMeses = new Set<string>()
   ;(planFis || []).forEach((p: any) => allMeses.add(p.mes))
   ;(planFatD || []).forEach((p: any) => allMeses.add(p.mes))
+  // NOTA: Supabase-js tipa relações foreign como arrays mesmo quando
+  // sabemos que retorna um único. Castamos pra `any` aqui — runtime os
+  // joins com !inner garantem 1:1 e nunca undefined.
   ;(medItens || []).forEach((it: any) => {
-    const m = it.medicao?.periodo_referencia
+    const m = (it.medicao as any)?.periodo_referencia
     if (m) allMeses.add(m)
   })
   ;(solItens || []).forEach((it: any) => {
-    const d = it.solicitacao?.data_aprovacao
+    const d = (it.solicitacao as any)?.data_aprovacao
     if (d) allMeses.add(String(d).slice(0, 7)) // YYYY-MM
   })
   const meses = Array.from(allMeses).sort()
@@ -151,17 +154,17 @@ export async function getCurvaS(contratoId: string): Promise<CurvaSPoint[]> {
     const val = (p.pct_planejado / 100) * (g.valor_material || 0)
     byMes[p.mes].planFatD += val
   }
-  for (const it of medItens || []) {
-    const mes = it.medicao?.periodo_referencia
-    const grupoId = it.detalhamento?.tarefa?.grupo_macro_id
+  for (const it of (medItens || []) as any[]) {
+    const mes = (it.medicao as any)?.periodo_referencia
+    const grupoId = (it.detalhamento as any)?.tarefa?.grupo_macro_id
     if (!mes || !grupoId || !grupoMap[grupoId]) continue
     byMes[mes] = byMes[mes] || { planFis: 0, planFatD: 0, realFis: 0, realFatD: 0 }
     byMes[mes].realFis += Number(it.valor_medido || 0)
   }
-  for (const it of solItens || []) {
-    const d = it.solicitacao?.data_aprovacao
+  for (const it of (solItens || []) as any[]) {
+    const d = (it.solicitacao as any)?.data_aprovacao
     const mes = d ? String(d).slice(0, 7) : null
-    const grupoId = it.tarefa?.grupo_macro_id
+    const grupoId = (it.tarefa as any)?.grupo_macro_id
     if (!mes || !grupoId || !grupoMap[grupoId]) continue
     byMes[mes] = byMes[mes] || { planFis: 0, planFatD: 0, realFis: 0, realFatD: 0 }
     byMes[mes].realFatD += Number(it.valor_total || 0)

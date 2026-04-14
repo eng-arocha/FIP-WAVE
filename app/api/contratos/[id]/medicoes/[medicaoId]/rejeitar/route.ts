@@ -6,6 +6,7 @@ import { sendEmail } from '@/lib/email/send'
 import { templateMedicaoRejeitada } from '@/lib/email/templates'
 import { apiError } from '@/lib/api/error-response'
 import { parseBody } from '@/lib/api/schema'
+import { audit } from '@/lib/api/audit'
 
 const Body = z.object({
   motivo: z.string().min(3, 'Informe o motivo (mín. 3 caracteres).').max(2000),
@@ -41,6 +42,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ medicao
     const aprovadorEmail = perfilAprovador?.email ?? check.userEmail ?? ''
 
     await rejeitarMedicao(medicaoId, aprovadorNome, aprovadorEmail, motivo)
+
+    await audit({
+      event: 'medicao.rejeitada',
+      entity_type: 'medicao',
+      entity_id: medicaoId,
+      actor_id: check.userId,
+      actor_nome: aprovadorNome,
+      actor_email: aprovadorEmail,
+      metadata: { motivo },
+      request: req,
+    })
 
     if (medicao?.contrato) {
       const tpl = templateMedicaoRejeitada(medicao, medicao.contrato, motivo)
