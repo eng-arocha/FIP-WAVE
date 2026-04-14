@@ -7,6 +7,7 @@ import { templateMedicaoRejeitada } from '@/lib/email/templates'
 import { apiError } from '@/lib/api/error-response'
 import { parseBody } from '@/lib/api/schema'
 import { audit } from '@/lib/api/audit'
+import { emitWebhook } from '@/lib/api/webhooks'
 
 const Body = z.object({
   motivo: z.string().min(3, 'Informe o motivo (mín. 3 caracteres).').max(2000),
@@ -52,6 +53,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ medicao
       actor_email: aprovadorEmail,
       metadata: { motivo },
       request: req,
+    })
+
+    void emitWebhook('medicao.rejeitada', {
+      medicao_id: medicaoId,
+      aprovador: { nome: aprovadorNome, email: aprovadorEmail },
+      motivo,
     })
 
     if (medicao?.contrato) {

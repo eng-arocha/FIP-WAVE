@@ -5,6 +5,7 @@ import { desaprovarSolicitacao } from '@/lib/db/fat-direto'
 import { apiError } from '@/lib/api/error-response'
 import { parseBody } from '@/lib/api/schema'
 import { audit } from '@/lib/api/audit'
+import { emitWebhook } from '@/lib/api/webhooks'
 
 const Body = z.object({
   motivo: z.string().trim().min(3, 'Informe o motivo da desaprovação (mín. 3 caracteres).').max(2000),
@@ -55,6 +56,7 @@ export async function POST(
       metadata: { motivo },
       request: req,
     })
+    void emitWebhook('solicitacao.desaprovada', { solicitacao_id: id, motivo, actor_id: check.userId })
 
     return NextResponse.json({ ok: true })
   } catch (e: any) {
