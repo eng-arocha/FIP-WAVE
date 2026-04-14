@@ -167,7 +167,6 @@ BEGIN
         valor_material_unit   = (v_det->>'valor_material_unit')::numeric,
         valor_servico_unit    = (v_det->>'valor_servico_unit')::numeric,
         valor_unitario        = v_det_valor_unit,
-        valor_total           = v_det_valor_total,
         ordem                 = (v_det->>'ordem')::int
       WHERE tarefa_id = v_tarefa_id
         AND codigo = v_det->>'codigo'
@@ -177,7 +176,7 @@ BEGIN
       INSERT INTO detalhamentos (
         tarefa_id, codigo, descricao, disciplina, local, unidade,
         quantidade_contratada, valor_material_unit, valor_servico_unit,
-        valor_unitario, valor_total, ordem
+        valor_unitario, ordem
       ) VALUES (
         v_tarefa_id,
         v_det->>'codigo',
@@ -189,7 +188,6 @@ BEGIN
         (v_det->>'valor_material_unit')::numeric,
         (v_det->>'valor_servico_unit')::numeric,
         v_det_valor_unit,
-        v_det_valor_total,
         (v_det->>'ordem')::int
       );
       v_dt_ins := v_dt_ins + 1;
