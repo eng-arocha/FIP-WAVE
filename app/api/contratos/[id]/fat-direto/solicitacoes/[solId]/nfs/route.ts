@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { criarNotaFiscal } from '@/lib/db/fat-direto'
+import { criarNotaFiscal, NFMatchError } from '@/lib/db/fat-direto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
 import { cnpj, dataIso } from '@/lib/api/schema'
@@ -109,6 +109,13 @@ export async function POST(
     })
     return NextResponse.json(nf, { status: 201 })
   } catch (e: any) {
+    // Violação de regra de negócio do 3-way match → 422 com detalhe estruturado
+    if (e instanceof NFMatchError) {
+      return NextResponse.json(
+        { error: e.message, code: e.code, detail: e.detail },
+        { status: 422 },
+      )
+    }
     return apiError(e)
   }
 }

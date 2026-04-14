@@ -73,6 +73,33 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
   const [motivo, setMotivo] = useState('')
   const [nfForm, setNfForm] = useState({ numero_nf: '', emitente: '', cnpj_emitente: '', valor: '', data_emissao: '', descricao: '' })
   const [erro, setErro] = useState('')
+  // P2.9/P2.1: saldo do pedido pra alertar >95% e bloquear envio a esgotado
+  const [saldo, setSaldo] = useState<{
+    pedido_valor: number
+    total_nf_validadas: number
+    total_nf_pendentes: number
+    saldo_liquido: number
+    pct_utilizado: number
+    alerta: 'ok' | 'atencao' | 'critico' | 'esgotado'
+    pedido?: { fornecedor_cnpj?: string | null; fornecedor_razao_social?: string | null }
+  } | null>(null)
+
+  async function carregarSaldo() {
+    try {
+      const res = await fetch(`/api/contratos/${id}/fat-direto/solicitacoes/${solId}/saldo`)
+      if (!res.ok) return
+      const data = await res.json()
+      setSaldo({
+        pedido_valor: data.pedido?.valor_total ?? 0,
+        total_nf_validadas: data.total_nf_validadas,
+        total_nf_pendentes: data.total_nf_pendentes,
+        saldo_liquido: data.saldo_liquido,
+        pct_utilizado: data.pct_utilizado,
+        alerta: data.alerta,
+        pedido: data.pedido,
+      })
+    } catch {/* noop */}
+  }
 
   async function load() {
     const data = await fetch(`/api/contratos/${id}/fat-direto/solicitacoes/${solId}`).then(r => r.json())
@@ -80,7 +107,21 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
     setLoading(false)
   }
 
-  useEffect(() => { load() }, [solId])
+  useEffect(() => { load(); carregarSaldo() }, [solId])
+
+  // Recarrega saldo quando abre o formulário de NF — mostra estado atualizado
+  useEffect(() => { if (showNFForm) carregarSaldo() }, [showNFForm])
+
+  // Auto-preencher CNPJ do emitente com o do fornecedor do pedido (se houver)
+  useEffect(() => {
+    if (showNFForm && saldo?.pedido?.fornecedor_cnpj && !nfForm.cnpj_emitente) {
+      setNfForm(prev => ({
+        ...prev,
+        cnpj_emitente: saldo.pedido!.fornecedor_cnpj || '',
+        emitente: prev.emitente || saldo.pedido!.fornecedor_razao_social || '',
+      }))
+    }
+  }, [showNFForm, saldo])
 
   async function acao(a: 'aprovado' | 'rejeitado' | 'cancelado' | 'aguardando_aprovacao') {
     setActing(true)
@@ -101,16 +142,32 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
       setErro('Preencha todos os campos obrigatórios da NF.')
       return
     }
+    if (saldo?.alerta === 'esgotado') {
+      setErro('O pedido já está 100% utilizado. Não é possível lançar mais NFs.')
+      return
+    }
     setActing(true)
     const res = await fetch(`/api/contratos/${id}/fat-direto/solicitacoes/${solId}/nfs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...nfForm, valor: parseFloat(nfForm.valor) }),
     })
-    if (!res.ok) { setErro((await res.json()).error); setActing(false); return }
+    if (!res.ok) {
+      // 422 com code do 3-way match → mensagem mais explícita
+      try {
+        const body = await res.json()
+        const prefix = body.code ? `[${body.code}] ` : ''
+        setErro(prefix + (body.error || 'Erro ao registrar NF.'))
+      } catch {
+        setErro('Erro ao registrar NF.')
+      }
+      setActing(false)
+      return
+    }
     setNfForm({ numero_nf: '', emitente: '', cnpj_emitente: '', valor: '', data_emissao: '', descricao: '' })
     setShowNFForm(false)
     await load()
+    await carregarSaldo()
     setActing(false)
   }
 
@@ -331,6 +388,14 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
             <div>
               <CardTitle className="text-sm" style={{ color: 'var(--text-1)' }}>Notas Fiscais</CardTitle>
               {totalNF > 0 && <p className="text-xs text-[#06B6D4] mt-0.5">Total recebido: {formatCurrency(totalNF)}</p>}
+              {saldo && saldo.alerta !== 'ok' && (
+                <p
+                  className="text-xs mt-0.5 font-semibold"
+                  style={{ color: saldo.alerta === 'atencao' ? '#F59E0B' : '#EF4444' }}
+                >
+                  {saldo.pct_utilizado.toFixed(1)}% do pedido utilizado · saldo {formatCurrency(saldo.saldo_liquido)}
+                </p>
+              )}
             </div>
             {sol.status === 'aprovado' && (
               <Button
@@ -347,6 +412,43 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
             {showNFForm && (
               <div className="mb-4 p-4 rounded-xl space-y-3" style={{ background: 'var(--background)', border: '1px solid var(--border)' }}>
                 <p className="text-xs text-[var(--text-3)] font-semibold uppercase tracking-wide">Nova Nota Fiscal</p>
+
+                {/* P2.9: Indicador de saldo + alerta >95% */}
+                {saldo && (() => {
+                  const palette = {
+                    ok:       { bg: 'rgba(16,185,129,0.10)',  border: '#10B981', text: '#10B981', icon: '✓' },
+                    atencao:  { bg: 'rgba(245,158,11,0.10)',  border: '#F59E0B', text: '#F59E0B', icon: '⚠' },
+                    critico:  { bg: 'rgba(239,68,68,0.12)',   border: '#EF4444', text: '#EF4444', icon: '⚠' },
+                    esgotado: { bg: 'rgba(239,68,68,0.22)',   border: '#EF4444', text: '#EF4444', icon: '✕' },
+                  }[saldo.alerta]
+                  const pct = Math.min(100, Math.max(0, saldo.pct_utilizado))
+                  const labelAlerta = {
+                    ok:       `Saldo OK — ${pct.toFixed(1)}% do pedido utilizado.`,
+                    atencao:  `Atenção: ${pct.toFixed(1)}% do pedido já utilizado. Saldo: ${formatCurrency(saldo.saldo_liquido)}.`,
+                    critico:  `ALERTA — ${pct.toFixed(1)}% do pedido utilizado. Saldo restante: ${formatCurrency(saldo.saldo_liquido)}.`,
+                    esgotado: `Pedido esgotado (100% utilizado). Novas NFs serão bloqueadas.`,
+                  }[saldo.alerta]
+                  return (
+                    <div
+                      className="rounded-lg px-3 py-2 space-y-2"
+                      style={{ background: palette.bg, border: `1px solid ${palette.border}` }}
+                    >
+                      <div className="flex items-center justify-between text-xs" style={{ color: palette.text }}>
+                        <span className="font-semibold">{palette.icon} {labelAlerta}</span>
+                        <span className="tabular-nums">
+                          {formatCurrency(saldo.total_nf_validadas + saldo.total_nf_pendentes)} / {formatCurrency(saldo.pedido_valor)}
+                        </span>
+                      </div>
+                      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--surface-1)' }}>
+                        <div
+                          className="h-full transition-all"
+                          style={{ width: `${pct}%`, background: palette.border }}
+                        />
+                      </div>
+                    </div>
+                  )
+                })()}
+
                 <div className="grid grid-cols-2 gap-3">
                   {[
                     { label: 'Número NF', key: 'numero_nf', type: 'text' },
@@ -369,7 +471,12 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                   ))}
                 </div>
                 <div className="flex gap-2 pt-1">
-                  <Button onClick={registrarNF} disabled={acting} size="sm" className="bg-blue-600 hover:bg-blue-500 text-white">
+                  <Button
+                    onClick={registrarNF}
+                    disabled={acting || saldo?.alerta === 'esgotado'}
+                    size="sm"
+                    className="bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40"
+                  >
                     Registrar NF
                   </Button>
                   <Button onClick={() => setShowNFForm(false)} size="sm" variant="ghost" className="text-[var(--text-3)]">
