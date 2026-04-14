@@ -306,32 +306,60 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
                           </Button>
                         </div>
 
-                        {/* Detalhamentos */}
-                        <div className="px-12 py-2 space-y-1">
+                        {/* Detalhamentos — colunas conforme planilha oficial:
+                            CÓDIGO / DESCRIÇÃO / LOCAL / QTDE / UNID /
+                            PR. MAT / PR. M.O. / SUBTOT MAT / SUBTOT M.O. / TOTAL */}
+                        <div className="px-12 py-2">
+                          {/* Header de colunas (só mostra quando tem detalhamentos) */}
+                          {(tarefa.detalhamentos || []).length > 0 && (
+                            <div className="grid grid-cols-[40px_1fr_80px_50px_40px_90px_90px_100px_100px_100px] gap-2 px-2 pb-1.5 mb-1 border-b border-[var(--border)]/40 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-3)]">
+                              <span>Cód.</span>
+                              <span>Descrição</span>
+                              <span>Local</span>
+                              <span className="text-right">Qtde</span>
+                              <span className="text-center">Unid</span>
+                              <span className="text-right">PR. Mat</span>
+                              <span className="text-right">PR. M.O.</span>
+                              <span className="text-right">Subt. Mat</span>
+                              <span className="text-right">Subt. M.O.</span>
+                              <span className="text-right">Total</span>
+                            </div>
+                          )}
                           {(tarefa.detalhamentos || []).map((det: any) => {
-                            const qtdMedida = det.qtd_medida || 0
-                            const qtdContratada = det.quantidade_contratada || 0
-                            const pct = qtdContratada > 0 ? (qtdMedida / qtdContratada) * 100 : 0
-                            // Valor varia conforme filtro ativo
-                            const valorTotal = filterTipo === 'faturamento_direto'
-                              ? qtdContratada * (det.valor_material_unit || 0)
-                              : filterTipo === 'servico'
-                                ? qtdContratada * (det.valor_servico_unit || 0)
-                                : qtdContratada * (det.valor_unitario || 0)
+                            const qtd = Number(det.quantidade_contratada || 0)
+                            const prMat = Number(det.valor_material_unit ?? 0)
+                            const prMo  = Number(det.valor_servico_unit ?? 0)
+                            const subMat = Number(det.subtotal_material ?? qtd * prMat)
+                            const subMo  = Number(det.subtotal_mo ?? qtd * prMo)
+                            const total = subMat + subMo
+                            // Destaque quando filtro ativo ressalta uma das colunas
+                            const colMatActive = filterTipo === 'faturamento_direto'
+                            const colMoActive  = filterTipo === 'servico'
                             return (
-                              <div key={det.id} className="grid grid-cols-12 gap-2 py-1.5 px-2 rounded hover:bg-[var(--surface-1)] text-xs items-center">
-                                <span className="col-span-1 font-mono text-[var(--text-3)]">{det.codigo}</span>
-                                <span className="col-span-4 text-[var(--text-2)]">{det.descricao}</span>
-                                <span className="col-span-1 text-center text-[var(--text-3)]">{det.unidade}</span>
-                                <span className="col-span-2 text-right">
-                                  <span className="text-[var(--text-3)]">{qtdMedida.toLocaleString('pt-BR')}</span>
-                                  <span className="text-[#1E293B]"> / </span>
-                                  <span className="text-[var(--text-2)]">{qtdContratada.toLocaleString('pt-BR')}</span>
+                              <div
+                                key={det.id}
+                                className="grid grid-cols-[40px_1fr_80px_50px_40px_90px_90px_100px_100px_100px] gap-2 py-1.5 px-2 rounded hover:bg-[var(--surface-1)] text-xs items-center"
+                              >
+                                <span className="font-mono text-[var(--text-3)]">{det.codigo}</span>
+                                <span className="text-[var(--text-2)] truncate" title={det.descricao}>{det.descricao}</span>
+                                <span className="text-[10px] text-[var(--text-3)] truncate" title={det.local || ''}>{det.local || '—'}</span>
+                                <span className="text-right tabular-nums text-[var(--text-2)]">{qtd.toLocaleString('pt-BR')}</span>
+                                <span className="text-center text-[var(--text-3)]">{det.unidade || 'UN'}</span>
+                                <span className={`text-right tabular-nums ${colMatActive ? 'font-semibold text-blue-400' : 'text-[var(--text-3)]'}`}>
+                                  {formatCurrency(prMat)}
                                 </span>
-                                <div className="col-span-2">
-                                  <Progress value={pct} className="h-1.5" />
-                                </div>
-                                <span className="col-span-2 text-right font-medium text-[var(--text-2)]">{formatCurrency(valorTotal)}</span>
+                                <span className={`text-right tabular-nums ${colMoActive ? 'font-semibold text-amber-400' : 'text-[var(--text-3)]'}`}>
+                                  {formatCurrency(prMo)}
+                                </span>
+                                <span className={`text-right tabular-nums ${colMatActive ? 'font-semibold text-blue-400' : 'text-[var(--text-2)]'}`}>
+                                  {formatCurrency(subMat)}
+                                </span>
+                                <span className={`text-right tabular-nums ${colMoActive ? 'font-semibold text-amber-400' : 'text-[var(--text-2)]'}`}>
+                                  {formatCurrency(subMo)}
+                                </span>
+                                <span className="text-right tabular-nums font-semibold text-[var(--text-1)]">
+                                  {formatCurrency(total)}
+                                </span>
                               </div>
                             )
                           })}

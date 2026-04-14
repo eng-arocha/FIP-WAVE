@@ -19,6 +19,7 @@ import { formatCurrency, formatDate, getMedicaoStatusColor } from '@/lib/utils'
 import { MEDICAO_STATUS_LABELS, MedicaoStatus } from '@/types'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 import { MaximizableCard } from '@/components/ui/maximizable-card'
+import { FiltroSaldoItem } from '@/components/aprovacoes/filtro-saldo-item'
 
 interface PendenteFip {
   id: string
@@ -541,6 +542,9 @@ export default function AprovacoesPage() {
             </div>
           </div>
         </div>
+
+        {/* Filtro por item do orçamento (nível 3): mostra saldo + pedidos que tocaram o item */}
+        <FiltroSaldoItem />
 
         {/* Tab switcher */}
         <div
