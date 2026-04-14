@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Loader2, Database, CheckCircle, AlertTriangle } from 'lucide-react'
+import { Loader2, Database, CheckCircle, AlertTriangle, RefreshCw } from 'lucide-react'
+import Link from 'next/link'
 
 interface SeedStatus {
   tarefas_no_banco: number
@@ -48,6 +49,27 @@ export default function AdminPage() {
       <Topbar title="Administração" subtitle="Ferramentas de manutenção do sistema" />
 
       <div className="p-6 max-w-2xl space-y-6">
+        {/* Re-seed do orçamento (planilha oficial) */}
+        <Link
+          href="/admin/reseed-orcamento"
+          className="block rounded-xl p-4 transition-colors hover:opacity-90"
+          style={{ background: 'rgba(59,130,246,0.10)', border: '1px solid rgba(59,130,246,0.35)' }}
+        >
+          <div className="flex items-center gap-3">
+            <RefreshCw className="w-5 h-5" style={{ color: '#3B82F6' }} />
+            <div className="flex-1">
+              <p className="text-sm font-semibold" style={{ color: '#3B82F6' }}>
+                Re-seed do Orçamento (planilha oficial)
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>
+                Sincroniza estrutura com FIP-WAVE rev 07. Corrige divergências (ex: 8.1.1).
+                Preserva IDs — solicitações e medições continuam válidas.
+              </p>
+            </div>
+            <span className="text-xs px-2 py-1 rounded" style={{ background: '#3B82F6', color: 'white' }}>Abrir →</span>
+          </div>
+        </Link>
+
         {/* Status do banco */}
         <Card>
           <CardHeader>
