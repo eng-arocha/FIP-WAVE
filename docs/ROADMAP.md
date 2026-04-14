@@ -30,10 +30,10 @@
 
 | ID | Item | Status | Notas |
 |----|------|--------|-------|
-| P1.4 | Sentry ativo em prod | ⬜ | Hook preparado em `segment-error.tsx` e `lib/log.ts`; falta SDK + DSN |
+| P1.4 | Sentry ativo em prod | ✅ | SDK instalado + 3 configs (client/server/edge) + plugado em `lib/log.ts` e `segment-error.tsx`. Ativar definindo `SENTRY_DSN` + `NEXT_PUBLIC_SENTRY_DSN` no Vercel |
 | P1.3 | `error.tsx` em cada segment do App Router | ✅ | 10 segments + global-error.tsx |
 | P1.1 | Converter `/dashboard`, `/contratos`, listas para RSC | ⬜ | Não bloqueante — ajustar quando LCP virar problema |
-| P1.2 | Paginação consistente (keyset) | ⬜ | Não bloqueante — ajustar quando volume crescer |
+| P1.2 | Paginação consistente (keyset) | ✅ | `lib/api/paginate.ts` (helper genérico) aplicado em `/api/contratos` (retrocompatível: opt-in via `?cursor=` ou `?limit=`) e `/api/aprovacoes` |
 | P1.5 | Rate-limit em `/api/cnpj/[cnpj]` | ✅ | 20 req/min/IP via `lib/api/rate-limit.ts` (in-memory token bucket) |
 | P1.6 | Validação MIME/magic-bytes no upload | ✅ | `lib/api/upload-validation.ts` aplicado em fat-direto/upload e nfs |
 | P1.7 | Retry/DLQ em `notificacoes_log` | ✅ | Migration 034 + lib/email/send.ts refeito + cron `/api/cron/notificacoes-retry` |
@@ -46,7 +46,7 @@
 | ID | Item | Status | Notas |
 |----|------|--------|-------|
 | P2.1 | 3-way match NF × Pedido × CNPJ | ✅ | `NFMatchError` + `validarNotaFiscal3Way()` em `lib/db/fat-direto.ts` |
-| P2.2 | Parse real XML NFe | ⬜ | Pendente — escolher biblioteca (Nuvem Fiscal vs `node-nfe`) |
+| P2.2 | Parse real XML NFe | ✅ | `lib/api/nfe-parser.ts` (parser nativo de XML v4.0 + fallback BrasilAPI por chave) + `POST /api/nfe/parse` |
 | P2.3 | Boletim de Medição PDF assinado (hash SHA-256 + QR) | ✅ | Migration 036 + `/api/medicoes/[id]/emitir-boletim` + página pública `/verificar/[hash]` |
 | P2.4 | Comentário por item de medição (fluxo prévio) | ✅ | Migration 031 + 3 endpoints REST + audit |
 | P2.5 | Aprovação multinível real | ✅ | Migration 035 + `fluxo_aprovacao_contrato` + endpoints CRUD em `/api/contratos/[id]/fluxo-aprovacao` |
@@ -56,10 +56,10 @@
 | P2.9 | Alerta visual NF > 95% do pedido | ✅ | Endpoint `/saldo` + barra de progresso colorida + bloqueio quando esgotado |
 | P2.10 | Validação cadastral CNPJ (situação RFB) | ✅ | `/api/cnpj/[cnpj]` já retorna `situacao_cadastral` + `ativa` |
 | P2.11 | Reajuste contratual por índice (INCC/IPCA) | ✅ | Migration 035 + `contratos.coeficiente_reajuste_atual` + tabela `contratos_reajustes` + `POST /api/contratos/[id]/reajuste` |
-| P2.12 | Gestão de garantias/retenção 5%/caução | ⬜ | Pendente — necessário para obra pública |
+| P2.12 | Gestão de garantias/retenção 5%/caução | ✅ | Migration 038 + endpoints CRUD (`/contratos/[id]/garantias`, `/garantias/[id]`). 4 tipos: caução/seguro/fiança/retenção. Resumo com vencendo em 30d |
 | P2.13 | Glosa em medição | ✅ | Migration 030 + endpoint PUT + audit |
 | P2.14 | EXIF check em upload de fotos | ✅ | `lib/api/exif.ts` (parser nativo de JPEG, sem deps) + `avaliarExif()` retorna warnings (sem EXIF, antiga, fora do raio, data futura) |
-| P2.15 | Numeração `PEDIDO-FIP-XXXX` por sequence no servidor | ⏸️ | Aguarda decisão sobre fluxo (auto-gerar vs user-input) |
+| P2.15 | Numeração `PEDIDO-FIP-XXXX` por sequence no servidor | ✅ | Migration 039: sequence atômica + trigger auto-assign quando NULL. Override manual ainda aceito. Endpoint `/proximo-numero` pra preview na UI |
 
 ## Fase 4 — Expansão P3
 
