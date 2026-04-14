@@ -16,10 +16,15 @@ ALTER TABLE medicao_itens
   ADD COLUMN IF NOT EXISTS motivo_glosa TEXT;
 
 -- valor_efetivo: o que realmente conta pro pagamento.
--- Coalesce defensivo caso medicao_itens antigos tenham valor_medido NULL.
+-- IMPORTANTE: Postgres NÃO permite uma coluna GENERATED referenciar outra
+-- GENERATED. Como valor_medido já é GENERATED (quantidade_medida *
+-- valor_unitario), recalculamos valor_efetivo direto das colunas-base.
 ALTER TABLE medicao_itens
   ADD COLUMN IF NOT EXISTS valor_efetivo NUMERIC(15,2)
-    GENERATED ALWAYS AS (COALESCE(valor_medido, 0) - COALESCE(valor_glosa, 0)) STORED;
+    GENERATED ALWAYS AS (
+      (COALESCE(quantidade_medida, 0) * COALESCE(valor_unitario, 0))
+      - COALESCE(valor_glosa, 0)
+    ) STORED;
 
 -- Index pra agregar rapidamente glosas por medição em relatórios
 CREATE INDEX IF NOT EXISTS idx_medicao_itens_glosa

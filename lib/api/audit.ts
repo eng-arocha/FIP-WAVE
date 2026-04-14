@@ -41,7 +41,11 @@ export interface AuditEvent {
   actor_email?: string | null
   before?: unknown
   after?: unknown
-  metadata?: Record<string, unknown>
+  /**
+   * Metadados livres. Aceita `null` pra ergonomia em call-sites com
+   * `cond ? {...} : null`.
+   */
+  metadata?: Record<string, unknown> | null
   request?: Request | NextRequest
 }
 

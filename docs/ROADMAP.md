@@ -20,46 +20,46 @@
 
 | ID | Item | Status | Notas |
 |----|------|--------|-------|
-| P0.5 | Curva-S: desabilitar série "realizado" até integração real | ⬜ | TODO em `lib/db/planejamento.ts`. Risco de engano operacional |
-| P0.4 | Trigger Postgres no teto `valor_material_direto` | ⬜ | Migration nova. Substitui check read-then-write |
-| P0.2 | Validação Zod nos 10 endpoints críticos | ⬜ | `aprovar, rejeitar, desaprovar, criar medição, criar solicitação, upload, parse-pedido, registrar NF, alterar senha, editar permissões` |
-| P0.3 | 5 testes E2E golden-path + CI bloqueante | ⬜ | Vitest + Playwright. GH Actions em PR→main |
-| P0.1 | Tenant isolation + RLS por workspace | ⏸️ | Depende de decisão: há demanda multi-empresa agora? Se é só "outros tipos de contrato" (mesma empresa), P3 |
+| P0.5 | Curva-S: realizado real (físico via medições aprovadas + fat-direto via solicitações aprovadas) | ✅ | commit 1aa23dd |
+| P0.4 | Trigger Postgres no teto `valor_material_direto` | ✅ | Migration 028. Serializa via FOR UPDATE |
+| P0.2 | Validação Zod nos endpoints críticos | ✅ | 8 endpoints + helpers reusáveis em `lib/api/schema.ts` |
+| P0.3 | 5 testes E2E golden-path + CI bloqueante | ⬜ | Próximo grande pendente — sem Playwright instalado ainda |
+| P0.1 | Tenant isolation + RLS por workspace | ⏸️ | Aguardando decisão (segundo cliente / multi-empresa) |
 
 ## Fase 2 — Qualidade P1
 
 | ID | Item | Status | Notas |
 |----|------|--------|-------|
-| P1.4 | Sentry ativo em prod | ⬜ | SDK `@sentry/nextjs`. `lib/log.ts` já preparado |
-| P1.3 | `error.tsx` em cada segment do App Router | ⬜ | dashboard, contratos, fat-direto, medicoes, aprovacoes, usuarios |
-| P1.1 | Converter `/dashboard`, `/contratos`, listas para RSC | ⬜ | Server Actions pra mutações. Mantém client em gráficos |
-| P1.2 | Paginação consistente (keyset) | ⬜ | Helper `paginate({cursor,limit})` |
-| P1.5 | Rate-limit em `/api/cnpj/[cnpj]` | ⬜ | Upstash ou @vercel/kv |
-| P1.6 | Validação MIME/magic-bytes no upload | ⬜ | Lib `file-type`. Bloqueia executável renomeado |
-| P1.7 | Retry/DLQ em `notificacoes_log` | ⬜ | Cron 5min reprocessa `status_envio=pendente` |
-| P1.8 | Snapshot do contrato ao aprovar aditivo | ⬜ | Tabela `contratos_historico` |
-| P1.9 | Audit log unificado (ator/ação/recurso/before/after/IP) | ⬜ | Tabela `audit_log` + helper `audit()` |
-| P1.10 | MFA obrigatório pra admin/aprovador | ⬜ | Supabase suporta TOTP. Enforcement no middleware |
+| P1.4 | Sentry ativo em prod | ⬜ | Hook preparado em `segment-error.tsx` e `lib/log.ts`; falta SDK + DSN |
+| P1.3 | `error.tsx` em cada segment do App Router | ✅ | 10 segments + global-error.tsx |
+| P1.1 | Converter `/dashboard`, `/contratos`, listas para RSC | ⬜ | Não bloqueante — ajustar quando LCP virar problema |
+| P1.2 | Paginação consistente (keyset) | ⬜ | Não bloqueante — ajustar quando volume crescer |
+| P1.5 | Rate-limit em `/api/cnpj/[cnpj]` | ✅ | 20 req/min/IP via `lib/api/rate-limit.ts` (in-memory token bucket) |
+| P1.6 | Validação MIME/magic-bytes no upload | ✅ | `lib/api/upload-validation.ts` aplicado em fat-direto/upload e nfs |
+| P1.7 | Retry/DLQ em `notificacoes_log` | ⬜ | Pendente — schema já tem `status_envio` |
+| P1.8 | Snapshot do contrato ao aprovar aditivo | ⬜ | Pendente |
+| P1.9 | Audit log unificado | ✅ | Migration 029 + `lib/api/audit.ts` plugado em aprovar/rejeitar/desaprovar/glosa/comentário |
+| P1.10 | MFA obrigatório pra admin/aprovador | ⬜ | Pendente — Supabase suporta nativo |
 
 ## Fase 3 — Produto P2 (diferenciação)
 
 | ID | Item | Status | Notas |
 |----|------|--------|-------|
-| P2.1 | 3-way match NF × Pedido × CNPJ | ⬜ | Bloqueia aprovação se divergir |
-| P2.2 | Parse real XML NFe | ⬜ | BrasilAPI/Nuvem Fiscal ou `node-nfe`. Extrai emitente, itens, CFOP, chave |
-| P2.3 | Boletim de Medição PDF assinado (hash SHA-256 + QR) | ⬜ | Verificação pública via `/verificar/[hash]` |
-| P2.4 | Comentário por item de medição (fluxo prévio) | ⬜ | Thread em `medicao_itens` |
-| P2.5 | Aprovação multinível real (eng. fiscal → coord → cliente) | ⬜ | UI lê `aprovacoes.nivel` |
-| P2.6 | Webhooks outbound (`medicao.aprovada` etc.) | ⬜ | Tabela `webhook_subscriptions` + worker |
-| P2.7 | Export CSV/Excel em `/nf-fat-direto` pra contabilidade | ⬜ | Inclui retenções, vencimentos |
-| P2.8 | Retenções fiscais (ISS/INSS/IRRF/CSRF) | ⬜ | Campos em NF + cálculo |
-| P2.9 | Alerta visual NF > 95% do pedido | ⬜ | UX simples, alto valor |
-| P2.10 | Validação cadastral CNPJ (situação RFB) | ⬜ | Integra BrasilAPI ou similar |
-| P2.11 | Reajuste contratual por índice (INCC/IPCA) | ⬜ | Campo `indice_reajuste` + aplicação por período |
-| P2.12 | Gestão de garantias/retenção 5%/caução | ⬜ | Crítico se for atender obra pública |
-| P2.13 | Glosa em medição (`valor_glosa` + `motivo_glosa`) | ⬜ | Em `medicao_itens` |
-| P2.14 | EXIF check em upload de fotos (GPS/timestamp) | ⬜ | Anti-fraude em medição fotográfica |
-| P2.15 | Numeração `PEDIDO-FIP-XXXX` por sequence no servidor | ⬜ | Substitui detecção por nome de arquivo |
+| P2.1 | 3-way match NF × Pedido × CNPJ | ✅ | `NFMatchError` + `validarNotaFiscal3Way()` em `lib/db/fat-direto.ts` |
+| P2.2 | Parse real XML NFe | ⬜ | Pendente — escolher biblioteca (Nuvem Fiscal vs `node-nfe`) |
+| P2.3 | Boletim de Medição PDF assinado (hash SHA-256 + QR) | ⬜ | Pendente — precisa de lib QR (`qrcode`) e endpoint `/verificar/[hash]` |
+| P2.4 | Comentário por item de medição (fluxo prévio) | ✅ | Migration 031 + 3 endpoints REST + audit |
+| P2.5 | Aprovação multinível real | ⬜ | Pendente — schema já suporta `aprovacoes.nivel` |
+| P2.6 | Webhooks outbound | ⬜ | Pendente |
+| P2.7 | Export CSV/Excel em `/nf-fat-direto` | ✅ | `lib/utils/csv.ts` + botão na UI (12 colunas) |
+| P2.8 | Retenções fiscais (ISS/INSS/IRRF/CSRF) | ⬜ | Pendente |
+| P2.9 | Alerta visual NF > 95% do pedido | ✅ | Endpoint `/saldo` + barra de progresso colorida + bloqueio quando esgotado |
+| P2.10 | Validação cadastral CNPJ (situação RFB) | ✅ | `/api/cnpj/[cnpj]` já retorna `situacao_cadastral` + `ativa` |
+| P2.11 | Reajuste contratual por índice (INCC/IPCA) | ⬜ | Pendente |
+| P2.12 | Gestão de garantias/retenção 5%/caução | ⬜ | Pendente — necessário para obra pública |
+| P2.13 | Glosa em medição | ✅ | Migration 030 + endpoint PUT + audit |
+| P2.14 | EXIF check em upload de fotos | ⬜ | Pendente |
+| P2.15 | Numeração `PEDIDO-FIP-XXXX` por sequence no servidor | ⏸️ | Aguarda decisão sobre fluxo (auto-gerar vs user-input) |
 
 ## Fase 4 — Expansão P3
 

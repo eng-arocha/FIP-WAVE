@@ -41,7 +41,7 @@ export async function POST(
         entity_id: solId,
         actor_id: check.userId,
         actor_email: check.userEmail ?? null,
-        metadata: acao === 'rejeitado' ? { motivo_rejeicao } : null,
+        metadata: acao === 'rejeitado' ? { motivo_rejeicao } : undefined,
         request: req,
       })
       return NextResponse.json({ ok: true })
