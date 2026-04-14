@@ -50,17 +50,19 @@ export async function PUT(req: Request, { params }: { params: Promise<{ itemId: 
 
     const admin = createAdminClient()
 
-    // Verifica que o item existe e que sua medição NÃO está aprovada
-    const { data: item, error: getErr } = await admin
+    // Verifica que o item existe e que sua medição NÃO está aprovada.
+    // Cast defensivo: valor_glosa/motivo_glosa só existem após migration 030.
+    const { data: itemRaw, error: getErr } = await admin
       .from('medicao_itens')
       .select('id, valor_medido, valor_glosa, motivo_glosa, medicao:medicoes!inner(id, status)')
       .eq('id', itemId)
       .single()
-    if (getErr || !item) {
+    if (getErr || !itemRaw) {
       return NextResponse.json({ error: 'Item de medição não encontrado.' }, { status: 404 })
     }
+    const item = itemRaw as any
 
-    const med: any = (item as any).medicao
+    const med: any = item.medicao
     if (med?.status === 'aprovado') {
       return NextResponse.json(
         { error: 'Medição já aprovada. Para corrigir, crie uma nova medição corretiva.', code: 'MEDICAO_APROVADA' },
@@ -75,7 +77,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ itemId: 
       )
     }
 
-    const before = { valor_glosa: item.valor_glosa, motivo_glosa: item.motivo_glosa }
+    const before = { valor_glosa: item.valor_glosa ?? 0, motivo_glosa: item.motivo_glosa ?? null }
     const after = { valor_glosa, motivo_glosa: motivo_glosa ?? null }
 
     const { error: upErr } = await admin
