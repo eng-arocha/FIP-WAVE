@@ -4,6 +4,7 @@ import { criarNotaFiscal, NFMatchError } from '@/lib/db/fat-direto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
 import { cnpj, dataIso } from '@/lib/api/schema'
+import { validateUpload } from '@/lib/api/upload-validation'
 
 const BUCKET = 'contratos-documentos'
 
@@ -82,6 +83,14 @@ export async function POST(
     // Upload do arquivo PDF/imagem da NF, se enviado
     let arquivo_url: string | undefined
     if (file && file.size > 0) {
+      // P1.6: valida MIME + magic bytes antes de aceitar o upload
+      const v = await validateUpload(file)
+      if (!v.ok) {
+        return NextResponse.json(
+          { error: `Arquivo da NF rejeitado: ${v.reason}`, code: 'UPLOAD_INVALIDO' },
+          { status: 400 },
+        )
+      }
       const ext = file.name.split('.').pop() ?? 'pdf'
       const path = `nfs-fat-direto/${solId}/${Date.now()}.${ext}`
       const bytes = await file.arrayBuffer()

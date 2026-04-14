@@ -6,10 +6,11 @@ import { Topbar } from '@/components/layout/topbar'
 import { MaximizableCard } from '@/components/ui/maximizable-card'
 import { ColumnFilter, passaFiltro } from '@/components/ui/column-filter'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { exportCsv } from '@/lib/utils/csv'
 import {
   Receipt, Clock, CheckCircle2, Plus,
   ArrowRight, Package, Loader2, ChevronDown, ChevronUp,
-  Upload, FileText, AlertTriangle, X,
+  Upload, FileText, AlertTriangle, X, Download,
 } from 'lucide-react'
 
 // ── Tolerância de saldo ─────────────────────────────────────────────────────
@@ -336,7 +337,35 @@ export default function NfFatDiretoPage() {
           <div className="sticky top-0 z-10" style={{ background: 'var(--surface-2)' }}>
             <div className="px-5 py-3 flex items-center justify-between border-b" style={{ borderColor: 'var(--border)' }}>
               <h3 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>Solicitações de Autorização</h3>
-              <span className="text-xs" style={{ color: 'var(--text-3)' }}>{filtradas.length} registro(s)</span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs" style={{ color: 'var(--text-3)' }}>{filtradas.length} registro(s)</span>
+                <button
+                  onClick={() => exportCsv(
+                    `nf-fat-direto-${new Date().toISOString().slice(0,10)}`,
+                    filtradas,
+                    [
+                      { header: 'Número Pedido',     get: (s: any) => `FIP-${String(s.numero).padStart(4, '0')}` },
+                      { header: 'Status',            get: (s: any) => STATUS_BADGE_RAW[s.status]?.label ?? s.status },
+                      { header: 'Contrato',          get: (s: any) => s.contrato?.numero || '' },
+                      { header: 'Fornecedor',        get: (s: any) => s.fornecedor_razao_social || '' },
+                      { header: 'CNPJ',              get: (s: any) => s.fornecedor_cnpj || '' },
+                      { header: 'Data Solicitação',  get: (s: any) => s.data_solicitacao ? formatDate(s.data_solicitacao) : '' },
+                      { header: 'Data Aprovação',    get: (s: any) => s.data_aprovacao ? formatDate(s.data_aprovacao) : '' },
+                      { header: 'Valor Total',       get: (s: any) => Number(s.valor_total || 0) },
+                      { header: 'Valor NFs',         get: (s: any) => Number((s.notas_fiscais || []).reduce((a: number, n: any) => a + Number(n.valor || 0), 0)) },
+                      { header: 'Saldo',             get: (s: any) => Number(s.valor_total || 0) - Number((s.notas_fiscais || []).reduce((a: number, n: any) => a + Number(n.valor || 0), 0)) },
+                      { header: 'Qtde NFs',          get: (s: any) => (s.notas_fiscais || []).length },
+                      { header: 'Solicitante',       get: (s: any) => s.solicitante?.nome || '' },
+                    ],
+                  )}
+                  disabled={filtradas.length === 0}
+                  title="Exportar CSV (compatível com Excel)"
+                  className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-40"
+                  style={{ background: 'var(--surface-2)', color: 'var(--text-2)', border: '1px solid var(--border)' }}
+                >
+                  <Download className="w-3.5 h-3.5" /> CSV
+                </button>
+              </div>
             </div>
             <div className="grid grid-cols-[auto_1fr_auto_auto_auto] gap-4 px-5 py-2 text-[10px] font-bold uppercase tracking-widest border-b" style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}>
               <span className="flex items-center gap-1">Nº <ColumnFilter label="Nº" values={valoresUnicos.numero} selected={fNumero} onChange={setFNumero} /></span>
