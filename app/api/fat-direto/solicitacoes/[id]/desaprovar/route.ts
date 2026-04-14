@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { assertPermissao } from '@/lib/api/auth'
 import { desaprovarSolicitacao } from '@/lib/db/fat-direto'
 import { apiError } from '@/lib/api/error-response'
+import { parseBody } from '@/lib/api/schema'
+
+const Body = z.object({
+  motivo: z.string().trim().min(3, 'Informe o motivo da desaprovação (mín. 3 caracteres).').max(2000),
+})
 
 /**
  * POST /api/fat-direto/solicitacoes/[id]/desaprovar
@@ -32,16 +38,10 @@ export async function POST(
   }
 
   try {
+    const parsed = await parseBody(Body, req)
+    if (!parsed.ok) return parsed.res
     const { id } = await params
-    const body = await req.json().catch(() => ({}))
-    const motivo = typeof body.motivo === 'string' ? body.motivo.trim() : ''
-
-    if (!motivo) {
-      return NextResponse.json(
-        { error: 'Informe o motivo da desaprovação.' },
-        { status: 400 }
-      )
-    }
+    const { motivo } = parsed.data
 
     await desaprovarSolicitacao(id, check.userId, motivo)
     return NextResponse.json({ ok: true })

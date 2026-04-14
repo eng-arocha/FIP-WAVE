@@ -1,9 +1,17 @@
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { assertPermissao } from '@/lib/api/auth'
 import { aprovarMedicao } from '@/lib/db/medicoes'
 import { sendEmail } from '@/lib/email/send'
 import { templateMedicaoAprovada } from '@/lib/email/templates'
 import { apiError } from '@/lib/api/error-response'
+import { parseBody } from '@/lib/api/schema'
+
+const Body = z.object({
+  comentario: z.string().max(2000).optional().default(''),
+  // Payload opcional usado apenas pra compor o email — validação leve.
+  medicao: z.any().optional(),
+})
 
 export async function POST(req: Request, { params }: { params: Promise<{ medicaoId: string }> }) {
   try {
@@ -18,8 +26,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ medicao
       )
     }
 
+    const parsed = await parseBody(Body, req)
+    if (!parsed.ok) return parsed.res
+    const { comentario, medicao } = parsed.data
     const { medicaoId } = await params
-    const { comentario, medicao } = await req.json()
 
     // Recupera nome do aprovador a partir do perfil (não confia no body)
     const { createAdminClient } = await import('@/lib/supabase/admin')

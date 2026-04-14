@@ -337,6 +337,135 @@ export async function desaprovarSolicitacao(
   }
 }
 
+/**
+ * Erros de 3-way match da NF contra o pedido/solicitação.
+ * Usamos classes nomeadas pra que o route handler possa mapear
+ * pra status HTTP específicos (422 pra violação de regra de negócio).
+ */
+export class NFMatchError extends Error {
+  code: 'CNPJ_DIVERGENTE' | 'VALOR_EXCEDE_SALDO' | 'DATA_INVALIDA' | 'SOLICITACAO_NAO_APROVADA' | 'DUPLICATA'
+  detail: Record<string, unknown>
+  constructor(code: NFMatchError['code'], message: string, detail: Record<string, unknown> = {}) {
+    super(message)
+    this.name = 'NFMatchError'
+    this.code = code
+    this.detail = detail
+  }
+}
+
+/** Normaliza CNPJ (só dígitos) para comparação tolerante a máscara. */
+function cnpjDigits(s: string | null | undefined): string {
+  return (s || '').replace(/\D/g, '')
+}
+
+/**
+ * 3-way match — valida NF contra Pedido antes de gravar.
+ *
+ * Checa:
+ *  1) Solicitação existe, está aprovada (permite aguardando_aprovacao só se contrato permitir)
+ *  2) CNPJ do emitente da NF == CNPJ do fornecedor no pedido (se ambos presentes)
+ *  3) data_emissao >= data_aprovacao da solicitação (NF emitida após aprovação)
+ *  4) valor somado das NFs ativas (não rejeitadas) + esta NF <= valor_total do pedido
+ *  5) numero_nf + cnpj_emitente não duplicado no mesmo pedido
+ *
+ * Retorna { saldo_antes, saldo_depois, pct_uso_pedido } pra UI mostrar barra/alerta.
+ */
+export async function validarNotaFiscal3Way(input: {
+  solicitacao_id: string
+  numero_nf: string
+  cnpj_emitente?: string
+  valor: number
+  data_emissao: string
+}): Promise<{ saldo_antes: number; saldo_depois: number; pct_uso_pedido: number; pedido_valor: number }> {
+  const admin = createAdminClient()
+
+  const { data: sol, error: solErr } = await admin
+    .from('solicitacoes_fat_direto')
+    .select('id, status, valor_total, fornecedor_cnpj, data_aprovacao, deletado_em')
+    .eq('id', input.solicitacao_id)
+    .single()
+  if (solErr || !sol) {
+    throw new NFMatchError('SOLICITACAO_NAO_APROVADA', 'Solicitação não encontrada.', {})
+  }
+  if (sol.deletado_em) {
+    throw new NFMatchError('SOLICITACAO_NAO_APROVADA', 'Solicitação foi excluída.', { id: sol.id })
+  }
+  if (sol.status !== 'aprovado') {
+    throw new NFMatchError(
+      'SOLICITACAO_NAO_APROVADA',
+      `Só é possível lançar NF em solicitação aprovada (status atual: ${sol.status}).`,
+      { status: sol.status },
+    )
+  }
+
+  // CNPJ check (só se ambos presentes — se pedido não tem CNPJ, deixa passar com warning no client)
+  const cnpjPedido = cnpjDigits(sol.fornecedor_cnpj)
+  const cnpjNf = cnpjDigits(input.cnpj_emitente)
+  if (cnpjPedido && cnpjNf && cnpjPedido !== cnpjNf) {
+    throw new NFMatchError(
+      'CNPJ_DIVERGENTE',
+      `CNPJ do emitente da NF (${cnpjNf}) diverge do CNPJ do fornecedor do pedido (${cnpjPedido}).`,
+      { cnpj_pedido: cnpjPedido, cnpj_nf: cnpjNf },
+    )
+  }
+
+  // Data da NF não pode ser anterior à aprovação do pedido
+  if (sol.data_aprovacao) {
+    const dataEmissao = new Date(input.data_emissao + 'T00:00:00Z').getTime()
+    const dataAprov = new Date(sol.data_aprovacao).getTime()
+    // Margem de 1 dia pra fuso/aproximação
+    if (dataEmissao < dataAprov - 24 * 3600 * 1000) {
+      throw new NFMatchError(
+        'DATA_INVALIDA',
+        `Data de emissão da NF (${input.data_emissao}) é anterior à aprovação do pedido (${new Date(sol.data_aprovacao).toISOString().slice(0, 10)}).`,
+        { data_emissao: input.data_emissao, data_aprovacao: sol.data_aprovacao },
+      )
+    }
+  }
+
+  // Checa saldo: soma NFs ativas + esta <= valor_total do pedido
+  const { data: nfsAtivas } = await admin
+    .from('notas_fiscais_fat_direto')
+    .select('id, numero_nf, cnpj_emitente, valor, status')
+    .eq('solicitacao_id', input.solicitacao_id)
+
+  const ativas = (nfsAtivas || []).filter((n: any) => n.status !== 'rejeitada')
+
+  // Duplicata (mesmo numero_nf + cnpj_emitente na mesma solicitação)
+  const dup = ativas.find((n: any) =>
+    String(n.numero_nf).trim() === input.numero_nf.trim() &&
+    cnpjDigits(n.cnpj_emitente) === cnpjNf
+  )
+  if (dup) {
+    throw new NFMatchError(
+      'DUPLICATA',
+      `NF ${input.numero_nf} deste emitente já foi lançada neste pedido.`,
+      { nf_id: dup.id },
+    )
+  }
+
+  const somaAtivas = ativas.reduce((s: number, n: any) => s + Number(n.valor || 0), 0)
+  const pedidoValor = Number(sol.valor_total || 0)
+  const saldoAntes = pedidoValor - somaAtivas
+  const saldoDepois = saldoAntes - input.valor
+
+  if (input.valor > saldoAntes + 0.01) {
+    throw new NFMatchError(
+      'VALOR_EXCEDE_SALDO',
+      `Valor da NF (R$ ${input.valor.toFixed(2)}) excede o saldo do pedido (R$ ${saldoAntes.toFixed(2)}).`,
+      { pedido_valor: pedidoValor, soma_nfs: somaAtivas, saldo: saldoAntes, valor_nf: input.valor },
+    )
+  }
+
+  const usado = somaAtivas + input.valor
+  return {
+    saldo_antes: saldoAntes,
+    saldo_depois: saldoDepois,
+    pct_uso_pedido: pedidoValor > 0 ? (usado / pedidoValor) * 100 : 0,
+    pedido_valor: pedidoValor,
+  }
+}
+
 export async function criarNotaFiscal(input: {
   solicitacao_id: string
   numero_nf: string
@@ -349,6 +478,15 @@ export async function criarNotaFiscal(input: {
   descricao?: string
   arquivo_url?: string
 }) {
+  // 3-way match antes de gravar — lança NFMatchError em caso de violação
+  const match = await validarNotaFiscal3Way({
+    solicitacao_id: input.solicitacao_id,
+    numero_nf: input.numero_nf,
+    cnpj_emitente: input.cnpj_emitente,
+    valor: input.valor,
+    data_emissao: input.data_emissao,
+  })
+
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('notas_fiscais_fat_direto')
@@ -356,7 +494,8 @@ export async function criarNotaFiscal(input: {
     .select()
     .single()
   if (error) throw error
-  return data
+  // Anexa info do match pra UI exibir barra/alerta sem nova request
+  return { ...data, _match: match }
 }
 
 export async function getResumoFatDireto(contratoId: string) {

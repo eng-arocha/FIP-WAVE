@@ -1,9 +1,27 @@
 import { NextResponse } from 'next/server'
-import { criarNotaFiscal } from '@/lib/db/fat-direto'
+import { z } from 'zod'
+import { criarNotaFiscal, NFMatchError } from '@/lib/db/fat-direto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
+import { cnpj, dataIso } from '@/lib/api/schema'
 
 const BUCKET = 'contratos-documentos'
+
+/**
+ * Schema da NF. Cobre tanto o path JSON quanto o multipart (após
+ * coerção dos campos). Valida formato de data, limita tamanhos, e
+ * valida CNPJ do emitente quando presente — base pro 3-way match.
+ */
+const NfSchema = z.object({
+  numero_nf: z.string().trim().min(1, 'Número da NF é obrigatório.').max(50),
+  emitente: z.string().max(500).optional(),
+  cnpj_emitente: cnpj().optional(),
+  valor: z.number().positive('Valor deve ser positivo.').finite(),
+  data_emissao: dataIso(),
+  data_recebimento: dataIso().optional(),
+  data_vencimento: dataIso().optional(),
+  descricao: z.string().max(2000).optional(),
+})
 
 export async function GET(
   _req: Request,
@@ -52,9 +70,14 @@ export async function POST(
       body = await req.json()
     }
 
-    if (!body.numero_nf || !body.valor || !body.data_emissao) {
-      return NextResponse.json({ error: 'Campos obrigatórios: numero_nf, valor, data_emissao' }, { status: 400 })
+    const nfParsed = NfSchema.safeParse(body)
+    if (!nfParsed.success) {
+      const details = nfParsed.error.issues.map(i => ({
+        path: i.path.join('.'), code: i.code, message: i.message,
+      }))
+      return NextResponse.json({ error: 'Dados inválidos.', details }, { status: 400 })
     }
+    const nfBody = nfParsed.data
 
     // Upload do arquivo PDF/imagem da NF, se enviado
     let arquivo_url: string | undefined
@@ -74,18 +97,25 @@ export async function POST(
 
     const nf = await criarNotaFiscal({
       solicitacao_id: solId,
-      numero_nf: body.numero_nf,
-      emitente: body.emitente,
-      cnpj_emitente: body.cnpj_emitente,
-      valor: body.valor,
-      data_emissao: body.data_emissao,
-      data_recebimento: body.data_recebimento,
-      data_vencimento: body.data_vencimento,
-      descricao: body.descricao,
+      numero_nf: nfBody.numero_nf,
+      emitente: nfBody.emitente,
+      cnpj_emitente: nfBody.cnpj_emitente,
+      valor: nfBody.valor,
+      data_emissao: nfBody.data_emissao,
+      data_recebimento: nfBody.data_recebimento,
+      data_vencimento: nfBody.data_vencimento,
+      descricao: nfBody.descricao,
       arquivo_url,
     })
     return NextResponse.json(nf, { status: 201 })
   } catch (e: any) {
+    // Violação de regra de negócio do 3-way match → 422 com detalhe estruturado
+    if (e instanceof NFMatchError) {
+      return NextResponse.json(
+        { error: e.message, code: e.code, detail: e.detail },
+        { status: 422 },
+      )
+    }
     return apiError(e)
   }
 }
