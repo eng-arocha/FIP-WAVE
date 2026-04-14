@@ -15,8 +15,8 @@
 
 DO $reseed$
 DECLARE
-  -- ⚠️ UUID do contrato WAVE
-  v_contrato_id uuid := '00000000-0000-0000-0000-000000000000';  -- ← TROCAR
+  -- ✅ UUID do contrato WAVE-2025-001 (pré-preenchido)
+  v_contrato_id uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 
   v_data      jsonb;
   v_grupo     jsonb;
