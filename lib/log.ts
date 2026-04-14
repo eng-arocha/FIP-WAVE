@@ -58,6 +58,18 @@ export const log = {
   debug: (msg: string, ctx?: LogCtx) => emit('debug', msg, ctx),
   info:  (msg: string, ctx?: LogCtx) => emit('info',  msg, ctx),
   warn:  (msg: string, ctx?: LogCtx) => emit('warn',  msg, ctx),
-  error: (msg: string, e?: unknown, ctx?: LogCtx) =>
-    emit('error', msg, { ...(ctx ?? {}), error: e ? serializeError(e) : undefined }),
+  error: (msg: string, e?: unknown, ctx?: LogCtx) => {
+    emit('error', msg, { ...(ctx ?? {}), error: e ? serializeError(e) : undefined })
+    // Encaminha pra Sentry quando habilitado. Import dinâmico evita
+    // adicionar peso ao bundle quando SDK não está em uso.
+    if (isServer && process.env.SENTRY_DSN) {
+      import('@sentry/nextjs').then(Sentry => {
+        if (e instanceof Error) {
+          Sentry.captureException(e, { extra: { msg, ...(ctx ?? {}) } })
+        } else {
+          Sentry.captureMessage(msg, { level: 'error', extra: { error: e, ...(ctx ?? {}) } })
+        }
+      }).catch(() => {/* sentry pkg ausente — no-op */})
+    }
+  },
 }

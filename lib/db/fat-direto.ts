@@ -187,6 +187,8 @@ export async function criarSolicitacao(input: {
     contrato_id: input.contrato_id,
     solicitante_id: input.solicitante_id,
     observacoes: input.observacoes,
+    // P2.15: se omitido, o trigger auto_assign_pedido_fip atribui via sequence.
+    // Aceitar override pra casos de migração / correção manual.
     numero_pedido_fip: input.numero_pedido_fip,
     fornecedor_razao_social: input.fornecedor_razao_social,
     fornecedor_cnpj: input.fornecedor_cnpj,
@@ -196,7 +198,7 @@ export async function criarSolicitacao(input: {
     valor_total,
     status: 'aguardando_aprovacao',
   }
-  // Use FIP order number as the solicitation number
+  // Use FIP order number as the solicitation number when explicit
   if (input.numero_pedido_fip) {
     insertPayload.numero = input.numero_pedido_fip
   }

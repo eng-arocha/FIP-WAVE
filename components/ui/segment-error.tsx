@@ -29,10 +29,15 @@ export function SegmentError({
   description?: string
 }) {
   useEffect(() => {
-    // TODO quando Sentry estiver ativo: Sentry.captureException(error)
     if (typeof console !== 'undefined') {
       // eslint-disable-next-line no-console
       console.error('[segment-error]', error)
+    }
+    // Sentry — só roda se SDK estiver ativo (env var setada)
+    if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
+      import('@sentry/nextjs').then(Sentry => {
+        Sentry.captureException(error, { tags: { source: 'segment-error', digest: error.digest } })
+      }).catch(() => {/* sentry pkg ausente — no-op */})
     }
   }, [error])
 
