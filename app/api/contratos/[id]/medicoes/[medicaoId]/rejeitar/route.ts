@@ -8,6 +8,7 @@ import { apiError } from '@/lib/api/error-response'
 import { parseBody } from '@/lib/api/schema'
 import { audit } from '@/lib/api/audit'
 import { emitWebhook } from '@/lib/api/webhooks'
+import { assertMfaForRole } from '@/lib/api/mfa'
 
 const Body = z.object({
   motivo: z.string().min(3, 'Informe o motivo (mín. 3 caracteres).').max(2000),
@@ -24,6 +25,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ medicao
         { error: 'Apenas usuários com permissão de aprovação podem rejeitar medições.' },
         { status: check.status }
       )
+    }
+    const mfa = await assertMfaForRole('aprovador')
+    if (!mfa.ok) {
+      return NextResponse.json({ error: mfa.reason, code: 'MFA_REQUIRED' }, { status: 403 })
     }
 
     const parsed = await parseBody(Body, req)
