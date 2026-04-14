@@ -5,6 +5,7 @@ import { atualizarStatusSolicitacao } from '@/lib/db/fat-direto'
 import { apiError } from '@/lib/api/error-response'
 import { parseBody } from '@/lib/api/schema'
 import { audit } from '@/lib/api/audit'
+import { emitWebhook } from '@/lib/api/webhooks'
 
 const Body = z.object({
   acao: z.enum(['aprovado', 'rejeitado', 'cancelado', 'aguardando_aprovacao']),
@@ -35,14 +36,20 @@ export async function POST(
         )
       }
       await atualizarStatusSolicitacao(solId, acao, check.userId, motivo_rejeicao)
+      const eventoCanonico = acao === 'aprovado' ? 'solicitacao.aprovada' : 'solicitacao.rejeitada'
       await audit({
-        event: acao === 'aprovado' ? 'solicitacao.aprovada' : 'solicitacao.rejeitada',
+        event: eventoCanonico,
         entity_type: 'solicitacao_fat_direto',
         entity_id: solId,
         actor_id: check.userId,
         actor_email: check.userEmail ?? null,
         metadata: acao === 'rejeitado' ? { motivo_rejeicao } : undefined,
         request: req,
+      })
+      void emitWebhook(eventoCanonico, {
+        solicitacao_id: solId,
+        actor_id: check.userId,
+        motivo_rejeicao: acao === 'rejeitado' ? motivo_rejeicao : undefined,
       })
       return NextResponse.json({ ok: true })
     }

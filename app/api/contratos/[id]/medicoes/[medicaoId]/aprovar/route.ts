@@ -7,6 +7,8 @@ import { templateMedicaoAprovada } from '@/lib/email/templates'
 import { apiError } from '@/lib/api/error-response'
 import { parseBody } from '@/lib/api/schema'
 import { audit } from '@/lib/api/audit'
+import { emitWebhook } from '@/lib/api/webhooks'
+import { assertMfaForRole } from '@/lib/api/mfa'
 
 const Body = z.object({
   comentario: z.string().max(2000).optional().default(''),
@@ -25,6 +27,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ medicao
         { error: 'Apenas usuários com permissão de aprovação podem aprovar medições.' },
         { status: check.status }
       )
+    }
+
+    // P1.10: MFA obrigatório pra aprovação (quando MFA_ENFORCED=true).
+    // Sem feature flag, retorna ok=true. Com flag, exige aal2.
+    const mfa = await assertMfaForRole('aprovador')
+    if (!mfa.ok) {
+      return NextResponse.json({ error: mfa.reason, code: 'MFA_REQUIRED' }, { status: 403 })
     }
 
     const parsed = await parseBody(Body, req)
@@ -55,6 +64,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ medicao
       actor_email: aprovadorEmail,
       metadata: { comentario: comentario || null },
       request: req,
+    })
+
+    // Webhook outbound (best-effort, não bloqueia resposta)
+    void emitWebhook('medicao.aprovada', {
+      medicao_id: medicaoId,
+      aprovador: { nome: aprovadorNome, email: aprovadorEmail },
+      comentario: comentario || null,
     })
 
     // Send email notification
