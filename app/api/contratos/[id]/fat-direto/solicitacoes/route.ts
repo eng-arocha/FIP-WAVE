@@ -1,7 +1,28 @@
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { listarSolicitacoes, criarSolicitacao } from '@/lib/db/fat-direto'
 import { apiError } from '@/lib/api/error-response'
+import { parseBody, uuid, cnpj } from '@/lib/api/schema'
+
+const Item = z.object({
+  tarefa_id: uuid(),
+  descricao: z.string().min(1).max(1000),
+  local: z.string().max(100).optional(),
+  qtde_solicitada: z.number().positive('Quantidade deve ser positiva.'),
+  valor_unitario: z.number().positive('Valor unitário deve ser positivo.'),
+})
+
+const Body = z.object({
+  observacoes: z.string().max(2000).optional(),
+  numero_pedido_fip: z.union([z.string(), z.number()]).optional(),
+  fornecedor_razao_social: z.string().max(500).optional(),
+  fornecedor_cnpj: cnpj().optional(),
+  fornecedor_contato: z.string().max(500).optional(),
+  fornecedor_contato_nome: z.string().max(500).optional(),
+  fornecedor_contato_telefone: z.string().max(50).optional(),
+  itens: z.array(Item).min(1, 'Informe pelo menos um item.'),
+})
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -19,16 +40,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
-    const body = await req.json()
-    if (!body.itens || !Array.isArray(body.itens) || body.itens.length === 0) {
-      return NextResponse.json({ error: 'itens é obrigatório' }, { status: 400 })
-    }
+    const parsed = await parseBody(Body, req)
+    if (!parsed.ok) return parsed.res
+    const body = parsed.data
 
     const sol = await criarSolicitacao({
       contrato_id: id,
       solicitante_id: user.id,
       observacoes: body.observacoes,
-      numero_pedido_fip: body.numero_pedido_fip ? parseInt(body.numero_pedido_fip, 10) : undefined,
+      numero_pedido_fip: body.numero_pedido_fip ? parseInt(String(body.numero_pedido_fip), 10) : undefined,
       fornecedor_razao_social: body.fornecedor_razao_social,
       fornecedor_cnpj: body.fornecedor_cnpj,
       fornecedor_contato: body.fornecedor_contato,
