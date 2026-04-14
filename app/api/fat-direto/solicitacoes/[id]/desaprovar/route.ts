@@ -4,6 +4,7 @@ import { assertPermissao } from '@/lib/api/auth'
 import { desaprovarSolicitacao } from '@/lib/db/fat-direto'
 import { apiError } from '@/lib/api/error-response'
 import { parseBody } from '@/lib/api/schema'
+import { audit } from '@/lib/api/audit'
 
 const Body = z.object({
   motivo: z.string().trim().min(3, 'Informe o motivo da desaprovação (mín. 3 caracteres).').max(2000),
@@ -44,6 +45,17 @@ export async function POST(
     const { motivo } = parsed.data
 
     await desaprovarSolicitacao(id, check.userId, motivo)
+
+    await audit({
+      event: 'solicitacao.desaprovada',
+      entity_type: 'solicitacao_fat_direto',
+      entity_id: id,
+      actor_id: check.userId,
+      actor_email: check.userEmail ?? null,
+      metadata: { motivo },
+      request: req,
+    })
+
     return NextResponse.json({ ok: true })
   } catch (e: any) {
     if (e?.message === 'MIGRATION_027_PENDING') {

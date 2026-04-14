@@ -6,6 +6,7 @@ import { sendEmail } from '@/lib/email/send'
 import { templateMedicaoAprovada } from '@/lib/email/templates'
 import { apiError } from '@/lib/api/error-response'
 import { parseBody } from '@/lib/api/schema'
+import { audit } from '@/lib/api/audit'
 
 const Body = z.object({
   comentario: z.string().max(2000).optional().default(''),
@@ -44,6 +45,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ medicao
     const aprovadorEmail = perfilAprovador?.email ?? check.userEmail ?? ''
 
     await aprovarMedicao(medicaoId, aprovadorNome, aprovadorEmail, comentario)
+
+    await audit({
+      event: 'medicao.aprovada',
+      entity_type: 'medicao',
+      entity_id: medicaoId,
+      actor_id: check.userId,
+      actor_nome: aprovadorNome,
+      actor_email: aprovadorEmail,
+      metadata: { comentario: comentario || null },
+      request: req,
+    })
 
     // Send email notification
     if (medicao?.contrato) {
