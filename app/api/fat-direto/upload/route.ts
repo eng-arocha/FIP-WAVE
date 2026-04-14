@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
+import { validateUpload } from '@/lib/api/upload-validation'
 
 const BUCKET = 'faturamento-direto'
 
@@ -25,6 +26,17 @@ export async function POST(req: Request) {
     if (files.length === 0) return NextResponse.json({ error: 'Nenhum arquivo enviado' }, { status: 400 })
 
     const uploaded: { nome: string; url: string; tamanho: number; tipo: string }[] = []
+
+    // P1.6: valida cada arquivo (MIME + magic bytes + tamanho) antes do upload
+    for (const file of files) {
+      const v = await validateUpload(file)
+      if (!v.ok) {
+        return NextResponse.json(
+          { error: `Arquivo "${file.name}" rejeitado: ${v.reason}`, code: 'UPLOAD_INVALIDO' },
+          { status: 400 },
+        )
+      }
+    }
 
     for (const file of files) {
       let storagePath: string
