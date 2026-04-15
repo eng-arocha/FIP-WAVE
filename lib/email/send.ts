@@ -81,21 +81,46 @@ async function tentarEnvio(
       subject: payload.subject,
       html: payload.html,
     })
+
+    // Resend SDK retorna {data, error} — NÃO joga exception quando rejeita.
+    // Se result.error tem algo OU data.id é null, houve falha silenciosa.
+    if (result.error || !result.data?.id) {
+      const errMsg = result.error
+        ? `Resend error: ${result.error.name || 'unknown'} - ${result.error.message || JSON.stringify(result.error)}`
+        : 'Resend retornou sem message_id (rejeição silenciosa — provavelmente domínio FROM não verificado)'
+      // eslint-disable-next-line no-console
+      console.error('Resend rejeitou:', { error: result.error, data: result.data, from: FROM_EMAIL, to: payload.to })
+
+      if (logId) {
+        const proximaTentativa = tentativaAtual + 1
+        const proximo_retry_em = proximaTentativa < 5
+          ? new Date(Date.now() + backoffDelayMs(tentativaAtual)).toISOString()
+          : null
+        await admin.from('notificacoes_log').update({
+          status_envio: proximaTentativa >= 5 ? 'falhou' : 'pendente',
+          tentativas: proximaTentativa,
+          proximo_retry_em,
+          ultimo_erro: errMsg.slice(0, 1000),
+        }).eq('id', logId)
+      }
+      return { success: false, error: errMsg, logId }
+    }
+
     if (logId) {
       await admin.from('notificacoes_log').update({
         status_envio: 'enviado',
-        message_id: result.data?.id ?? null,
+        message_id: result.data.id,
         sent_at: new Date().toISOString(),
         tentativas: tentativaAtual + 1,
         proximo_retry_em: null,
         ultimo_erro: null,
       }).eq('id', logId)
     }
-    return { success: true, messageId: result.data?.id, logId }
+    return { success: true, messageId: result.data.id, logId }
   } catch (error) {
     const msg = String(error)
     // eslint-disable-next-line no-console
-    console.error('Erro ao enviar e-mail:', error)
+    console.error('Erro ao enviar e-mail (exception):', error)
     if (logId) {
       const proximaTentativa = tentativaAtual + 1
       const proximo_retry_em = proximaTentativa < 5
