@@ -7,7 +7,7 @@ import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { ArrowLeft, CheckCircle, XCircle, FileText, Plus, Package, Trash2 } from 'lucide-react'
+import { ArrowLeft, CheckCircle, XCircle, FileText, Plus, Package, Trash2, Mail, Send } from 'lucide-react'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 
 interface Solicitacao {
@@ -73,6 +73,11 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
   const [motivo, setMotivo] = useState('')
   const [nfForm, setNfForm] = useState({ numero_nf: '', emitente: '', cnpj_emitente: '', valor: '', data_emissao: '', descricao: '' })
   const [erro, setErro] = useState('')
+  // Dialog de aprovação: pergunta se manda email ao fornecedor
+  const [showApprovalDialog, setShowApprovalDialog] = useState(false)
+  const [enviarEmail, setEnviarEmail] = useState(true)
+  const [reenviando, setReenviando] = useState(false)
+  const [reenvioSucesso, setReenvioSucesso] = useState('')
   // P2.9/P2.1: saldo do pedido pra alertar >95% e bloquear envio a esgotado
   const [saldo, setSaldo] = useState<{
     pedido_valor: number
@@ -123,17 +128,40 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
     }
   }, [showNFForm, saldo])
 
-  async function acao(a: 'aprovado' | 'rejeitado' | 'cancelado' | 'aguardando_aprovacao') {
+  async function acao(
+    a: 'aprovado' | 'rejeitado' | 'cancelado' | 'aguardando_aprovacao',
+    opts: { enviar_email?: boolean } = {},
+  ) {
     setActing(true)
     setErro('')
+    const body: any = { acao: a, motivo_rejeicao: motivo }
+    if (a === 'aprovado') body.enviar_email = opts.enviar_email ?? true
     const res = await fetch(`/api/contratos/${id}/fat-direto/solicitacoes/${solId}/aprovar`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ acao: a, motivo_rejeicao: motivo }),
+      body: JSON.stringify(body),
     })
     if (!res.ok) { setErro((await res.json()).error); setActing(false); return }
+    setShowApprovalDialog(false)
     await load()
     setActing(false)
+  }
+
+  async function reenviarEmail() {
+    setReenviando(true)
+    setErro('')
+    setReenvioSucesso('')
+    try {
+      const res = await fetch(`/api/contratos/${id}/fat-direto/solicitacoes/${solId}/reenviar-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const data = await res.json()
+      if (!res.ok) { setErro(data.error || 'Falha ao reenviar email.'); return }
+      setReenvioSucesso(`Email reenviado para ${data.destino}${data.cc_count ? ` (+${data.cc_count} em CC)` : ''}.`)
+    } finally {
+      setReenviando(false)
+    }
   }
 
   async function registrarNF() {
@@ -271,7 +299,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
               <div className="space-y-2">
                 <div className="flex gap-3">
                   <Button
-                    onClick={() => acao('aprovado')}
+                    onClick={() => { setEnviarEmail(true); setShowApprovalDialog(true) }}
                     disabled={acting}
                     className="gap-2 bg-emerald-600 hover:bg-emerald-500 text-white"
                   >
@@ -323,6 +351,34 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
             <CardContent className="pt-4 pb-4">
               <p className="text-xs text-red-400 font-semibold uppercase tracking-wide mb-1">Motivo da Rejeição</p>
               <p className="text-sm text-[var(--text-2)]">{sol.motivo_rejeicao}</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Reenviar email (disponível pra qualquer usuário com perm aprovar, não só admin) */}
+        {sol.status === 'aprovado' && (
+          <Card style={{ background: 'var(--surface-1)', border: '1px solid rgba(59,130,246,0.25)' }}>
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm text-blue-400 font-semibold mb-1">Autorização enviada ao fornecedor</p>
+                  <p className="text-xs text-[var(--text-3)]">
+                    Precisa reenviar a autorização? Use o botão ao lado — vai pro mesmo destinatário extraído de <em>fornecedor_contato</em> com CC pros usuários da obra.
+                  </p>
+                  {reenvioSucesso && (
+                    <p className="text-xs text-emerald-400 mt-2">{reenvioSucesso}</p>
+                  )}
+                </div>
+                <Button
+                  onClick={reenviarEmail}
+                  disabled={reenviando}
+                  variant="ghost"
+                  className="gap-2 border border-blue-500/30 text-blue-400 hover:bg-blue-500/10 whitespace-nowrap"
+                >
+                  <Send className="w-4 h-4" />
+                  {reenviando ? 'Reenviando...' : 'Reenviar email ao fornecedor'}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -512,6 +568,73 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
           </CardContent>
         </Card>
       </div>
+
+      {/* Dialog de aprovação — pergunta se dispara email ao fornecedor */}
+      {showApprovalDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.6)' }}
+          onClick={() => !acting && setShowApprovalDialog(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl overflow-hidden"
+            style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 py-3 border-b flex items-center gap-2" style={{ borderColor: 'var(--border)' }}>
+              <CheckCircle className="w-5 h-5 text-emerald-500" />
+              <h3 className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>
+                Aprovar FIP-{String(sol.numero).padStart(4, '0')}?
+              </h3>
+            </div>
+
+            <div className="p-5 space-y-4 text-sm" style={{ color: 'var(--text-2)' }}>
+              <p>Confirma a aprovação da solicitação?</p>
+
+              <label
+                className="flex items-start gap-3 p-3 rounded-lg cursor-pointer"
+                style={{ background: 'var(--background)', border: '1px solid var(--border)' }}
+              >
+                <input
+                  type="checkbox"
+                  checked={enviarEmail}
+                  onChange={e => setEnviarEmail(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 font-semibold mb-0.5" style={{ color: 'var(--text-1)' }}>
+                    <Mail className="w-4 h-4 text-blue-400" />
+                    Enviar email de autorização ao fornecedor
+                  </div>
+                  <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+                    Dispara o email oficial com dados do contratante, contratado, destinatário NF, itens, condições de
+                    recebimento (boleto + prazo mín 20 dias) e contatos. CC automático para os usuários atrelados à obra.
+                  </p>
+                </div>
+              </label>
+            </div>
+
+            <div className="px-5 py-3 border-t flex justify-end gap-2" style={{ borderColor: 'var(--border)' }}>
+              <Button
+                onClick={() => setShowApprovalDialog(false)}
+                disabled={acting}
+                variant="ghost"
+                className="text-[var(--text-3)]"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => acao('aprovado', { enviar_email: enviarEmail })}
+                disabled={acting}
+                className="gap-2 bg-emerald-600 hover:bg-emerald-500 text-white"
+              >
+                <CheckCircle className="w-4 h-4" />
+                {acting ? 'Aprovando...' : (enviarEmail ? 'Aprovar e enviar email' : 'Só aprovar')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
