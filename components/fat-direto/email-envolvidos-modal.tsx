@@ -12,7 +12,7 @@
  * NÃO manda email pro fornecedor — só pros usuários atrelados ao contrato.
  */
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Send, Loader2, Users, Mail } from 'lucide-react'
 
 interface Envolvido {
@@ -54,7 +54,6 @@ export function EmailEnvolvidosModal({
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
   const [sending, setSending] = useState(false)
   const [erro, setErro] = useState('')
-  const iframeRef = useRef<HTMLIFrameElement>(null)
 
   // Carrega preview + envolvidos
   useEffect(() => {
@@ -62,7 +61,13 @@ export function EmailEnvolvidosModal({
     setLoading(true)
     setErro('')
     fetch(`/api/contratos/${contratoId}/fat-direto/solicitacoes/${solicitacaoId}/email-preview?reenvio=${reenvio}`)
-      .then(r => r.json())
+      .then(async r => {
+        if (!r.ok) {
+          const txt = await r.text()
+          throw new Error(`HTTP ${r.status}: ${txt.slice(0, 200)}`)
+        }
+        return r.json()
+      })
       .then(data => {
         if (data.error) { setErro(data.error); return }
         setSubject(data.subject || '')
@@ -71,20 +76,9 @@ export function EmailEnvolvidosModal({
         // Por default, todos selecionados
         setSelecionados(new Set((data.envolvidos || []).map((u: Envolvido) => u.id)))
       })
-      .catch(() => setErro('Erro de rede ao carregar preview.'))
+      .catch(e => setErro(e?.message || 'Erro de rede ao carregar preview.'))
       .finally(() => setLoading(false))
   }, [open, contratoId, solicitacaoId, reenvio])
-
-  // Atualiza iframe quando html muda
-  useEffect(() => {
-    if (!iframeRef.current || !html) return
-    const doc = iframeRef.current.contentDocument
-    if (doc) {
-      doc.open()
-      doc.write(html)
-      doc.close()
-    }
-  }, [html])
 
   if (!open) return null
 
@@ -144,8 +138,8 @@ export function EmailEnvolvidosModal({
       onClick={() => !sending && onClose()}
     >
       <div
-        className="w-full max-w-5xl max-h-[92vh] rounded-xl overflow-hidden flex flex-col"
-        style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}
+        className="w-full max-w-5xl rounded-xl overflow-hidden flex flex-col"
+        style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', height: '90vh', maxHeight: 800 }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -239,23 +233,33 @@ export function EmailEnvolvidosModal({
           </div>
 
           {/* Coluna preview */}
-          <div className="flex flex-col overflow-hidden">
-            <div className="px-4 py-2 border-b text-xs font-semibold" style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}>
-              Preview do email
+          <div className="flex flex-col overflow-hidden" style={{ minHeight: 400 }}>
+            <div className="px-4 py-2 border-b text-xs font-semibold flex items-center justify-between" style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}>
+              <span>Preview do email</span>
+              {html && (
+                <span className="text-[10px] font-normal" style={{ color: 'var(--text-3)' }}>
+                  HTML carregado ({(html.length / 1024).toFixed(1)} KB)
+                </span>
+              )}
             </div>
-            <div className="flex-1 overflow-hidden bg-white">
+            <div className="flex-1 overflow-hidden bg-white" style={{ minHeight: 350 }}>
               {loading ? (
                 <div className="p-8 text-center text-sm text-slate-500">
                   <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
                   Gerando preview...
                 </div>
-              ) : (
+              ) : html ? (
                 <iframe
-                  ref={iframeRef}
                   title="Preview do email"
-                  className="w-full h-full border-0"
-                  sandbox=""
+                  srcDoc={html}
+                  className="w-full border-0 bg-white"
+                  style={{ height: '100%', minHeight: 350 }}
+                  sandbox="allow-same-origin"
                 />
+              ) : (
+                <div className="p-8 text-center text-sm text-slate-500">
+                  {erro || 'Preview não disponível. Verifique se a solicitação tem dados completos.'}
+                </div>
               )}
             </div>
           </div>
