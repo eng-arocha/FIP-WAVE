@@ -128,13 +128,15 @@ export function templateSolicitacaoAprovadaFornecedor(p: SolicitacaoAprovadaPayl
 
       <!-- Saudação -->
       <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
-        <p style="margin:0 0 12px;font-size:15px;">
-          Prezado(a)${p.fornecedor_razao_social ? ` <strong>${escapeHtml(p.fornecedor_razao_social)}</strong>` : ''},
+        <p style="margin:0 0 12px;font-size:15px;font-weight:600;color:#0f172a;">
+          Notificação interna da Obra WAVE
         </p>
         <p style="margin:0;font-size:14px;line-height:1.6;color:#475569;">
-          A <strong>Gestão da Obra WAVE</strong> <strong>autoriza a emissão de Nota Fiscal em
-          faturamento direto</strong> para o pedido identificado como <strong>${fip}</strong>,
-          nos termos descritos abaixo.
+          A solicitação de <strong>faturamento direto ${fip}</strong> foi
+          <strong>${p.reenvio ? 'reenviada' : 'aprovada'}</strong> pela Gestão.
+          Abaixo os dados oficiais a serem comunicados ao fornecedor
+          <strong>${escapeHtml(p.fornecedor_razao_social || '')}</strong> e as condições
+          obrigatórias de recebimento da NF na obra.
         </p>
       </div>
 
@@ -239,8 +241,8 @@ export function templateSolicitacaoAprovadaFornecedor(p: SolicitacaoAprovadaPayl
 
       <!-- Rodapé -->
       <div style="padding:20px 24px;background:#f8fafc;font-size:12px;color:#64748b;line-height:1.6;">
-        <p style="margin:0 0 4px;">Este é um e-mail automático da Gestão da <strong>Obra WAVE</strong>.</p>
-        <p style="margin:0;">Dúvidas? Responda este e-mail — sua mensagem será encaminhada à gestão.</p>
+        <p style="margin:0 0 4px;">Este é um e-mail automático de notificação interna da <strong>Obra WAVE</strong>.</p>
+        <p style="margin:0;">Dúvidas? Responda este e-mail — sua mensagem vai pra gestão.</p>
       </div>
 
     </div>
@@ -250,13 +252,11 @@ export function templateSolicitacaoAprovadaFornecedor(p: SolicitacaoAprovadaPayl
 </html>`
 
   const text = [
-    `${fip} — AUTORIZAÇÃO DE FATURAMENTO DIRETO — OBRA WAVE`,
+    `${fip} — AUTORIZAÇÃO DE FATURAMENTO DIRETO — OBRA WAVE (notificação interna)`,
     p.reenvio ? '*** REENVIO ***' : '',
     '',
-    `Prezado(a) ${p.fornecedor_razao_social || 'fornecedor'},`,
-    '',
-    `A Gestão da Obra WAVE autoriza a emissão de NF em faturamento direto`,
-    `para o pedido ${fip}, nos termos abaixo.`,
+    `A solicitação de faturamento direto ${fip} foi ${p.reenvio ? 'reenviada' : 'aprovada'} pela Gestão WAVE.`,
+    `Dados oficiais a serem comunicados ao fornecedor ${p.fornecedor_razao_social || ''} e condições abaixo.`,
     '',
     `1. CONTRATANTE`,
     `   ${CONTRATANTE.razaoSocial} — CNPJ: ${maskCnpj(CONTRATANTE.cnpj)}`,

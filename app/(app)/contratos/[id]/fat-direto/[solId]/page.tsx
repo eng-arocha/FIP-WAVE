@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { ArrowLeft, CheckCircle, XCircle, FileText, Plus, Package, Trash2, Mail, Send } from 'lucide-react'
 import { usePermissoes } from '@/lib/context/permissoes-context'
+import { EmailEnvolvidosModal } from '@/components/fat-direto/email-envolvidos-modal'
 
 interface Solicitacao {
   id: string
@@ -73,11 +74,12 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
   const [motivo, setMotivo] = useState('')
   const [nfForm, setNfForm] = useState({ numero_nf: '', emitente: '', cnpj_emitente: '', valor: '', data_emissao: '', descricao: '' })
   const [erro, setErro] = useState('')
-  // Dialog de aprovação: pergunta se manda email ao fornecedor
+  // Dialog de aprovação: pergunta se quer aprovar (com ou sem notificação)
   const [showApprovalDialog, setShowApprovalDialog] = useState(false)
-  const [enviarEmail, setEnviarEmail] = useState(true)
-  const [reenviando, setReenviando] = useState(false)
-  const [reenvioSucesso, setReenvioSucesso] = useState('')
+  // Modal de envio de notificação aos envolvidos (checkbox + preview)
+  const [showEmailModal, setShowEmailModal] = useState(false)
+  const [emailModalMode, setEmailModalMode] = useState<'aprovar' | 'reenviar'>('aprovar')
+  const [emailSucesso, setEmailSucesso] = useState('')
   // P2.9/P2.1: saldo do pedido pra alertar >95% e bloquear envio a esgotado
   const [saldo, setSaldo] = useState<{
     pedido_valor: number
@@ -130,12 +132,12 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
 
   async function acao(
     a: 'aprovado' | 'rejeitado' | 'cancelado' | 'aguardando_aprovacao',
-    opts: { enviar_email?: boolean } = {},
   ) {
     setActing(true)
     setErro('')
     const body: any = { acao: a, motivo_rejeicao: motivo }
-    if (a === 'aprovado') body.enviar_email = opts.enviar_email ?? true
+    // Nota: quando acao='aprovado' sem destinatarios_ids → só aprova, não manda email.
+    // Se quiser aprovar + notificar, usa o EmailEnvolvidosModal (que manda o POST com destinatarios_ids).
     const res = await fetch(`/api/contratos/${id}/fat-direto/solicitacoes/${solId}/aprovar`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -145,23 +147,6 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
     setShowApprovalDialog(false)
     await load()
     setActing(false)
-  }
-
-  async function reenviarEmail() {
-    setReenviando(true)
-    setErro('')
-    setReenvioSucesso('')
-    try {
-      const res = await fetch(`/api/contratos/${id}/fat-direto/solicitacoes/${solId}/reenviar-email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      })
-      const data = await res.json()
-      if (!res.ok) { setErro(data.error || 'Falha ao reenviar email.'); return }
-      setReenvioSucesso(`Email reenviado para ${data.destino}${data.cc_count ? ` (+${data.cc_count} em CC)` : ''}.`)
-    } finally {
-      setReenviando(false)
-    }
   }
 
   async function registrarNF() {
@@ -299,7 +284,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
               <div className="space-y-2">
                 <div className="flex gap-3">
                   <Button
-                    onClick={() => { setEnviarEmail(true); setShowApprovalDialog(true) }}
+                    onClick={() => setShowApprovalDialog(true)}
                     disabled={acting}
                     className="gap-2 bg-emerald-600 hover:bg-emerald-500 text-white"
                   >
@@ -355,28 +340,28 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
           </Card>
         )}
 
-        {/* Reenviar email (disponível pra qualquer usuário com perm aprovar, não só admin) */}
+        {/* Notificar envolvidos (pedido aprovado) */}
         {sol.status === 'aprovado' && (
           <Card style={{ background: 'var(--surface-1)', border: '1px solid rgba(59,130,246,0.25)' }}>
             <CardContent className="pt-4 pb-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm text-blue-400 font-semibold mb-1">Autorização enviada ao fornecedor</p>
+                  <p className="text-sm text-blue-400 font-semibold mb-1">Notificar envolvidos do projeto</p>
                   <p className="text-xs text-[var(--text-3)]">
-                    Precisa reenviar a autorização? Use o botão ao lado — vai pro mesmo destinatário extraído de <em>fornecedor_contato</em> com CC pros usuários da obra.
+                    Envia a autorização por email pros envolvidos selecionados (usuários atrelados à obra).
+                    Você escolhe quem recebe e visualiza o preview antes de enviar.
                   </p>
-                  {reenvioSucesso && (
-                    <p className="text-xs text-emerald-400 mt-2">{reenvioSucesso}</p>
+                  {emailSucesso && (
+                    <p className="text-xs text-emerald-400 mt-2">{emailSucesso}</p>
                   )}
                 </div>
                 <Button
-                  onClick={reenviarEmail}
-                  disabled={reenviando}
+                  onClick={() => { setEmailModalMode('reenviar'); setShowEmailModal(true) }}
                   variant="ghost"
                   className="gap-2 border border-blue-500/30 text-blue-400 hover:bg-blue-500/10 whitespace-nowrap"
                 >
                   <Send className="w-4 h-4" />
-                  {reenviando ? 'Reenviando...' : 'Reenviar email ao fornecedor'}
+                  Enviar notificação aos envolvidos
                 </Button>
               </div>
             </CardContent>
@@ -569,7 +554,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
         </Card>
       </div>
 
-      {/* Dialog de aprovação — pergunta se dispara email ao fornecedor */}
+      {/* Dialog de aprovação — escolhe aprovar com ou sem notificação */}
       {showApprovalDialog && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -588,33 +573,16 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
               </h3>
             </div>
 
-            <div className="p-5 space-y-4 text-sm" style={{ color: 'var(--text-2)' }}>
-              <p>Confirma a aprovação da solicitação?</p>
-
-              <label
-                className="flex items-start gap-3 p-3 rounded-lg cursor-pointer"
-                style={{ background: 'var(--background)', border: '1px solid var(--border)' }}
-              >
-                <input
-                  type="checkbox"
-                  checked={enviarEmail}
-                  onChange={e => setEnviarEmail(e.target.checked)}
-                  className="mt-0.5"
-                />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 font-semibold mb-0.5" style={{ color: 'var(--text-1)' }}>
-                    <Mail className="w-4 h-4 text-blue-400" />
-                    Enviar email de autorização ao fornecedor
-                  </div>
-                  <p className="text-xs" style={{ color: 'var(--text-3)' }}>
-                    Dispara o email oficial com dados do contratante, contratado, destinatário NF, itens, condições de
-                    recebimento (boleto + prazo mín 20 dias) e contatos. CC automático para os usuários atrelados à obra.
-                  </p>
-                </div>
-              </label>
+            <div className="p-5 space-y-3 text-sm" style={{ color: 'var(--text-2)' }}>
+              <p>Escolha como quer aprovar:</p>
+              <div className="text-xs p-3 rounded-lg" style={{ background: 'var(--background)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>
+                <strong style={{ color: 'var(--text-2)' }}>Aprovar e notificar envolvidos:</strong> abre uma tela pra você selecionar quais usuários atrelados à obra vão receber o email, com preview do conteúdo antes de enviar.
+                <br /><br />
+                <strong style={{ color: 'var(--text-2)' }}>Só aprovar:</strong> marca como aprovado sem enviar email.
+              </div>
             </div>
 
-            <div className="px-5 py-3 border-t flex justify-end gap-2" style={{ borderColor: 'var(--border)' }}>
+            <div className="px-5 py-3 border-t flex flex-col sm:flex-row justify-end gap-2" style={{ borderColor: 'var(--border)' }}>
               <Button
                 onClick={() => setShowApprovalDialog(false)}
                 disabled={acting}
@@ -624,17 +592,45 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                 Cancelar
               </Button>
               <Button
-                onClick={() => acao('aprovado', { enviar_email: enviarEmail })}
+                onClick={() => acao('aprovado')}
+                disabled={acting}
+                variant="ghost"
+                className="gap-2 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+              >
+                <CheckCircle className="w-4 h-4" />
+                {acting ? 'Aprovando...' : 'Só aprovar'}
+              </Button>
+              <Button
+                onClick={async () => {
+                  // Primeiro aprova (sem email), depois abre modal de notificação
+                  await acao('aprovado')
+                  setEmailModalMode('aprovar')
+                  setShowEmailModal(true)
+                }}
                 disabled={acting}
                 className="gap-2 bg-emerald-600 hover:bg-emerald-500 text-white"
               >
-                <CheckCircle className="w-4 h-4" />
-                {acting ? 'Aprovando...' : (enviarEmail ? 'Aprovar e enviar email' : 'Só aprovar')}
+                <Mail className="w-4 h-4" />
+                Aprovar e notificar envolvidos
               </Button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Modal de notificação aos envolvidos — checkbox + preview + enviar */}
+      <EmailEnvolvidosModal
+        open={showEmailModal}
+        onClose={() => setShowEmailModal(false)}
+        contratoId={id}
+        solicitacaoId={solId}
+        reenvio={emailModalMode === 'reenviar'}
+        modo={emailModalMode}
+        onSent={qtd => {
+          setEmailSucesso(`Notificação enviada para ${qtd} envolvido${qtd > 1 ? 's' : ''}.`)
+          load()
+        }}
+      />
     </div>
   )
 }

@@ -1,18 +1,21 @@
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { assertPermissao } from '@/lib/api/auth'
 import { apiError } from '@/lib/api/error-response'
+import { parseBody } from '@/lib/api/schema'
 import { audit } from '@/lib/api/audit'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { dispararEmailAutorizacao } from '../aprovar/route'
 
+const Body = z.object({
+  destinatarios_ids: z.array(z.string().uuid()).min(1, 'Selecione ao menos 1 envolvido.'),
+})
+
 /**
  * POST /api/contratos/[id]/fat-direto/solicitacoes/[solId]/reenviar-email
  *
- * Reenvia o email oficial de autorização ao fornecedor (mesmo template
- * da aprovação, marcado como "REENVIO" no assunto e corpo).
- *
+ * Reenvia notificação interna de autorização pros envolvidos selecionados.
  * Só funciona com solicitações em status 'aprovado'.
- * Permissão: aprovacoes.aprovar (mesma da aprovação original).
  */
 export async function POST(
   req: Request,
@@ -21,18 +24,17 @@ export async function POST(
   try {
     const check = await assertPermissao('aprovacoes', 'aprovar')
     if (!check.ok) {
-      return NextResponse.json(
-        { error: 'Sem permissão pra reenviar autorização.' },
-        { status: check.status }
-      )
+      return NextResponse.json({ error: 'Sem permissão pra reenviar.' }, { status: check.status })
     }
+    const parsed = await parseBody(Body, req)
+    if (!parsed.ok) return parsed.res
+    const { destinatarios_ids } = parsed.data
     const { id: contratoId, solId } = await params
 
-    // Valida que a solicitação existe, está aprovada e é desse contrato
     const admin = createAdminClient()
     const { data: sol } = await admin
       .from('solicitacoes_fat_direto')
-      .select('id, status, contrato_id, fornecedor_contato')
+      .select('id, status, contrato_id')
       .eq('id', solId)
       .single()
 
@@ -41,16 +43,14 @@ export async function POST(
       return NextResponse.json({ error: 'Solicitação não pertence a este contrato.' }, { status: 400 })
     }
     if ((sol as any).status !== 'aprovado') {
-      return NextResponse.json({
-        error: 'Só dá pra reenviar email de solicitações aprovadas.',
-      }, { status: 400 })
+      return NextResponse.json({ error: 'Só dá pra reenviar notificação de solicitações aprovadas.' }, { status: 400 })
     }
 
     const resultado = await dispararEmailAutorizacao({
       contratoId,
       solId,
       aprovadorId: check.userId,
-      aprovadorEmail: check.userEmail,
+      destinatariosIds: destinatarios_ids,
       reenvio: true,
     })
 
@@ -65,14 +65,10 @@ export async function POST(
     })
 
     if (!resultado.ok) {
-      return NextResponse.json({ error: resultado.erro || 'Falha ao reenviar email.' }, { status: 400 })
+      return NextResponse.json({ error: resultado.erro || 'Falha ao reenviar.' }, { status: 400 })
     }
 
-    return NextResponse.json({
-      ok: true,
-      destino: resultado.destino,
-      cc_count: resultado.cc_count,
-    })
+    return NextResponse.json({ ok: true, qtd: resultado.qtd, destinos: resultado.destinos })
   } catch (e: any) {
     return apiError(e)
   }

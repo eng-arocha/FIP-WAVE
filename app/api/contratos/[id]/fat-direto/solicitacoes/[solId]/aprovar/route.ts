@@ -8,14 +8,13 @@ import { audit } from '@/lib/api/audit'
 import { emitWebhook } from '@/lib/api/webhooks'
 import { sendEmail } from '@/lib/email/send'
 import { templateSolicitacaoAprovadaFornecedor } from '@/lib/email/templates-fat-direto'
-import { emailsCcDoContrato } from '@/lib/db/usuarios-contrato'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 const Body = z.object({
   acao: z.enum(['aprovado', 'rejeitado', 'cancelado', 'aguardando_aprovacao']),
   motivo_rejeicao: z.string().max(2000).optional(),
-  /** Quando acao='aprovado', controla se dispara email de autorização ao fornecedor. Default: true. */
-  enviar_email: z.boolean().default(true),
+  /** Quando acao='aprovado' e quiser enviar notificação — lista IDs de usuários (envolvidos). */
+  destinatarios_ids: z.array(z.string().uuid()).optional(),
 }).refine(b => b.acao !== 'rejeitado' || (b.motivo_rejeicao && b.motivo_rejeicao.trim().length >= 3), {
   message: 'Motivo de rejeição é obrigatório (mín. 3 caracteres).',
   path: ['motivo_rejeicao'],
@@ -28,7 +27,7 @@ export async function POST(
   try {
     const parsed = await parseBody(Body, req)
     if (!parsed.ok) return parsed.res
-    const { acao, motivo_rejeicao, enviar_email } = parsed.data
+    const { acao, motivo_rejeicao, destinatarios_ids } = parsed.data
     const { id: contratoId, solId } = await params
 
     if (acao === 'aprovado' || acao === 'rejeitado') {
@@ -47,7 +46,9 @@ export async function POST(
         entity_id: solId,
         actor_id: check.userId,
         actor_email: check.userEmail ?? null,
-        metadata: acao === 'rejeitado' ? { motivo_rejeicao } : { enviar_email },
+        metadata: acao === 'rejeitado'
+          ? { motivo_rejeicao }
+          : { enviar_email: !!(destinatarios_ids && destinatarios_ids.length), qtd_destinatarios: destinatarios_ids?.length ?? 0 },
         request: req,
       })
       void emitWebhook(eventoCanonico, {
@@ -56,14 +57,14 @@ export async function POST(
         motivo_rejeicao: acao === 'rejeitado' ? motivo_rejeicao : undefined,
       })
 
-      // Ao APROVAR + enviar_email=true: dispara email ao fornecedor com CC pros usuários do contrato
-      if (acao === 'aprovado' && enviar_email) {
+      // Ao APROVAR + destinatarios_ids informados: dispara email notificação
+      if (acao === 'aprovado' && destinatarios_ids && destinatarios_ids.length > 0) {
         try {
           const emailResultado = await dispararEmailAutorizacao({
             contratoId,
             solId,
             aprovadorId: check.userId,
-            aprovadorEmail: check.userEmail,
+            destinatariosIds: destinatarios_ids,
             reenvio: false,
           })
           await audit({
@@ -76,16 +77,14 @@ export async function POST(
             request: req,
           })
         } catch (e) {
-          // Email é best-effort — não falha a aprovação se der erro
           // eslint-disable-next-line no-console
-          console.error('Falha ao disparar email pós-aprovação:', e)
+          console.error('Falha ao disparar notificação pós-aprovação:', e)
         }
       }
 
       return NextResponse.json({ ok: true })
     }
 
-    // Demais ações: precisa estar autenticado
     const user = await getUsuarioLogado()
     if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
     await atualizarStatusSolicitacao(solId, acao, user.id, motivo_rejeicao)
@@ -104,20 +103,20 @@ export async function POST(
 }
 
 /**
- * Dispara o email oficial de autorização ao fornecedor.
- * Usado tanto na aprovação quanto em reenvios manuais.
+ * Dispara notificação interna (email) pros envolvidos selecionados.
+ * Usado tanto na aprovação quanto em reenvios.
  *
- * Destinatário (TO): email do fornecedor (extraído de fornecedor_contato)
- * CC: todos os usuários atrelados ao contrato (usuarios_contratos)
+ * destinatariosIds: array de IDs de `perfis` (usuarios_contratos do contrato).
+ * O email NÃO vai pro fornecedor — é notificação interna pro time.
  */
 export async function dispararEmailAutorizacao(args: {
   contratoId: string
   solId: string
   aprovadorId: string
-  aprovadorEmail?: string | null
+  destinatariosIds: string[]
   reenvio: boolean
-}): Promise<{ ok: boolean; destino?: string; cc_count?: number; erro?: string }> {
-  const { contratoId, solId, aprovadorId, aprovadorEmail, reenvio } = args
+}): Promise<{ ok: boolean; destinos?: string[]; qtd?: number; erro?: string }> {
+  const { contratoId, solId, aprovadorId, destinatariosIds, reenvio } = args
   const admin = createAdminClient()
 
   const { data: sol } = await admin
@@ -134,15 +133,22 @@ export async function dispararEmailAutorizacao(args: {
 
   if (!sol) return { ok: false, erro: 'solicitação não encontrada' }
 
-  const destEmail = extrairEmail((sol as any).fornecedor_contato)
-  if (!destEmail) return { ok: false, erro: 'sem email do fornecedor em fornecedor_contato' }
+  // Busca os emails dos destinatários selecionados (valida que são do contrato)
+  const { data: vinculos } = await admin
+    .from('usuarios_contratos')
+    .select('usuario_id, perfis:usuario_id(id, email, nome)')
+    .eq('contrato_id', contratoId)
+    .in('usuario_id', destinatariosIds)
+
+  const emails: string[] = []
+  for (const v of (vinculos || []) as any[]) {
+    const e = v.perfis?.email
+    if (e) emails.push(e)
+  }
+  if (emails.length === 0) return { ok: false, erro: 'nenhum destinatário válido (ver usuarios_contratos)' }
 
   const perfilAprov = await admin
     .from('perfis').select('nome').eq('id', aprovadorId).single()
-
-  const ccList = await emailsCcDoContrato(contratoId, {
-    excluirEmail: aprovadorEmail ?? undefined,
-  })
 
   const tpl = templateSolicitacaoAprovadaFornecedor({
     numero_fip: (sol as any).numero_pedido_fip ?? (sol as any).numero,
@@ -161,22 +167,11 @@ export async function dispararEmailAutorizacao(args: {
   })
 
   await sendEmail({
-    to: destEmail,
-    cc: ccList.length > 0 ? ccList : undefined,
+    to: emails,
     subject: tpl.subject,
     html: tpl.html,
     tipo: 'aprovado',
   })
 
-  return { ok: true, destino: destEmail, cc_count: ccList.length }
-}
-
-/**
- * Extrai o primeiro email válido de um texto livre. `fornecedor_contato`
- * hoje armazena contato como texto livre ("João — joao@x.com · (11) 9999").
- */
-function extrairEmail(texto: string | null | undefined): string | null {
-  if (!texto) return null
-  const m = String(texto).match(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/)
-  return m ? m[0].toLowerCase() : null
+  return { ok: true, destinos: emails, qtd: emails.length }
 }
