@@ -7,7 +7,7 @@ import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { ArrowLeft, CheckCircle, XCircle, FileText, Plus, Package, Trash2, Mail, Send } from 'lucide-react'
+import { ArrowLeft, CheckCircle, XCircle, FileText, Plus, Package, Trash2, Mail, Send, PlayCircle } from 'lucide-react'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 import { EmailEnvolvidosModal } from '@/components/fat-direto/email-envolvidos-modal'
 
@@ -336,6 +336,46 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
             <CardContent className="pt-4 pb-4">
               <p className="text-xs text-red-400 font-semibold uppercase tracking-wide mb-1">Motivo da Rejeição</p>
               <p className="text-sm text-[var(--text-2)]">{sol.motivo_rejeicao}</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Enviar pra análise (rascunho / rejeitado / cancelado) */}
+        {(sol.status === 'rascunho' || sol.status === 'rejeitado' || sol.status === 'cancelado') && (
+          <Card style={{ background: 'var(--surface-1)', border: '1px solid rgba(245,158,11,0.30)' }}>
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <p className="text-sm text-amber-400 font-semibold mb-1">
+                    {sol.status === 'rascunho'  && 'Solicitação em rascunho'}
+                    {sol.status === 'rejeitado' && 'Solicitação rejeitada'}
+                    {sol.status === 'cancelado' && 'Solicitação cancelada'}
+                  </p>
+                  <p className="text-xs text-[var(--text-3)]">
+                    {sol.status === 'rascunho' &&
+                      'Envie para análise pra iniciar o fluxo de aprovação da Gestão WAVE.'}
+                    {sol.status === 'rejeitado' &&
+                      'Corrija os dados se necessário (botão Editar) e reenvie para análise.'}
+                    {sol.status === 'cancelado' &&
+                      'Reabra o fluxo enviando novamente para análise.'}
+                  </p>
+                </div>
+                <div className="flex gap-2 flex-shrink-0">
+                  <Link href={`/contratos/${sol.contrato_id}/fat-direto/${sol.id}/editar`}>
+                    <Button variant="ghost" className="gap-2 border border-blue-500/30 text-blue-400 hover:bg-blue-500/10 whitespace-nowrap">
+                      <FileText className="w-4 h-4" /> Editar
+                    </Button>
+                  </Link>
+                  <Button
+                    onClick={() => acao('aguardando_aprovacao')}
+                    disabled={acting}
+                    className="gap-2 bg-amber-600 hover:bg-amber-500 text-white whitespace-nowrap"
+                  >
+                    <PlayCircle className="w-4 h-4" />
+                    {acting ? 'Enviando...' : 'Enviar para análise'}
+                  </Button>
+                </div>
+              </div>
             </CardContent>
           </Card>
         )}
