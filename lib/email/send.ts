@@ -17,8 +17,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
  *     pra qualquer destinatário externo (gmail, corporativos, etc.)
  */
 
-const FROM_EMAIL = process.env.FROM_EMAIL || 'alexrocha@dasart.com.br'
-const FROM_NAME = process.env.FROM_NAME || 'Gestão WAVE · FIP-WAVE'
+const FROM_EMAIL = process.env.FROM_EMAIL || 'alex.rocha@dasart.com.br'
+const FROM_NAME = process.env.FROM_NAME || 'WAVE'
 const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email'
 
 interface SendEmailParams {
