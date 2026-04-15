@@ -13,9 +13,12 @@ import { Progress } from '@/components/ui/progress'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
 } from '@/components/ui/dialog'
-import { ArrowLeft, Plus, ChevronDown, ChevronRight, Pencil, Layers, Loader2, ArrowUpDown, Filter } from 'lucide-react'
+import { ArrowLeft, Plus, ChevronDown, ChevronRight, Pencil, Layers, Loader2, ArrowUpDown, Filter, Table2, ListTree } from 'lucide-react'
 import { formatCurrency, formatPercent } from '@/lib/utils'
 import { TipoMedicao } from '@/types'
+import { EstruturaTable } from '@/components/estrutura/estrutura-table'
+
+type ViewMode = 'hierarquica' | 'tabela'
 
 type SortKey = 'padrao' | 'valor_global_desc' | 'valor_global_asc' | 'valor_medido_desc' | 'valor_medido_asc' | 'saldo_desc' | 'saldo_asc'
 type FilterTipo = 'todos' | TipoMedicao
@@ -38,6 +41,7 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [sortBy, setSortBy] = useState<SortKey>('padrao')
   const [filterTipo, setFilterTipo] = useState<FilterTipo>('todos')
+  const [viewMode, setViewMode] = useState<ViewMode>('hierarquica')
   const [modalGrupo, setModalGrupo] = useState(false)
   const [modalTarefa, setModalTarefa] = useState<string | null>(null)
   const [modalDetalhe, setModalDetalhe] = useState<string | null>(null)
@@ -186,6 +190,41 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
       />
 
       <div className="p-3 sm:p-6 space-y-3">
+        {/* Toggle Hierárquica / Tabela */}
+        <div className="flex items-center gap-1 p-1 bg-[var(--surface-1)] border border-[var(--border)] rounded-md w-fit">
+          <button
+            type="button"
+            onClick={() => setViewMode('hierarquica')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded transition-colors ${
+              viewMode === 'hierarquica' ? 'bg-blue-500/20 text-blue-400' : 'text-[var(--text-3)] hover:text-[var(--text-1)]'
+            }`}
+          >
+            <ListTree className="w-3.5 h-3.5" />
+            Hierárquica
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('tabela')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded transition-colors ${
+              viewMode === 'tabela' ? 'bg-blue-500/20 text-blue-400' : 'text-[var(--text-3)] hover:text-[var(--text-1)]'
+            }`}
+          >
+            <Table2 className="w-3.5 h-3.5" />
+            Tabela (planilha)
+          </button>
+        </div>
+
+        {viewMode === 'tabela' ? (
+          loading ? (
+            <div className="flex items-center justify-center py-16 text-blue-400">
+              <Loader2 className="w-6 h-6 animate-spin mr-2" />
+              <span>Carregando estrutura...</span>
+            </div>
+          ) : (
+            <EstruturaTable estrutura={estrutura} />
+          )
+        ) : (
+        <>
         {/* Barra de filtros e ordenação */}
         <div className="flex flex-wrap items-center gap-2 pb-1">
           <div className="flex items-center gap-1.5 text-xs text-[var(--text-3)]">
@@ -351,6 +390,8 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
               </CardContent>
             </Card>
           ))
+        )}
+        </>
         )}
       </div>
 
