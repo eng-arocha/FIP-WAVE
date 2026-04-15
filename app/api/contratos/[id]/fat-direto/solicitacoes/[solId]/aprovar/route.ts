@@ -166,12 +166,15 @@ export async function dispararEmailAutorizacao(args: {
     reenvio,
   })
 
-  await sendEmail({
+  const envioResult = await sendEmail({
     to: emails,
     subject: tpl.subject,
     html: tpl.html,
     tipo: 'aprovado',
   })
 
+  if (!envioResult.success) {
+    return { ok: false, destinos: emails, qtd: emails.length, erro: envioResult.error || 'Falha ao enviar (Resend rejeitou).' }
+  }
   return { ok: true, destinos: emails, qtd: emails.length }
 }
