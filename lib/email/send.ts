@@ -1,8 +1,25 @@
-import { Resend } from 'resend'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-const FROM_EMAIL = process.env.FROM_EMAIL || 'medicoes@fip-wave.com.br'
-const FROM_NAME = 'FIP-WAVE · Controle de Medições'
+/**
+ * Provider de email: Brevo (ex-Sendinblue).
+ *
+ * Usa a API HTTP v3 direto via fetch (sem SDK) — evita dependência extra
+ * e funciona em edge/Node runtimes indistintamente.
+ *
+ * Env vars:
+ *   BREVO_API_KEY         — API key (xkeysib-...)
+ *   FROM_EMAIL            — email do sender verificado no Brevo
+ *   FROM_NAME (opcional)  — nome do remetente (default: "Gestão WAVE · FIP-WAVE")
+ *
+ * Pré-requisito no Brevo:
+ *   - FROM_EMAIL precisa ser um Sender verificado (Brevo → Senders → Add)
+ *   - Brevo manda email de confirmação; depois verificado, pode mandar
+ *     pra qualquer destinatário externo (gmail, corporativos, etc.)
+ */
+
+const FROM_EMAIL = process.env.FROM_EMAIL || 'alexrocha@dasart.com.br'
+const FROM_NAME = process.env.FROM_NAME || 'Gestão WAVE · FIP-WAVE'
+const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email'
 
 interface SendEmailParams {
   to: string | string[]
@@ -27,7 +44,7 @@ function backoffDelayMs(tentativas: number): number {
 }
 
 /**
- * Tenta enviar imediatamente via Resend. Em caso de falha, grava na
+ * Tenta enviar imediatamente via Brevo. Em caso de falha, grava na
  * tabela notificacoes_log com retry agendado (cron processa depois).
  *
  * Sempre grava log — sucesso ou falha — pra ter trilha de auditoria
@@ -65,31 +82,55 @@ export async function sendEmail(params: SendEmailParams): Promise<SendResult> {
   return await tentarEnvio(payload, logId, 0)
 }
 
-/** Tentativa real de envio. Atualiza o log conforme resultado. */
+/** Tentativa real de envio via Brevo. Atualiza o log conforme resultado. */
 async function tentarEnvio(
   payload: { to: string[]; cc?: string[]; subject: string; html: string; tipo: string; medicao_id?: string },
   logId: string | undefined,
   tentativaAtual: number,
 ): Promise<SendResult> {
   const admin = createAdminClient()
+
+  const brevoApiKey = process.env.BREVO_API_KEY
+  if (!brevoApiKey) {
+    const errMsg = 'BREVO_API_KEY não configurada nas env vars.'
+    // eslint-disable-next-line no-console
+    console.error(errMsg)
+    if (logId) {
+      await admin.from('notificacoes_log').update({
+        status_envio: 'falhou',
+        tentativas: tentativaAtual + 1,
+        ultimo_erro: errMsg,
+      }).eq('id', logId)
+    }
+    return { success: false, error: errMsg, logId }
+  }
+
+  const brevoBody = {
+    sender: { email: FROM_EMAIL, name: FROM_NAME },
+    to: payload.to.map(e => ({ email: e })),
+    cc: payload.cc?.map(e => ({ email: e })),
+    subject: payload.subject,
+    htmlContent: payload.html,
+    // Tag facilita tracking no dashboard do Brevo
+    tags: [`fip-wave-${payload.tipo}`],
+  }
+
   try {
-    const resend = new Resend(process.env.RESEND_API_KEY)
-    const result = await resend.emails.send({
-      from: `${FROM_NAME} <${FROM_EMAIL}>`,
-      to: payload.to,
-      cc: payload.cc,
-      subject: payload.subject,
-      html: payload.html,
+    const res = await fetch(BREVO_API_URL, {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'api-key': brevoApiKey,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(brevoBody),
     })
 
-    // Resend SDK retorna {data, error} — NÃO joga exception quando rejeita.
-    // Se result.error tem algo OU data.id é null, houve falha silenciosa.
-    if (result.error || !result.data?.id) {
-      const errMsg = result.error
-        ? `Resend error: ${result.error.name || 'unknown'} - ${result.error.message || JSON.stringify(result.error)}`
-        : 'Resend retornou sem message_id (rejeição silenciosa — provavelmente domínio FROM não verificado)'
+    if (!res.ok) {
+      const errBody = await res.text()
+      const errMsg = `Brevo ${res.status}: ${errBody.slice(0, 500)}`
       // eslint-disable-next-line no-console
-      console.error('Resend rejeitou:', { error: result.error, data: result.data, from: FROM_EMAIL, to: payload.to })
+      console.error('Brevo rejeitou:', { status: res.status, body: errBody, from: FROM_EMAIL, to: payload.to })
 
       if (logId) {
         const proximaTentativa = tentativaAtual + 1
@@ -106,21 +147,24 @@ async function tentarEnvio(
       return { success: false, error: errMsg, logId }
     }
 
+    const data = await res.json() as { messageId?: string }
+    const messageId = data.messageId ?? null
+
     if (logId) {
       await admin.from('notificacoes_log').update({
         status_envio: 'enviado',
-        message_id: result.data.id,
+        message_id: messageId,
         sent_at: new Date().toISOString(),
         tentativas: tentativaAtual + 1,
         proximo_retry_em: null,
         ultimo_erro: null,
       }).eq('id', logId)
     }
-    return { success: true, messageId: result.data.id, logId }
+    return { success: true, messageId: messageId ?? undefined, logId }
   } catch (error) {
     const msg = String(error)
     // eslint-disable-next-line no-console
-    console.error('Erro ao enviar e-mail (exception):', error)
+    console.error('Erro ao enviar via Brevo (exception):', error)
     if (logId) {
       const proximaTentativa = tentativaAtual + 1
       const proximo_retry_em = proximaTentativa < 5
