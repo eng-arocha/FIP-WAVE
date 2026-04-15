@@ -131,7 +131,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   const [expandedGrupos, setExpandedGrupos] = useState<Set<string>>(new Set())
   const [expandedTarefas, setExpandedTarefas] = useState<Set<string>>(new Set())
   // Filtros e ordenação da tabela (fidelidade planilha Excel)
-  const [estFiltroDisciplina, setEstFiltroDisciplina] = useState<string>('todas')
+  const [estFiltroDisciplina, setEstFiltroDisciplina] = useState<string>('')
   const [estFiltroItem, setEstFiltroItem] = useState('')
   const [estFiltroAtividade, setEstFiltroAtividade] = useState('')
   const [estFiltroLocal, setEstFiltroLocal] = useState('')
@@ -819,23 +819,13 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
           {/* Estrutura — orçamento detalhado fiel à planilha Excel (11 colunas) */}
           <TabsContent value="estrutura">
             {(() => {
-              const disciplinasDisponiveis = Array.from(new Set(
-                grupos.flatMap(g => [
-                  g.disciplina,
-                  ...(g.tarefas || []).flatMap(t => [
-                    t.disciplina,
-                    ...(t.detalhamentos || []).map(d => d.disciplina),
-                  ]),
-                ]).filter(Boolean) as string[]
-              )).sort()
-
               const fItem = estFiltroItem.toLowerCase()
               const fAtiv = estFiltroAtividade.toLowerCase()
               const fLocal = estFiltroLocal.toLowerCase()
 
               function passaFiltroDet(d: Detalhamento, grupo: Grupo, tarefa: Tarefa) {
                 const disc = d.disciplina || tarefa.disciplina || grupo.disciplina || ''
-                if (estFiltroDisciplina !== 'todas' && disc !== estFiltroDisciplina) return false
+                if (estFiltroDisciplina && !disc.toLowerCase().includes(estFiltroDisciplina.toLowerCase())) return false
                 if (fItem && !d.codigo.toLowerCase().includes(fItem)) return false
                 if (fAtiv && !d.descricao.toLowerCase().includes(fAtiv)) return false
                 if (fLocal && !(d.local || '').toLowerCase().includes(fLocal)) return false
@@ -843,7 +833,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
               }
               function passaFiltroTarefa(t: Tarefa, grupo: Grupo) {
                 const disc = t.disciplina || grupo.disciplina || ''
-                if (estFiltroDisciplina !== 'todas' && disc !== estFiltroDisciplina) {
+                if (estFiltroDisciplina && !disc.toLowerCase().includes(estFiltroDisciplina.toLowerCase())) {
                   const algumDet = (t.detalhamentos || []).some(d => passaFiltroDet(d, grupo, t))
                   if (!algumDet) return false
                 }
@@ -859,7 +849,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
               }
               function passaFiltroGrupo(g: Grupo) {
                 const disc = g.disciplina || ''
-                if (estFiltroDisciplina !== 'todas' && disc !== estFiltroDisciplina) {
+                if (estFiltroDisciplina && !disc.toLowerCase().includes(estFiltroDisciplina.toLowerCase())) {
                   const algumaTarefa = (g.tarefas || []).some(t => passaFiltroTarefa(t, g))
                   if (!algumaTarefa) return false
                 }
@@ -920,49 +910,12 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
 
               return (
                 <>
-                  {/* Filtros */}
-                  <div className="flex flex-wrap items-center gap-2 mb-3">
-                    <Select value={estFiltroDisciplina} onValueChange={setEstFiltroDisciplina}>
-                      <SelectTrigger className="h-8 text-xs w-40 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="todas">Todas disciplinas</SelectItem>
-                        {disciplinasDisponiveis.map(d => (
-                          <SelectItem key={d} value={d}>{d}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <input
-                      type="text"
-                      value={estFiltroItem}
-                      onChange={e => setEstFiltroItem(e.target.value)}
-                      placeholder="Item (ex: 1.1)"
-                      className="h-8 px-2 text-xs rounded-lg outline-none w-28"
-                      style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
-                    />
-                    <input
-                      type="text"
-                      value={estFiltroAtividade}
-                      onChange={e => setEstFiltroAtividade(e.target.value)}
-                      placeholder="Atividade / Instalações Global"
-                      className="h-8 px-2 text-xs rounded-lg outline-none flex-1 min-w-40 max-w-72"
-                      style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
-                    />
-                    <input
-                      type="text"
-                      value={estFiltroLocal}
-                      onChange={e => setEstFiltroLocal(e.target.value)}
-                      placeholder="Local"
-                      className="h-8 px-2 text-xs rounded-lg outline-none w-32"
-                      style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
-                    />
-                    {(estFiltroDisciplina !== 'todas' || estFiltroItem || estFiltroAtividade || estFiltroLocal) && (
-                      <Button variant="ghost" size="sm" className="h-8 text-xs gap-1" onClick={() => {
-                        setEstFiltroDisciplina('todas'); setEstFiltroItem(''); setEstFiltroAtividade(''); setEstFiltroLocal('')
-                      }}>
-                        <X className="w-3 h-3" /> Limpar
-                      </Button>
+                  {/* Ações: limpar filtros + expandir/recolher/gerenciar */}
+                  <div className="flex items-center gap-2 mb-3">
+                    {(estFiltroDisciplina || estFiltroItem || estFiltroAtividade || estFiltroLocal) && (
+                      <button type="button" className="text-xs text-blue-400 hover:text-blue-300" onClick={() => {
+                        setEstFiltroDisciplina(''); setEstFiltroItem(''); setEstFiltroAtividade(''); setEstFiltroLocal('')
+                      }}>Limpar filtros</button>
                     )}
                     <div className="flex gap-1 ml-auto">
                       <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={expandAll}>Expandir tudo</Button>
@@ -991,6 +944,50 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                             <th className={`text-right px-2 py-2 font-bold uppercase tracking-wider text-[10px] ${headerBtn}`} onClick={() => toggleEstSort('punit_mo')}>Pr.Unit-MO<SortIcon k="punit_mo" /></th>
                             <th className={`text-right px-2 py-2 font-bold uppercase tracking-wider text-[10px] ${headerBtn}`} onClick={() => toggleEstSort('total_mo')}>Total-MO<SortIcon k="total_mo" /></th>
                             <th className={`text-right px-3 py-2 font-bold uppercase tracking-wider text-[10px] ${headerBtn}`} onClick={() => toggleEstSort('total')}>Total<SortIcon k="total" /></th>
+                          </tr>
+                          {/* Linha de filtros inline — estilo autofilter Excel */}
+                          <tr style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}>
+                            <th className="px-3 py-1">
+                              <input
+                                type="text"
+                                value={estFiltroItem}
+                                onChange={e => setEstFiltroItem(e.target.value)}
+                                placeholder="▼ item"
+                                className="w-full h-6 px-1.5 text-[10px] rounded outline-none"
+                                style={{ background: 'var(--surface-0)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+                              />
+                            </th>
+                            <th className="px-2 py-1">
+                              <input
+                                type="text"
+                                value={estFiltroDisciplina}
+                                onChange={e => setEstFiltroDisciplina(e.target.value)}
+                                placeholder="▼ disciplina"
+                                className="w-full h-6 px-1.5 text-[10px] rounded outline-none"
+                                style={{ background: 'var(--surface-0)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+                              />
+                            </th>
+                            <th className="px-2 py-1">
+                              <input
+                                type="text"
+                                value={estFiltroAtividade}
+                                onChange={e => setEstFiltroAtividade(e.target.value)}
+                                placeholder="▼ atividade"
+                                className="w-full h-6 px-1.5 text-[10px] rounded outline-none"
+                                style={{ background: 'var(--surface-0)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+                              />
+                            </th>
+                            <th className="px-2 py-1">
+                              <input
+                                type="text"
+                                value={estFiltroLocal}
+                                onChange={e => setEstFiltroLocal(e.target.value)}
+                                placeholder="▼ local"
+                                className="w-full h-6 px-1.5 text-[10px] rounded outline-none"
+                                style={{ background: 'var(--surface-0)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+                              />
+                            </th>
+                            <th colSpan={6} />
                           </tr>
                         </thead>
                         <tbody>

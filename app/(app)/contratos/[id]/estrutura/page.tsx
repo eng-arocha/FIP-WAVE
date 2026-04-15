@@ -43,7 +43,7 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
 
   // Filtros por coluna (todos strings; numéricos filtram por "contém")
   const [filters, setFilters] = useState({
-    disciplina: 'todas',
+    disciplina: '',
     codigo: '',
     atividade: '',
     local: '',
@@ -81,8 +81,8 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
     })
 
     // Filtro disciplina
-    if (filters.disciplina !== 'todas') {
-      list = list.filter(g => (g.disciplina || '').toUpperCase() === filters.disciplina.toUpperCase())
+    if (filters.disciplina) {
+      list = list.filter(g => (g.disciplina || '').toLowerCase().includes(filters.disciplina.toLowerCase()))
     }
     if (filters.codigo) list = list.filter(g => String(g.codigo).toLowerCase().includes(filters.codigo.toLowerCase()))
     if (filters.atividade) list = list.filter(g => String(g.nome).toLowerCase().includes(filters.atividade.toLowerCase()))
@@ -104,16 +104,6 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
 
     return list
   }, [estrutura, sortKey, sortDir, filters])
-
-  // Disciplinas únicas (para dropdown de filtro)
-  const disciplinas = useMemo(() => {
-    const s = new Set<string>()
-    for (const g of estrutura) {
-      if (g.disciplina) s.add(String(g.disciplina).toUpperCase())
-      for (const t of g.tarefas || []) if (t.disciplina) s.add(String(t.disciplina).toUpperCase())
-    }
-    return Array.from(s).sort()
-  }, [estrutura])
 
   // Subtotal filtrado (apenas grupos exibidos)
   const subtotal = useMemo(
@@ -247,56 +237,32 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
       />
 
       <div className="p-3 sm:p-6 space-y-3">
-        {/* Barra de filtros globais por coluna */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
-          <div>
-            <Label className="text-[var(--text-3)]">Disciplina</Label>
-            <Select value={filters.disciplina} onValueChange={v => setFilters(f => ({ ...f, disciplina: v }))}>
-              <SelectTrigger className="h-8 text-xs mt-1 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todas">Todas</SelectItem>
-                {disciplinas.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-[var(--text-3)]">Item</Label>
-            <Input
-              placeholder="ex: 1.1"
-              className="h-8 text-xs mt-1 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]"
-              value={filters.codigo}
-              onChange={e => setFilters(f => ({ ...f, codigo: e.target.value }))}
-            />
-          </div>
-          <div className="col-span-2">
-            <Label className="text-[var(--text-3)]">Atividade</Label>
-            <Input
-              placeholder="ex: entrada energia"
-              className="h-8 text-xs mt-1 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]"
-              value={filters.atividade}
-              onChange={e => setFilters(f => ({ ...f, atividade: e.target.value }))}
-            />
-          </div>
-          <div>
-            <Label className="text-[var(--text-3)]">Local</Label>
-            <Input
-              placeholder="ex: torre"
-              className="h-8 text-xs mt-1 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]"
-              value={filters.local}
-              onChange={e => setFilters(f => ({ ...f, local: e.target.value }))}
-            />
+        {/* Ações: limpar filtros + expandir/recolher */}
+        <div className="flex items-center gap-2">
+          {(filters.disciplina || filters.codigo || filters.atividade || filters.local) && (
+            <button
+              type="button"
+              className="text-xs text-blue-400 hover:text-blue-300"
+              onClick={() => setFilters({ disciplina: '', codigo: '', atividade: '', local: '' })}
+            >Limpar filtros</button>
+          )}
+          <div className="flex gap-1 ml-auto">
+            <button
+              type="button"
+              className="h-7 px-2 text-xs rounded text-[var(--text-2)] hover:bg-[var(--surface-2)]"
+              onClick={() => {
+                const all: Record<string, boolean> = {}
+                estrutura.forEach(g => { all[g.id] = true; (g.tarefas || []).forEach((t: any) => { all[t.id] = true }) })
+                setExpanded(all)
+              }}
+            >Expandir tudo</button>
+            <button
+              type="button"
+              className="h-7 px-2 text-xs rounded text-[var(--text-2)] hover:bg-[var(--surface-2)]"
+              onClick={() => setExpanded({})}
+            >Recolher</button>
           </div>
         </div>
-
-        {(filters.disciplina !== 'todas' || filters.codigo || filters.atividade || filters.local) && (
-          <button
-            type="button"
-            className="text-xs text-blue-400 hover:text-blue-300"
-            onClick={() => setFilters({ disciplina: 'todas', codigo: '', atividade: '', local: '' })}
-          >Limpar filtros</button>
-        )}
 
         {/* Tabela expansível (única visão) */}
         {loading ? (
@@ -321,6 +287,51 @@ export default function EstruturaPage({ params }: { params: Promise<{ id: string
                     <Th label="Pr. Unit — MO"  k="mo_unit"   numeric />
                     <Th label="Total — MO"     k="mo_total"  numeric />
                     <Th label="Total"          k="total"     numeric />
+                  </tr>
+                  {/* Linha de filtros inline — estilo autofilter Excel */}
+                  <tr style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}>
+                    <th className="px-1 py-1" />
+                    <th className="px-2 py-1">
+                      <input
+                        type="text"
+                        value={filters.codigo}
+                        onChange={e => setFilters(f => ({ ...f, codigo: e.target.value }))}
+                        placeholder="▼ item"
+                        className="w-full h-6 px-1.5 text-[10px] rounded outline-none"
+                        style={{ background: 'var(--surface-0)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+                      />
+                    </th>
+                    <th className="px-2 py-1">
+                      <input
+                        type="text"
+                        value={filters.disciplina}
+                        onChange={e => setFilters(f => ({ ...f, disciplina: e.target.value }))}
+                        placeholder="▼ disciplina"
+                        className="w-full h-6 px-1.5 text-[10px] rounded outline-none"
+                        style={{ background: 'var(--surface-0)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+                      />
+                    </th>
+                    <th className="px-2 py-1">
+                      <input
+                        type="text"
+                        value={filters.atividade}
+                        onChange={e => setFilters(f => ({ ...f, atividade: e.target.value }))}
+                        placeholder="▼ atividade"
+                        className="w-full h-6 px-1.5 text-[10px] rounded outline-none"
+                        style={{ background: 'var(--surface-0)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+                      />
+                    </th>
+                    <th className="px-2 py-1">
+                      <input
+                        type="text"
+                        value={filters.local}
+                        onChange={e => setFilters(f => ({ ...f, local: e.target.value }))}
+                        placeholder="▼ local"
+                        className="w-full h-6 px-1.5 text-[10px] rounded outline-none"
+                        style={{ background: 'var(--surface-0)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+                      />
+                    </th>
+                    <th colSpan={6} />
                   </tr>
                 </thead>
                 <tbody>
