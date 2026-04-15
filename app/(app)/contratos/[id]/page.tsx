@@ -13,10 +13,11 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell
 } from 'recharts'
 import {
-  ArrowLeft, Plus, FileText, Loader2,
+  ArrowLeft, Plus, FileText, Loader2, Pencil,
   ChevronRight, ChevronDown, Layers, ArrowUpDown, Filter, Package, TrendingUp,
   DollarSign, CheckCircle2, Wallet, ClipboardList, Search, X, Maximize2
 } from 'lucide-react'
+import { EditarContratoModal } from '@/components/contratos/editar-contrato-modal'
 import {
   formatCurrency, formatPercent, formatDate,
   getContratoStatusColor, getMedicaoStatusColor
@@ -116,6 +117,23 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   const [estruturaNivel, setEstruturaNivel] = useState<'todos' | '1' | '2' | '3'>('todos')
   const [expandedGrupos, setExpandedGrupos] = useState<Set<string>>(new Set())
   const [expandedTarefas, setExpandedTarefas] = useState<Set<string>>(new Set())
+  // Modal editar contrato
+  const [showEditar, setShowEditar] = useState(false)
+  const [contratante, setContratante] = useState<any>(null)
+  const [contratado, setContratado] = useState<any>(null)
+
+  // Carrega empresas contratante/contratado quando o modal abre
+  useEffect(() => {
+    if (!showEditar || !contrato) return
+    const contratanteId = (contrato as any).contratante_id
+    const contratadoId  = (contrato as any).contratado_id
+    if (contratanteId) {
+      fetch(`/api/empresas/${contratanteId}`).then(r => r.json()).then(setContratante).catch(() => setContratante(null))
+    }
+    if (contratadoId) {
+      fetch(`/api/empresas/${contratadoId}`).then(r => r.json()).then(setContratado).catch(() => setContratado(null))
+    }
+  }, [showEditar, contrato])
 
   function toggleGrupo(id: string) {
     setExpandedGrupos(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
@@ -318,6 +336,15 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                 <span className="sm:hidden text-xs">Med.</span>
               </Button>
             </Link>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowEditar(true)}
+              className="px-2 sm:px-3 border border-violet-500/40 text-violet-400 hover:bg-violet-500/10"
+            >
+              <Pencil className="w-4 h-4" strokeWidth={1.5} />
+              <span className="hidden sm:inline ml-1">Editar</span>
+            </Button>
           </div>
         }
       />
@@ -1076,6 +1103,48 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Modal: editar dados contratuais */}
+      {contrato && (
+        <EditarContratoModal
+          open={showEditar}
+          onClose={() => setShowEditar(false)}
+          contratoId={id}
+          initial={{
+            numero: contrato.numero,
+            descricao: contrato.descricao,
+            escopo: (contrato as any).escopo ?? null,
+            objeto: (contrato as any).objeto ?? null,
+            local_obra: (contrato as any).local_obra ?? null,
+            fiscal_obra: (contrato as any).fiscal_obra ?? null,
+            email_fiscal: (contrato as any).email_fiscal ?? null,
+            data_inicio: (contrato as any).data_inicio ?? null,
+            data_fim: (contrato as any).data_fim ?? null,
+            status: contrato.status,
+            observacoes: (contrato as any).observacoes ?? null,
+            contratante: contratante ? {
+              id: contratante.id,
+              razao_social: contratante.razao_social,
+              cnpj: contratante.cnpj,
+              endereco: contratante.endereco,
+              telefone: contratante.telefone,
+              email: contratante.email,
+            } : undefined,
+            contratado: contratado ? {
+              id: contratado.id,
+              razao_social: contratado.razao_social,
+              cnpj: contratado.cnpj,
+              endereco: contratado.endereco,
+              telefone: contratado.telefone,
+              email: contratado.email,
+            } : undefined,
+          }}
+          onSaved={() => {
+            // Recarrega contrato na tela após salvar
+            fetch(`/api/contratos/${id}`).then(r => r.json()).then(setContrato).catch(() => {})
+          }}
+        />
+      )}
     </div>
   )
 }
