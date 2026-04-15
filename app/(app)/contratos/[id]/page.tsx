@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useState, useEffect, useMemo } from 'react'
+import React, { use, useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,7 +14,7 @@ import {
 } from 'recharts'
 import {
   ArrowLeft, Plus, FileText, Loader2,
-  ChevronRight, ChevronDown, Layers, ArrowUpDown, Filter, Package, TrendingUp,
+  ChevronRight, ChevronDown, Layers, ArrowUpDown, ArrowUp, ArrowDown, Filter, Package, TrendingUp,
   DollarSign, CheckCircle2, Wallet, ClipboardList, Search, X, Maximize2
 } from 'lucide-react'
 import {
@@ -57,13 +57,25 @@ interface Detalhamento {
   quantidade_contratada: number
   valor_unitario: number
   valor_total: number
+  valor_material_unit?: number
+  valor_servico_unit?: number
+  disciplina?: string
+  local?: string
+  ordem?: number
 }
 
 interface Tarefa {
   id: string
   codigo: string
   nome: string
-  valor_contratado: number
+  valor_contratado?: number
+  valor_total?: number
+  valor_material?: number
+  valor_servico?: number
+  quantidade_contratada?: number
+  unidade?: string
+  disciplina?: string
+  ordem?: number
   detalhamentos?: Detalhamento[]
 }
 
@@ -78,6 +90,8 @@ interface Grupo {
   valor_medido: number
   valor_saldo?: number
   percentual_medido?: number
+  disciplina?: string
+  ordem?: number
   tarefas?: Tarefa[]
 }
 
@@ -116,6 +130,27 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   const [estruturaNivel, setEstruturaNivel] = useState<'todos' | '1' | '2' | '3'>('todos')
   const [expandedGrupos, setExpandedGrupos] = useState<Set<string>>(new Set())
   const [expandedTarefas, setExpandedTarefas] = useState<Set<string>>(new Set())
+  // Filtros e ordenação da tabela (fidelidade planilha Excel)
+  const [estFiltroDisciplina, setEstFiltroDisciplina] = useState<string>('todas')
+  const [estFiltroItem, setEstFiltroItem] = useState('')
+  const [estFiltroAtividade, setEstFiltroAtividade] = useState('')
+  const [estFiltroLocal, setEstFiltroLocal] = useState('')
+  const [estSortKey, setEstSortKey] = useState<'codigo' | 'disciplina' | 'atividade' | 'local' | 'qtde' | 'punit_mat' | 'total_mat' | 'punit_mo' | 'total_mo' | 'total'>('codigo')
+  const [estSortDir, setEstSortDir] = useState<'asc' | 'desc'>('asc')
+
+  function cmpCodigo(a: string, b: string): number {
+    const pa = String(a || '').split('.').map(n => Number(n) || 0)
+    const pb = String(b || '').split('.').map(n => Number(n) || 0)
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const na = pa[i] ?? 0, nb = pb[i] ?? 0
+      if (na !== nb) return na - nb
+    }
+    return 0
+  }
+  function toggleEstSort(k: typeof estSortKey) {
+    if (estSortKey === k) setEstSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setEstSortKey(k); setEstSortDir('asc') }
+  }
 
   function toggleGrupo(id: string) {
     setExpandedGrupos(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
@@ -781,206 +816,302 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
             </div>
           </TabsContent>
 
-          {/* Estrutura — orçamento detalhado nível 1→3 */}
+          {/* Estrutura — orçamento detalhado fiel à planilha Excel (11 colunas) */}
           <TabsContent value="estrutura">
-            {/* Toolbar */}
-            <div className="flex flex-wrap items-center gap-2 mb-3">
-              {/* Search */}
-              <div className="relative flex-1 min-w-48 max-w-72">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-3)]" strokeWidth={1.5} />
-                <input
-                  type="text"
-                  value={estruturaBusca}
-                  onChange={e => setEstruturaBusca(e.target.value)}
-                  placeholder="Buscar código ou descrição..."
-                  className="w-full h-8 pl-8 pr-8 text-xs rounded-lg outline-none"
-                  style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
-                />
-                {estruturaBusca && (
-                  <button className="absolute right-2 top-1/2 -translate-y-1/2" onClick={() => setEstruturaBusca('')}>
-                    <X className="w-3 h-3 text-[var(--text-3)]" />
-                  </button>
-                )}
-              </div>
+            {(() => {
+              const disciplinasDisponiveis = Array.from(new Set(
+                grupos.flatMap(g => [
+                  g.disciplina,
+                  ...(g.tarefas || []).flatMap(t => [
+                    t.disciplina,
+                    ...(t.detalhamentos || []).map(d => d.disciplina),
+                  ]),
+                ]).filter(Boolean) as string[]
+              )).sort()
 
-              {/* Level filter */}
-              <Select value={estruturaNivel} onValueChange={v => setEstruturaNivel(v as typeof estruturaNivel)}>
-                <SelectTrigger className="h-8 text-xs w-36 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos os níveis</SelectItem>
-                  <SelectItem value="1">Nível 1 — Grupos</SelectItem>
-                  <SelectItem value="2">Nível 2 — Serviços</SelectItem>
-                  <SelectItem value="3">Nível 3 — Itens</SelectItem>
-                </SelectContent>
-              </Select>
+              const fItem = estFiltroItem.toLowerCase()
+              const fAtiv = estFiltroAtividade.toLowerCase()
+              const fLocal = estFiltroLocal.toLowerCase()
 
-              {/* View mode */}
-              <Select value={viewMode} onValueChange={v => setViewMode(v as typeof viewMode)}>
-                <SelectTrigger className="h-8 text-xs w-32 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="total">Total</SelectItem>
-                  <SelectItem value="material">Material</SelectItem>
-                  <SelectItem value="servico">Serviço</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <div className="flex gap-1 ml-auto">
-                <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={expandAll}>Expandir tudo</Button>
-                <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={collapseAll}>Recolher</Button>
-                <Link href={`/contratos/${id}/estrutura`}>
-                  <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
-                    <Layers className="w-3.5 h-3.5" /> Gerenciar
-                  </Button>
-                </Link>
-              </div>
-            </div>
-
-            {/* Tree */}
-            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-              {/* Header */}
-              <div className="grid grid-cols-[1fr_120px_120px_120px] gap-2 px-4 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ background: 'var(--surface-3)', color: 'var(--text-3)', borderBottom: '1px solid var(--border)' }}>
-                <span>Código / Descrição</span>
-                <span className="text-right">Qtd × Un</span>
-                <span className="text-right">V. Unit.</span>
-                <span className="text-right">V. Total</span>
-              </div>
-
-              {(() => {
-                const busca = estruturaBusca.toLowerCase()
-                const rows: React.ReactNode[] = []
-
-                gruposExibidos.forEach(g => {
-                  const tarefas = g.tarefas || []
-
-                  // Search matching
-                  const grupoMatch = !busca || g.codigo.toLowerCase().includes(busca) || g.nome.toLowerCase().includes(busca)
-                  const tarefasMatch = tarefas.some(t =>
-                    t.codigo.toLowerCase().includes(busca) || t.nome.toLowerCase().includes(busca) ||
-                    (t.detalhamentos || []).some(d => d.codigo.toLowerCase().includes(busca) || d.descricao.toLowerCase().includes(busca))
-                  )
-                  if (busca && !grupoMatch && !tarefasMatch) return
-
-                  const isGrupoExpanded = expandedGrupos.has(g.id) || (busca.length > 0)
-                  const vBase = getValorView(g)
-
-                  // Nivel 1 row
-                  if (estruturaNivel === 'todos' || estruturaNivel === '1') {
-                    rows.push(
-                      <div
-                        key={`g-${g.id}`}
-                        className="grid grid-cols-[1fr_120px_120px_120px] gap-2 px-4 py-3 cursor-pointer select-none"
-                        style={{ background: 'rgba(59,130,246,0.06)', borderBottom: '1px solid var(--border)' }}
-                        onClick={() => toggleGrupo(g.id)}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="flex-shrink-0" style={{ color: 'var(--accent)' }}>
-                            {isGrupoExpanded ? <ChevronDown className="w-3.5 h-3.5" strokeWidth={2} /> : <ChevronRight className="w-3.5 h-3.5" strokeWidth={2} />}
-                          </span>
-                          <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: 'var(--accent)', color: 'white', minWidth: 36, textAlign: 'center' }}>{g.codigo}</span>
-                          <span className="font-semibold text-sm truncate" style={{ color: 'var(--text-1)' }}>{g.nome}</span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded ml-1 flex-shrink-0" style={{ background: 'rgba(59,130,246,0.12)', color: 'var(--accent)' }}>
-                            {tarefas.length} serv.
-                          </span>
-                        </div>
-                        <span className="text-right text-xs text-[var(--text-3)]">—</span>
-                        <span className="text-right text-xs text-[var(--text-3)]">—</span>
-                        <span className="text-right text-sm font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(vBase)}</span>
-                      </div>
-                    )
-                  }
-
-                  if (!isGrupoExpanded && estruturaNivel === 'todos') return
-
-                  // Nivel 2 rows
-                  tarefas.forEach(t => {
-                    const detalhamentos = t.detalhamentos || []
-                    const tarefaMatchBusca = !busca || t.codigo.toLowerCase().includes(busca) || t.nome.toLowerCase().includes(busca) ||
-                      detalhamentos.some(d => d.codigo.toLowerCase().includes(busca) || d.descricao.toLowerCase().includes(busca))
-                    if (busca && !tarefaMatchBusca) return
-
-                    const isTarefaExpanded = expandedTarefas.has(t.id) || (busca.length > 0)
-
-                    if (estruturaNivel === 'todos' || estruturaNivel === '2') {
-                      rows.push(
-                        <div
-                          key={`t-${t.id}`}
-                          className="grid grid-cols-[1fr_120px_120px_120px] gap-2 px-4 py-2.5 cursor-pointer"
-                          style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', paddingLeft: estruturaNivel === '2' ? 16 : 40 }}
-                          onClick={() => toggleTarefa(t.id)}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            {detalhamentos.length > 0 ? (
-                              <span className="flex-shrink-0 text-[var(--text-3)]">
-                                {isTarefaExpanded ? <ChevronDown className="w-3 h-3" strokeWidth={2} /> : <ChevronRight className="w-3 h-3" strokeWidth={2} />}
-                              </span>
-                            ) : <span className="w-3 h-3 flex-shrink-0" />}
-                            <span className="text-[11px] font-bold px-1.5 py-0.5 rounded flex-shrink-0" style={{ background: 'rgba(100,116,139,0.15)', color: 'var(--text-2)', minWidth: 36, textAlign: 'center' }}>{t.codigo}</span>
-                            <span className="text-sm truncate" style={{ color: 'var(--text-2)' }}>{t.nome}</span>
-                          </div>
-                          <span className="text-right text-xs text-[var(--text-3)]">—</span>
-                          <span className="text-right text-xs text-[var(--text-3)]">—</span>
-                          <span className="text-right text-xs font-semibold" style={{ color: 'var(--text-1)' }}>{formatCurrency(t.valor_contratado || 0)}</span>
-                        </div>
-                      )
-                    }
-
-                    if (!isTarefaExpanded && estruturaNivel === 'todos') return
-
-                    // Nivel 3 rows
-                    if (estruturaNivel === 'todos' || estruturaNivel === '3') {
-                      detalhamentos.forEach(d => {
-                        const detMatch = !busca || d.codigo.toLowerCase().includes(busca) || d.descricao.toLowerCase().includes(busca)
-                        if (busca && !detMatch) return
-
-                        const valorTotal = d.valor_total || (d.quantidade_contratada || 0) * (d.valor_unitario || 0)
-                        rows.push(
-                          <div
-                            key={`d-${d.id}`}
-                            className="grid grid-cols-[1fr_120px_120px_120px] gap-2 py-2"
-                            style={{ background: 'var(--surface-1)', borderBottom: '1px solid var(--border)', paddingLeft: estruturaNivel === '3' ? 16 : 64, paddingRight: 16 }}
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="text-[10px] font-mono px-1 py-0.5 rounded flex-shrink-0" style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981', minWidth: 44, textAlign: 'center' }}>{d.codigo}</span>
-                              <span className="text-xs truncate" style={{ color: 'var(--text-2)' }}>{d.descricao}</span>
-                              <span className="text-[10px] px-1 rounded flex-shrink-0" style={{ background: 'var(--surface-3)', color: 'var(--text-3)' }}>{d.unidade}</span>
-                            </div>
-                            <span className="text-right text-xs" style={{ color: 'var(--text-3)' }}>
-                              {d.quantidade_contratada?.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}
-                            </span>
-                            <span className="text-right text-xs" style={{ color: 'var(--text-3)' }}>{formatCurrency(d.valor_unitario || 0)}</span>
-                            <span className="text-right text-xs font-semibold" style={{ color: '#10B981' }}>{formatCurrency(valorTotal)}</span>
-                          </div>
-                        )
-                      })
-                    }
-                  })
-                })
-
-                if (rows.length === 0) {
-                  return (
-                    <div className="flex flex-col items-center justify-center py-12 text-[var(--text-3)]">
-                      <Package className="w-8 h-8 mb-2 opacity-30" />
-                      <p className="text-sm">Nenhum item encontrado</p>
-                    </div>
-                  )
+              function passaFiltroDet(d: Detalhamento, grupo: Grupo, tarefa: Tarefa) {
+                const disc = d.disciplina || tarefa.disciplina || grupo.disciplina || ''
+                if (estFiltroDisciplina !== 'todas' && disc !== estFiltroDisciplina) return false
+                if (fItem && !d.codigo.toLowerCase().includes(fItem)) return false
+                if (fAtiv && !d.descricao.toLowerCase().includes(fAtiv)) return false
+                if (fLocal && !(d.local || '').toLowerCase().includes(fLocal)) return false
+                return true
+              }
+              function passaFiltroTarefa(t: Tarefa, grupo: Grupo) {
+                const disc = t.disciplina || grupo.disciplina || ''
+                if (estFiltroDisciplina !== 'todas' && disc !== estFiltroDisciplina) {
+                  const algumDet = (t.detalhamentos || []).some(d => passaFiltroDet(d, grupo, t))
+                  if (!algumDet) return false
                 }
-                return rows
-              })()}
+                if (fItem || fAtiv || fLocal) {
+                  const matchDireto =
+                    (!fItem || t.codigo.toLowerCase().includes(fItem)) &&
+                    (!fAtiv || t.nome.toLowerCase().includes(fAtiv)) &&
+                    !fLocal
+                  const algumDet = (t.detalhamentos || []).some(d => passaFiltroDet(d, grupo, t))
+                  if (!matchDireto && !algumDet) return false
+                }
+                return true
+              }
+              function passaFiltroGrupo(g: Grupo) {
+                const disc = g.disciplina || ''
+                if (estFiltroDisciplina !== 'todas' && disc !== estFiltroDisciplina) {
+                  const algumaTarefa = (g.tarefas || []).some(t => passaFiltroTarefa(t, g))
+                  if (!algumaTarefa) return false
+                }
+                if (fItem || fAtiv || fLocal) {
+                  const matchDireto =
+                    (!fItem || g.codigo.toLowerCase().includes(fItem)) &&
+                    (!fAtiv || g.nome.toLowerCase().includes(fAtiv)) &&
+                    !fLocal
+                  const algumaTarefa = (g.tarefas || []).some(t => passaFiltroTarefa(t, g))
+                  if (!matchDireto && !algumaTarefa) return false
+                }
+                return true
+              }
 
-              {/* Footer totals */}
-              <div className="grid grid-cols-[1fr_120px_120px_120px] gap-2 px-4 py-3" style={{ background: 'var(--surface-3)', borderTop: '2px solid var(--border)' }}>
-                <span className="text-xs font-bold" style={{ color: 'var(--text-2)' }}>TOTAL ORÇADO ({gruposExibidos.length} grupos)</span>
-                <span />
-                <span />
-                <span className="text-right text-sm font-black" style={{ color: 'var(--accent)' }}>
-                  {formatCurrency(gruposExibidos.reduce((s, g) => s + getValorView(g), 0))}
-                </span>
-              </div>
-            </div>
+              const gruposFiltrados = grupos.filter(passaFiltroGrupo).slice().sort((a, b) => {
+                const dir = estSortDir === 'asc' ? 1 : -1
+                switch (estSortKey) {
+                  case 'codigo': return cmpCodigo(a.codigo, b.codigo) * dir
+                  case 'disciplina': return ((a.disciplina || '').localeCompare(b.disciplina || '')) * dir
+                  case 'atividade': return (a.nome || '').localeCompare(b.nome || '') * dir
+                  case 'total': return ((a.valor_contratado || 0) - (b.valor_contratado || 0)) * dir
+                  default: return cmpCodigo(a.codigo, b.codigo) * dir
+                }
+              })
+
+              // Subtotal filtrado (apenas detalhamentos visíveis + tarefas sem det. visíveis)
+              let subtotalMat = 0
+              let subtotalMo = 0
+              let subtotalGeral = 0
+              gruposFiltrados.forEach(g => {
+                (g.tarefas || []).forEach(t => {
+                  if (!passaFiltroTarefa(t, g)) return
+                  const dets = (t.detalhamentos || []).filter(d => passaFiltroDet(d, g, t))
+                  if (dets.length > 0) {
+                    dets.forEach(d => {
+                      const qtd = d.quantidade_contratada || 0
+                      subtotalMat += qtd * (d.valor_material_unit || 0)
+                      subtotalMo += qtd * (d.valor_servico_unit || 0)
+                      subtotalGeral += d.valor_total || qtd * (d.valor_unitario || 0)
+                    })
+                  } else {
+                    subtotalMat += t.valor_material || 0
+                    subtotalMo += t.valor_servico || 0
+                    subtotalGeral += t.valor_total || t.valor_contratado || 0
+                  }
+                })
+              })
+
+              const SortIcon = ({ k }: { k: typeof estSortKey }) => (
+                estSortKey !== k
+                  ? <ArrowUpDown className="w-3 h-3 opacity-40 inline ml-0.5" />
+                  : estSortDir === 'asc'
+                    ? <ArrowUp className="w-3 h-3 inline ml-0.5" style={{ color: 'var(--accent)' }} />
+                    : <ArrowDown className="w-3 h-3 inline ml-0.5" style={{ color: 'var(--accent)' }} />
+              )
+
+              const headerBtn = 'cursor-pointer select-none hover:opacity-80 whitespace-nowrap'
+
+              return (
+                <>
+                  {/* Filtros */}
+                  <div className="flex flex-wrap items-center gap-2 mb-3">
+                    <Select value={estFiltroDisciplina} onValueChange={setEstFiltroDisciplina}>
+                      <SelectTrigger className="h-8 text-xs w-40 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todas">Todas disciplinas</SelectItem>
+                        {disciplinasDisponiveis.map(d => (
+                          <SelectItem key={d} value={d}>{d}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <input
+                      type="text"
+                      value={estFiltroItem}
+                      onChange={e => setEstFiltroItem(e.target.value)}
+                      placeholder="Item (ex: 1.1)"
+                      className="h-8 px-2 text-xs rounded-lg outline-none w-28"
+                      style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+                    />
+                    <input
+                      type="text"
+                      value={estFiltroAtividade}
+                      onChange={e => setEstFiltroAtividade(e.target.value)}
+                      placeholder="Atividade / Instalações Global"
+                      className="h-8 px-2 text-xs rounded-lg outline-none flex-1 min-w-40 max-w-72"
+                      style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+                    />
+                    <input
+                      type="text"
+                      value={estFiltroLocal}
+                      onChange={e => setEstFiltroLocal(e.target.value)}
+                      placeholder="Local"
+                      className="h-8 px-2 text-xs rounded-lg outline-none w-32"
+                      style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+                    />
+                    {(estFiltroDisciplina !== 'todas' || estFiltroItem || estFiltroAtividade || estFiltroLocal) && (
+                      <Button variant="ghost" size="sm" className="h-8 text-xs gap-1" onClick={() => {
+                        setEstFiltroDisciplina('todas'); setEstFiltroItem(''); setEstFiltroAtividade(''); setEstFiltroLocal('')
+                      }}>
+                        <X className="w-3 h-3" /> Limpar
+                      </Button>
+                    )}
+                    <div className="flex gap-1 ml-auto">
+                      <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={expandAll}>Expandir tudo</Button>
+                      <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={collapseAll}>Recolher</Button>
+                      <Link href={`/contratos/${id}/estrutura`}>
+                        <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
+                          <Layers className="w-3.5 h-3.5" /> Gerenciar
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+
+                  {/* Tabela 11 colunas */}
+                  <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ background: 'var(--surface-3)', color: 'var(--text-3)', borderBottom: '1px solid var(--border)' }}>
+                            <th className={`text-left px-3 py-2 font-bold uppercase tracking-wider text-[10px] ${headerBtn}`} onClick={() => toggleEstSort('codigo')}>Item<SortIcon k="codigo" /></th>
+                            <th className={`text-left px-2 py-2 font-bold uppercase tracking-wider text-[10px] ${headerBtn}`} onClick={() => toggleEstSort('disciplina')}>Disciplina<SortIcon k="disciplina" /></th>
+                            <th className={`text-left px-2 py-2 font-bold uppercase tracking-wider text-[10px] ${headerBtn}`} onClick={() => toggleEstSort('atividade')}>Atividade / Instalações Global<SortIcon k="atividade" /></th>
+                            <th className={`text-left px-2 py-2 font-bold uppercase tracking-wider text-[10px] ${headerBtn}`} onClick={() => toggleEstSort('local')}>Local<SortIcon k="local" /></th>
+                            <th className={`text-right px-2 py-2 font-bold uppercase tracking-wider text-[10px] ${headerBtn}`} onClick={() => toggleEstSort('qtde')}>Qtde<SortIcon k="qtde" /></th>
+                            <th className={`text-right px-2 py-2 font-bold uppercase tracking-wider text-[10px] ${headerBtn}`} onClick={() => toggleEstSort('punit_mat')}>Pr.Unit-MAT<SortIcon k="punit_mat" /></th>
+                            <th className={`text-right px-2 py-2 font-bold uppercase tracking-wider text-[10px] ${headerBtn}`} onClick={() => toggleEstSort('total_mat')}>Total-MAT<SortIcon k="total_mat" /></th>
+                            <th className={`text-right px-2 py-2 font-bold uppercase tracking-wider text-[10px] ${headerBtn}`} onClick={() => toggleEstSort('punit_mo')}>Pr.Unit-MO<SortIcon k="punit_mo" /></th>
+                            <th className={`text-right px-2 py-2 font-bold uppercase tracking-wider text-[10px] ${headerBtn}`} onClick={() => toggleEstSort('total_mo')}>Total-MO<SortIcon k="total_mo" /></th>
+                            <th className={`text-right px-3 py-2 font-bold uppercase tracking-wider text-[10px] ${headerBtn}`} onClick={() => toggleEstSort('total')}>Total<SortIcon k="total" /></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {gruposFiltrados.map(g => {
+                            const isGrupoExp = expandedGrupos.has(g.id)
+                            const tarefasFiltradas = (g.tarefas || [])
+                              .filter(t => passaFiltroTarefa(t, g))
+                              .slice()
+                              .sort((a, b) => cmpCodigo(a.codigo, b.codigo))
+                            return (
+                              <React.Fragment key={`gf-${g.id}`}>
+                                <tr
+                                  className="cursor-pointer select-none"
+                                  style={{ background: 'rgba(59,130,246,0.08)', borderBottom: '1px solid var(--border)' }}
+                                  onClick={() => toggleGrupo(g.id)}
+                                >
+                                  <td className="px-3 py-2.5 font-bold" style={{ color: 'var(--text-1)' }}>
+                                    <span className="inline-flex items-center gap-1.5">
+                                      {isGrupoExp ? <ChevronDown className="w-3.5 h-3.5" strokeWidth={2} style={{ color: 'var(--accent)' }} /> : <ChevronRight className="w-3.5 h-3.5" strokeWidth={2} style={{ color: 'var(--accent)' }} />}
+                                      <span className="px-1.5 py-0.5 rounded text-[11px]" style={{ background: 'var(--accent)', color: 'white', minWidth: 32, textAlign: 'center' as const }}>{g.codigo}</span>
+                                    </span>
+                                  </td>
+                                  <td className="px-2 py-2.5 text-[11px]" style={{ color: 'var(--text-2)' }}>{g.disciplina || '—'}</td>
+                                  <td className="px-2 py-2.5 font-semibold" style={{ color: 'var(--text-1)' }}>{g.nome}</td>
+                                  <td className="px-2 py-2.5" style={{ color: 'var(--text-3)' }}>—</td>
+                                  <td className="px-2 py-2.5 text-right" style={{ color: 'var(--text-3)' }}>—</td>
+                                  <td className="px-2 py-2.5 text-right" style={{ color: 'var(--text-3)' }}>—</td>
+                                  <td className="px-2 py-2.5 text-right" style={{ color: 'var(--text-3)' }}>{formatCurrency(g.valor_material || 0)}</td>
+                                  <td className="px-2 py-2.5 text-right" style={{ color: 'var(--text-3)' }}>—</td>
+                                  <td className="px-2 py-2.5 text-right" style={{ color: 'var(--text-3)' }}>{formatCurrency(g.valor_servico || 0)}</td>
+                                  <td className="px-3 py-2.5 text-right font-bold" style={{ color: 'var(--accent)' }}>{formatCurrency(g.valor_contratado || 0)}</td>
+                                </tr>
+                                {isGrupoExp && tarefasFiltradas.map(t => {
+                                  const isTExp = expandedTarefas.has(t.id)
+                                  const detsFiltrados = (t.detalhamentos || [])
+                                    .filter(d => passaFiltroDet(d, g, t))
+                                    .slice()
+                                    .sort((a, b) => cmpCodigo(a.codigo, b.codigo))
+                                  const temDet = detsFiltrados.length > 0
+                                  return (
+                                    <React.Fragment key={`tf-${t.id}`}>
+                                      <tr
+                                        className={temDet ? 'cursor-pointer' : ''}
+                                        style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}
+                                        onClick={() => temDet && toggleTarefa(t.id)}
+                                      >
+                                        <td className="px-3 py-2" style={{ paddingLeft: 28 }}>
+                                          <span className="inline-flex items-center gap-1.5">
+                                            {temDet ? (isTExp ? <ChevronDown className="w-3 h-3" strokeWidth={2} style={{ color: 'var(--text-3)' }} /> : <ChevronRight className="w-3 h-3" strokeWidth={2} style={{ color: 'var(--text-3)' }} />) : <span className="w-3 h-3 inline-block" />}
+                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: 'rgba(100,116,139,0.18)', color: 'var(--text-2)', minWidth: 40, textAlign: 'center' as const }}>{t.codigo}</span>
+                                          </span>
+                                        </td>
+                                        <td className="px-2 py-2 text-[11px]" style={{ color: 'var(--text-2)' }}>{t.disciplina || g.disciplina || '—'}</td>
+                                        <td className="px-2 py-2" style={{ color: 'var(--text-2)' }}>{t.nome}</td>
+                                        <td className="px-2 py-2" style={{ color: 'var(--text-3)' }}>—</td>
+                                        <td className="px-2 py-2 text-right" style={{ color: 'var(--text-2)' }}>
+                                          {t.quantidade_contratada != null ? Number(t.quantidade_contratada).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : '—'}
+                                        </td>
+                                        <td className="px-2 py-2 text-right" style={{ color: 'var(--text-3)' }}>—</td>
+                                        <td className="px-2 py-2 text-right" style={{ color: 'var(--text-2)' }}>{formatCurrency(t.valor_material || 0)}</td>
+                                        <td className="px-2 py-2 text-right" style={{ color: 'var(--text-3)' }}>—</td>
+                                        <td className="px-2 py-2 text-right" style={{ color: 'var(--text-2)' }}>{formatCurrency(t.valor_servico || 0)}</td>
+                                        <td className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--text-1)' }}>{formatCurrency(t.valor_total || t.valor_contratado || 0)}</td>
+                                      </tr>
+                                      {isTExp && detsFiltrados.map(d => {
+                                        const qtd = d.quantidade_contratada || 0
+                                        const pUnitMat = d.valor_material_unit || 0
+                                        const pUnitMo = d.valor_servico_unit || 0
+                                        const totalMat = qtd * pUnitMat
+                                        const totalMo = qtd * pUnitMo
+                                        const total = d.valor_total || qtd * (d.valor_unitario || 0)
+                                        return (
+                                          <tr key={`d-${d.id}`} style={{ background: 'var(--surface-1)', borderBottom: '1px solid var(--border)' }}>
+                                            <td className="px-3 py-1.5" style={{ paddingLeft: 56 }}>
+                                              <span className="px-1 py-0.5 rounded text-[10px] font-mono" style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981' }}>{d.codigo}</span>
+                                            </td>
+                                            <td className="px-2 py-1.5 text-[11px]" style={{ color: 'var(--text-3)' }}>{d.disciplina || t.disciplina || g.disciplina || '—'}</td>
+                                            <td className="px-2 py-1.5" style={{ color: 'var(--text-2)' }}>{d.descricao}</td>
+                                            <td className="px-2 py-1.5 text-[11px]" style={{ color: 'var(--text-3)' }}>{d.local || '—'}</td>
+                                            <td className="px-2 py-1.5 text-right" style={{ color: 'var(--text-2)' }}>
+                                              {qtd.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} {d.unidade ? <span className="text-[10px] text-[var(--text-3)]">{d.unidade}</span> : null}
+                                            </td>
+                                            <td className="px-2 py-1.5 text-right" style={{ color: 'var(--text-2)' }}>{formatCurrency(pUnitMat)}</td>
+                                            <td className="px-2 py-1.5 text-right" style={{ color: 'var(--text-2)' }}>{formatCurrency(totalMat)}</td>
+                                            <td className="px-2 py-1.5 text-right" style={{ color: 'var(--text-2)' }}>{formatCurrency(pUnitMo)}</td>
+                                            <td className="px-2 py-1.5 text-right" style={{ color: 'var(--text-2)' }}>{formatCurrency(totalMo)}</td>
+                                            <td className="px-3 py-1.5 text-right font-semibold" style={{ color: '#10B981' }}>{formatCurrency(total)}</td>
+                                          </tr>
+                                        )
+                                      })}
+                                    </React.Fragment>
+                                  )
+                                })}
+                              </React.Fragment>
+                            )
+                          })}
+                          {gruposFiltrados.length === 0 && (
+                            <tr>
+                              <td colSpan={10} className="text-center py-10 text-[var(--text-3)]">
+                                <Package className="w-6 h-6 mx-auto mb-1 opacity-40" /> Nenhum item encontrado com os filtros atuais.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                        <tfoot>
+                          <tr style={{ background: 'var(--surface-3)', borderTop: '2px solid var(--border)' }}>
+                            <td colSpan={6} className="px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-2)' }}>
+                              Subtotal filtrado ({gruposFiltrados.length} grupos)
+                            </td>
+                            <td className="px-2 py-2.5 text-right text-[11px] font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(subtotalMat)}</td>
+                            <td />
+                            <td className="px-2 py-2.5 text-right text-[11px] font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(subtotalMo)}</td>
+                            <td className="px-3 py-2.5 text-right text-sm font-black" style={{ color: 'var(--accent)' }}>{formatCurrency(subtotalGeral)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              )
+            })()}
           </TabsContent>
 
           {/* FAT. DIRETO tab */}
