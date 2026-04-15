@@ -252,8 +252,17 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
     setItens(prev => prev.map((item, idx) => idx === i ? { ...item, [field]: value } : item))
   }
 
-  // Chamado quando nv1/nv2/nv3 muda — tenta auto-selecionar o detalhamento
-  function handleNivelChange(i: number, nv: '_nv1' | '_nv2' | '_nv3', val: string, nextInputId?: string) {
+  // Chamado quando nv1/nv2/nv3 muda — tenta auto-selecionar o detalhamento.
+  //
+  // CUIDADO (bug NV3 multidígito): nunca avança foco automaticamente ao digitar.
+  // O avanço só acontece via Tab, Enter, ".", "," ou " " (tratados em onKeyDown).
+  // Motivo: se o usuário quer "4.3.10" e digita "1", o sistema JÁ fazia match
+  // com "4.3.1", preenchia valor e avançava — user perdia chance de digitar "0".
+  //
+  // Além disso, quando tarefa_id MUDA (4.3.1 → 4.3.10), sobrescreve
+  // descrição/local/valor mesmo se já estavam preenchidos (porque vieram do
+  // match anterior e estariam incorretos).
+  function handleNivelChange(i: number, nv: '_nv1' | '_nv2' | '_nv3', val: string) {
     setItens(prev => prev.map((item, idx) => {
       if (idx !== i) return item
       const next = { ...item, [nv]: val }
@@ -264,18 +273,23 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
         const fullCode = `${nv1}.${nv2}.${nv3}`
         const t = tarefas.find(x => x.codigo === fullCode)
         if (t) {
+          const trocouTarefa = item.tarefa_id !== t.id
           return {
             ...next,
             tarefa_id: t.id,
-            descricao: next.descricao || t.nome.substring(0, 80),
-            local: next.local || t.locais[0] || '',
-            valor_total: next.valor_total || (t.valor_material > 0 ? String(t.valor_material) : ''),
+            // Se trocou a tarefa, SOBRESCREVE (valor antigo era de outro detalh)
+            // Se é a mesma tarefa (re-render), preserva o que user editou
+            descricao: trocouTarefa ? t.nome.substring(0, 80) : (next.descricao || t.nome.substring(0, 80)),
+            local:     trocouTarefa ? (t.locais[0] || '') : (next.local || t.locais[0] || ''),
+            valor_total: trocouTarefa
+              ? (t.valor_material > 0 ? String(t.valor_material) : '')
+              : (next.valor_total || (t.valor_material > 0 ? String(t.valor_material) : '')),
           }
         }
       }
+      // Sem match → limpa tarefa_id (mostra como "não encontrado") mas preserva valores digitados
       return { ...next, tarefa_id: '' }
     }))
-    if (nextInputId) setTimeout(() => (document.getElementById(nextInputId) as HTMLInputElement | null)?.focus(), 0)
   }
 
   // Seleção via combobox — preenche NV1/NV2/NV3 e demais campos
@@ -886,8 +900,16 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
                           value={item._nv3}
                           placeholder="1"
                           maxLength={3}
-                          onChange={e => handleNivelChange(gIdx, '_nv3', e.target.value, item._nv1 && item._nv2 && e.target.value ? `desc-${gIdx}` : undefined)}
-                          onKeyDown={e => { navGrid(e, gIdx, 2); if (e.key === 'Enter') { e.preventDefault(); (document.getElementById(`nv1-${gIdx + 1}`) as HTMLInputElement | null)?.focus() } }}
+                          onChange={e => handleNivelChange(gIdx, '_nv3', e.target.value)}
+                          onKeyDown={e => {
+                            navGrid(e, gIdx, 2)
+                            // NV3 só avança foco explicitamente: Tab/Enter/./,/space (nunca no digitar)
+                            if (['.', ',', ' ', 'Tab', 'Enter'].includes(e.key)) {
+                              if (e.key !== 'Tab') e.preventDefault()
+                              const nextField = item._nv1 && item._nv2 && item._nv3 ? `desc-${gIdx}` : `nv1-${gIdx + 1}`
+                              ;(document.getElementById(nextField) as HTMLInputElement | null)?.focus()
+                            }
+                          }}
                           className="h-7 rounded-lg text-center text-xs outline-none w-full"
                           style={nvBorder()}
                           onFocus={e => Object.assign(e.currentTarget.style, { borderColor: 'var(--accent)', boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent)' })}

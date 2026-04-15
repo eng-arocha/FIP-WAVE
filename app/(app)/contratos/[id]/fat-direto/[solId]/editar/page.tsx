@@ -253,7 +253,20 @@ export default function EditarSolicitacaoPage({ params }: { params: Promise<{ id
       const nv3 = nv === '_nv3' ? val : next._nv3
       if (nv1 && nv2 && nv3) {
         const t = tarefas.find(x => x.codigo === `${nv1}.${nv2}.${nv3}`)
-        if (t) return { ...next, tarefa_id: t.id, descricao: next.descricao || t.nome.substring(0, 80), local: next.local || t.locais[0] || '', valor_total: next.valor_total || (t.valor_material > 0 ? String(t.valor_material) : '') }
+        if (t) {
+          // Quando tarefa MUDA (ex: 4.3.1 → 4.3.10), sobrescreve valor/descr/local
+          // pra não manter dados do item antigo. Senão preserva edições do user.
+          const trocouTarefa = item.tarefa_id !== t.id
+          return {
+            ...next,
+            tarefa_id: t.id,
+            descricao: trocouTarefa ? t.nome.substring(0, 80) : (next.descricao || t.nome.substring(0, 80)),
+            local:     trocouTarefa ? (t.locais[0] || '') : (next.local || t.locais[0] || ''),
+            valor_total: trocouTarefa
+              ? (t.valor_material > 0 ? String(t.valor_material) : '')
+              : (next.valor_total || (t.valor_material > 0 ? String(t.valor_material) : '')),
+          }
+        }
       }
       return { ...next, tarefa_id: '' }
     }))
