@@ -15,8 +15,8 @@ import * as XLSX from 'xlsx'
  *   │  FÍSICO FINANCEIRO    │  QTDE + PR.Mat + PR.MO│  planejamento_fisico │
  *   │  (tem col PR.UNIT M.O)│                       │                      │
  *   ├───────────────────────┼───────────────────────┼──────────────────────┤
- *   │  FATURAMENTO DIRETO   │  QTDE + PR.Mat         │  planejamento_fat_   │
- *   │  (sem col PR.UNIT M.O)│  (não mexe em PR.MO)   │  direto              │
+ *   │  FATURAMENTO DIRETO   │  NADA (à prova de    │  planejamento_fat_   │
+ *   │  (sem col PR.UNIT M.O)│  erro — só curva %)  │  direto              │
  *   └───────────────────────┴───────────────────────┴──────────────────────┘
  *
  * Só NÍVEL=3 vira update. Match por ITEM (código) ou detalhamento_id.
@@ -150,11 +150,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       }
       if (!det) { linhasIgnoradas++; continue }
 
-      // Orçamento — só atualiza campos cuja coluna existe no arquivo
+      // Orçamento — SOMENTE upload de Físico atualiza preços/qtdes.
+      // Fat Direto é à prova de erro: só aplica curva %, nunca mexe em orçamento.
       const patch: any = {}
-      if (iQtd >= 0) { const v = toNumberBR(row[iQtd]); if (v !== undefined) patch.quantidade_contratada = v }
-      if (iMat >= 0) { const v = toNumberBR(row[iMat]); if (v !== undefined) patch.valor_material_unit = v }
-      if (iMo  >= 0) { const v = toNumberBR(row[iMo]);  if (v !== undefined) patch.valor_servico_unit  = v }
+      if (tipo === 'fisico') {
+        if (iQtd >= 0) { const v = toNumberBR(row[iQtd]); if (v !== undefined) patch.quantidade_contratada = v }
+        if (iMat >= 0) { const v = toNumberBR(row[iMat]); if (v !== undefined) patch.valor_material_unit = v }
+        if (iMo  >= 0) { const v = toNumberBR(row[iMo]);  if (v !== undefined) patch.valor_servico_unit  = v }
+      }
       if (Object.keys(patch).length > 0) {
         const mat = patch.valor_material_unit ?? det.valor_material_unit ?? 0
         const mo  = patch.valor_servico_unit  ?? det.valor_servico_unit  ?? 0
