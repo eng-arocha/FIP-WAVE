@@ -9,7 +9,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts'
 import { formatCurrency } from '@/lib/utils'
-import { ArrowLeft, TrendingUp, Calendar, Pencil, Lock, Save, ChevronRight, ChevronDown } from 'lucide-react'
+import { ArrowLeft, TrendingUp, Calendar, Pencil, Lock, Save, ChevronRight, ChevronDown, Download, Upload } from 'lucide-react'
 import { EditableGridCell, GridCellCoordinator, parseNumber } from '@/components/shared/editable-grid-cell'
 
 interface CurvaSPoint {
@@ -155,8 +155,8 @@ export default function CronogramaPage({ params }: { params: Promise<{ id: strin
 
         {matriz && matriz.grupos.length > 0 && matriz.meses.length > 0 && (
           <>
-            <CronogramaTreeMatriz contratoId={id} tipo="fisico" title="Físico — % por Detalhamento/Mês (rollups em grupo e tarefa)" matriz={matriz} editMode={editMode} setMatriz={setMatriz} setSavingMsg={setSavingMsg} />
-            <CronogramaTreeMatriz contratoId={id} tipo="fatdireto" title="Fat. Direto — % por Detalhamento/Mês (rollups em grupo e tarefa)" matriz={matriz} editMode={editMode} setMatriz={setMatriz} setSavingMsg={setSavingMsg} />
+            <CronogramaTreeMatriz contratoId={id} tipo="fisico" title="Físico — % por Detalhamento/Mês (rollups em grupo e tarefa)" matriz={matriz} editMode={editMode} canEdit={canEdit} setMatriz={setMatriz} setSavingMsg={setSavingMsg} refetchMatriz={() => fetch(`/api/contratos/${id}/cronograma/matriz`).then(r => r.json()).then(setMatriz)} />
+            <CronogramaTreeMatriz contratoId={id} tipo="fatdireto" title="Fat. Direto — % por Detalhamento/Mês (rollups em grupo e tarefa)" matriz={matriz} editMode={editMode} canEdit={canEdit} setMatriz={setMatriz} setSavingMsg={setSavingMsg} refetchMatriz={() => fetch(`/api/contratos/${id}/cronograma/matriz`).then(r => r.json()).then(setMatriz)} />
           </>
         )}
 
@@ -257,16 +257,33 @@ export default function CronogramaPage({ params }: { params: Promise<{ id: strin
  * ============================================================ */
 
 function CronogramaTreeMatriz({
-  contratoId, tipo, title, matriz, editMode, setMatriz, setSavingMsg,
+  contratoId, tipo, title, matriz, editMode, canEdit, setMatriz, setSavingMsg, refetchMatriz,
 }: {
   contratoId: string
   tipo: Tipo
   title: string
   matriz: Matriz
   editMode: boolean
+  canEdit: boolean
   setMatriz: (fn: (prev: Matriz | null) => Matriz | null) => void
   setSavingMsg: (s: string) => void
+  refetchMatriz: () => void | Promise<void>
 }) {
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  async function handleUpload(file: File) {
+    setSavingMsg('Importando planilha…')
+    const fd = new FormData()
+    fd.append('file', file)
+    try {
+      const r = await fetch(`/api/contratos/${contratoId}/cronograma/upload?tipo=${tipo}`, { method: 'POST', body: fd })
+      const j = await r.json()
+      if (!r.ok) { setSavingMsg(`Erro no upload: ${j.error || r.status}`); return }
+      setSavingMsg(`Importado: ${j.atualizados} célula(s) · ${j.meses_processados} mês(es)${j.linhas_ignoradas ? ` · ${j.linhas_ignoradas} linha(s) ignorada(s)` : ''}`)
+      await refetchMatriz()
+      setTimeout(() => setSavingMsg(''), 4000)
+    } catch (e: any) { setSavingMsg(`Erro: ${e?.message || e}`) }
+  }
   const { grupos, meses } = matriz
   const mapa = tipo === 'fisico' ? matriz.fisico : matriz.fatdireto
   const pesoField: 'peso_servico' | 'peso_material' = tipo === 'fisico' ? 'peso_servico' : 'peso_material'
@@ -438,19 +455,39 @@ function CronogramaTreeMatriz({
           <Calendar className="w-4 h-4 text-blue-400" />
           {title}
           {editMode && <span className="text-[10px] font-normal text-[var(--text-3)] ml-2">Enter/Tab/Setas · cole do Excel · F2 edita · só nível 3 edita</span>}
-          <button
-            onClick={() => {
-              const all: Record<string, boolean> = {}
-              const allT: Record<string, boolean> = {}
-              grupos.forEach(g => { all[g.id] = true; g.tarefas.forEach(t => { allT[t.id] = true }) })
-              setOpenGrupo(all); setOpenTarefa(allT)
-            }}
-            className="ml-auto text-[10px] text-blue-400 hover:underline"
-          >expandir tudo</button>
-          <button
-            onClick={() => { setOpenGrupo({}); setOpenTarefa({}) }}
-            className="text-[10px] text-[var(--text-3)] hover:underline"
-          >recolher tudo</button>
+          <div className="ml-auto flex items-center gap-2">
+            <a
+              href={`/api/contratos/${contratoId}/cronograma/template?tipo=${tipo}`}
+              className="text-[11px] inline-flex items-center gap-1 px-2 py-1 rounded border border-[var(--border)] hover:border-blue-500 hover:text-blue-400 text-[var(--text-2)]"
+              title="Baixa um .xlsx com a estrutura de detalhamentos do contrato (nível 3) e colunas de meses prontas para preencher"
+            >
+              <Download className="w-3 h-3" /> Template .xlsx
+            </a>
+            {canEdit && (
+              <>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="hidden"
+                  onChange={e => {
+                    const f = e.target.files?.[0]
+                    if (f) handleUpload(f)
+                    if (fileRef.current) fileRef.current.value = ''
+                  }}
+                />
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  className="text-[11px] inline-flex items-center gap-1 px-2 py-1 rounded border border-blue-500/60 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20"
+                  title="Sobe .xlsx com o mesmo formato do template — só linhas com detalhamento_id válido são importadas"
+                >
+                  <Upload className="w-3 h-3" /> Subir planilha
+                </button>
+              </>
+            )}
+            <button onClick={() => { const all: Record<string, boolean> = {}; const allT: Record<string, boolean> = {}; grupos.forEach(g => { all[g.id] = true; g.tarefas.forEach(t => { allT[t.id] = true }) }); setOpenGrupo(all); setOpenTarefa(allT) }} className="text-[10px] text-blue-400 hover:underline">expandir tudo</button>
+            <button onClick={() => { setOpenGrupo({}); setOpenTarefa({}) }} className="text-[10px] text-[var(--text-3)] hover:underline">recolher tudo</button>
+          </div>
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0">
