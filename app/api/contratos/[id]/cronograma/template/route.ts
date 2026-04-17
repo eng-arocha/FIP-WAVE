@@ -130,8 +130,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     XLSX.utils.book_append_sheet(wb, wsInst, 'Instruções')
 
     const buf: Buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
+    const body = new Uint8Array(buf)
     const filename = `cronograma-${tipo}-${contrato?.numero_contrato ?? id}.xlsx`
-    return new Response(buf, {
+    return new Response(body, {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="${filename}"`,
