@@ -49,6 +49,21 @@ export interface ButtonProps
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, loading, children, disabled, ...props }, ref) => {
     const Comp = asChild ? Slot : 'button'
+    // asChild+Slot exige EXATAMENTE 1 filho (React.Children.only).
+    // Quando usamos asChild, não podemos empurrar o spinner ao lado de `children`
+    // — isso vira array e quebra com "React.Children.only expected to receive a single React element child".
+    // Solução: em modo asChild, passamos apenas `children`; o spinner é só para o `<button>` próprio.
+    if (asChild) {
+      return (
+        <Comp
+          className={cn(buttonVariants({ variant, size, className }))}
+          ref={ref}
+          {...props}
+        >
+          {children}
+        </Comp>
+      )
+    }
     return (
       <Comp
         className={cn(buttonVariants({ variant, size, className }))}
