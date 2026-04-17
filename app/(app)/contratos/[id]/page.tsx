@@ -207,6 +207,17 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   }, [id])
 
 
+  // Comparação natural de código "1.1.10" vs "1.1.2"
+  function cmpCodigo(a: string, b: string): number {
+    const pa = String(a).split('.').map(n => Number(n) || 0)
+    const pb = String(b).split('.').map(n => Number(n) || 0)
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const na = pa[i] ?? 0, nb = pb[i] ?? 0
+      if (na !== nb) return na - nb
+    }
+    return 0
+  }
+
   const TIPO_MEDICAO_COLORS: Record<string, string> = {
     servico: 'bg-purple-900/30 text-purple-400 border-purple-800/50',
     faturamento_direto: 'bg-blue-900/30 text-blue-400 border-blue-800/50',
@@ -227,14 +238,14 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
       const va = viewMode === 'material' ? (a.valor_material ?? 0) : viewMode === 'servico' ? (a.valor_servico ?? 0) : a.valor_contratado
       const vb = viewMode === 'material' ? (b.valor_material ?? 0) : viewMode === 'servico' ? (b.valor_servico ?? 0) : b.valor_contratado
       switch (sortBy) {
-        case 'padrao': return parseFloat(a.codigo) - parseFloat(b.codigo)
+        case 'padrao': return cmpCodigo(a.codigo, b.codigo)
         case 'valor_global_desc': return vb - va
         case 'valor_global_asc': return va - vb
         case 'valor_medido_desc': return (b.valor_medido ?? 0) - (a.valor_medido ?? 0)
         case 'valor_medido_asc': return (a.valor_medido ?? 0) - (b.valor_medido ?? 0)
         case 'saldo_desc': return (vb - (b.valor_medido ?? 0)) - (va - (a.valor_medido ?? 0))
         case 'saldo_asc': return (va - (a.valor_medido ?? 0)) - (vb - (b.valor_medido ?? 0))
-        default: return parseFloat(a.codigo) - parseFloat(b.codigo)
+        default: return cmpCodigo(a.codigo, b.codigo)
       }
     })
     return list
@@ -242,7 +253,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
 
   // Gráfico sempre em ordem 1.0→19.0 e sem filtro de tipo (mostra tudo)
   const gruposOrdenados = useMemo(() =>
-    [...grupos].sort((a, b) => parseFloat(a.codigo) - parseFloat(b.codigo)),
+    [...grupos].sort((a, b) => cmpCodigo(a.codigo, b.codigo)),
     [grupos]
   )
 
@@ -892,7 +903,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
               const cards: React.ReactNode[] = []
 
               gruposExibidos.forEach(g => {
-                const tarefas = g.tarefas || []
+                const tarefas = [...(g.tarefas || [])].sort((a, b) => cmpCodigo(a.codigo, b.codigo))
                 const grupoMatchBusca = !busca || g.codigo.toLowerCase().includes(busca) || g.nome.toLowerCase().includes(busca)
                 const anyTarefaMatch = tarefas.some(t =>
                   t.codigo.toLowerCase().includes(busca) || t.nome.toLowerCase().includes(busca) ||
@@ -948,7 +959,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                       {isGrupoExpanded && (
                         <div className="border-t border-[var(--border)]">
                           {tarefas.map(t => {
-                            const detalhamentos = t.detalhamentos || []
+                            const detalhamentos = [...(t.detalhamentos || [])].sort((a, b) => cmpCodigo(a.codigo, b.codigo))
                             const tarefaMatchBusca = !busca || t.codigo.toLowerCase().includes(busca) || t.nome.toLowerCase().includes(busca) ||
                               detalhamentos.some(d => d.codigo.toLowerCase().includes(busca) || d.descricao.toLowerCase().includes(busca))
                             if (busca && !grupoMatchBusca && !tarefaMatchBusca) return null
