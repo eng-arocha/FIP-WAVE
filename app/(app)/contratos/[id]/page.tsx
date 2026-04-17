@@ -312,35 +312,36 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
         actions={
           <div className="flex gap-1 sm:gap-2 flex-wrap">
             <Link href="/contratos">
-              <Button variant="outline" size="sm" className="px-2 sm:px-3 border border-blue-500/40 text-blue-400 hover:bg-blue-500/10">
+              <Button variant="ghost" size="sm" className="px-2 sm:px-3 gap-1 font-semibold hover:brightness-110" style={{ background: '#475569', color: '#f1f5f9' }}>
                 <ArrowLeft className="w-4 h-4" strokeWidth={1.5} />
                 <span className="hidden sm:inline">Contratos</span>
               </Button>
             </Link>
             <Link href={`/contratos/${id}/cronograma`}>
-              <Button variant="outline" size="sm" className="px-2 sm:px-3 border border-amber-500/40 text-amber-400 hover:bg-amber-500/10">
+              <Button variant="ghost" size="sm" className="px-2 sm:px-3 gap-1 font-semibold hover:brightness-110" style={{ background: '#b45309', color: '#fef3c7' }}>
                 <span className="hidden sm:inline">Cronograma</span>
                 <span className="sm:hidden text-xs">Cron.</span>
               </Button>
             </Link>
             <Link href={`/contratos/${id}/fat-direto`}>
-              <Button variant="outline" size="sm" className="px-2 sm:px-3 border border-teal-500/40 text-teal-400 hover:bg-teal-500/10">
+              <Button variant="ghost" size="sm" className="px-2 sm:px-3 gap-1 font-semibold hover:brightness-110" style={{ background: '#0f766e', color: '#ccfbf1' }}>
                 <span className="hidden sm:inline">Fat. Direto</span>
                 <span className="sm:hidden text-xs">Fat.</span>
               </Button>
             </Link>
             <Link href={`/contratos/${id}/medicoes/nova`}>
-              <Button size="sm" className="gap-1 px-2 sm:px-3">
+              <Button variant="ghost" size="sm" className="gap-1 px-2 sm:px-3 font-semibold hover:brightness-110" style={{ background: '#1d4ed8', color: '#eff6ff' }}>
                 <Plus className="w-4 h-4" strokeWidth={1.5} />
                 <span className="hidden sm:inline">Med. Serviços</span>
                 <span className="sm:hidden text-xs">Med.</span>
               </Button>
             </Link>
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               onClick={() => setShowEditar(true)}
-              className="px-2 sm:px-3 border border-violet-500/40 text-violet-400 hover:bg-violet-500/10"
+              className="px-2 sm:px-3 gap-1 font-semibold hover:brightness-110"
+              style={{ background: '#6d28d9', color: '#ede9fe' }}
             >
               <Pencil className="w-4 h-4" strokeWidth={1.5} />
               <span className="hidden sm:inline ml-1">Editar</span>
