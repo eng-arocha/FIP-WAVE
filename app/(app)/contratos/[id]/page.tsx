@@ -15,7 +15,8 @@ import {
 import {
   ArrowLeft, Plus, FileText, Loader2, Pencil,
   ChevronRight, ChevronDown, Layers, ArrowUpDown, Filter, Package, TrendingUp,
-  DollarSign, CheckCircle2, Wallet, ClipboardList, Search, X, Maximize2
+  DollarSign, CheckCircle2, Wallet, ClipboardList, Search, X, Maximize2,
+  Download, Upload,
 } from 'lucide-react'
 import { EditarContratoModal } from '@/components/contratos/editar-contrato-modal'
 import { EditableOrcamentoCell, parseBRLToNumber, type EditableCellCoordinator } from '@/components/contratos/editable-orcamento-cell'
@@ -1068,6 +1069,42 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                 </Button>
                 <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={expandAll}>Expandir tudo</Button>
                 <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={collapseAll}>Recolher</Button>
+                <a href={`/api/contratos/${id}/orcamento/template`}>
+                  <Button variant="outline" size="sm" className="h-8 text-xs gap-1" title="Baixa o orçamento atual em xlsx (8 colunas oficiais) para editar e subir de volta">
+                    <Download className="w-3.5 h-3.5" /> Baixar planilha
+                  </Button>
+                </a>
+                <label>
+                  <input
+                    type="file"
+                    accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0]
+                      e.currentTarget.value = ''
+                      if (!f) return
+                      try {
+                        setSavingBulk(true)
+                        const fd = new FormData()
+                        fd.append('file', f)
+                        const res = await fetch(`/api/contratos/${id}/orcamento/upload`, { method: 'POST', body: fd })
+                        const json = await res.json()
+                        if (!res.ok) throw new Error(json?.error || 'erro')
+                        setLastSavedMsg(`Upload: ${json.atualizados}/${json.total} atualizados${json.falhas ? ` (${json.falhas} falhas)` : ''}`)
+                        // recarrega grupos
+                        const gr = await fetch(`/api/contratos/${id}/grupos`, { cache: 'no-store' }).then(r => r.json())
+                        setGrupos(gr)
+                      } catch (err: any) {
+                        setLastSavedMsg('⚠ erro no upload: ' + (err?.message || 'desconhecido'))
+                      } finally {
+                        setSavingBulk(false)
+                      }
+                    }}
+                  />
+                  <Button asChild variant="outline" size="sm" className="h-8 text-xs gap-1" title="Sobe a planilha editada — atualiza Qtde, PR. Mat e PR. M.O.">
+                    <span><Upload className="w-3.5 h-3.5" /> Subir planilha</span>
+                  </Button>
+                </label>
                 <Link href={`/contratos/${id}/estrutura`}>
                   <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
                     <Layers className="w-3.5 h-3.5" /> Gerenciar
