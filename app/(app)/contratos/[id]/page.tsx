@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useState, useEffect, useMemo } from 'react'
+import { use, useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -18,6 +18,7 @@ import {
   DollarSign, CheckCircle2, Wallet, ClipboardList, Search, X, Maximize2
 } from 'lucide-react'
 import { EditarContratoModal } from '@/components/contratos/editar-contrato-modal'
+import { EditableOrcamentoCell, parseBRLToNumber, type EditableCellCoordinator } from '@/components/contratos/editable-orcamento-cell'
 import {
   formatCurrency, formatPercent, formatDate,
   getContratoStatusColor, getMedicaoStatusColor
@@ -129,6 +130,10 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   const [expandedTarefas, setExpandedTarefas] = useState<Set<string>>(new Set())
   type Metric = { servico_medido: number; fat_aprovados: number; nfs_lancadas: number; saldo_material: number; saldo_servico: number }
   const [metrics, setMetrics] = useState<{ detalhamentos: Record<string, Metric>; tarefas: Record<string, Metric>; grupos: Record<string, Metric> }>({ detalhamentos: {}, tarefas: {}, grupos: {} })
+  // Modo edição do orçamento (PR Mat / PR MO)
+  const [editOrcamento, setEditOrcamento] = useState(false)
+  const [savingBulk, setSavingBulk] = useState(false)
+  const [lastSavedMsg, setLastSavedMsg] = useState<string | null>(null)
   // Modal editar contrato
   const [showEditar, setShowEditar] = useState(false)
   const [contratante, setContratante] = useState<any>(null)
@@ -230,6 +235,152 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
         <div className={rowClass}><span>Saldo Serviço:</span><span className="font-semibold tabular-nums" style={{ color: d.saldo_servico < 0 ? '#EF4444' : 'var(--text-2)' }}>{formatCurrency(d.saldo_servico)}</span></div>
       </div>
     )
+  }
+
+  // === Coordenador de células editáveis (estilo Excel) ===
+  const cellsRef = useRef<Map<string, { el: HTMLInputElement; rowIdx: number; colIdx: number; detId: string; field: 'mat' | 'mo' }>>(new Map())
+  const cellOrderRef = useRef<string[]>([])
+
+  function rebuildOrder() {
+    const arr = Array.from(cellsRef.current.entries())
+    arr.sort(([, a], [, b]) => a.rowIdx - b.rowIdx || a.colIdx - b.colIdx)
+    cellOrderRef.current = arr.map(([k]) => k)
+  }
+
+  // Atualiza um detalhamento local (optimistic) dentro de grupos -> tarefas -> detalhamentos
+  function patchDetLocal(detId: string, patch: Partial<Detalhamento>) {
+    setGrupos(prev => prev.map(g => ({
+      ...g,
+      tarefas: (g.tarefas || []).map(t => ({
+        ...t,
+        detalhamentos: (t.detalhamentos || []).map(d => d.id === detId ? { ...d, ...patch } : d),
+      })),
+    })))
+  }
+
+  async function commitOne(detId: string, field: 'mat' | 'mo', value: number) {
+    // Optimistic
+    const patch = field === 'mat'
+      ? { valor_material_unit: value, subtotal_material: value * (findDet(detId)?.quantidade_contratada || 0) }
+      : { valor_servico_unit:  value, subtotal_mo: value * (findDet(detId)?.quantidade_contratada || 0) }
+    patchDetLocal(detId, patch as any)
+    try {
+      const res = await fetch(`/api/contratos/${id}/detalhamentos/${detId}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(field === 'mat' ? { valor_material_unit: value } : { valor_servico_unit: value }),
+      })
+      if (!res.ok) throw new Error('falha ao salvar')
+      setLastSavedMsg(`Salvo ${new Date().toLocaleTimeString('pt-BR')}`)
+    } catch (e) {
+      setLastSavedMsg('⚠ erro ao salvar — recarregue a página')
+    }
+  }
+
+  function findDet(detId: string): Detalhamento | undefined {
+    for (const g of grupos) for (const t of g.tarefas || []) for (const d of t.detalhamentos || []) if (d.id === detId) return d
+    return undefined
+  }
+
+  async function commitBulk(updates: Array<{ detalhamento_id: string; valor_material_unit?: number; valor_servico_unit?: number }>) {
+    // Optimistic
+    for (const u of updates) {
+      const qtd = findDet(u.detalhamento_id)?.quantidade_contratada || 0
+      const patch: any = {}
+      if (u.valor_material_unit !== undefined) { patch.valor_material_unit = u.valor_material_unit; patch.subtotal_material = u.valor_material_unit * qtd }
+      if (u.valor_servico_unit  !== undefined) { patch.valor_servico_unit  = u.valor_servico_unit;  patch.subtotal_mo = u.valor_servico_unit * qtd }
+      patchDetLocal(u.detalhamento_id, patch)
+    }
+    setSavingBulk(true)
+    try {
+      const res = await fetch(`/api/contratos/${id}/detalhamentos/bulk`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ updates }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || 'erro')
+      setLastSavedMsg(`${json.atualizados}/${json.total} atualizados às ${new Date().toLocaleTimeString('pt-BR')}`)
+    } catch (e: any) {
+      setLastSavedMsg('⚠ erro no paste em massa — recarregue')
+    } finally {
+      setSavingBulk(false)
+    }
+  }
+
+  const coord: EditableCellCoordinator = {
+    editMode: editOrcamento,
+    register(key, meta, el) {
+      cellsRef.current.set(key, { el, ...meta })
+      rebuildOrder()
+    },
+    unregister(key) {
+      cellsRef.current.delete(key)
+      rebuildOrder()
+    },
+    focusNext(key, dir) {
+      const order = cellOrderRef.current
+      const i = order.indexOf(key)
+      if (i === -1) return
+      let target = i
+      const cur = cellsRef.current.get(key)
+      if (!cur) return
+      if (dir === 'next')  target = Math.min(i + 1, order.length - 1)
+      else if (dir === 'prev')  target = Math.max(i - 1, 0)
+      else if (dir === 'right') {
+        // procura próxima célula na mesma linha
+        const next = order.slice(i + 1).find(k => cellsRef.current.get(k)?.rowIdx === cur.rowIdx)
+        if (next) target = order.indexOf(next)
+      }
+      else if (dir === 'left') {
+        const prev = [...order.slice(0, i)].reverse().find(k => cellsRef.current.get(k)?.rowIdx === cur.rowIdx)
+        if (prev) target = order.indexOf(prev)
+      }
+      else if (dir === 'down') {
+        const below = order.slice(i + 1).find(k => {
+          const m = cellsRef.current.get(k); return m && m.colIdx === cur.colIdx && m.rowIdx > cur.rowIdx
+        })
+        if (below) target = order.indexOf(below)
+      }
+      else if (dir === 'up') {
+        const above = [...order.slice(0, i)].reverse().find(k => {
+          const m = cellsRef.current.get(k); return m && m.colIdx === cur.colIdx && m.rowIdx < cur.rowIdx
+        })
+        if (above) target = order.indexOf(above)
+      }
+      const targetKey = order[target]
+      cellsRef.current.get(targetKey)?.el.focus()
+    },
+    onPasteMatrix(anchorKey, rows) {
+      const order = cellOrderRef.current
+      const i = order.indexOf(anchorKey)
+      const anchor = cellsRef.current.get(anchorKey)
+      if (i === -1 || !anchor) return
+      // Deriva linhas da malha a partir do anchor (célula focada)
+      const updatesById: Record<string, { detalhamento_id: string; valor_material_unit?: number; valor_servico_unit?: number }> = {}
+      for (let r = 0; r < rows.length; r++) {
+        // Encontra o k-ésimo registro com colIdx igual ao anchor + offset
+        // Simples: percorre linha a linha do rowIdx de anchor em diante
+        const rowTargetIdx = anchor.rowIdx + r
+        const cols = rows[r]
+        for (let c = 0; c < cols.length; c++) {
+          const colTargetIdx = anchor.colIdx + c
+          const key = order.find(k => {
+            const m = cellsRef.current.get(k)
+            return m && m.rowIdx === rowTargetIdx && m.colIdx === colTargetIdx
+          })
+          if (!key) continue
+          const meta = cellsRef.current.get(key)!
+          const n = parseBRLToNumber(cols[c])
+          if (!updatesById[meta.detId]) updatesById[meta.detId] = { detalhamento_id: meta.detId }
+          if (meta.field === 'mat') updatesById[meta.detId].valor_material_unit = n
+          else updatesById[meta.detId].valor_servico_unit = n
+        }
+      }
+      const updates = Object.values(updatesById)
+      if (updates.length > 0) commitBulk(updates)
+    },
+    onCommit: commitOne,
   }
 
   // Comparação natural de código "1.1.10" vs "1.1.2"
@@ -902,7 +1053,19 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                 </SelectContent>
               </Select>
 
-              <div className="flex gap-1 ml-auto">
+              <div className="flex gap-1 ml-auto items-center">
+                {lastSavedMsg && (
+                  <span className="text-[10px] mr-2" style={{ color: lastSavedMsg.startsWith('⚠') ? '#EF4444' : 'var(--text-3)' }}>{lastSavedMsg}</span>
+                )}
+                <Button
+                  variant={editOrcamento ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-8 text-xs gap-1"
+                  onClick={() => { setEditOrcamento(v => !v); setLastSavedMsg(null) }}
+                  title="Editar PR Mat / PR MO inline (setas navegam, Ctrl+V cola do Excel)"
+                >
+                  <Pencil className="w-3.5 h-3.5" /> {editOrcamento ? 'Concluir edição' : 'Editar orçamento'}
+                </Button>
                 <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={expandAll}>Expandir tudo</Button>
                 <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={collapseAll}>Recolher</Button>
                 <Link href={`/contratos/${id}/estrutura`}>
@@ -912,6 +1075,13 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                 </Link>
               </div>
             </div>
+            {editOrcamento && (
+              <div className="mb-3 p-2 rounded-lg text-[11px] flex items-start gap-2" style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.25)', color: 'var(--text-2)' }}>
+                <span className="font-semibold" style={{ color: 'var(--accent)' }}>Modo edição ativo.</span>
+                <span>Clique em uma célula PR Mat ou PR M.O. → digite, ↑↓←→ navegam como no Excel, Enter confirma, Esc cancela.
+                Você pode <strong>copiar/colar do Excel</strong> (Ctrl+V) várias linhas e colunas de uma vez. {savingBulk && <em>(salvando em massa…)</em>}</span>
+              </div>
+            )}
 
             {/* Detalhamento — cards por grupo com colunas completas (Cód/Descrição/Local/Qtde/Unid/PR Mat/PR MO/Subt Mat/Subt MO/Total) */}
             {(() => {
@@ -924,6 +1094,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
               let subtotalMat = 0
               let subtotalMo = 0
               let visibleDetCount = 0
+              let cellRowIdx = 0 // contador global de linhas editáveis (uma linha por detalhamento)
 
               const cards: React.ReactNode[] = []
 
@@ -1046,6 +1217,8 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                                         subtotalTotal += total
                                         subtotalMat += subMat
                                         subtotalMo += subMo
+                                        const thisRowIdx = cellRowIdx
+                                        cellRowIdx += 1
 
                                         const mDet = metrics.detalhamentos[d.id]
                                         return (
@@ -1056,8 +1229,28 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                                               <span className="text-[10px] text-[var(--text-3)] truncate" title={d.local || ''}>{d.local || '—'}</span>
                                               <span className="text-right tabular-nums text-[var(--text-2)]">{qtd.toLocaleString('pt-BR')}</span>
                                               <span className="text-center text-[var(--text-3)]">{d.unidade || 'UN'}</span>
-                                              <span className={`text-right tabular-nums ${colMatActive ? 'font-semibold text-blue-400' : 'text-[var(--text-3)]'}`}>{formatCurrency(prMat)}</span>
-                                              <span className={`text-right tabular-nums ${colMoActive ? 'font-semibold text-amber-400' : 'text-[var(--text-3)]'}`}>{formatCurrency(prMo)}</span>
+                                              <EditableOrcamentoCell
+                                                cellKey={`${d.id}:mat`}
+                                                detId={d.id}
+                                                field="mat"
+                                                rowIdx={thisRowIdx}
+                                                colIdx={0}
+                                                value={prMat}
+                                                formatDisplay={formatCurrency}
+                                                coord={coord}
+                                                className={`text-right text-xs tabular-nums ${colMatActive ? 'font-semibold text-blue-400' : 'text-[var(--text-3)]'}`}
+                                              />
+                                              <EditableOrcamentoCell
+                                                cellKey={`${d.id}:mo`}
+                                                detId={d.id}
+                                                field="mo"
+                                                rowIdx={thisRowIdx}
+                                                colIdx={1}
+                                                value={prMo}
+                                                formatDisplay={formatCurrency}
+                                                coord={coord}
+                                                className={`text-right text-xs tabular-nums ${colMoActive ? 'font-semibold text-amber-400' : 'text-[var(--text-3)]'}`}
+                                              />
                                               <span className={`text-right tabular-nums ${colMatActive ? 'font-semibold text-blue-400' : 'text-[var(--text-2)]'}`}>{formatCurrency(subMat)}</span>
                                               <span className={`text-right tabular-nums ${colMoActive ? 'font-semibold text-amber-400' : 'text-[var(--text-2)]'}`}>{formatCurrency(subMo)}</span>
                                               <span className="text-right tabular-nums font-semibold text-[var(--text-1)]">{formatCurrency(total)}</span>
