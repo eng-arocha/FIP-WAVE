@@ -5,15 +5,29 @@ import * as XLSX from 'xlsx'
 /**
  * GET /api/contratos/[id]/planilha/template
  *
- * Planilha unificada com 3 abas:
- *   - Orcamento  → Qtde / PR. Mat / PR. M.O. (8 colunas oficiais)
- *   - Fisico     → % planejado por mês (curva físico / MDO)
- *   - FatDireto  → % planejado por mês (curva fat. direto / material)
+ * Gera um .xlsx idêntico à planilha oficial FIP-WAVE
+ * (`Cronograma Físico Financeiro WAVE  Ajustes - CONTRATO.xlsx`):
  *
- * Cada aba tem primeiro 'Cód.' e ao final 'detalhamento_id' (oculta) — mesmo
- * match para todas. O upload aceita qualquer subset das abas.
+ *   Aba única: FÍSICO FINANCEIRO
+ *   Colunas fixas A..K:
+ *     A  NÍVEL (0 geral / 1 grupo / 2 tarefa / 3 detalhamento)
+ *     B  DISCIPLINA
+ *     C  ITEM         (código: 1, 1.1, 1.1.1)
+ *     D  ATIVIDADE INSTALAÇÕES GLOBAL
+ *     E  LOCAL
+ *     F  QTDE
+ *     G  PR. UNIT MATERIAL
+ *     H  SUBTOTAL MATERIAL   (fórmula F*G)
+ *     I  PR. UNIT M.O.
+ *     J  SUBTOTAL MÃO DE OBRA (fórmula F*I)
+ *     K  VALOR GLOBAL        (fórmula H+J)
+ *   Colunas L..: meses (cabeçalho = data real, um por mês do contrato) com %
+ *                planejado expresso como decimal (0.08 = 8 %), só preenchido
+ *                nas linhas de nível 3.
+ *   Penúltima: TOTAL        (fórmula SUM dos meses, Σ% da linha)
+ *   Última (oculta): detalhamento_id — chave técnica usada no upload.
  *
- * Ordenação natural por código em todos os três níveis (1.2 < 1.10 < 2.1).
+ * Upload aceita o mesmo formato em /api/contratos/[id]/planilha/upload.
  */
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -36,14 +50,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     const [{ data: contrato }, { data: grupos }, { data: tarefas }, { data: dets }] = await Promise.all([
       admin.from('contratos').select('numero_contrato, data_inicio, data_fim').eq('id', id).single(),
-      admin.from('grupos_macro').select('id, codigo, nome').eq('contrato_id', id),
-      admin.from('tarefas').select('id, grupo_macro_id, codigo, nome'),
-      admin.from('detalhamentos').select('id, tarefa_id, codigo, descricao, unidade, local, quantidade_contratada, valor_material_unit, valor_servico_unit'),
+      admin.from('grupos_macro').select('id, codigo, nome, disciplina').eq('contrato_id', id),
+      admin.from('tarefas').select('id, grupo_macro_id, codigo, nome, local, disciplina'),
+      admin.from('detalhamentos').select('id, tarefa_id, codigo, descricao, unidade, local, disciplina, quantidade_contratada, valor_material_unit, valor_servico_unit'),
     ])
 
     const gruposOrd = [...(grupos || [])].sort((a: any, b: any) => cmpCodigo(a.codigo, b.codigo))
     const grupoIds = new Set(gruposOrd.map((g: any) => g.id))
-    const grupoPorId = Object.fromEntries(gruposOrd.map((g: any) => [g.id, g]))
     const ordemGrupo: Record<string, number> = Object.fromEntries(gruposOrd.map((g: any, i: number) => [g.id, i]))
 
     const tarefasOrd = [...(tarefas || [])]
@@ -54,7 +67,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         return cmpCodigo(a.codigo, b.codigo)
       })
     const tarefaIds = new Set(tarefasOrd.map((t: any) => t.id))
-    const tarefaPorId = Object.fromEntries(tarefasOrd.map((t: any) => [t.id, t]))
     const ordemTarefa: Record<string, number> = Object.fromEntries(tarefasOrd.map((t: any, i: number) => [t.id, i]))
 
     const detsOrd = [...(dets || [])]
@@ -66,20 +78,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       })
     const detIds = detsOrd.map((d: any) => d.id)
 
-    // Carrega pcts atuais para pré-preencher
-    const [{ data: planF }, { data: planD }] = await Promise.all([
-      detIds.length ? admin.from('planejamento_fisico_det').select('detalhamento_id, mes, pct_planejado').in('detalhamento_id', detIds) : Promise.resolve({ data: [] as any[] } as any),
-      detIds.length ? admin.from('planejamento_fat_direto_det').select('detalhamento_id, mes, pct_planejado').in('detalhamento_id', detIds) : Promise.resolve({ data: [] as any[] } as any),
-    ])
+    // Pcts atuais (físico) — usados para pré-preencher
+    const { data: planF } = detIds.length
+      ? await admin.from('planejamento_fisico_det').select('detalhamento_id, mes, pct_planejado').in('detalhamento_id', detIds)
+      : { data: [] as any[] } as any
     const pctFis: Record<string, Record<string, number>> = {}
     for (const p of (planF || []) as any[]) {
       const m = String(p.mes).slice(0, 10)
       ;(pctFis[p.detalhamento_id] ||= {})[m] = Number(p.pct_planejado || 0)
-    }
-    const pctFat: Record<string, Record<string, number>> = {}
-    for (const p of (planD || []) as any[]) {
-      const m = String(p.mes).slice(0, 10)
-      ;(pctFat[p.detalhamento_id] ||= {})[m] = Number(p.pct_planejado || 0)
     }
 
     // Meses do contrato
@@ -93,130 +99,174 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         cur.setMonth(cur.getMonth() + 1)
       }
     }
+    const mesesDate = meses.map(m => {
+      const [y, mo, d] = m.split('-').map(Number)
+      return new Date(Date.UTC(y, mo - 1, d))
+    })
 
-    const wb = XLSX.utils.book_new()
+    // Linha 1: cabeçalho
+    const FIXED = [
+      'NÍVEL', 'DISCIPLINA', 'ITEM', 'ATIVIDADE INSTALAÇÕES GLOBAL', 'LOCAL',
+      'QTDE', 'PR. UNIT MATERIAL', 'SUBTOTAL MATERIAL', 'PR. UNIT M.O.', 'SUBTOTAL MÃO DE OBRA', 'VALOR GLOBAL',
+    ]
+    const header: any[] = [...FIXED, ...mesesDate, 'TOTAL', 'detalhamento_id']
 
-    // ═══════════════════════════════════════════════════
-    // ABA 1 — ORCAMENTO (8 colunas oficiais)
-    // ═══════════════════════════════════════════════════
-    const rowsO: any[][] = []
-    rowsO.push([
-      'Cód.', 'Descrição', 'Local', 'Qtde', 'Unid',
-      'PR. Mat', 'PR. M.O.', 'Total',
-      'detalhamento_id',
-    ])
-    let excelRow = 2
+    const rows: any[][] = [header]
+
+    // ── Linha GERAL (NÍVEL 0) ─────────────────────────────────────────
+    const geralRow: any[] = [0, 'GERAL', '', '', '', '', '', '', '', '', '']
+    // Placeholder — fórmulas de coluna preenchidas depois (quando soubermos last row)
+    rows.push(geralRow)
+
+    // ── Emite linhas (grupo / tarefa / det) ───────────────────────────
+    // 11 colunas fixas; meses começam em col index 11 (L)
+    const mesStartCol = FIXED.length // 11
+
+    // Função utilitária para coluna Excel
+    const colLetter = (i: number) => XLSX.utils.encode_col(i)
+    const kmCol = colLetter(mesStartCol + meses.length) // coluna TOTAL
+    const idCol = colLetter(mesStartCol + meses.length + 1) // coluna detalhamento_id
+
+    // Guardamos ranges de linhas por grupo/tarefa para as fórmulas de rollup
+    const grupoRange: Record<string, { first: number; last: number }> = {}
+    const tarefaRange: Record<string, { first: number; last: number }> = {}
+
+    let excelRow = rows.length + 1 // próxima linha física no Excel (1-indexed)
+    // Nota: `rows` já tem 2 entries (header + geral). excelRow = 3 aqui.
+
     for (const g of gruposOrd as any[]) {
-      rowsO.push([g.codigo, g.nome, '', '', '', '', '', '', ''])
+      const gFirst = excelRow
+      const gRow: any[] = [
+        1, g.disciplina ?? '', g.codigo, g.nome, '',
+        '', '', '', '', '', '',
+        ...meses.map(() => ''), '', '',
+      ]
+      rows.push(gRow)
+      const gExcelRow = excelRow
       excelRow++
+
       const tarDoGrupo = tarefasOrd.filter((t: any) => t.grupo_macro_id === g.id)
       for (const t of tarDoGrupo as any[]) {
-        rowsO.push([t.codigo, t.nome, '', '', '', '', '', '', ''])
+        const tFirst = excelRow
+        const tRow: any[] = [
+          2, t.disciplina ?? g.disciplina ?? '', t.codigo, `. ${t.nome}`, t.local ?? '',
+          '', '', '', '', '', '',
+          ...meses.map(() => ''), '', '',
+        ]
+        rows.push(tRow)
+        const tExcelRow = excelRow
         excelRow++
+
         const detsTar = detsOrd.filter((d: any) => d.tarefa_id === t.id)
         for (const d of detsTar as any[]) {
-          rowsO.push([
-            d.codigo, d.descricao, d.local ?? '',
-            Number(d.quantidade_contratada ?? 0),
-            d.unidade ?? 'UN',
-            Number(d.valor_material_unit ?? 0),
-            Number(d.valor_servico_unit ?? 0),
-            { f: `D${excelRow}*(F${excelRow}+G${excelRow})` },
+          const qtd = Number(d.quantidade_contratada ?? 0)
+          const mat = Number(d.valor_material_unit ?? 0)
+          const mo  = Number(d.valor_servico_unit ?? 0)
+          const detRow: any[] = [
+            3,
+            d.disciplina ?? t.disciplina ?? g.disciplina ?? '',
+            d.codigo,
+            d.descricao,
+            d.local ?? t.local ?? '',
+            qtd,
+            mat,
+            { f: `F${excelRow}*G${excelRow}` },
+            mo,
+            { f: `F${excelRow}*I${excelRow}` },
+            { f: `H${excelRow}+J${excelRow}` },
+            ...meses.map(m => {
+              const v = pctFis[d.id]?.[m]
+              if (v === undefined || v === null) return ''
+              // armazenado como %, exibir como decimal (÷100) para bater com formato oficial
+              return Number(v) / 100
+            }),
+            { f: `SUM(${colLetter(mesStartCol)}${excelRow}:${colLetter(mesStartCol + meses.length - 1)}${excelRow})` },
             d.id,
-          ])
+          ]
+          rows.push(detRow)
           excelRow++
         }
+
+        const tLast = excelRow - 1
+        tarefaRange[t.id] = { first: tFirst, last: tLast }
+
+        // Após emitir dets, injeta fórmulas de rollup na linha-tarefa
+        const tarefaExcelIdx = tExcelRow - 1 // index no array rows
+        const tarefaRowArr = rows[tarefaExcelIdx]
+        // SUBTOTAL MATERIAL / SUBTOTAL MO / VALOR GLOBAL por SUM (todas linhas filhas nível 3)
+        if (tLast >= tFirst + 1) {
+          tarefaRowArr[5] = { f: `SUMIFS(F${tFirst + 1}:F${tLast},A${tFirst + 1}:A${tLast},3)` } // QTDE: apenas informativo (não é realmente soma)
+          tarefaRowArr[5] = ''
+          tarefaRowArr[7] = { f: `SUMIFS(H${tFirst + 1}:H${tLast},A${tFirst + 1}:A${tLast},3)` }
+          tarefaRowArr[9] = { f: `SUMIFS(J${tFirst + 1}:J${tLast},A${tFirst + 1}:A${tLast},3)` }
+          tarefaRowArr[10] = { f: `SUMIFS(K${tFirst + 1}:K${tLast},A${tFirst + 1}:A${tLast},3)` }
+          // Rollup mês-a-mês: ponderado pelo peso de cada det (fisíco = PR.MO × QTDE).
+          // Para simplicidade deixamos em branco nas linhas-mãe (app calcula).
+        }
+      }
+
+      const gLast = excelRow - 1
+      grupoRange[g.id] = { first: gFirst, last: gLast }
+      const grupoArrIdx = gExcelRow - 1
+      const grArr = rows[grupoArrIdx]
+      if (gLast >= gFirst + 1) {
+        grArr[7]  = { f: `SUMIFS(H${gFirst + 1}:H${gLast},A${gFirst + 1}:A${gLast},3)` }
+        grArr[9]  = { f: `SUMIFS(J${gFirst + 1}:J${gLast},A${gFirst + 1}:A${gLast},3)` }
+        grArr[10] = { f: `SUMIFS(K${gFirst + 1}:K${gLast},A${gFirst + 1}:A${gLast},3)` }
       }
     }
-    const lastO = rowsO.length
-    rowsO.push(['', 'TOTAL GERAL', '', '', '', '', '', { f: `SUM(H2:H${lastO})` }, ''])
-    const wsO = XLSX.utils.aoa_to_sheet(rowsO)
-    wsO['!cols'] = [
-      { wch: 10 }, { wch: 44 }, { wch: 18 }, { wch: 10 }, { wch: 6 },
-      { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 38, hidden: true },
-    ]
-    wsO['!freeze'] = { xSplit: 2, ySplit: 1 } as any
-    XLSX.utils.book_append_sheet(wb, wsO, 'Orcamento')
 
-    // ═══════════════════════════════════════════════════
-    // ABA 2 — FISICO (curva físico, % por mês)
-    // ═══════════════════════════════════════════════════
-    const buildMatriz = (pctMap: Record<string, Record<string, number>>) => {
-      const head = ['Cód.', 'Descrição', 'detalhamento_id', ...meses]
-      const rows: any[][] = [head]
-      for (const d of detsOrd as any[]) {
-        rows.push([
-          d.codigo, d.descricao, d.id,
-          ...meses.map(m => pctMap[d.id]?.[m] ?? ''),
-        ])
+    // ── Atualiza linha GERAL (row 2 do Excel, index 1 em `rows`) ──────
+    const lastDataRow = excelRow - 1 // última linha com conteúdo
+    const geralArr = rows[1]
+    geralArr[7]  = { f: `SUMIFS(H3:H${lastDataRow},A3:A${lastDataRow},3)` }
+    geralArr[9]  = { f: `SUMIFS(J3:J${lastDataRow},A3:A${lastDataRow},3)` }
+    geralArr[10] = { f: `SUMIFS(K3:K${lastDataRow},A3:A${lastDataRow},3)` }
+    // Rollup ponderado dos meses na linha GERAL (só ilustrativo;
+    // fórmula de exemplo: SUMPRODUCT(col_mes * peso) / SUM(peso))
+    for (let mi = 0; mi < meses.length; mi++) {
+      const col = colLetter(mesStartCol + mi)
+      geralArr[mesStartCol + mi] = {
+        f: `SUMPRODUCT((A3:A${lastDataRow}=3)*(${col}3:${col}${lastDataRow})*(K3:K${lastDataRow}))/SUMIFS(K3:K${lastDataRow},A3:A${lastDataRow},3)`,
       }
-      const last = rows.length
-      const totalRow: any[] = ['', 'TOTAL Σ%', '']
-      for (let i = 0; i < meses.length; i++) {
-        const col = XLSX.utils.encode_col(3 + i)
-        totalRow.push({ f: `SUM(${col}2:${col}${last})` })
-      }
-      rows.push(totalRow)
-      return rows
+    }
+    // TOTAL da linha GERAL
+    geralArr[mesStartCol + meses.length] = {
+      f: `SUM(${colLetter(mesStartCol)}2:${colLetter(mesStartCol + meses.length - 1)}2)`,
     }
 
-    const rowsF = buildMatriz(pctFis)
-    const wsF = XLSX.utils.aoa_to_sheet(rowsF)
-    wsF['!cols'] = [
-      { wch: 10 }, { wch: 42 }, { wch: 38, hidden: true },
+    // ── Monta a planilha ──────────────────────────────────────────────
+    const ws = XLSX.utils.aoa_to_sheet(rows, { cellDates: true })
+    ws['!cols'] = [
+      { wch: 6 },   // NÍVEL
+      { wch: 14 },  // DISCIPLINA
+      { wch: 10 },  // ITEM
+      { wch: 48 },  // ATIVIDADE
+      { wch: 14 },  // LOCAL
+      { wch: 8 },   // QTDE
+      { wch: 14 },  // PR.UNIT MATERIAL
+      { wch: 14 },  // SUBTOTAL MATERIAL
+      { wch: 14 },  // PR.UNIT M.O.
+      { wch: 14 },  // SUBTOTAL M.O.
+      { wch: 14 },  // VALOR GLOBAL
       ...meses.map(() => ({ wch: 10 })),
+      { wch: 10 },  // TOTAL
+      { wch: 38, hidden: true }, // detalhamento_id
     ]
-    wsF['!freeze'] = { xSplit: 2, ySplit: 1 } as any
-    XLSX.utils.book_append_sheet(wb, wsF, 'Fisico')
+    ws['!freeze'] = { xSplit: 5, ySplit: 1 } as any
 
-    // ═══════════════════════════════════════════════════
-    // ABA 3 — FAT DIRETO
-    // ═══════════════════════════════════════════════════
-    const rowsD = buildMatriz(pctFat)
-    const wsD = XLSX.utils.aoa_to_sheet(rowsD)
-    wsD['!cols'] = [
-      { wch: 10 }, { wch: 42 }, { wch: 38, hidden: true },
-      ...meses.map(() => ({ wch: 10 })),
-    ]
-    wsD['!freeze'] = { xSplit: 2, ySplit: 1 } as any
-    XLSX.utils.book_append_sheet(wb, wsD, 'FatDireto')
+    // Formata cabeçalho de meses como data curta
+    for (let mi = 0; mi < meses.length; mi++) {
+      const addr = XLSX.utils.encode_cell({ r: 0, c: mesStartCol + mi })
+      if (ws[addr]) ws[addr].z = 'mmm/yy'
+    }
 
-    // ═══════════════════════════════════════════════════
-    // ABA 4 — INSTRUÇÕES
-    // ═══════════════════════════════════════════════════
-    const inst = [
-      ['PLANILHA UNIFICADA — Orçamento + Cronograma Físico + Fat. Direto'],
-      [],
-      ['Esta planilha tem 3 abas que são processadas JUNTAS pelo upload:'],
-      [],
-      ['  Orcamento  → Qtde, PR. Mat e PR. M.O. (reajuste de preços)'],
-      ['  Fisico     → % planejado por mês (curva MDO)'],
-      ['  FatDireto  → % planejado por mês (curva material/fat. direto)'],
-      [],
-      ['REGRAS GERAIS'],
-      ['  1. Primeira linha de cada aba = cabeçalho. NÃO renomeie.'],
-      ['  2. A coluna detalhamento_id identifica cada linha — fica OCULTA; não apague.'],
-      ['  3. Linhas sem detalhamento_id (grupos/tarefas/total) são IGNORADAS — pode mexer à vontade.'],
-      ['  4. Pode subir a planilha em qualquer uma das páginas (Estrutura ou Cronograma) —'],
-      ['     sempre atualiza orçamento + físico + fat direto juntos.'],
-      [],
-      ['EDITAR SÓ UMA ABA?'],
-      ['  Basta apagar o conteúdo das outras — o upload só atualiza o que tiver valor.'],
-      [],
-      ['REAJUSTE +10%'],
-      ['  Na aba Orcamento: digite 1,10 em qualquer célula, copie, selecione a coluna'],
-      ['  PR. Mat, menu "Colar especial → Multiplicar". Repita para PR. M.O.'],
-      [],
-      ['Contrato: ' + (contrato?.numero_contrato ?? id)],
-      ['Gerado em: ' + new Date().toISOString()],
-    ]
-    const wsInst = XLSX.utils.aoa_to_sheet(inst)
-    wsInst['!cols'] = [{ wch: 110 }]
-    XLSX.utils.book_append_sheet(wb, wsInst, 'Instruções')
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'FÍSICO FINANCEIRO')
 
     const buf: Buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
     const body = new Uint8Array(buf)
-    const filename = `planilha-${contrato?.numero_contrato ?? id}.xlsx`
+    const filename = `Cronograma Fisico Financeiro - ${contrato?.numero_contrato ?? id}.xlsx`
     return new Response(body, {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

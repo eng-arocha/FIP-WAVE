@@ -282,9 +282,9 @@ function CronogramaTreeMatriz({
       if (!r.ok) { setSavingMsg(`Erro no upload: ${j.error || r.status}`); return }
       const o = j.orcamento || {}, fi = j.fisico || {}, fd2 = j.fatdireto || {}
       const parts: string[] = []
-      if (o.presente)   parts.push(`Orçamento: ${o.atualizados}${o.falhas ? ` (${o.falhas} falhas)` : ''}`)
-      if (fi.presente)  parts.push(`Físico: ${fi.celulas} célula(s)`)
-      if (fd2.presente) parts.push(`FatDir: ${fd2.celulas} célula(s)`)
+      if (o.atualizados) parts.push(`Orçamento: ${o.atualizados}${o.falhas ? ` (${o.falhas} falhas)` : ''}`)
+      if (fi.celulas)    parts.push(`Físico: ${fi.celulas} célula(s)`)
+      if (fd2.celulas)   parts.push(`FatDir: ${fd2.celulas} célula(s)`)
       setSavingMsg(parts.length ? `Importado · ${parts.join(' · ')}` : 'Upload ok (nada aplicado)')
       await refetchMatriz()
       setTimeout(() => setSavingMsg(''), 5000)

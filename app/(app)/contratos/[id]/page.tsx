@@ -1092,9 +1092,9 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                         if (!res.ok) throw new Error(json?.error || 'erro')
                         const o = json.orcamento || {}, fi = json.fisico || {}, fd2 = json.fatdireto || {}
                         const parts: string[] = []
-                        if (o.presente) parts.push(`Orçamento: ${o.atualizados}${o.falhas ? ` (${o.falhas} falhas)` : ''}`)
-                        if (fi.presente) parts.push(`Físico: ${fi.celulas} célula(s)`)
-                        if (fd2.presente) parts.push(`FatDir: ${fd2.celulas} célula(s)`)
+                        if (o.atualizados) parts.push(`Orçamento: ${o.atualizados}${o.falhas ? ` (${o.falhas} falhas)` : ''}`)
+                        if (fi.celulas)    parts.push(`Físico: ${fi.celulas} célula(s)`)
+                        if (fd2.celulas)   parts.push(`FatDir: ${fd2.celulas} célula(s)`)
                         setLastSavedMsg(parts.length ? `Upload ✓ — ${parts.join(' · ')}` : 'Upload ok (nada aplicado)')
                         const gr = await fetch(`/api/contratos/${id}/grupos`, { cache: 'no-store' }).then(r => r.json())
                         setGrupos(gr)
