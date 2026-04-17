@@ -6,20 +6,20 @@ import * as XLSX from 'xlsx'
 
 /**
  * POST /api/contratos/[id]/planilha/upload
- * multipart/form-data: file=<xlsx no formato oficial FIP-WAVE>
  *
- * Aceita o formato nativo "Cronograma Físico Financeiro":
- *   Aba FÍSICO FINANCEIRO (ou primeira aba cujo cabeçalho começa com NÍVEL)
- *   Cols A..K: NÍVEL / DISCIPLINA / ITEM / ATIVIDADE / LOCAL / QTDE /
- *             PR. UNIT MATERIAL / SUBTOTAL MATERIAL / PR. UNIT M.O. /
- *             SUBTOTAL MÃO DE OBRA / VALOR GLOBAL
- *   Cols L..: meses (cabeçalho = data do Excel) com % como decimal (0.08 = 8 %)
- *   Cols extras opcionais: TOTAL, detalhamento_id
+ * Auto-detecta o tipo do arquivo e aplica:
  *
- * Só as linhas NÍVEL = 3 (detalhamentos) são aplicadas. Match por detalhamento_id
- * (se houver) ou por ITEM (código dentro do contrato). A curva de percentuais é
- * gravada em AMBAS as tabelas de planejamento (físico + fat direto) — é a
- * convenção do "Físico Financeiro" único.
+ *   ┌───────────────────────┬───────────────────────┬──────────────────────┐
+ *   │  Arquivo              │  Orçamento atualizado │  Cronograma aplicado │
+ *   ├───────────────────────┼───────────────────────┼──────────────────────┤
+ *   │  FÍSICO FINANCEIRO    │  QTDE + PR.Mat + PR.MO│  planejamento_fisico │
+ *   │  (tem col PR.UNIT M.O)│                       │                      │
+ *   ├───────────────────────┼───────────────────────┼──────────────────────┤
+ *   │  FATURAMENTO DIRETO   │  QTDE + PR.Mat         │  planejamento_fat_   │
+ *   │  (sem col PR.UNIT M.O)│  (não mexe em PR.MO)   │  direto              │
+ *   └───────────────────────┴───────────────────────┴──────────────────────┘
+ *
+ * Só NÍVEL=3 vira update. Match por ITEM (código) ou detalhamento_id.
  *
  * Segurança: permissão 'cronograma.editar'.
  */
@@ -39,14 +39,12 @@ function toNumberBR(v: any): number | undefined {
   return Number.isFinite(n) ? n : undefined
 }
 
-// Cabeçalho de mês pode vir como Date, string 'YYYY-MM...', ou número serial Excel.
 function headerToMes(cell: any): string | null {
   if (cell instanceof Date) {
     const y = cell.getUTCFullYear(), m = cell.getUTCMonth() + 1
     return `${y}-${String(m).padStart(2, '0')}-01`
   }
   if (typeof cell === 'number') {
-    // serial Excel → YYYY-MM-01 (só valida range razoável)
     if (cell < 20000 || cell > 80000) return null
     const ms = (cell - 25569) * 86400 * 1000
     const d = new Date(ms)
@@ -74,28 +72,25 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const ab = await file.arrayBuffer()
     const wb = XLSX.read(new Uint8Array(ab), { type: 'array', cellDates: true })
 
-    // Detecta aba alvo: preferir FÍSICO FINANCEIRO; senão primeira cujo header[0] = 'NÍVEL'
+    // Escolhe a aba: prioriza nomes conhecidos, senão primeira cujo header começa com NÍVEL
     let sheetName = wb.SheetNames.find(n => /f[ií]sico\s*financeiro/i.test(n))
+      || wb.SheetNames.find(n => /faturamento\s*direto/i.test(n))
     if (!sheetName) {
       sheetName = wb.SheetNames.find(sn => {
-        const ws = wb.Sheets[sn]
-        const a = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null })
-        const head = (a[0] || []) as any[]
-        return String(head[0] ?? '').trim().toUpperCase() === 'NÍVEL'
+        const a = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: null })
+        const h = (a[0] || []) as any[]
+        return String(h[0] ?? '').trim().toUpperCase() === 'NÍVEL'
       })
     }
-    if (!sheetName) return NextResponse.json({ error: 'aba FÍSICO FINANCEIRO não encontrada (ou cabeçalho não inicia em NÍVEL)' }, { status: 400 })
+    if (!sheetName) return NextResponse.json({ error: 'planilha não reconhecida — aba deve ser FÍSICO FINANCEIRO ou FATURAMENTO DIRETO (ou começar com coluna NÍVEL)' }, { status: 400 })
 
     const ws = wb.Sheets[sheetName]
     const aoa: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false, defval: null })
     if (aoa.length < 2) return NextResponse.json({ error: 'planilha vazia' }, { status: 400 })
 
     const header = aoa[0] as any[]
-
-    // Descobre índices das colunas-chave por nome (tolerante)
     const headUp = header.map(h => String(h ?? '').replace(/\r|\n/g, ' ').trim().toUpperCase())
-    const findCol = (...names: string[]) =>
-      headUp.findIndex(h => names.some(n => h === n.toUpperCase()))
+    const findCol = (...names: string[]) => headUp.findIndex(h => names.some(n => h === n.toUpperCase()))
 
     const iNivel = findCol('NÍVEL', 'NIVEL')
     const iItem  = findCol('ITEM')
@@ -107,18 +102,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (iNivel < 0) return NextResponse.json({ error: 'coluna NÍVEL ausente' }, { status: 400 })
     if (iItem < 0 && iId < 0) return NextResponse.json({ error: 'coluna ITEM (código) ou detalhamento_id necessária' }, { status: 400 })
 
-    // Colunas de mês: a partir da coluna 11 (L), qualquer célula que pareça data/serial
-    // Para (L),serão avaliadas até achar "TOTAL" ou detalhamento_id
+    // AUTO-DETECT: físico tem PR.UNIT M.O.; fat direto NÃO tem
+    const tipo: 'fisico' | 'fatdireto' = (iMo >= 0 || /f[ií]sico/i.test(sheetName))
+      ? 'fisico'
+      : 'fatdireto'
+
+    // Colunas de mês
     const mesColIdxs: { col: number; mes: string }[] = []
     for (let c = 0; c < header.length; c++) {
-      const cell = header[c]
-      const s = String(cell ?? '').trim().toUpperCase()
+      const s = String(header[c] ?? '').trim().toUpperCase()
       if (s === 'TOTAL' || s === 'DETALHAMENTO_ID' || s === '') continue
-      const mes = headerToMes(cell)
+      const mes = headerToMes(header[c])
       if (mes) mesColIdxs.push({ col: c, mes })
     }
 
-    // Valida detalhamentos do contrato
     const admin = createAdminClient()
     const { data: allDets, error: loadErr } = await admin
       .from('detalhamentos')
@@ -131,7 +128,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     const byId     = new Map((allDets || []).map((d: any) => [d.id, d]))
     const byCodigo = new Map((allDets || []).map((d: any) => [String(d.codigo), d]))
-    const detsValidos = new Set(byId.keys())
 
     const pctUpdates: { detalhamento_id: string; mes: string; pct_planejado: number }[] = []
     let orcAtualizados = 0, orcFalhas = 0
@@ -140,10 +136,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     for (let r = 1; r < aoa.length; r++) {
       const row = aoa[r] || []
       const nivel = Number(row[iNivel])
-      if (nivel !== 3) continue // só detalhamentos
+      if (nivel !== 3) continue
       linhasProcessadas++
 
-      // Resolve detalhamento
       let det: any = null
       if (iId >= 0) {
         const raw = String(row[iId] ?? '').trim()
@@ -155,7 +150,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       }
       if (!det) { linhasIgnoradas++; continue }
 
-      // ── Orçamento (QTDE / PR.Mat / PR.MO) ─────────────────────────────
+      // Orçamento — só atualiza campos cuja coluna existe no arquivo
       const patch: any = {}
       if (iQtd >= 0) { const v = toNumberBR(row[iQtd]); if (v !== undefined) patch.quantidade_contratada = v }
       if (iMat >= 0) { const v = toNumberBR(row[iMat]); if (v !== undefined) patch.valor_material_unit = v }
@@ -171,44 +166,36 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         else orcAtualizados++
       }
 
-      // ── Percentuais dos meses ─────────────────────────────────────────
+      // Percentuais
       for (const { col, mes } of mesColIdxs) {
         const raw = row[col]
         if (raw === null || raw === undefined || raw === '') continue
         const v = toNumberBR(raw)
         if (v === undefined) continue
-        // Formato oficial = decimal (0.08 = 8 %). Se algum operador digitou "8" achando
-        // que era inteiro, ainda dá pra aceitar: assume-se decimal quando |v| ≤ 2 e %
-        // quando > 2. (1.0 = 100 %, 12.5 = 12.5 %.)
-        let pct: number
-        if (Math.abs(v) <= 2) pct = v * 100
-        else pct = v
+        // Aceita decimal (0.08) ou inteiro (8) — detecta pelo valor
+        const pct = Math.abs(v) <= 2 ? v * 100 : v
         if (pct < 0 || pct > 1000) continue
         pctUpdates.push({ detalhamento_id: det.id, mes, pct_planejado: pct })
       }
     }
 
-    // Aplica curva em Físico E em Fat Direto (convenção do "Físico Financeiro" único)
-    let celulasFisico = 0, celulasFat = 0
+    // Aplica curva APENAS na tabela correspondente ao tipo detectado
+    const tableTipo = tipo === 'fisico' ? 'planejamento_fisico_det' : 'planejamento_fat_direto_det'
+    let celulasAplicadas = 0
     if (pctUpdates.length) {
       for (let i = 0; i < pctUpdates.length; i += 1000) {
         const slice = pctUpdates.slice(i, i + 1000)
-        const [f, d] = await Promise.all([
-          admin.from('planejamento_fisico_det').upsert(slice, { onConflict: 'detalhamento_id,mes' }),
-          admin.from('planejamento_fat_direto_det').upsert(slice, { onConflict: 'detalhamento_id,mes' }),
-        ])
-        if (f.error) throw f.error
-        if (d.error) throw d.error
-        celulasFisico += slice.length
-        celulasFat += slice.length
+        const { error } = await admin.from(tableTipo).upsert(slice, { onConflict: 'detalhamento_id,mes' })
+        if (error) throw error
+        celulasAplicadas += slice.length
       }
     }
 
     return NextResponse.json({
+      tipo_detectado: tipo,
       aba: sheetName,
       orcamento: { atualizados: orcAtualizados, falhas: orcFalhas },
-      fisico:    { celulas: celulasFisico, meses: mesColIdxs.length },
-      fatdireto: { celulas: celulasFat,    meses: mesColIdxs.length },
+      cronograma: { tipo, celulas: celulasAplicadas, meses: mesColIdxs.length },
       linhas_nivel3: linhasProcessadas,
       linhas_ignoradas: linhasIgnoradas,
     })

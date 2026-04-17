@@ -5,26 +5,31 @@ import { apiError } from '@/lib/api/error-response'
 import XLSX from 'xlsx-js-style'
 
 /**
- * GET /api/contratos/[id]/planilha/template
+ * GET /api/contratos/[id]/planilha/template?tipo=fisico|fatdireto
  *
- * Gera xlsx idêntico à planilha oficial FIP-WAVE
- * (`docs/Cronograma Físico Financeiro WAVE  Ajustes - CONTRATO.xlsx`):
+ * Gera xlsx idêntico à planilha oficial FIP-WAVE. Dois tipos:
  *
- *   Aba 'FÍSICO FINANCEIRO' com 11 colunas fixas + N meses + TOTAL +
- *   detalhamento_id (oculta).
+ *   tipo=fisico (default)   → "FÍSICO FINANCEIRO"
+ *     11 colunas fixas + meses + TOTAL + detalhamento_id
+ *     Percentuais vêm de planejamento_fisico_det
+ *
+ *   tipo=fatdireto          → "FATURAMENTO DIRETO"
+ *     8 colunas fixas (sem PR.UNIT M.O., SUBTOTAL M.O., VALOR GLOBAL)
+ *     + meses + TOTAL + detalhamento_id
+ *     Percentuais vêm de planejamento_fat_direto_det
  *
  * Formatação preservada:
  *   - Cabeçalho em azul #0070C0, texto branco, altura 28.8 pt
  *   - Linha GERAL (NÍVEL 0) em azul #0070C0, texto branco
  *   - Linhas de grupo (NÍVEL 1) cinza escuro #A6A6A6
  *   - Linhas de tarefa (NÍVEL 2) cinza claro #D9D9D9
- *   - Moeda BR em PR.Mat, SUBTOTAL MATERIAL, PR.MO, SUBTOTAL MO, VALOR GLOBAL
- *   - Meses como % (0%) · cabeçalho formato mmm-yy
+ *   - Moeda BR nas colunas de valor · Meses como % (0%) · mmm-yy no header
  *   - Outline levels (agrupamento Excel): grupo level 1, tarefa level 2
  *   - Painel congelado nas 5 primeiras colunas
  *   - Subtotais e rollups por fórmula SUMIFS(NÍVEL=3)
  *
- * O upload (planilha/upload) aceita este mesmo arquivo de volta.
+ * O upload (planilha/upload) aceita ambos os arquivos de volta e
+ * auto-detecta o tipo pela presença da coluna PR. UNIT M.O.
  */
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -86,9 +91,12 @@ function withFmt(base: any, numFmt?: string, extra?: any) {
   return { ...base, ...(numFmt ? { numFmt } : {}), ...(extra || {}) }
 }
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
+    const url = new URL(req.url)
+    const tipoParam = (url.searchParams.get('tipo') || 'fisico').toLowerCase()
+    const tipo: 'fisico' | 'fatdireto' = tipoParam === 'fatdireto' ? 'fatdireto' : 'fisico'
     const admin = createAdminClient()
 
     const [{ data: contrato }, { data: grupos }, { data: tarefas }, { data: dets }] = await Promise.all([
@@ -121,14 +129,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       })
     const detIds = detsOrd.map((d: any) => d.id)
 
-    // Pcts atuais (usamos apenas físico; fat direto compartilha no upload)
+    // Pcts da tabela correspondente ao tipo
+    const pctTable = tipo === 'fisico' ? 'planejamento_fisico_det' : 'planejamento_fat_direto_det'
     const { data: planF } = detIds.length
-      ? await admin.from('planejamento_fisico_det').select('detalhamento_id, mes, pct_planejado').in('detalhamento_id', detIds)
+      ? await admin.from(pctTable).select('detalhamento_id, mes, pct_planejado').in('detalhamento_id', detIds)
       : { data: [] as any[] } as any
-    const pctFis: Record<string, Record<string, number>> = {}
+    const pctByDet: Record<string, Record<string, number>> = {}
     for (const p of (planF || []) as any[]) {
       const m = String(p.mes).slice(0, 10)
-      ;(pctFis[p.detalhamento_id] ||= {})[m] = Number(p.pct_planejado || 0)
+      ;(pctByDet[p.detalhamento_id] ||= {})[m] = Number(p.pct_planejado || 0)
     }
 
     // Meses do contrato
@@ -147,19 +156,30 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       return new Date(Date.UTC(y, mo - 1, d))
     })
 
-    const FIXED = [
-      'NÍVEL', 'DISCIPLINA', 'ITEM', 'ATIVIDADE INSTALAÇÕES GLOBAL', 'LOCAL',
-      'QTDE', 'PR. UNIT MATERIAL', 'SUBTOTAL MATERIAL', 'PR. UNIT M.O.', 'SUBTOTAL\nMÃO DE OBRA', 'VALOR\nGLOBAL',
-    ]
-    const mesStartCol = FIXED.length // 11
+    // Layout difere por tipo
+    const FIXED = tipo === 'fisico'
+      ? [
+          'NÍVEL', 'DISCIPLINA', 'ITEM', 'ATIVIDADE INSTALAÇÕES GLOBAL', 'LOCAL',
+          'QTDE', 'PR. UNIT MATERIAL', 'SUBTOTAL MATERIAL', 'PR. UNIT M.O.', 'SUBTOTAL\nMÃO DE OBRA', 'VALOR\nGLOBAL',
+        ]
+      : [
+          'NÍVEL', 'DISCIPLINA', 'ITEM', 'ATIVIDADE INSTALAÇÕES GLOBAL', 'LOCAL',
+          'QTDE', 'PR. UNIT MATERIAL', 'SUBTOTAL MATERIAL',
+        ]
+    const mesStartCol = FIXED.length         // 11 (físico) ou 8 (fatdireto)
     const totalColIdx = mesStartCol + meses.length
     const idColIdx    = mesStartCol + meses.length + 1
 
+    // Índices de colunas "moeda" e subtotal para aplicar fórmulas/formatos
+    const CURR_COLS = tipo === 'fisico' ? [6, 7, 8, 9, 10] : [6, 7]
+    const COL_SUBTOTAL_MAT = 7
+    const COL_SUBTOTAL_MO  = 9   // só físico
+    const COL_VALOR_GLOBAL = 10  // só físico
+
     // Construímos como AOA (valores) e guardamos os estilos em paralelo por índice de célula
     const rows: any[][] = []
-    const styles: Record<string, any> = {} // cellAddr → style obj
+    const styles: Record<string, any> = {}
 
-    // Helper p/ endereço
     const A = (r: number, c: number) => XLSX.utils.encode_cell({ r, c })
     const colL = (c: number) => XLSX.utils.encode_col(c)
 
@@ -174,28 +194,30 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       styles[A(0, c)] = withFmt(styleHeader, isMes ? FMT_MES : undefined)
     }
 
-    // Placeholder linha GERAL (row 1) — preenchemos fórmulas depois
-    const geralRow: any[] = [0, 'GERAL', '', '', '', '', '', '', '', '', '', ...meses.map(() => ''), '', '']
+    // Placeholder linha GERAL (row 1)
+    const geralRow: any[] = [
+      0, 'GERAL', '', '', '',
+      ...Array(FIXED.length - 5).fill(''),
+      ...meses.map(() => ''), '', '',
+    ]
     rows.push(geralRow)
-    let excelRow = 3 // próxima linha física no Excel
+    let excelRow = 3
 
-    // Para outline (agrupamento por nível Excel)
     const outlineLevels: Record<number, number> = {}
 
     for (const g of gruposOrd as any[]) {
       const gFirst = excelRow
       const gRowArr: any[] = [
         1, g.disciplina ?? '', g.codigo, g.nome, '',
-        '', '', '', '', '', '',
+        ...Array(FIXED.length - 5).fill(''),
         ...meses.map(() => ''), '', '',
       ]
       rows.push(gRowArr)
       const gExcelRow = excelRow
-      outlineLevels[gExcelRow - 1] = 1 // row index 0-based no Excel 'rows' array
-      // Aplica estilo da linha grupo
+      outlineLevels[gExcelRow - 1] = 1
       for (let c = 0; c < gRowArr.length; c++) {
         const isMes = c >= mesStartCol && c < totalColIdx
-        const isCurr = c === 6 || c === 7 || c === 8 || c === 9 || c === 10
+        const isCurr = CURR_COLS.includes(c)
         styles[A(gExcelRow - 1, c)] = withFmt(
           styleGrupo,
           isMes || c === totalColIdx ? FMT_PCT : (isCurr ? FMT_BRL : undefined),
@@ -209,7 +231,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         const tFirst = excelRow
         const tRowArr: any[] = [
           2, t.disciplina ?? g.disciplina ?? '', t.codigo, `. ${t.nome}`, t.local ?? '',
-          '', '', '', '', '', '',
+          ...Array(FIXED.length - 5).fill(''),
           ...meses.map(() => ''), '', '',
         ]
         rows.push(tRowArr)
@@ -217,7 +239,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         outlineLevels[tExcelRow - 1] = 2
         for (let c = 0; c < tRowArr.length; c++) {
           const isMes = c >= mesStartCol && c < totalColIdx
-          const isCurr = c === 6 || c === 7 || c === 8 || c === 9 || c === 10
+          const isCurr = CURR_COLS.includes(c)
           styles[A(tExcelRow - 1, c)] = withFmt(
             styleTarefa,
             isMes || c === totalColIdx ? FMT_PCT : (isCurr ? FMT_BRL : undefined),
@@ -230,31 +252,49 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           const qtd = Number(d.quantidade_contratada ?? 0)
           const mat = Number(d.valor_material_unit ?? 0)
           const mo  = Number(d.valor_servico_unit ?? 0)
-          const detRowArr: any[] = [
-            3,
-            d.disciplina ?? t.disciplina ?? g.disciplina ?? '',
-            d.codigo,
-            d.descricao,
-            d.local ?? t.local ?? '',
-            qtd,
-            mat,
-            { f: `F${excelRow}*G${excelRow}` },
-            mo,
-            { f: `F${excelRow}*I${excelRow}` },
-            { f: `H${excelRow}+J${excelRow}` },
-            ...meses.map(m => {
-              const v = pctFis[d.id]?.[m]
-              if (v === undefined || v === null) return ''
-              return Number(v) / 100
-            }),
-            { f: `SUM(${colL(mesStartCol)}${excelRow}:${colL(mesStartCol + meses.length - 1)}${excelRow})` },
-            d.id,
-          ]
+          const detRowArr: any[] = tipo === 'fisico'
+            ? [
+                3,
+                d.disciplina ?? t.disciplina ?? g.disciplina ?? '',
+                d.codigo,
+                d.descricao,
+                d.local ?? t.local ?? '',
+                qtd,
+                mat,
+                { f: `F${excelRow}*G${excelRow}` },
+                mo,
+                { f: `F${excelRow}*I${excelRow}` },
+                { f: `H${excelRow}+J${excelRow}` },
+                ...meses.map(m => {
+                  const v = pctByDet[d.id]?.[m]
+                  if (v === undefined || v === null) return ''
+                  return Number(v) / 100
+                }),
+                { f: `SUM(${colL(mesStartCol)}${excelRow}:${colL(mesStartCol + meses.length - 1)}${excelRow})` },
+                d.id,
+              ]
+            : [
+                3,
+                d.disciplina ?? t.disciplina ?? g.disciplina ?? '',
+                d.codigo,
+                d.descricao,
+                d.local ?? t.local ?? '',
+                qtd,
+                mat,
+                { f: `F${excelRow}*G${excelRow}` },
+                ...meses.map(m => {
+                  const v = pctByDet[d.id]?.[m]
+                  if (v === undefined || v === null) return ''
+                  return Number(v) / 100
+                }),
+                { f: `SUM(${colL(mesStartCol)}${excelRow}:${colL(mesStartCol + meses.length - 1)}${excelRow})` },
+                d.id,
+              ]
           rows.push(detRowArr)
           const detExcelRow = excelRow
           for (let c = 0; c < detRowArr.length; c++) {
             const isMes = c >= mesStartCol && c < totalColIdx
-            const isCurr = c === 6 || c === 7 || c === 8 || c === 9 || c === 10
+            const isCurr = CURR_COLS.includes(c)
             styles[A(detExcelRow - 1, c)] = withFmt(
               styleDet,
               isMes || c === totalColIdx ? FMT_PCT : (isCurr ? FMT_BRL : undefined),
@@ -267,38 +307,45 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         const tLast = excelRow - 1
         const tIdx = tExcelRow - 1
         if (tLast >= tFirst + 1) {
-          rows[tIdx][7]  = { f: `SUMIFS(H${tFirst + 1}:H${tLast},A${tFirst + 1}:A${tLast},3)` }
-          rows[tIdx][9]  = { f: `SUMIFS(J${tFirst + 1}:J${tLast},A${tFirst + 1}:A${tLast},3)` }
-          rows[tIdx][10] = { f: `SUMIFS(K${tFirst + 1}:K${tLast},A${tFirst + 1}:A${tLast},3)` }
+          rows[tIdx][COL_SUBTOTAL_MAT] = { f: `SUMIFS(H${tFirst + 1}:H${tLast},A${tFirst + 1}:A${tLast},3)` }
+          if (tipo === 'fisico') {
+            rows[tIdx][COL_SUBTOTAL_MO]  = { f: `SUMIFS(J${tFirst + 1}:J${tLast},A${tFirst + 1}:A${tLast},3)` }
+            rows[tIdx][COL_VALOR_GLOBAL] = { f: `SUMIFS(K${tFirst + 1}:K${tLast},A${tFirst + 1}:A${tLast},3)` }
+          }
         }
       }
 
       const gLast = excelRow - 1
       const gIdx = gExcelRow - 1
       if (gLast >= gFirst + 1) {
-        rows[gIdx][7]  = { f: `SUMIFS(H${gFirst + 1}:H${gLast},A${gFirst + 1}:A${gLast},3)` }
-        rows[gIdx][9]  = { f: `SUMIFS(J${gFirst + 1}:J${gLast},A${gFirst + 1}:A${gLast},3)` }
-        rows[gIdx][10] = { f: `SUMIFS(K${gFirst + 1}:K${gLast},A${gFirst + 1}:A${gLast},3)` }
+        rows[gIdx][COL_SUBTOTAL_MAT] = { f: `SUMIFS(H${gFirst + 1}:H${gLast},A${gFirst + 1}:A${gLast},3)` }
+        if (tipo === 'fisico') {
+          rows[gIdx][COL_SUBTOTAL_MO]  = { f: `SUMIFS(J${gFirst + 1}:J${gLast},A${gFirst + 1}:A${gLast},3)` }
+          rows[gIdx][COL_VALOR_GLOBAL] = { f: `SUMIFS(K${gFirst + 1}:K${gLast},A${gFirst + 1}:A${gLast},3)` }
+        }
       }
     }
 
-    // ── Linha GERAL (row 1 do Excel, idx 1 em rows) ────────────────────
+    // ── Linha GERAL ────────────────────────────────────────────────────
     const lastDataRow = excelRow - 1
+    const weightCol = tipo === 'fisico' ? 'K' : 'H' // VALOR GLOBAL (físico) ou SUBTOTAL MATERIAL (fatdireto)
     if (lastDataRow >= 3) {
-      rows[1][7]  = { f: `SUMIFS(H3:H${lastDataRow},A3:A${lastDataRow},3)` }
-      rows[1][9]  = { f: `SUMIFS(J3:J${lastDataRow},A3:A${lastDataRow},3)` }
-      rows[1][10] = { f: `SUMIFS(K3:K${lastDataRow},A3:A${lastDataRow},3)` }
+      rows[1][COL_SUBTOTAL_MAT] = { f: `SUMIFS(H3:H${lastDataRow},A3:A${lastDataRow},3)` }
+      if (tipo === 'fisico') {
+        rows[1][COL_SUBTOTAL_MO]  = { f: `SUMIFS(J3:J${lastDataRow},A3:A${lastDataRow},3)` }
+        rows[1][COL_VALOR_GLOBAL] = { f: `SUMIFS(K3:K${lastDataRow},A3:A${lastDataRow},3)` }
+      }
       for (let mi = 0; mi < meses.length; mi++) {
         const col = colL(mesStartCol + mi)
         rows[1][mesStartCol + mi] = {
-          f: `IFERROR(SUMPRODUCT((A3:A${lastDataRow}=3)*(${col}3:${col}${lastDataRow})*(K3:K${lastDataRow}))/SUMIFS(K3:K${lastDataRow},A3:A${lastDataRow},3),"")`,
+          f: `IFERROR(SUMPRODUCT((A3:A${lastDataRow}=3)*(${col}3:${col}${lastDataRow})*(${weightCol}3:${weightCol}${lastDataRow}))/SUMIFS(${weightCol}3:${weightCol}${lastDataRow},A3:A${lastDataRow},3),"")`,
         }
       }
       rows[1][totalColIdx] = { f: `SUM(${colL(mesStartCol)}2:${colL(mesStartCol + meses.length - 1)}2)` }
     }
     for (let c = 0; c < rows[1].length; c++) {
       const isMes = c >= mesStartCol && c < totalColIdx
-      const isCurr = c === 6 || c === 7 || c === 8 || c === 9 || c === 10
+      const isCurr = CURR_COLS.includes(c)
       styles[A(1, c)] = withFmt(
         styleGeral,
         isMes || c === totalColIdx ? FMT_PCT : (isCurr ? FMT_BRL : undefined),
@@ -308,11 +355,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     // ── Monta worksheet ───────────────────────────────────────────────
     const ws: any = XLSX.utils.aoa_to_sheet(rows, { cellDates: true })
 
-    // Aplica estilos nos objetos de célula
     for (const [addr, st] of Object.entries(styles)) {
       if (ws[addr]) ws[addr].s = st
     }
-    // Garante numFmt nas células que foram criadas como date/serial no header
     for (let mi = 0; mi < meses.length; mi++) {
       const addr = A(0, mesStartCol + mi)
       if (ws[addr]) {
@@ -321,46 +366,42 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       }
     }
 
-    // Larguras (wpx aproximados do original)
+    // Larguras
+    const colsFisico = [
+      { wch: 6 }, { wch: 16 }, { wch: 8 }, { wch: 60 }, { wch: 12 },
+      { wch: 12 }, { wch: 17 }, { wch: 17 }, { wch: 17 }, { wch: 17 }, { wch: 16 },
+    ]
+    const colsFat = [
+      { wch: 6 }, { wch: 16 }, { wch: 8 }, { wch: 60 }, { wch: 12 },
+      { wch: 12 }, { wch: 17 }, { wch: 17 },
+    ]
     ws['!cols'] = [
-      { wch: 6 },   // NÍVEL
-      { wch: 16 },  // DISCIPLINA
-      { wch: 8 },   // ITEM
-      { wch: 60 },  // ATIVIDADE
-      { wch: 12 },  // LOCAL
-      { wch: 12 },  // QTDE
-      { wch: 17 },  // PR.UNIT MATERIAL
-      { wch: 17 },  // SUBTOTAL MATERIAL
-      { wch: 17 },  // PR.UNIT M.O.
-      { wch: 17 },  // SUBTOTAL M.O.
-      { wch: 16 },  // VALOR GLOBAL
+      ...(tipo === 'fisico' ? colsFisico : colsFat),
       ...meses.map(() => ({ wch: 10 })),
-      { wch: 10 },  // TOTAL
-      { wch: 38, hidden: true }, // detalhamento_id
+      { wch: 10 },
+      { wch: 38, hidden: true },
     ]
 
-    // Altura + outline por linha
     const rowsInfo: any[] = []
-    rowsInfo[0] = { hpt: 28.8 } // header
+    rowsInfo[0] = { hpt: 28.8 }
     for (const [idxStr, level] of Object.entries(outlineLevels)) {
       const idx = Number(idxStr)
       rowsInfo[idx] = { ...(rowsInfo[idx] || {}), level }
     }
     ws['!rows'] = rowsInfo
 
-    // Freeze nas 5 primeiras colunas + header
     ws['!freeze'] = { xSplit: 5, ySplit: 1 } as any
     ws['!views']  = [{ state: 'frozen', xSplit: 5, ySplit: 1 }]
-
-    // Outline / sheet options (resumo para baixo dos agrupamentos)
     ;(ws as any)['!outline'] = { summaryBelow: false, summaryRight: false }
 
+    const sheetName = tipo === 'fisico' ? 'FÍSICO FINANCEIRO' : 'FATURAMENTO DIRETO'
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'FÍSICO FINANCEIRO')
+    XLSX.utils.book_append_sheet(wb, ws, sheetName)
 
     const buf: Buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', cellStyles: true })
     const body = new Uint8Array(buf)
-    const filename = `Cronograma Fisico Financeiro - ${contrato?.numero_contrato ?? id}.xlsx`
+    const prefix = tipo === 'fisico' ? 'Cronograma Fisico Financeiro' : 'Cronograma Faturamento Direto'
+    const filename = `${prefix} - ${contrato?.numero_contrato ?? id}.xlsx`
     return new Response(body, {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

@@ -1069,9 +1069,14 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                 </Button>
                 <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={expandAll}>Expandir tudo</Button>
                 <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={collapseAll}>Recolher</Button>
-                <a href={`/api/contratos/${id}/planilha/template`}>
-                  <Button variant="outline" size="sm" className="h-8 text-xs gap-1" title="Baixa planilha unificada: 3 abas — Orcamento + Físico + FatDireto">
-                    <Download className="w-3.5 h-3.5" /> Baixar planilha
+                <a href={`/api/contratos/${id}/planilha/template?tipo=fisico`}>
+                  <Button variant="outline" size="sm" className="h-8 text-xs gap-1" title="Baixa planilha FÍSICO FINANCEIRO (com PR.Mat + PR.MO e curva física)">
+                    <Download className="w-3.5 h-3.5" /> Baixar Físico
+                  </Button>
+                </a>
+                <a href={`/api/contratos/${id}/planilha/template?tipo=fatdireto`}>
+                  <Button variant="outline" size="sm" className="h-8 text-xs gap-1" title="Baixa planilha FATURAMENTO DIRETO (só PR.Mat e curva de fat direto)">
+                    <Download className="w-3.5 h-3.5" /> Baixar Fat Direto
                   </Button>
                 </a>
                 <label>
@@ -1090,12 +1095,12 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                         const res = await fetch(`/api/contratos/${id}/planilha/upload`, { method: 'POST', body: fd })
                         const json = await res.json()
                         if (!res.ok) throw new Error(json?.error || 'erro')
-                        const o = json.orcamento || {}, fi = json.fisico || {}, fd2 = json.fatdireto || {}
+                        const o = json.orcamento || {}, cr = json.cronograma || {}
                         const parts: string[] = []
+                        parts.push(`Tipo: ${json.tipo_detectado === 'fisico' ? 'Físico' : 'Fat Direto'}`)
                         if (o.atualizados) parts.push(`Orçamento: ${o.atualizados}${o.falhas ? ` (${o.falhas} falhas)` : ''}`)
-                        if (fi.celulas)    parts.push(`Físico: ${fi.celulas} célula(s)`)
-                        if (fd2.celulas)   parts.push(`FatDir: ${fd2.celulas} célula(s)`)
-                        setLastSavedMsg(parts.length ? `Upload ✓ — ${parts.join(' · ')}` : 'Upload ok (nada aplicado)')
+                        if (cr.celulas)    parts.push(`Cronograma: ${cr.celulas} célula(s)`)
+                        setLastSavedMsg(`Upload ✓ — ${parts.join(' · ')}`)
                         const gr = await fetch(`/api/contratos/${id}/grupos`, { cache: 'no-store' }).then(r => r.json())
                         setGrupos(gr)
                       } catch (err: any) {

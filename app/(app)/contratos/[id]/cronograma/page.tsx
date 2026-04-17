@@ -280,12 +280,12 @@ function CronogramaTreeMatriz({
       const r = await fetch(`/api/contratos/${contratoId}/planilha/upload`, { method: 'POST', body: fd })
       const j = await r.json()
       if (!r.ok) { setSavingMsg(`Erro no upload: ${j.error || r.status}`); return }
-      const o = j.orcamento || {}, fi = j.fisico || {}, fd2 = j.fatdireto || {}
+      const o = j.orcamento || {}, cr = j.cronograma || {}
       const parts: string[] = []
+      parts.push(`Tipo: ${j.tipo_detectado === 'fisico' ? 'Físico' : 'Fat Direto'}`)
       if (o.atualizados) parts.push(`Orçamento: ${o.atualizados}${o.falhas ? ` (${o.falhas} falhas)` : ''}`)
-      if (fi.celulas)    parts.push(`Físico: ${fi.celulas} célula(s)`)
-      if (fd2.celulas)   parts.push(`FatDir: ${fd2.celulas} célula(s)`)
-      setSavingMsg(parts.length ? `Importado · ${parts.join(' · ')}` : 'Upload ok (nada aplicado)')
+      if (cr.celulas)    parts.push(`Cronograma: ${cr.celulas} célula(s)`)
+      setSavingMsg(`Importado · ${parts.join(' · ')}`)
       await refetchMatriz()
       setTimeout(() => setSavingMsg(''), 5000)
     } catch (e: any) { setSavingMsg(`Erro: ${e?.message || e}`) }
@@ -463,11 +463,13 @@ function CronogramaTreeMatriz({
           {editMode && <span className="text-[10px] font-normal text-[var(--text-3)] ml-2">Enter/Tab/Setas · cole do Excel · F2 edita · só nível 3 edita</span>}
           <div className="ml-auto flex items-center gap-2">
             <a
-              href={`/api/contratos/${contratoId}/planilha/template`}
+              href={`/api/contratos/${contratoId}/planilha/template?tipo=${tipo}`}
               className="text-[11px] inline-flex items-center gap-1 px-2 py-1 rounded border border-[var(--border)] hover:border-blue-500 hover:text-blue-400 text-[var(--text-2)]"
-              title="Baixa planilha unificada: Orcamento + Físico + FatDireto em 3 abas"
+              title={tipo === 'fisico'
+                ? 'Baixa planilha FÍSICO FINANCEIRO (com PR.Mat + PR.MO e curva física)'
+                : 'Baixa planilha FATURAMENTO DIRETO (só PR.Mat e curva de fat direto)'}
             >
-              <Download className="w-3 h-3" /> Baixar planilha
+              <Download className="w-3 h-3" /> Baixar {tipo === 'fisico' ? 'Físico' : 'Fat Direto'}
             </a>
             {canEdit && (
               <>
