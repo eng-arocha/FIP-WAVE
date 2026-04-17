@@ -58,6 +58,12 @@ interface Detalhamento {
   quantidade_contratada: number
   valor_unitario: number
   valor_total: number
+  valor_material_unit?: number
+  valor_servico_unit?: number
+  subtotal_material?: number
+  subtotal_mo?: number
+  local?: string
+  disciplina?: string
 }
 
 interface Tarefa {
@@ -65,6 +71,10 @@ interface Tarefa {
   codigo: string
   nome: string
   valor_contratado: number
+  valor_total?: number
+  valor_material?: number
+  valor_servico?: number
+  disciplina?: string
   detalhamentos?: Detalhamento[]
 }
 
@@ -867,148 +877,212 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
               </div>
             </div>
 
-            {/* Tree */}
-            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-              {/* Header */}
-              <div className="grid grid-cols-[1fr_120px_120px_120px] gap-2 px-4 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ background: 'var(--surface-3)', color: 'var(--text-3)', borderBottom: '1px solid var(--border)' }}>
-                <span>Código / Descrição</span>
-                <span className="text-right">Qtd × Un</span>
-                <span className="text-right">V. Unit.</span>
-                <span className="text-right">V. Total</span>
-              </div>
+            {/* Detalhamento — cards por grupo com colunas completas (Cód/Descrição/Local/Qtde/Unid/PR Mat/PR MO/Subt Mat/Subt MO/Total) */}
+            {(() => {
+              const busca = estruturaBusca.toLowerCase()
+              const colMatActive = viewMode === 'material'
+              const colMoActive = viewMode === 'servico'
 
-              {(() => {
-                const busca = estruturaBusca.toLowerCase()
-                const rows: React.ReactNode[] = []
+              // Monta lista filtrada + acumula subtotais visíveis
+              let subtotalTotal = 0
+              let subtotalMat = 0
+              let subtotalMo = 0
+              let visibleDetCount = 0
 
-                gruposExibidos.forEach(g => {
-                  const tarefas = g.tarefas || []
+              const cards: React.ReactNode[] = []
 
-                  // Search matching
-                  const grupoMatch = !busca || g.codigo.toLowerCase().includes(busca) || g.nome.toLowerCase().includes(busca)
-                  const tarefasMatch = tarefas.some(t =>
-                    t.codigo.toLowerCase().includes(busca) || t.nome.toLowerCase().includes(busca) ||
-                    (t.detalhamentos || []).some(d => d.codigo.toLowerCase().includes(busca) || d.descricao.toLowerCase().includes(busca))
-                  )
-                  if (busca && !grupoMatch && !tarefasMatch) return
+              gruposExibidos.forEach(g => {
+                const tarefas = g.tarefas || []
+                const grupoMatchBusca = !busca || g.codigo.toLowerCase().includes(busca) || g.nome.toLowerCase().includes(busca)
+                const anyTarefaMatch = tarefas.some(t =>
+                  t.codigo.toLowerCase().includes(busca) || t.nome.toLowerCase().includes(busca) ||
+                  (t.detalhamentos || []).some(d => d.codigo.toLowerCase().includes(busca) || d.descricao.toLowerCase().includes(busca))
+                )
+                if (busca && !grupoMatchBusca && !anyTarefaMatch) return
 
-                  const isGrupoExpanded = expandedGrupos.has(g.id) || (busca.length > 0)
-                  const vBase = getValorView(g)
+                // Filtro por nivel: '1' apenas grupos (header sem expandir), '2' força recolher detalhamentos,
+                // '3' força expandir tarefas; 'todos' respeita expansão do usuário
+                const isGrupoExpanded = estruturaNivel === '1'
+                  ? false
+                  : (estruturaNivel === '2' || estruturaNivel === '3' || busca.length > 0 || expandedGrupos.has(g.id))
 
-                  // Nivel 1 row
-                  if (estruturaNivel === 'todos' || estruturaNivel === '1') {
-                    rows.push(
+                const vGrupo = getValorView(g)
+                const saldoGrupo = vGrupo - (g.valor_medido ?? 0)
+                const pctMedido = vGrupo > 0 ? ((g.valor_medido ?? 0) / vGrupo) * 100 : 0
+
+                cards.push(
+                  <Card key={g.id} className="theme-card">
+                    <CardContent className="p-0">
+                      {/* Cabeçalho do grupo */}
                       <div
-                        key={`g-${g.id}`}
-                        className="grid grid-cols-[1fr_120px_120px_120px] gap-2 px-4 py-3 cursor-pointer select-none"
-                        style={{ background: 'rgba(59,130,246,0.06)', borderBottom: '1px solid var(--border)' }}
+                        className="flex items-center gap-3 p-4 cursor-pointer hover:bg-[var(--surface-1)] transition-colors"
                         onClick={() => toggleGrupo(g.id)}
                       >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="flex-shrink-0" style={{ color: 'var(--accent)' }}>
-                            {isGrupoExpanded ? <ChevronDown className="w-3.5 h-3.5" strokeWidth={2} /> : <ChevronRight className="w-3.5 h-3.5" strokeWidth={2} />}
-                          </span>
-                          <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: 'var(--accent)', color: 'white', minWidth: 36, textAlign: 'center' }}>{g.codigo}</span>
-                          <span className="font-semibold text-sm truncate" style={{ color: 'var(--text-1)' }}>{g.nome}</span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded ml-1 flex-shrink-0" style={{ background: 'rgba(59,130,246,0.12)', color: 'var(--accent)' }}>
-                            {tarefas.length} serv.
-                          </span>
-                        </div>
-                        <span className="text-right text-xs text-[var(--text-3)]">—</span>
-                        <span className="text-right text-xs text-[var(--text-3)]">—</span>
-                        <span className="text-right text-sm font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(vBase)}</span>
-                      </div>
-                    )
-                  }
-
-                  if (!isGrupoExpanded && estruturaNivel === 'todos') return
-
-                  // Nivel 2 rows
-                  tarefas.forEach(t => {
-                    const detalhamentos = t.detalhamentos || []
-                    const tarefaMatchBusca = !busca || t.codigo.toLowerCase().includes(busca) || t.nome.toLowerCase().includes(busca) ||
-                      detalhamentos.some(d => d.codigo.toLowerCase().includes(busca) || d.descricao.toLowerCase().includes(busca))
-                    if (busca && !tarefaMatchBusca) return
-
-                    const isTarefaExpanded = expandedTarefas.has(t.id) || (busca.length > 0)
-
-                    if (estruturaNivel === 'todos' || estruturaNivel === '2') {
-                      rows.push(
-                        <div
-                          key={`t-${t.id}`}
-                          className="grid grid-cols-[1fr_120px_120px_120px] gap-2 px-4 py-2.5 cursor-pointer"
-                          style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', paddingLeft: estruturaNivel === '2' ? 16 : 40 }}
-                          onClick={() => toggleTarefa(t.id)}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            {detalhamentos.length > 0 ? (
-                              <span className="flex-shrink-0 text-[var(--text-3)]">
-                                {isTarefaExpanded ? <ChevronDown className="w-3 h-3" strokeWidth={2} /> : <ChevronRight className="w-3 h-3" strokeWidth={2} />}
-                              </span>
-                            ) : <span className="w-3 h-3 flex-shrink-0" />}
-                            <span className="text-[11px] font-bold px-1.5 py-0.5 rounded flex-shrink-0" style={{ background: 'rgba(100,116,139,0.15)', color: 'var(--text-2)', minWidth: 36, textAlign: 'center' }}>{t.codigo}</span>
-                            <span className="text-sm truncate" style={{ color: 'var(--text-2)' }}>{t.nome}</span>
-                          </div>
-                          <span className="text-right text-xs text-[var(--text-3)]">—</span>
-                          <span className="text-right text-xs text-[var(--text-3)]">—</span>
-                          <span className="text-right text-xs font-semibold" style={{ color: 'var(--text-1)' }}>{formatCurrency(t.valor_contratado || 0)}</span>
-                        </div>
-                      )
-                    }
-
-                    if (!isTarefaExpanded && estruturaNivel === 'todos') return
-
-                    // Nivel 3 rows
-                    if (estruturaNivel === 'todos' || estruturaNivel === '3') {
-                      detalhamentos.forEach(d => {
-                        const detMatch = !busca || d.codigo.toLowerCase().includes(busca) || d.descricao.toLowerCase().includes(busca)
-                        if (busca && !detMatch) return
-
-                        const valorTotal = d.valor_total || (d.quantidade_contratada || 0) * (d.valor_unitario || 0)
-                        rows.push(
-                          <div
-                            key={`d-${d.id}`}
-                            className="grid grid-cols-[1fr_120px_120px_120px] gap-2 py-2"
-                            style={{ background: 'var(--surface-1)', borderBottom: '1px solid var(--border)', paddingLeft: estruturaNivel === '3' ? 16 : 64, paddingRight: 16 }}
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="text-[10px] font-mono px-1 py-0.5 rounded flex-shrink-0" style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981', minWidth: 44, textAlign: 'center' }}>{d.codigo}</span>
-                              <span className="text-xs truncate" style={{ color: 'var(--text-2)' }}>{d.descricao}</span>
-                              <span className="text-[10px] px-1 rounded flex-shrink-0" style={{ background: 'var(--surface-3)', color: 'var(--text-3)' }}>{d.unidade}</span>
-                            </div>
-                            <span className="text-right text-xs" style={{ color: 'var(--text-3)' }}>
-                              {d.quantidade_contratada?.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}
+                        {isGrupoExpanded
+                          ? <ChevronDown className="w-4 h-4 text-[var(--text-3)] flex-shrink-0" />
+                          : <ChevronRight className="w-4 h-4 text-[var(--text-3)] flex-shrink-0" />}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className="font-mono text-xs text-[var(--text-3)]">{g.codigo}</span>
+                            <span className="font-bold text-[var(--text-1)] truncate">{g.nome}</span>
+                            <Badge className={TIPO_MEDICAO_COLORS[g.tipo_medicao] || ''}>
+                              {TIPO_MEDICAO_LABELS[g.tipo_medicao] || g.tipo_medicao}
+                            </Badge>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0" style={{ background: 'rgba(59,130,246,0.12)', color: 'var(--accent)' }}>
+                              {tarefas.length} serv.
                             </span>
-                            <span className="text-right text-xs" style={{ color: 'var(--text-3)' }}>{formatCurrency(d.valor_unitario || 0)}</span>
-                            <span className="text-right text-xs font-semibold" style={{ color: '#10B981' }}>{formatCurrency(valorTotal)}</span>
                           </div>
-                        )
-                      })
-                    }
-                  })
-                })
+                          <div className="flex items-center gap-3">
+                            <Progress value={Math.min(pctMedido, 100)} className="h-1.5 w-48" />
+                            <span className="text-xs text-[var(--text-3)]">{formatPercent(pctMedido)} medido</span>
+                          </div>
+                        </div>
+                        <div className="text-right text-sm min-w-[160px] flex-shrink-0">
+                          <p className="font-bold text-[var(--text-1)]">{formatCurrency(vGrupo)}</p>
+                          <p className="text-xs text-[var(--text-3)]">Medido: {formatCurrency(g.valor_medido ?? 0)}</p>
+                          <p className="text-xs text-emerald-500/80">Saldo: {formatCurrency(saldoGrupo)}</p>
+                        </div>
+                      </div>
 
-                if (rows.length === 0) {
-                  return (
-                    <div className="flex flex-col items-center justify-center py-12 text-[var(--text-3)]">
-                      <Package className="w-8 h-8 mb-2 opacity-30" />
-                      <p className="text-sm">Nenhum item encontrado</p>
+                      {/* Tarefas + detalhamentos */}
+                      {isGrupoExpanded && (
+                        <div className="border-t border-[var(--border)]">
+                          {tarefas.map(t => {
+                            const detalhamentos = t.detalhamentos || []
+                            const tarefaMatchBusca = !busca || t.codigo.toLowerCase().includes(busca) || t.nome.toLowerCase().includes(busca) ||
+                              detalhamentos.some(d => d.codigo.toLowerCase().includes(busca) || d.descricao.toLowerCase().includes(busca))
+                            if (busca && !grupoMatchBusca && !tarefaMatchBusca) return null
+
+                            const isTarefaExpanded = estruturaNivel === '3' || estruturaNivel === 'todos'
+                              ? (busca.length > 0 || expandedTarefas.has(t.id))
+                              : false
+
+                            const valorTarefa = t.valor_total ?? t.valor_contratado ?? 0
+
+                            return (
+                              <div key={t.id} className="border-b border-[var(--border)] last:border-0">
+                                <div
+                                  className="flex items-center gap-3 px-8 py-3 bg-[var(--surface-1)] cursor-pointer hover:bg-[var(--surface-2)]"
+                                  onClick={() => toggleTarefa(t.id)}
+                                >
+                                  {detalhamentos.length > 0 ? (
+                                    isTarefaExpanded
+                                      ? <ChevronDown className="w-3.5 h-3.5 text-[var(--text-3)] flex-shrink-0" />
+                                      : <ChevronRight className="w-3.5 h-3.5 text-[var(--text-3)] flex-shrink-0" />
+                                  ) : <span className="w-3.5 h-3.5 flex-shrink-0" />}
+                                  <span className="font-mono text-xs text-[var(--text-3)]">{t.codigo}</span>
+                                  <span className="font-semibold text-sm text-[var(--text-2)] flex-1 truncate">{t.nome}</span>
+                                  <span className="text-xs font-medium text-[var(--text-2)]">{formatCurrency(valorTarefa)}</span>
+                                </div>
+
+                                {/* Detalhamentos — 10 colunas conforme planilha oficial */}
+                                {isTarefaExpanded && detalhamentos.length > 0 && (estruturaNivel === 'todos' || estruturaNivel === '3') && (
+                                  <div className="px-12 py-2 overflow-x-auto">
+                                    <div className="min-w-[980px]">
+                                      <div className="grid grid-cols-[40px_1fr_80px_50px_40px_90px_90px_100px_100px_100px] gap-2 px-2 pb-1.5 mb-1 border-b border-[var(--border)]/40 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-3)]">
+                                        <span>Cód.</span>
+                                        <span>Descrição</span>
+                                        <span>Local</span>
+                                        <span className="text-right">Qtde</span>
+                                        <span className="text-center">Unid</span>
+                                        <span className="text-right">PR. Mat</span>
+                                        <span className="text-right">PR. M.O.</span>
+                                        <span className="text-right">Subt. Mat</span>
+                                        <span className="text-right">Subt. M.O.</span>
+                                        <span className="text-right">Total</span>
+                                      </div>
+                                      {detalhamentos.map(d => {
+                                        const detMatch = !busca || d.codigo.toLowerCase().includes(busca) || d.descricao.toLowerCase().includes(busca) || tarefaMatchBusca || grupoMatchBusca
+                                        if (busca && !detMatch) return null
+                                        const qtd = Number(d.quantidade_contratada || 0)
+                                        const prMat = Number(d.valor_material_unit ?? 0)
+                                        const prMo = Number(d.valor_servico_unit ?? 0)
+                                        const subMat = Number(d.subtotal_material ?? qtd * prMat)
+                                        const subMo = Number(d.subtotal_mo ?? qtd * prMo)
+                                        const total = d.valor_total || (subMat + subMo) || (qtd * (d.valor_unitario || 0))
+
+                                        // acumula subtotais visíveis
+                                        visibleDetCount += 1
+                                        subtotalTotal += total
+                                        subtotalMat += subMat
+                                        subtotalMo += subMo
+
+                                        return (
+                                          <div key={d.id} className="grid grid-cols-[40px_1fr_80px_50px_40px_90px_90px_100px_100px_100px] gap-2 py-1.5 px-2 rounded hover:bg-[var(--surface-1)] text-xs items-center">
+                                            <span className="font-mono text-[var(--text-3)]">{d.codigo}</span>
+                                            <span className="text-[var(--text-2)] truncate" title={d.descricao}>{d.descricao}</span>
+                                            <span className="text-[10px] text-[var(--text-3)] truncate" title={d.local || ''}>{d.local || '—'}</span>
+                                            <span className="text-right tabular-nums text-[var(--text-2)]">{qtd.toLocaleString('pt-BR')}</span>
+                                            <span className="text-center text-[var(--text-3)]">{d.unidade || 'UN'}</span>
+                                            <span className={`text-right tabular-nums ${colMatActive ? 'font-semibold text-blue-400' : 'text-[var(--text-3)]'}`}>{formatCurrency(prMat)}</span>
+                                            <span className={`text-right tabular-nums ${colMoActive ? 'font-semibold text-amber-400' : 'text-[var(--text-3)]'}`}>{formatCurrency(prMo)}</span>
+                                            <span className={`text-right tabular-nums ${colMatActive ? 'font-semibold text-blue-400' : 'text-[var(--text-2)]'}`}>{formatCurrency(subMat)}</span>
+                                            <span className={`text-right tabular-nums ${colMoActive ? 'font-semibold text-amber-400' : 'text-[var(--text-2)]'}`}>{formatCurrency(subMo)}</span>
+                                            <span className="text-right tabular-nums font-semibold text-[var(--text-1)]">{formatCurrency(total)}</span>
+                                          </div>
+                                        )
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )
+              })
+
+              if (cards.length === 0) {
+                return (
+                  <div className="flex flex-col items-center justify-center py-12 text-[var(--text-3)] rounded-xl" style={{ border: '1px solid var(--border)' }}>
+                    <Package className="w-8 h-8 mb-2 opacity-30" />
+                    <p className="text-sm">Nenhum item encontrado</p>
+                  </div>
+                )
+              }
+
+              const totalGrupos = gruposExibidos.reduce((s, g) => s + getValorView(g), 0)
+              const isFiltering = busca.length > 0 || estruturaNivel !== 'todos' || filtroGrupo !== 'todos' || viewMode !== 'total'
+
+              return (
+                <div className="space-y-3">
+                  {cards}
+
+                  {/* Footer — TOTAL ORÇADO sempre + SUBTOTAL FILTRADO quando há filtro/busca */}
+                  <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--surface-3)' }}>
+                    <div className="flex items-center justify-between px-4 py-3">
+                      <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-2)' }}>
+                        Total orçado ({gruposExibidos.length} grupo{gruposExibidos.length !== 1 ? 's' : ''})
+                      </span>
+                      <span className="text-sm font-black" style={{ color: 'var(--accent)' }}>
+                        {formatCurrency(totalGrupos)}
+                      </span>
                     </div>
-                  )
-                }
-                return rows
-              })()}
-
-              {/* Footer totals */}
-              <div className="grid grid-cols-[1fr_120px_120px_120px] gap-2 px-4 py-3" style={{ background: 'var(--surface-3)', borderTop: '2px solid var(--border)' }}>
-                <span className="text-xs font-bold" style={{ color: 'var(--text-2)' }}>TOTAL ORÇADO ({gruposExibidos.length} grupos)</span>
-                <span />
-                <span />
-                <span className="text-right text-sm font-black" style={{ color: 'var(--accent)' }}>
-                  {formatCurrency(gruposExibidos.reduce((s, g) => s + getValorView(g), 0))}
-                </span>
-              </div>
-            </div>
+                    {isFiltering && visibleDetCount > 0 && (
+                      <div
+                        className="px-4 py-3 border-t flex flex-wrap items-center justify-between gap-2"
+                        style={{ borderColor: 'var(--border)', background: 'rgba(16,185,129,0.08)' }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Filter className="w-3.5 h-3.5 text-emerald-500" />
+                          <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-2)' }}>
+                            Subtotal filtrado ({visibleDetCount} {visibleDetCount === 1 ? 'item' : 'itens'})
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-4 text-xs">
+                          <span className="text-[var(--text-3)]">Mat: <span className="font-semibold text-blue-400">{formatCurrency(subtotalMat)}</span></span>
+                          <span className="text-[var(--text-3)]">M.O.: <span className="font-semibold text-amber-400">{formatCurrency(subtotalMo)}</span></span>
+                          <span className="text-sm font-black text-emerald-500">{formatCurrency(subtotalTotal)}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
           </TabsContent>
 
           {/* FAT. DIRETO tab */}
