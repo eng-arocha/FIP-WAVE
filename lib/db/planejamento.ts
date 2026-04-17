@@ -68,7 +68,7 @@ export async function getCurvaS(contratoId: string): Promise<CurvaSPoint[]> {
   const totalMaterial = contrato?.valor_material_direto ?? 0
   const totalGeral = totalServico + totalMaterial
 
-  // Get all grupo values for weighting
+  // Get all grupo values for weighting (tarefas/detalhamentos via joins)
   const { data: grupos } = await admin
     .from('grupos_macro')
     .select('id, valor_servico, valor_material')
@@ -76,17 +76,38 @@ export async function getCurvaS(contratoId: string): Promise<CurvaSPoint[]> {
   const grupoMap = Object.fromEntries((grupos || []).map((g: any) => [g.id, g]))
   const grupoIds = (grupos || []).map((g: any) => g.id)
 
-  // Get physical planning
-  const { data: planFis } = await admin
-    .from('planejamento_fisico')
-    .select('grupo_macro_id, mes, pct_planejado')
+  // Pesos por detalhamento (qtd × valor_unit)
+  const { data: tarefasAll } = await admin
+    .from('tarefas')
+    .select('id, grupo_macro_id')
     .in('grupo_macro_id', grupoIds)
+  const tarefaIds = (tarefasAll || []).map((t: any) => t.id)
+  const { data: detsAll } = tarefaIds.length > 0
+    ? await admin
+        .from('detalhamentos')
+        .select('id, tarefa_id, quantidade_contratada, valor_material_unit, valor_servico_unit')
+        .in('tarefa_id', tarefaIds)
+    : { data: [] as any[] } as any
+  // det → { peso_servico, peso_material }
+  const detPeso: Record<string, { peso_s: number; peso_m: number }> = {}
+  for (const d of (detsAll || []) as any[]) {
+    const qtd = Number(d.quantidade_contratada || 0)
+    detPeso[d.id] = {
+      peso_s: qtd * Number(d.valor_servico_unit || 0),
+      peso_m: qtd * Number(d.valor_material_unit || 0),
+    }
+  }
+  const detIds = Object.keys(detPeso)
 
-  // Get fat direto planning
-  const { data: planFatD } = await admin
-    .from('planejamento_fat_direto')
-    .select('grupo_macro_id, mes, pct_planejado')
-    .in('grupo_macro_id', grupoIds)
+  // Planejamento nível detalhamento
+  const { data: planFis } = detIds.length > 0 ? await admin
+    .from('planejamento_fisico_det')
+    .select('detalhamento_id, mes, pct_planejado')
+    .in('detalhamento_id', detIds) : { data: [] as any[] } as any
+  const { data: planFatD } = detIds.length > 0 ? await admin
+    .from('planejamento_fat_direto_det')
+    .select('detalhamento_id, mes, pct_planejado')
+    .in('detalhamento_id', detIds) : { data: [] as any[] } as any
 
   // ── REALIZADO FÍSICO (serviço) ────────────────────────────────────
   // Fonte: medicao_itens de medições com status 'aprovado'.
@@ -121,8 +142,8 @@ export async function getCurvaS(contratoId: string): Promise<CurvaSPoint[]> {
 
   // Get all months
   const allMeses = new Set<string>()
-  ;(planFis || []).forEach((p: any) => allMeses.add(p.mes))
-  ;(planFatD || []).forEach((p: any) => allMeses.add(p.mes))
+  ;(planFis || []).forEach((p: any) => allMeses.add(String(p.mes).slice(0, 10)))
+  ;(planFatD || []).forEach((p: any) => allMeses.add(String(p.mes).slice(0, 10)))
   // NOTA: Supabase-js tipa relações foreign como arrays mesmo quando
   // sabemos que retorna um único. Castamos pra `any` aqui — runtime os
   // joins com !inner garantem 1:1 e nunca undefined.
@@ -142,17 +163,19 @@ export async function getCurvaS(contratoId: string): Promise<CurvaSPoint[]> {
     byMes[mes] = { planFis: 0, planFatD: 0, realFis: 0, realFatD: 0 }
   }
 
-  for (const p of planFis || []) {
-    const g = grupoMap[p.grupo_macro_id]
-    if (!g) continue
-    const val = (p.pct_planejado / 100) * (g.valor_servico || 0)
-    byMes[p.mes].planFis += val
+  for (const p of (planFis || []) as any[]) {
+    const peso = detPeso[p.detalhamento_id]
+    if (!peso) continue
+    const mes = String(p.mes).slice(0, 10)
+    if (!byMes[mes]) byMes[mes] = { planFis: 0, planFatD: 0, realFis: 0, realFatD: 0 }
+    byMes[mes].planFis += (Number(p.pct_planejado) / 100) * peso.peso_s
   }
-  for (const p of planFatD || []) {
-    const g = grupoMap[p.grupo_macro_id]
-    if (!g) continue
-    const val = (p.pct_planejado / 100) * (g.valor_material || 0)
-    byMes[p.mes].planFatD += val
+  for (const p of (planFatD || []) as any[]) {
+    const peso = detPeso[p.detalhamento_id]
+    if (!peso) continue
+    const mes = String(p.mes).slice(0, 10)
+    if (!byMes[mes]) byMes[mes] = { planFis: 0, planFatD: 0, realFis: 0, realFatD: 0 }
+    byMes[mes].planFatD += (Number(p.pct_planejado) / 100) * peso.peso_m
   }
   for (const it of (medItens || []) as any[]) {
     const mes = (it.medicao as any)?.periodo_referencia

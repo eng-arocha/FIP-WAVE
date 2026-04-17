@@ -7,26 +7,24 @@ import { z } from 'zod'
 /**
  * PATCH /api/contratos/[id]/cronograma/bulk
  *
- * Upsert em massa de %s do cronograma físico/fat-direto. Usado por:
- *  - Edição inline estilo Excel (paste multi-célula, blur individual)
- *  - Importador .xlsx (futuro) — mesma API
+ * Upsert em massa de %s do cronograma físico/fat-direto no nível DETALHAMENTO.
  *
  * Body:
  *   {
  *     tipo: 'fisico' | 'fatdireto',
- *     updates: [{ grupo_macro_id: UUID, mes: 'YYYY-MM-01', pct_planejado: number }]
+ *     updates: [{ detalhamento_id: UUID, mes: 'YYYY-MM-01', pct_planejado: number }]
  *   }
  *
- * Segurança: exige admin OU permissão explícita ('cronograma', 'editar').
- * Valida que cada grupo pertence ao contrato.
+ * Segurança: admin OU permissão 'cronograma.editar'.
+ * Valida que cada detalhamento pertence a uma tarefa de um grupo do contrato.
  */
 
 const BodySchema = z.object({
   tipo: z.enum(['fisico', 'fatdireto']),
   updates: z.array(z.object({
-    grupo_macro_id: z.string().uuid(),
+    detalhamento_id: z.string().uuid(),
     mes: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    pct_planejado: z.number().min(0).max(1000), // permite > 100 temporariamente (validação soft na UI)
+    pct_planejado: z.number().min(0).max(1000),
   })).min(1).max(5000),
 })
 
@@ -37,7 +35,6 @@ export async function PATCH(
   try {
     const { id: contratoId } = await params
 
-    // Autorização: admin ou permissão 'cronograma.editar'
     const auth = await assertPermissao('cronograma', 'editar')
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status })
@@ -50,29 +47,35 @@ export async function PATCH(
     }
 
     const admin = createAdminClient()
-    const { data: grupos } = await admin
-      .from('grupos_macro')
-      .select('id')
-      .eq('contrato_id', contratoId)
-    const grupoIds = new Set((grupos || []).map((g: any) => g.id))
 
-    const valid = parsed.data.updates.filter(u => grupoIds.has(u.grupo_macro_id))
+    // Valida que os detalhamentos pertencem ao contrato (via tarefa → grupo)
+    const detIds = Array.from(new Set(parsed.data.updates.map(u => u.detalhamento_id)))
+    const { data: dets } = await admin
+      .from('detalhamentos')
+      .select('id, tarefa:tarefas!inner(grupo_macro:grupos_macro!inner(contrato_id))')
+      .in('id', detIds)
+    const detsValidos = new Set(
+      (dets || [])
+        .filter((d: any) => d.tarefa?.grupo_macro?.contrato_id === contratoId)
+        .map((d: any) => d.id)
+    )
+
+    const valid = parsed.data.updates.filter(u => detsValidos.has(u.detalhamento_id))
     if (valid.length === 0) {
-      return NextResponse.json({ error: 'nenhum grupo válido no contrato' }, { status: 400 })
+      return NextResponse.json({ error: 'nenhum detalhamento válido no contrato' }, { status: 400 })
     }
 
-    const table = parsed.data.tipo === 'fisico' ? 'planejamento_fisico' : 'planejamento_fat_direto'
+    const table = parsed.data.tipo === 'fisico' ? 'planejamento_fisico_det' : 'planejamento_fat_direto_det'
 
-    // Upsert — unique (grupo_macro_id, mes) → on conflict atualiza pct_planejado
     const rows = valid.map(u => ({
-      grupo_macro_id: u.grupo_macro_id,
+      detalhamento_id: u.detalhamento_id,
       mes: u.mes,
       pct_planejado: u.pct_planejado,
     }))
 
     const { error } = await admin
       .from(table)
-      .upsert(rows, { onConflict: 'grupo_macro_id,mes' })
+      .upsert(rows, { onConflict: 'detalhamento_id,mes' })
     if (error) throw error
 
     return NextResponse.json({
