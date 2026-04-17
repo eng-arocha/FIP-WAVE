@@ -1,6 +1,6 @@
 // Constantes puras — sem imports de server. Seguro para usar em client components.
 
-export type Modulo = 'dashboard' | 'contratos' | 'medicoes' | 'aprovacoes' | 'empresas' | 'usuarios' | 'perfis' | 'documentos'
+export type Modulo = 'dashboard' | 'contratos' | 'medicoes' | 'aprovacoes' | 'empresas' | 'usuarios' | 'perfis' | 'documentos' | 'cronograma' | 'orcamento'
 export type Acao = 'visualizar' | 'criar' | 'editar' | 'excluir' | 'aprovar'
 
 export interface Permissao {
@@ -17,6 +17,8 @@ export const MODULOS_CONFIG: Record<Modulo, Acao[]> = {
   usuarios:   ['visualizar', 'criar', 'editar', 'excluir'],
   perfis:     ['visualizar', 'criar', 'editar', 'excluir'],
   documentos: ['visualizar', 'criar'],
+  cronograma: ['visualizar', 'editar'],
+  orcamento:  ['visualizar', 'editar'],
 }
 
 export const MODULOS_LABELS: Record<Modulo, string> = {
@@ -28,6 +30,8 @@ export const MODULOS_LABELS: Record<Modulo, string> = {
   usuarios:   'Usuários',
   perfis:     'Perfis de Acesso',
   documentos: 'Documentos',
+  cronograma: 'Cronograma Físico-Financeiro',
+  orcamento:  'Orçamento (PR Mat / PR MO)',
 }
 
 export const ACOES_LABELS: Record<Acao, string> = {
