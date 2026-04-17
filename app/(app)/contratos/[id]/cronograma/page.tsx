@@ -276,12 +276,18 @@ function CronogramaTreeMatriz({
     const fd = new FormData()
     fd.append('file', file)
     try {
-      const r = await fetch(`/api/contratos/${contratoId}/cronograma/upload?tipo=${tipo}`, { method: 'POST', body: fd })
+      // Endpoint unificado: processa as 3 abas (Orcamento + Fisico + FatDireto) se presentes.
+      const r = await fetch(`/api/contratos/${contratoId}/planilha/upload`, { method: 'POST', body: fd })
       const j = await r.json()
       if (!r.ok) { setSavingMsg(`Erro no upload: ${j.error || r.status}`); return }
-      setSavingMsg(`Importado: ${j.atualizados} célula(s) · ${j.meses_processados} mês(es)${j.linhas_ignoradas ? ` · ${j.linhas_ignoradas} linha(s) ignorada(s)` : ''}`)
+      const o = j.orcamento || {}, fi = j.fisico || {}, fd2 = j.fatdireto || {}
+      const parts: string[] = []
+      if (o.presente)   parts.push(`Orçamento: ${o.atualizados}${o.falhas ? ` (${o.falhas} falhas)` : ''}`)
+      if (fi.presente)  parts.push(`Físico: ${fi.celulas} célula(s)`)
+      if (fd2.presente) parts.push(`FatDir: ${fd2.celulas} célula(s)`)
+      setSavingMsg(parts.length ? `Importado · ${parts.join(' · ')}` : 'Upload ok (nada aplicado)')
       await refetchMatriz()
-      setTimeout(() => setSavingMsg(''), 4000)
+      setTimeout(() => setSavingMsg(''), 5000)
     } catch (e: any) { setSavingMsg(`Erro: ${e?.message || e}`) }
   }
   const { grupos, meses } = matriz
@@ -457,11 +463,11 @@ function CronogramaTreeMatriz({
           {editMode && <span className="text-[10px] font-normal text-[var(--text-3)] ml-2">Enter/Tab/Setas · cole do Excel · F2 edita · só nível 3 edita</span>}
           <div className="ml-auto flex items-center gap-2">
             <a
-              href={`/api/contratos/${contratoId}/cronograma/template?tipo=${tipo}`}
+              href={`/api/contratos/${contratoId}/planilha/template`}
               className="text-[11px] inline-flex items-center gap-1 px-2 py-1 rounded border border-[var(--border)] hover:border-blue-500 hover:text-blue-400 text-[var(--text-2)]"
-              title="Baixa um .xlsx com a estrutura de detalhamentos do contrato (nível 3) e colunas de meses prontas para preencher"
+              title="Baixa planilha unificada: Orcamento + Físico + FatDireto em 3 abas"
             >
-              <Download className="w-3 h-3" /> Template .xlsx
+              <Download className="w-3 h-3" /> Baixar planilha
             </a>
             {canEdit && (
               <>

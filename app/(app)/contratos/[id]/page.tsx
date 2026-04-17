@@ -1069,8 +1069,8 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                 </Button>
                 <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={expandAll}>Expandir tudo</Button>
                 <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={collapseAll}>Recolher</Button>
-                <a href={`/api/contratos/${id}/orcamento/template`}>
-                  <Button variant="outline" size="sm" className="h-8 text-xs gap-1" title="Baixa o orçamento atual em xlsx (8 colunas oficiais) para editar e subir de volta">
+                <a href={`/api/contratos/${id}/planilha/template`}>
+                  <Button variant="outline" size="sm" className="h-8 text-xs gap-1" title="Baixa planilha unificada: 3 abas — Orcamento + Físico + FatDireto">
                     <Download className="w-3.5 h-3.5" /> Baixar planilha
                   </Button>
                 </a>
@@ -1087,11 +1087,15 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                         setSavingBulk(true)
                         const fd = new FormData()
                         fd.append('file', f)
-                        const res = await fetch(`/api/contratos/${id}/orcamento/upload`, { method: 'POST', body: fd })
+                        const res = await fetch(`/api/contratos/${id}/planilha/upload`, { method: 'POST', body: fd })
                         const json = await res.json()
                         if (!res.ok) throw new Error(json?.error || 'erro')
-                        setLastSavedMsg(`Upload: ${json.atualizados}/${json.total} atualizados${json.falhas ? ` (${json.falhas} falhas)` : ''}`)
-                        // recarrega grupos
+                        const o = json.orcamento || {}, fi = json.fisico || {}, fd2 = json.fatdireto || {}
+                        const parts: string[] = []
+                        if (o.presente) parts.push(`Orçamento: ${o.atualizados}${o.falhas ? ` (${o.falhas} falhas)` : ''}`)
+                        if (fi.presente) parts.push(`Físico: ${fi.celulas} célula(s)`)
+                        if (fd2.presente) parts.push(`FatDir: ${fd2.celulas} célula(s)`)
+                        setLastSavedMsg(parts.length ? `Upload ✓ — ${parts.join(' · ')}` : 'Upload ok (nada aplicado)')
                         const gr = await fetch(`/api/contratos/${id}/grupos`, { cache: 'no-store' }).then(r => r.json())
                         setGrupos(gr)
                       } catch (err: any) {
@@ -1101,7 +1105,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                       }
                     }}
                   />
-                  <Button asChild variant="outline" size="sm" className="h-8 text-xs gap-1" title="Sobe a planilha editada — atualiza Qtde, PR. Mat e PR. M.O.">
+                  <Button asChild variant="outline" size="sm" className="h-8 text-xs gap-1" title="Sobe a planilha editada — atualiza orçamento + físico + fat direto">
                     <span><Upload className="w-3.5 h-3.5" /> Subir planilha</span>
                   </Button>
                 </label>
