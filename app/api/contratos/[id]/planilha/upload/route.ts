@@ -107,13 +107,30 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       ? 'fisico'
       : 'fatdireto'
 
-    // Colunas de mês
-    const mesColIdxs: { col: number; mes: string }[] = []
-    for (let c = 0; c < header.length; c++) {
-      const s = String(header[c] ?? '').trim().toUpperCase()
-      if (s === 'TOTAL' || s === 'DETALHAMENTO_ID' || s === '') continue
-      const mes = headerToMes(header[c])
-      if (mes) mesColIdxs.push({ col: c, mes })
+    // Colunas de mês — tenta linha 0 (header tradicional) e cai para linha 1
+    // quando o arquivo segue o padrão "upload" (meses na linha do GERAL).
+    const scanMesRow = (r: number): { col: number; mes: string }[] => {
+      const out: { col: number; mes: string }[] = []
+      const row = aoa[r] || []
+      for (let c = 0; c < Math.max(header.length, row.length); c++) {
+        const raw = row[c]
+        const s = String(raw ?? '').trim().toUpperCase()
+        if (s === 'TOTAL' || s === 'DETALHAMENTO_ID') continue
+        const mes = headerToMes(raw)
+        if (mes) out.push({ col: c, mes })
+      }
+      return out
+    }
+    let mesColIdxs = scanMesRow(0)
+    // Se não achou meses em row 0, tenta row 1 (padrão "upload" do FIP-WAVE)
+    // e nesse caso a primeira linha de dados passa a ser row 2.
+    let dataStartRow = 1
+    if (mesColIdxs.length === 0 && aoa.length >= 3) {
+      const fromRow1 = scanMesRow(1)
+      if (fromRow1.length > 0) {
+        mesColIdxs = fromRow1
+        dataStartRow = 2
+      }
     }
 
     const admin = createAdminClient()
@@ -133,7 +150,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     let orcAtualizados = 0, orcFalhas = 0
     let linhasProcessadas = 0, linhasIgnoradas = 0
 
-    for (let r = 1; r < aoa.length; r++) {
+    for (let r = dataStartRow; r < aoa.length; r++) {
       const row = aoa[r] || []
       const nivel = Number(row[iNivel])
       if (nivel !== 3) continue

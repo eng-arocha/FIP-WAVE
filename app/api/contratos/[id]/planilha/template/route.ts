@@ -167,8 +167,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           'QTDE', 'PR. UNIT MATERIAL', 'SUBTOTAL MATERIAL',
         ]
     const mesStartCol = FIXED.length         // 11 (físico) ou 8 (fatdireto)
-    const totalColIdx = mesStartCol + meses.length
-    const idColIdx    = mesStartCol + meses.length + 1
+
+    // Físico segue o padrão "upload" — sem TOTAL, sem detalhamento_id,
+    // meses como DATE na própria linha do GERAL (funcionam como label).
+    // Fat Direto mantém TOTAL + detalhamento_id (oculto) por enquanto.
+    const hasTotalCol = tipo === 'fatdireto'
+    const hasIdCol    = tipo === 'fatdireto'
+    const totalColIdx = hasTotalCol ? mesStartCol + meses.length : -1
+    const idColIdx    = hasIdCol    ? mesStartCol + meses.length + (hasTotalCol ? 1 : 0) : -1
 
     // Índices de colunas "moeda" e subtotal para aplicar fórmulas/formatos
     const CURR_COLS = tipo === 'fisico' ? [6, 7, 8, 9, 10] : [6, 7]
@@ -183,23 +189,36 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const A = (r: number, c: number) => XLSX.utils.encode_cell({ r, c })
     const colL = (c: number) => XLSX.utils.encode_col(c)
 
+    const tailHeader: any[] = tipo === 'fatdireto' ? ['TOTAL', 'detalhamento_id'] : []
+    const tailEmpty:  any[] = tipo === 'fatdireto' ? ['', ''] : []
+
     // ── ROW 0: header ─────────────────────────────────────────────────
-    const headerRow: any[] = [
-      ...FIXED,
-      ...mesesDate, 'TOTAL', 'detalhamento_id',
-    ]
+    // Físico: cabeçalho só com as 11 colunas fixas; células de mês VAZIAS
+    // (as datas vão na linha do GERAL, batendo com o arquivo de referência).
+    // Fat Direto: header tradicional com datas + TOTAL + detalhamento_id.
+    const headerRow: any[] = tipo === 'fisico'
+      ? [...FIXED, ...meses.map(() => '')]
+      : [...FIXED, ...mesesDate, ...tailHeader]
     rows.push(headerRow)
     for (let c = 0; c < headerRow.length; c++) {
-      const isMes = c >= mesStartCol && c < totalColIdx
-      styles[A(0, c)] = withFmt(styleHeader, isMes ? FMT_MES : undefined)
+      const isMesHeader = tipo === 'fatdireto' && c >= mesStartCol && c < mesStartCol + meses.length
+      styles[A(0, c)] = withFmt(styleHeader, isMesHeader ? FMT_MES : undefined)
     }
 
     // Placeholder linha GERAL (row 1)
-    const geralRow: any[] = [
-      0, 'GERAL', '', '', '',
-      ...Array(FIXED.length - 5).fill(''),
-      ...meses.map(() => ''), '', '',
-    ]
+    // Físico: meses recebem DATE (Apr-26 etc.) — servem como label de mês.
+    // Fat Direto: meses ficam vazios (as datas estão no header).
+    const geralRow: any[] = tipo === 'fisico'
+      ? [
+          0, 'GERAL', '', '', '',
+          ...Array(FIXED.length - 5).fill(''),
+          ...mesesDate,
+        ]
+      : [
+          0, 'GERAL', '', '', '',
+          ...Array(FIXED.length - 5).fill(''),
+          ...meses.map(() => ''), '', '',
+        ]
     rows.push(geralRow)
     let excelRow = 3
 
@@ -210,18 +229,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       const gRowArr: any[] = [
         1, g.disciplina ?? '', g.codigo, g.nome, '',
         ...Array(FIXED.length - 5).fill(''),
-        ...meses.map(() => ''), '', '',
+        ...meses.map(() => ''), ...tailEmpty,
       ]
       rows.push(gRowArr)
       const gExcelRow = excelRow
       outlineLevels[gExcelRow - 1] = 1
       for (let c = 0; c < gRowArr.length; c++) {
-        const isMes = c >= mesStartCol && c < totalColIdx
+        const isMes = c >= mesStartCol && c < mesStartCol + meses.length
         const isCurr = CURR_COLS.includes(c)
         styles[A(gExcelRow - 1, c)] = withFmt(
           styleGrupo,
           isMes || c === totalColIdx ? FMT_PCT : (isCurr ? FMT_BRL : undefined),
-          c === 3 ? { font: { ...styleGrupo.font, sz: 10 }, alignment: { ...styleGrupo.alignment, horizontal: 'left' } } : undefined
+          c === 3 ? { font: { bold: true, color: { rgb: '000000' }, sz: 10 }, alignment: { vertical: 'center', horizontal: 'left' } } : undefined
         )
       }
       excelRow++
@@ -232,13 +251,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         const tRowArr: any[] = [
           2, t.disciplina ?? g.disciplina ?? '', t.codigo, `. ${t.nome}`, t.local ?? '',
           ...Array(FIXED.length - 5).fill(''),
-          ...meses.map(() => ''), '', '',
+          ...meses.map(() => ''), ...tailEmpty,
         ]
         rows.push(tRowArr)
         const tExcelRow = excelRow
         outlineLevels[tExcelRow - 1] = 2
         for (let c = 0; c < tRowArr.length; c++) {
-          const isMes = c >= mesStartCol && c < totalColIdx
+          const isMes = c >= mesStartCol && c < mesStartCol + meses.length
           const isCurr = CURR_COLS.includes(c)
           styles[A(tExcelRow - 1, c)] = withFmt(
             styleTarefa,
@@ -252,6 +271,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           const qtd = Number(d.quantidade_contratada ?? 0)
           const mat = Number(d.valor_material_unit ?? 0)
           const mo  = Number(d.valor_servico_unit ?? 0)
+          const mesesCells = meses.map(m => {
+            const v = pctByDet[d.id]?.[m]
+            if (v === undefined || v === null) return ''
+            return Number(v) / 100
+          })
           const detRowArr: any[] = tipo === 'fisico'
             ? [
                 3,
@@ -265,13 +289,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
                 mo,
                 { f: `F${excelRow}*I${excelRow}` },
                 { f: `H${excelRow}+J${excelRow}` },
-                ...meses.map(m => {
-                  const v = pctByDet[d.id]?.[m]
-                  if (v === undefined || v === null) return ''
-                  return Number(v) / 100
-                }),
-                { f: `SUM(${colL(mesStartCol)}${excelRow}:${colL(mesStartCol + meses.length - 1)}${excelRow})` },
-                d.id,
+                ...mesesCells,
               ]
             : [
                 3,
@@ -282,18 +300,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
                 qtd,
                 mat,
                 { f: `F${excelRow}*G${excelRow}` },
-                ...meses.map(m => {
-                  const v = pctByDet[d.id]?.[m]
-                  if (v === undefined || v === null) return ''
-                  return Number(v) / 100
-                }),
+                ...mesesCells,
                 { f: `SUM(${colL(mesStartCol)}${excelRow}:${colL(mesStartCol + meses.length - 1)}${excelRow})` },
                 d.id,
               ]
           rows.push(detRowArr)
           const detExcelRow = excelRow
           for (let c = 0; c < detRowArr.length; c++) {
-            const isMes = c >= mesStartCol && c < totalColIdx
+            const isMes = c >= mesStartCol && c < mesStartCol + meses.length
             const isCurr = CURR_COLS.includes(c)
             styles[A(detExcelRow - 1, c)] = withFmt(
               styleDet,
@@ -327,28 +341,34 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }
 
     // ── Linha GERAL ────────────────────────────────────────────────────
+    // Físico: GERAL tem SOMENTE SUMIFS nas 3 colunas de moeda; os meses
+    //         já contêm as datas (labels Apr-26 etc.), não sobrescrever.
+    // Fat Direto: mantém a curva ponderada e o TOTAL na linha GERAL.
     const lastDataRow = excelRow - 1
-    const weightCol = tipo === 'fisico' ? 'K' : 'H' // VALOR GLOBAL (físico) ou SUBTOTAL MATERIAL (fatdireto)
+    const weightCol = tipo === 'fisico' ? 'K' : 'H'
     if (lastDataRow >= 3) {
       rows[1][COL_SUBTOTAL_MAT] = { f: `SUMIFS(H3:H${lastDataRow},A3:A${lastDataRow},3)` }
       if (tipo === 'fisico') {
         rows[1][COL_SUBTOTAL_MO]  = { f: `SUMIFS(J3:J${lastDataRow},A3:A${lastDataRow},3)` }
         rows[1][COL_VALOR_GLOBAL] = { f: `SUMIFS(K3:K${lastDataRow},A3:A${lastDataRow},3)` }
-      }
-      for (let mi = 0; mi < meses.length; mi++) {
-        const col = colL(mesStartCol + mi)
-        rows[1][mesStartCol + mi] = {
-          f: `IFERROR(SUMPRODUCT((A3:A${lastDataRow}=3)*(${col}3:${col}${lastDataRow})*(${weightCol}3:${weightCol}${lastDataRow}))/SUMIFS(${weightCol}3:${weightCol}${lastDataRow},A3:A${lastDataRow},3),"")`,
+      } else {
+        for (let mi = 0; mi < meses.length; mi++) {
+          const col = colL(mesStartCol + mi)
+          rows[1][mesStartCol + mi] = {
+            f: `IFERROR(SUMPRODUCT((A3:A${lastDataRow}=3)*(${col}3:${col}${lastDataRow})*(${weightCol}3:${weightCol}${lastDataRow}))/SUMIFS(${weightCol}3:${weightCol}${lastDataRow},A3:A${lastDataRow},3),"")`,
+          }
         }
+        rows[1][totalColIdx] = { f: `SUM(${colL(mesStartCol)}2:${colL(mesStartCol + meses.length - 1)}2)` }
       }
-      rows[1][totalColIdx] = { f: `SUM(${colL(mesStartCol)}2:${colL(mesStartCol + meses.length - 1)}2)` }
     }
     for (let c = 0; c < rows[1].length; c++) {
-      const isMes = c >= mesStartCol && c < totalColIdx
+      const isMes = c >= mesStartCol && c < mesStartCol + meses.length
       const isCurr = CURR_COLS.includes(c)
+      // No físico as células de mês da GERAL são datas (Date) — formatar como mmm-yy
+      const mesFmt = tipo === 'fisico' ? FMT_MES : FMT_PCT
       styles[A(1, c)] = withFmt(
         styleGeral,
-        isMes || c === totalColIdx ? FMT_PCT : (isCurr ? FMT_BRL : undefined),
+        isMes ? mesFmt : (c === totalColIdx ? FMT_PCT : (isCurr ? FMT_BRL : undefined)),
       )
     }
 
@@ -358,11 +378,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     for (const [addr, st] of Object.entries(styles)) {
       if (ws[addr]) ws[addr].s = st
     }
+    // Garante numFmt mmm-yy nas datas dos meses — no físico elas estão na
+    // linha 1 (GERAL), no fatdireto no header (linha 0).
+    const mesLabelRow = tipo === 'fisico' ? 1 : 0
     for (let mi = 0; mi < meses.length; mi++) {
-      const addr = A(0, mesStartCol + mi)
+      const addr = A(mesLabelRow, mesStartCol + mi)
       if (ws[addr]) {
         ws[addr].z = FMT_MES
-        ws[addr].s = withFmt(styleHeader, FMT_MES)
+        ws[addr].s = withFmt(tipo === 'fisico' ? styleGeral : styleHeader, FMT_MES)
       }
     }
 
@@ -378,8 +401,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     ws['!cols'] = [
       ...(tipo === 'fisico' ? colsFisico : colsFat),
       ...meses.map(() => ({ wch: 10 })),
-      { wch: 10 },
-      { wch: 38, hidden: true },
+      ...(tipo === 'fatdireto' ? [{ wch: 10 }, { wch: 38, hidden: true }] : []),
     ]
 
     const rowsInfo: any[] = []
