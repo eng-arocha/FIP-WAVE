@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server'
 import { getGruposMacro, createGrupoMacro } from '@/lib/db/estrutura'
 import { apiError } from '@/lib/api/error-response'
 
+// Route sempre dinâmica — Next/Vercel não deve cachear: códigos mudam quando
+// rodamos migrations de correção (ex: 047 renomeia 16.2.x → 16.3.x).
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params

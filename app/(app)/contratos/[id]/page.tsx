@@ -182,7 +182,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
 
   useEffect(() => {
     async function loadGrupos() {
-      const res = await fetch(`/api/contratos/${id}/grupos`)
+      const res = await fetch(`/api/contratos/${id}/grupos`, { cache: 'no-store' })
       if (res.ok) {
         const data = await res.json()
         setGrupos(data)
