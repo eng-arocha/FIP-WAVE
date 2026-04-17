@@ -11,7 +11,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   try {
     const { id } = await params
     const data = await getGruposMacro(id)
-    return NextResponse.json(data)
+    return NextResponse.json(data, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'CDN-Cache-Control': 'no-store',
+        'Vercel-CDN-Cache-Control': 'no-store',
+      },
+    })
   } catch (e: any) {
     return apiError(e)
   }
