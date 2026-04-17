@@ -27,12 +27,43 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       admin.from('detalhamentos').select('id, tarefa_id, codigo, descricao, quantidade_contratada, valor_material_unit, valor_servico_unit, ordem').order('ordem'),
     ])
 
-    const grupoIds = new Set((grupos || []).map((g: any) => g.id))
-    const grupoPorId = Object.fromEntries((grupos || []).map((g: any) => [g.id, g]))
-    const tarefasFiltradas = (tarefas || []).filter((t: any) => grupoIds.has(t.grupo_macro_id))
+    // Ordenação natural por código (1.2.1 < 1.10.1 < 2.1.1).
+    // A coluna `ordem` no DB não é confiável entre grupos/tarefas — usamos o
+    // próprio código do item para garantir a mesma sequência do cronograma.
+    const cmpCodigo = (a: string, b: string) => {
+      const pa = String(a || '').split('.').map(n => parseInt(n, 10) || 0)
+      const pb = String(b || '').split('.').map(n => parseInt(n, 10) || 0)
+      const len = Math.max(pa.length, pb.length)
+      for (let i = 0; i < len; i++) {
+        const da = pa[i] ?? 0, db = pb[i] ?? 0
+        if (da !== db) return da - db
+      }
+      return 0
+    }
+
+    const gruposOrd = [...(grupos || [])].sort((a: any, b: any) => cmpCodigo(a.codigo, b.codigo))
+    const grupoIds = new Set(gruposOrd.map((g: any) => g.id))
+    const grupoPorId = Object.fromEntries(gruposOrd.map((g: any) => [g.id, g]))
+    const ordemGrupo: Record<string, number> = Object.fromEntries(gruposOrd.map((g: any, i: number) => [g.id, i]))
+
+    const tarefasFiltradas = [...(tarefas || [])]
+      .filter((t: any) => grupoIds.has(t.grupo_macro_id))
+      .sort((a: any, b: any) => {
+        const dg = (ordemGrupo[a.grupo_macro_id] ?? 0) - (ordemGrupo[b.grupo_macro_id] ?? 0)
+        if (dg !== 0) return dg
+        return cmpCodigo(a.codigo, b.codigo)
+      })
     const tarefaIds = new Set(tarefasFiltradas.map((t: any) => t.id))
     const tarefaPorId = Object.fromEntries(tarefasFiltradas.map((t: any) => [t.id, t]))
-    const detsFiltrados = (dets || []).filter((d: any) => tarefaIds.has(d.tarefa_id))
+    const ordemTarefa: Record<string, number> = Object.fromEntries(tarefasFiltradas.map((t: any, i: number) => [t.id, i]))
+
+    const detsFiltrados = [...(dets || [])]
+      .filter((d: any) => tarefaIds.has(d.tarefa_id))
+      .sort((a: any, b: any) => {
+        const dt = (ordemTarefa[a.tarefa_id] ?? 0) - (ordemTarefa[b.tarefa_id] ?? 0)
+        if (dt !== 0) return dt
+        return cmpCodigo(a.codigo, b.codigo)
+      })
     const detIds = detsFiltrados.map((d: any) => d.id)
 
     // Meses do contrato
