@@ -180,11 +180,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         if (iMo  >= 0) { const v = toNumberBR(row[iMo]);  if (v !== undefined) patch.valor_servico_unit  = v }
       }
       if (Object.keys(patch).length > 0) {
-        const mat = patch.valor_material_unit ?? det.valor_material_unit ?? 0
-        const mo  = patch.valor_servico_unit  ?? det.valor_servico_unit  ?? 0
-        const qtd = patch.quantidade_contratada ?? det.quantidade_contratada ?? 0
-        patch.valor_unitario = Number(mat) + Number(mo)
-        patch.valor_total    = Number(qtd) * (Number(mat) + Number(mo))
+        // valor_unitario e valor_total são colunas GERADAS no banco — não aceitam write.
+        // Só enviamos os campos-fonte (qtde, valor_material_unit, valor_servico_unit).
         const { error: upErr } = await admin.from('detalhamentos').update(patch).eq('id', det.id)
         if (upErr) { orcFalhas++; if (orcErros.length < 3) orcErros.push(`${det.codigo}: ${upErr.message} | patch=${JSON.stringify(patch)}`) }
         else orcAtualizados++
