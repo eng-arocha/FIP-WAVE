@@ -152,6 +152,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const pctUpdates: { detalhamento_id: string; mes: string; pct_planejado: number }[] = []
     let orcAtualizados = 0, orcFalhas = 0
     let linhasProcessadas = 0, linhasIgnoradas = 0
+    const orcErros: string[] = []
 
     for (let r = dataStartRow; r < aoa.length; r++) {
       const row = aoa[r] || []
@@ -185,7 +186,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         patch.valor_unitario = Number(mat) + Number(mo)
         patch.valor_total    = Number(qtd) * (Number(mat) + Number(mo))
         const { error: upErr } = await admin.from('detalhamentos').update(patch).eq('id', det.id)
-        if (upErr) orcFalhas++
+        if (upErr) { orcFalhas++; if (orcErros.length < 3) orcErros.push(`${det.codigo}: ${upErr.message} | patch=${JSON.stringify(patch)}`) }
         else orcAtualizados++
       }
 
@@ -234,7 +235,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({
       tipo_detectado: tipo,
       aba: sheetName,
-      orcamento: { atualizados: orcAtualizados, falhas: orcFalhas },
+      orcamento: { atualizados: orcAtualizados, falhas: orcFalhas, erros: orcErros },
       cronograma: { tipo, celulas: celulasAplicadas, meses: mesColIdxs.length, limpas: celulasLimpas, reset },
       linhas_nivel3: linhasProcessadas,
       linhas_ignoradas: linhasIgnoradas,
