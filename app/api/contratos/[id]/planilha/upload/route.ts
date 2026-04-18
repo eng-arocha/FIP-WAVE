@@ -65,6 +65,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const auth = await assertPermissao('cronograma', 'editar')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
+    const url = new URL(req.url)
+    const reset = url.searchParams.get('reset') === '1'
+
     const form = await req.formData()
     const file = form.get('file') as File | null
     if (!file) return NextResponse.json({ error: 'arquivo ausente' }, { status: 400 })
@@ -202,6 +205,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // Aplica curva APENAS na tabela correspondente ao tipo detectado
     const tableTipo = tipo === 'fisico' ? 'planejamento_fisico_det' : 'planejamento_fat_direto_det'
     let celulasAplicadas = 0
+    let celulasLimpas = 0
+
+    // Se reset=1, apaga TODAS as linhas da curva desse tipo para os detalhamentos
+    // do contrato antes de inserir — garante que curvas antigas (meses ou
+    // detalhamentos que não estão no novo arquivo) não fiquem como lixo.
+    if (reset) {
+      const detIds = (allDets || []).map((d: any) => d.id)
+      if (detIds.length) {
+        const { count, error: delErr } = await admin
+          .from(tableTipo)
+          .delete({ count: 'exact' })
+          .in('detalhamento_id', detIds)
+        if (delErr) throw delErr
+        celulasLimpas = count ?? 0
+      }
+    }
+
     if (pctUpdates.length) {
       for (let i = 0; i < pctUpdates.length; i += 1000) {
         const slice = pctUpdates.slice(i, i + 1000)
@@ -215,7 +235,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       tipo_detectado: tipo,
       aba: sheetName,
       orcamento: { atualizados: orcAtualizados, falhas: orcFalhas },
-      cronograma: { tipo, celulas: celulasAplicadas, meses: mesColIdxs.length },
+      cronograma: { tipo, celulas: celulasAplicadas, meses: mesColIdxs.length, limpas: celulasLimpas, reset },
       linhas_nivel3: linhasProcessadas,
       linhas_ignoradas: linhasIgnoradas,
     })

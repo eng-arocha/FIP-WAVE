@@ -277,7 +277,9 @@ function CronogramaTreeMatriz({
     fd.append('file', file)
     try {
       // Endpoint unificado: processa as 3 abas (Orcamento + Fisico + FatDireto) se presentes.
-      const r = await fetch(`/api/contratos/${contratoId}/planilha/upload`, { method: 'POST', body: fd })
+      // reset=1: apaga curva antiga do tipo detectado antes de aplicar — upload é
+      // sempre tratado como "verdade nova", não merge.
+      const r = await fetch(`/api/contratos/${contratoId}/planilha/upload?reset=1`, { method: 'POST', body: fd })
       const j = await r.json()
       if (!r.ok) { setSavingMsg(`Erro no upload: ${j.error || r.status}`); return }
       const o = j.orcamento || {}, cr = j.cronograma || {}

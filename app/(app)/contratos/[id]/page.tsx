@@ -1092,7 +1092,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                         setSavingBulk(true)
                         const fd = new FormData()
                         fd.append('file', f)
-                        const res = await fetch(`/api/contratos/${id}/planilha/upload`, { method: 'POST', body: fd })
+                        const res = await fetch(`/api/contratos/${id}/planilha/upload?reset=1`, { method: 'POST', body: fd })
                         const json = await res.json()
                         if (!res.ok) throw new Error(json?.error || 'erro')
                         const o = json.orcamento || {}, cr = json.cronograma || {}
