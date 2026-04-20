@@ -28,18 +28,27 @@ export async function PUT(
     const admin = createAdminClient()
 
     // Atualiza dados do cabeçalho
+    const headerUpdate: Record<string, unknown> = {
+      fornecedor_razao_social: body.fornecedor_razao_social,
+      fornecedor_cnpj: body.fornecedor_cnpj,
+      fornecedor_contato: body.fornecedor_contato,
+      fornecedor_contato_nome: body.fornecedor_contato_nome,
+      fornecedor_contato_telefone: body.fornecedor_contato_telefone,
+      observacoes: body.observacoes,
+      numero_pedido_fip: body.numero_pedido_fip,
+      valor_total: (body.itens as any[]).reduce((s: number, i: any) => s + (parseFloat(i.valor_total) || 0), 0),
+    }
+    // Permite atualizar lista de anexos (remoção pelo usuário no edit)
+    if (Array.isArray(body.pedido_anexos)) {
+      headerUpdate.pedido_anexos = body.pedido_anexos
+      // Mantém compatibilidade: espelha primeiro anexo em pedido_pdf_url/_nome, ou limpa se vazio
+      const first = body.pedido_anexos[0]
+      headerUpdate.pedido_pdf_url = first?.url ?? null
+      headerUpdate.pedido_pdf_nome = first?.nome ?? null
+    }
     const { error: errSol } = await admin
       .from('solicitacoes_fat_direto')
-      .update({
-        fornecedor_razao_social: body.fornecedor_razao_social,
-        fornecedor_cnpj: body.fornecedor_cnpj,
-        fornecedor_contato: body.fornecedor_contato,
-        fornecedor_contato_nome: body.fornecedor_contato_nome,
-        fornecedor_contato_telefone: body.fornecedor_contato_telefone,
-        observacoes: body.observacoes,
-        numero_pedido_fip: body.numero_pedido_fip,
-        valor_total: (body.itens as any[]).reduce((s: number, i: any) => s + (parseFloat(i.valor_total) || 0), 0),
-      })
+      .update(headerUpdate)
       .eq('id', solId)
     if (errSol) throw errSol
 

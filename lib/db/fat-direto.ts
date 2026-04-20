@@ -30,6 +30,8 @@ export async function getSolicitacao(id: string) {
       id, numero, status, data_solicitacao, data_aprovacao,
       observacoes, motivo_rejeicao, valor_total, contrato_id, created_at,
       fornecedor_razao_social, fornecedor_cnpj, fornecedor_contato,
+      fornecedor_contato_nome, fornecedor_contato_telefone,
+      numero_pedido_fip, pedido_pdf_url, pedido_pdf_nome, pedido_anexos,
       solicitante:perfis!solicitante_id(nome, email),
       aprovador:perfis!aprovador_id(nome, email),
       itens:itens_solicitacao_fat_direto(
