@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { isSchemaMissingError } from '@/lib/db/resilient'
+import { isSchemaMissingError, withSchemaFallback } from '@/lib/db/resilient'
 
 export async function listarSolicitacoes(contratoId: string) {
   const admin = createAdminClient()
@@ -24,14 +24,11 @@ export async function listarSolicitacoes(contratoId: string) {
 
 export async function getSolicitacao(id: string) {
   const admin = createAdminClient()
-  const { data, error } = await admin
-    .from('solicitacoes_fat_direto')
-    .select(`
+
+  const baseSelect = `
       id, numero, status, data_solicitacao, data_aprovacao,
       observacoes, motivo_rejeicao, valor_total, contrato_id, created_at,
       fornecedor_razao_social, fornecedor_cnpj, fornecedor_contato,
-      fornecedor_contato_nome, fornecedor_contato_telefone,
-      numero_pedido_fip, pedido_pdf_url, pedido_pdf_nome, pedido_anexos,
       solicitante:perfis!solicitante_id(nome, email),
       aprovador:perfis!aprovador_id(nome, email),
       itens:itens_solicitacao_fat_direto(
@@ -41,9 +38,36 @@ export async function getSolicitacao(id: string) {
       notas_fiscais:notas_fiscais_fat_direto(
         id, numero_nf, emitente, cnpj_emitente, valor, data_emissao, descricao, status, validado_em
       )
-    `)
-    .eq('id', id)
-    .single()
+    `
+
+  // Campos extras (contato/pedido/anexos): se schema cache do PostgREST
+  // ainda não os conhece, cai pro select base em vez de quebrar a página.
+  const extraSelect = `${baseSelect},
+      fornecedor_contato_nome, fornecedor_contato_telefone,
+      numero_pedido_fip, pedido_pdf_url, pedido_pdf_nome, pedido_anexos`
+
+  const { data, error } = await withSchemaFallback({
+    primary: () => admin
+      .from('solicitacoes_fat_direto')
+      .select(extraSelect)
+      .eq('id', id)
+      .single(),
+    fallback: () => admin
+      .from('solicitacoes_fat_direto')
+      .select(baseSelect)
+      .eq('id', id)
+      .single(),
+    missingColumns: [
+      'fornecedor_contato_nome',
+      'fornecedor_contato_telefone',
+      'numero_pedido_fip',
+      'pedido_pdf_url',
+      'pedido_pdf_nome',
+      'pedido_anexos',
+    ],
+    context: 'getSolicitacao',
+  })
+
   if (error) throw error
   return data
 }

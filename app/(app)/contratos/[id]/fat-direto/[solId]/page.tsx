@@ -109,9 +109,22 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
   }
 
   async function load() {
-    const data = await fetch(`/api/contratos/${id}/fat-direto/solicitacoes/${solId}`).then(r => r.json())
-    setSol(data)
-    setLoading(false)
+    try {
+      const res = await fetch(`/api/contratos/${id}/fat-direto/solicitacoes/${solId}`)
+      const data = await res.json()
+      // API retorna {error: ...} em caso de falha — não setar como sol (quebra a UI com NaN/undefined)
+      if (!res.ok || !data?.id) {
+        setSol(null)
+        setErro(data?.error || 'Erro ao carregar solicitação.')
+      } else {
+        setSol(data)
+      }
+    } catch (e: any) {
+      setSol(null)
+      setErro(e?.message || 'Erro ao carregar solicitação.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => { load(); carregarSaldo() }, [solId])
