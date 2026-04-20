@@ -10,7 +10,10 @@ import { formatCurrency } from '@/lib/utils'
 import {
   ArrowLeft, Plus, Package, Save, AlertTriangle,
   Building2, X, Hash, TrendingUp, CheckCircle2, Search,
+  Paperclip, Upload, FileText,
 } from 'lucide-react'
+
+interface Anexo { nome: string; url: string; tamanho: number; tipo: string }
 
 // ── Máscaras ───────────────────────────────────────────────────────────────
 function maskCnpj(v: string): string {
@@ -155,6 +158,11 @@ export default function EditarSolicitacaoPage({ params }: { params: Promise<{ id
   const [saving, setSaving] = useState(false)
   const [erro, setErro] = useState('')
 
+  // Anexos: existentes (vêm do banco) e novos (a fazer upload)
+  const [anexosExistentes, setAnexosExistentes] = useState<Anexo[]>([])
+  const [anexosNovos, setAnexosNovos] = useState<File[]>([])
+  const anexoInputRef = useRef<HTMLInputElement>(null)
+
   // Carrega tarefas + solicitação existente
   useEffect(() => {
     Promise.all([
@@ -171,6 +179,20 @@ export default function EditarSolicitacaoPage({ params }: { params: Promise<{ id
       setFornCnpj(cnpjRaw.length === 14 ? maskCnpj(cnpjRaw) : cnpjRaw)
       setNumeroPedidoFip(sol.numero_pedido_fip != null ? String(sol.numero_pedido_fip) : '')
       setObservacoes(sol.observacoes || '')
+
+      // Pré-popula anexos existentes. Fallback: se só há pedido_pdf_url legado
+      // e nenhum item em pedido_anexos, sintetiza a partir do pdf_url/nome.
+      const anexosDb: Anexo[] = Array.isArray(sol.pedido_anexos) ? sol.pedido_anexos : []
+      if (anexosDb.length > 0) {
+        setAnexosExistentes(anexosDb)
+      } else if (sol.pedido_pdf_url) {
+        setAnexosExistentes([{
+          nome: sol.pedido_pdf_nome || 'pedido.pdf',
+          url: sol.pedido_pdf_url,
+          tamanho: 0,
+          tipo: 'application/pdf',
+        }])
+      }
 
       // Pré-popula contato
       const contato = sol.fornecedor_contato || ''
@@ -321,6 +343,8 @@ export default function EditarSolicitacaoPage({ params }: { params: Promise<{ id
         fornecedor_contato_telefone: telDigits,
         numero_pedido_fip: parseInt(numeroPedidoFip, 10),
         observacoes,
+        // Envia a lista atualizada de anexos (permite remoção dos existentes)
+        pedido_anexos: anexosExistentes,
         itens: filledItens.map(it => {
           const t = tarefas.find(x => x.id === it.tarefa_id)
           return {
@@ -339,6 +363,23 @@ export default function EditarSolicitacaoPage({ params }: { params: Promise<{ id
       })
       const data = await res.json()
       if (!res.ok) { setErro(data.error || 'Erro ao salvar'); setSaving(false); return }
+
+      // Upload de anexos novos (append à lista existente no backend)
+      if (anexosNovos.length > 0) {
+        const fd = new FormData()
+        anexosNovos.forEach(f => fd.append('files', f))
+        fd.append('solicitacao_id', solId)
+        fd.append('tipo', 'pedido')
+        fd.append('numero_pedido_fip', numeroPedidoFip)
+        const upRes = await fetch('/api/fat-direto/upload', { method: 'POST', body: fd })
+        if (!upRes.ok) {
+          const upData = await upRes.json().catch(() => ({}))
+          setErro(upData.error || 'Erro ao enviar anexos')
+          setSaving(false)
+          return
+        }
+      }
+
       router.push(`/contratos/${id}/fat-direto/${solId}`)
     } catch (e: any) {
       setErro(e.message)
@@ -453,6 +494,150 @@ export default function EditarSolicitacaoPage({ params }: { params: Promise<{ id
               placeholder="Justificativa ou observações..." rows={10}
               className="w-full rounded-xl px-4 py-3 text-sm outline-none resize-y transition-all min-h-[240px] leading-relaxed"
               style={inputStyle} {...focusHandlers} />
+          </CardContent>
+        </Card>
+
+        {/* ── Anexos do Pedido ── */}
+        <Card style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2" style={{ color: 'var(--text-1)' }}>
+              <span className="apple-icon" style={{ background: 'linear-gradient(135deg, #EF4444, #F97316)' }}>
+                <Paperclip className="w-3.5 h-3.5 text-white" strokeWidth={1.5} />
+              </span>
+              Anexos do Pedido
+              <span className="text-xs font-normal ml-1" style={{ color: 'var(--text-3)' }}>(opcional · múltiplos arquivos)</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div
+              className="flex flex-col items-center gap-2 rounded-xl px-4 py-5 cursor-pointer transition-all text-center"
+              style={{ background: 'var(--surface-3)', border: '1.5px dashed var(--border)' }}
+              onClick={() => anexoInputRef.current?.click()}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)' }}
+              onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--accent)' }}
+              onDragLeave={e => { e.currentTarget.style.borderColor = 'var(--border)' }}
+              onDrop={e => {
+                e.preventDefault()
+                e.currentTarget.style.borderColor = 'var(--border)'
+                const dropped = Array.from(e.dataTransfer.files)
+                if (dropped.length > 0) setAnexosNovos(prev => [...prev, ...dropped])
+              }}
+            >
+              <Upload className="w-5 h-5" strokeWidth={1.5} style={{ color: 'var(--text-3)' }} />
+              <div>
+                <p className="text-sm font-medium" style={{ color: 'var(--text-2)' }}>
+                  Clique ou arraste arquivos aqui
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>
+                  PDF, imagens (JPG, PNG) — novo pedido FIP, nota, proposta, etc.
+                </p>
+              </div>
+            </div>
+
+            <input
+              ref={anexoInputRef}
+              type="file"
+              accept="application/pdf,image/jpeg,image/png,image/webp"
+              multiple
+              className="hidden"
+              onChange={e => {
+                const files = Array.from(e.target.files ?? [])
+                if (files.length > 0) setAnexosNovos(prev => [...prev, ...files])
+                if (anexoInputRef.current) anexoInputRef.current.value = ''
+              }}
+            />
+
+            {anexosExistentes.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
+                  Anexos atuais
+                </p>
+                {anexosExistentes.map((a, i) => (
+                  <div
+                    key={`existente-${i}`}
+                    className="flex items-center gap-3 rounded-xl px-3 py-2.5"
+                    style={{ background: 'var(--surface-3)', border: '1px solid var(--border)' }}
+                  >
+                    <div
+                      className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ background: a.tipo?.includes('pdf') ? 'rgba(239,68,68,0.12)' : 'rgba(59,130,246,0.12)' }}
+                    >
+                      <FileText
+                        className="w-3.5 h-3.5"
+                        strokeWidth={1.5}
+                        style={{ color: a.tipo?.includes('pdf') ? '#EF4444' : '#3B82F6' }}
+                      />
+                    </div>
+                    <a
+                      href={a.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex-1 min-w-0"
+                    >
+                      <p className="text-xs font-medium truncate hover:underline" style={{ color: 'var(--text-1)' }}>{a.nome}</p>
+                      {a.tamanho > 0 && (
+                        <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
+                          {(a.tamanho / 1024).toFixed(0)} KB
+                        </p>
+                      )}
+                    </a>
+                    <button
+                      onClick={() => setAnexosExistentes(prev => prev.filter((_, idx) => idx !== i))}
+                      className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center transition-colors"
+                      style={{ color: 'var(--text-3)' }}
+                      onMouseEnter={e => { e.currentTarget.style.color = 'var(--red)'; e.currentTarget.style.background = 'rgba(239,68,68,0.08)' }}
+                      onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-3)'; e.currentTarget.style.background = '' }}
+                      title="Remover (será excluído ao salvar)"
+                    >
+                      <X className="w-3.5 h-3.5" strokeWidth={2} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {anexosNovos.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--accent)' }}>
+                  Novos anexos (serão enviados ao salvar)
+                </p>
+                {anexosNovos.map((f, i) => (
+                  <div
+                    key={`novo-${f.name}-${i}`}
+                    className="flex items-center gap-3 rounded-xl px-3 py-2.5"
+                    style={{ background: 'var(--surface-3)', border: '1px solid var(--border)' }}
+                  >
+                    <div
+                      className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ background: f.type.includes('pdf') ? 'rgba(239,68,68,0.12)' : 'rgba(59,130,246,0.12)' }}
+                    >
+                      <FileText
+                        className="w-3.5 h-3.5"
+                        strokeWidth={1.5}
+                        style={{ color: f.type.includes('pdf') ? '#EF4444' : '#3B82F6' }}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate" style={{ color: 'var(--text-1)' }}>{f.name}</p>
+                      <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
+                        {(f.size / 1024).toFixed(0)} KB
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setAnexosNovos(prev => prev.filter((_, idx) => idx !== i))}
+                      className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center transition-colors"
+                      style={{ color: 'var(--text-3)' }}
+                      onMouseEnter={e => { e.currentTarget.style.color = 'var(--red)'; e.currentTarget.style.background = 'rgba(239,68,68,0.08)' }}
+                      onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-3)'; e.currentTarget.style.background = '' }}
+                      title="Remover da lista"
+                    >
+                      <X className="w-3.5 h-3.5" strokeWidth={2} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
