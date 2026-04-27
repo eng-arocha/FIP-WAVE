@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
 import { validateUpload } from '@/lib/api/upload-validation'
+import { optimizeUpload } from '@/lib/server/optimize-upload'
+import { log } from '@/lib/log'
 
 const BUCKET = 'faturamento-direto'
 
@@ -27,7 +29,9 @@ export async function POST(req: Request) {
 
     const uploaded: { nome: string; url: string; tamanho: number; tipo: string }[] = []
 
-    // P1.6: valida cada arquivo (MIME + magic bytes + tamanho) antes do upload
+    // P1.6: valida cada arquivo (MIME + magic bytes + tamanho) e já guarda o
+    // mime detectado pra reusar na otimização (evita duplicar leitura).
+    const validated: { file: File; detectedMime: string }[] = []
     for (const file of files) {
       const v = await validateUpload(file)
       if (!v.ok) {
@@ -36,36 +40,54 @@ export async function POST(req: Request) {
           { status: 400 },
         )
       }
+      validated.push({ file, detectedMime: v.detectedMime ?? file.type })
     }
 
-    for (const file of files) {
+    for (const { file, detectedMime } of validated) {
+      // Otimiza antes do upload (imagem → JPEG q75 ≤2400px; PDF → strip
+      // metadata + flatten forms; XML → minify). Mantém original se não
+      // houver ganho.
+      const original = Buffer.from(await file.arrayBuffer())
+      const optimized = await optimizeUpload(original, detectedMime)
+      if (optimized.optimized) {
+        log.info('pedido_upload_compactado', {
+          solicitacaoId,
+          sizeBefore: optimized.sizeBefore,
+          sizeAfter:  optimized.sizeAfter,
+          ratio: ((1 - optimized.sizeAfter / optimized.sizeBefore) * 100).toFixed(1) + '%',
+          mimeIn: detectedMime,
+          mimeOut: optimized.mime,
+        })
+      }
+
       let storagePath: string
       let nomeArquivo: string
 
       if (tipo === 'pedido') {
         const num = numeroPedidoFip ? numeroPedidoFip.padStart(4, '0') : solicitacaoId.slice(0, 8)
-        const ext = file.name.split('.').pop()?.toLowerCase() || 'pdf'
-        // Se há mais de 1 arquivo, adiciona sufixo para unicidade
+        // Usa a extensão do mime FINAL (otimizado pode ter mudado PNG→JPEG)
         const suffix = files.length > 1 ? `-${uploaded.length + 1}` : ''
-        nomeArquivo = `PEDIDO-FIP-${num}${suffix}.${ext}`
+        nomeArquivo = `PEDIDO-FIP-${num}${suffix}.${optimized.ext}`
         storagePath = `pedidos/${solicitacaoId}/${nomeArquivo}`
       } else {
-        nomeArquivo = nfNumero ? `NF-${nfNumero}.pdf` : `NF-${Date.now()}.pdf`
+        const ext = optimized.ext
+        nomeArquivo = nfNumero ? `NF-${nfNumero}.${ext}` : `NF-${Date.now()}.${ext}`
         storagePath = `notas-fiscais/${nomeArquivo}`
       }
 
-      const bytes = await file.arrayBuffer()
-      const buffer = Buffer.from(bytes)
-      const contentType = file.type || 'application/octet-stream'
-
       const { error: uploadError } = await admin.storage
         .from(BUCKET)
-        .upload(storagePath, buffer, { contentType, upsert: true })
+        .upload(storagePath, optimized.buffer, { contentType: optimized.mime, upsert: true })
 
       if (uploadError) throw uploadError
 
       const { data: urlData } = admin.storage.from(BUCKET).getPublicUrl(storagePath)
-      uploaded.push({ nome: nomeArquivo, url: urlData?.publicUrl ?? '', tamanho: file.size, tipo: contentType })
+      uploaded.push({
+        nome: nomeArquivo,
+        url: urlData?.publicUrl ?? '',
+        tamanho: optimized.sizeAfter,
+        tipo: optimized.mime,
+      })
     }
 
     // Atualizar registro na tabela

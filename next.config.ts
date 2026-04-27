@@ -5,6 +5,9 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     '/': ['./supabase/migrations/**/*.sql'],
   },
+  // sharp tem binários nativos por plataforma — precisa ficar fora do bundle
+  // server pra carregar a build correta do Vercel (Linux x64).
+  serverExternalPackages: ['sharp'],
 };
 
 export default nextConfig;

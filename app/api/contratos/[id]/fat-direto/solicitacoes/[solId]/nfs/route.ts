@@ -5,6 +5,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
 import { cnpj, dataIso } from '@/lib/api/schema'
 import { validateUpload } from '@/lib/api/upload-validation'
+import { optimizeUpload } from '@/lib/server/optimize-upload'
+import { log } from '@/lib/log'
 
 const BUCKET = 'contratos-documentos'
 
@@ -91,13 +93,28 @@ export async function POST(
           { status: 400 },
         )
       }
-      const ext = file.name.split('.').pop() ?? 'pdf'
-      const path = `nfs-fat-direto/${solId}/${Date.now()}.${ext}`
-      const bytes = await file.arrayBuffer()
-      const buffer = Buffer.from(bytes)
+
+      // Compacta server-side: imagem → JPEG q75 ≤2400px (strip EXIF), PDF →
+      // strip metadata + flatten forms, XML → minify. Reduz custo de Storage
+      // sem perda de leitura. Se não der ganho, mantém original.
+      const original = Buffer.from(await file.arrayBuffer())
+      const optimized = await optimizeUpload(original, v.detectedMime ?? file.type)
+
+      if (optimized.optimized) {
+        log.info('nf_upload_compactado', {
+          solId,
+          sizeBefore: optimized.sizeBefore,
+          sizeAfter:  optimized.sizeAfter,
+          ratio: ((1 - optimized.sizeAfter / optimized.sizeBefore) * 100).toFixed(1) + '%',
+          mimeIn: v.detectedMime ?? file.type,
+          mimeOut: optimized.mime,
+        })
+      }
+
+      const path = `nfs-fat-direto/${solId}/${Date.now()}.${optimized.ext}`
       const { error: upErr } = await admin.storage
         .from(BUCKET)
-        .upload(path, buffer, { contentType: file.type, upsert: false })
+        .upload(path, optimized.buffer, { contentType: optimized.mime, upsert: false })
       if (!upErr) {
         const { data: urlData } = admin.storage.from(BUCKET).getPublicUrl(path)
         arquivo_url = urlData.publicUrl
