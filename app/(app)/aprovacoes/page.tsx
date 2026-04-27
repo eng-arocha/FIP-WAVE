@@ -14,12 +14,14 @@ import {
 import {
   CheckCircle2, XCircle, Clock, AlertCircle,
   FileText, Building2, Calendar, ArrowRight, Package, Undo2, Loader2,
+  ChevronUp, ChevronDown, ChevronsUpDown, RotateCcw,
 } from 'lucide-react'
 import { formatCurrency, formatDate, getMedicaoStatusColor } from '@/lib/utils'
 import { MEDICAO_STATUS_LABELS, MedicaoStatus } from '@/types'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 import { MaximizableCard } from '@/components/ui/maximizable-card'
 import { FiltroSaldoItem } from '@/components/aprovacoes/filtro-saldo-item'
+import { useTableLayout, type ColumnDef } from '@/lib/hooks/use-table-layout'
 
 interface PendenteFip {
   id: string
@@ -79,6 +81,7 @@ interface HistoricoFip {
   valor_total: number
   fornecedor_razao_social: string
   motivo_rejeicao: string | null
+  observacoes: string | null
   contrato: { id: string; numero: string; descricao: string } | null
   solicitante: { id: string; nome: string | null; email: string | null } | null
   aprovador:   { id: string; nome: string | null; email: string | null } | null
@@ -338,6 +341,7 @@ export default function AprovacoesPage() {
     aprovador: string
     data: string // ISO ou ''
     valor: number
+    observacoes: string
     status: string
     statusLabel: string
     linkHref: string
@@ -359,6 +363,7 @@ export default function AprovacoesPage() {
         aprovador: m.aprovacoes?.[0]?.aprovador_nome || '—',
         data: m.updated_at || '',
         valor: m.valor_total || 0,
+        observacoes: '',
         status: m.status,
         statusLabel: m.status === 'aprovado' ? 'Aprovada' : m.status === 'rejeitado' ? 'Rejeitada' : 'Cancelada',
         linkHref: `/contratos/${m.contrato.id}/medicoes/${m.id}`,
@@ -376,6 +381,7 @@ export default function AprovacoesPage() {
         aprovador: nomeExibido(f.aprovador),
         data: f.data_aprovacao || '',
         valor: f.valor_total || 0,
+        observacoes: f.observacoes || '',
         status: f.status,
         statusLabel: f.status === 'aprovado' ? 'Aprovada' : f.status === 'rejeitado' ? 'Rejeitada' : 'Cancelada',
         linkHref: f.contrato ? `/contratos/${f.contrato.id}/fat-direto` : '#',
@@ -412,6 +418,66 @@ export default function AprovacoesPage() {
       return true
     })
   }, [rowsUnificadas, hfTipo, hfNumero, hfContrato, hfDetalhe, hfSolicitante, hfAprovador, hfDataAprov, hfStatus])
+
+  // ── Layout (ordenação + resize de colunas) com persistência por usuário ─
+  type HistColKey =
+    | 'tipo' | 'numero' | 'contrato' | 'detalhe' | 'solicitante'
+    | 'aprovador' | 'data' | 'valor' | 'observacoes' | 'status'
+
+  const histColumns = useMemo<ColumnDef<HistColKey>[]>(() => [
+    { key: 'tipo',        defaultWidth: 110, min: 80,  type: 'string' },
+    { key: 'numero',      defaultWidth: 110, min: 80,  type: 'string' },
+    { key: 'contrato',    defaultWidth: 130, min: 90,  type: 'string' },
+    { key: 'detalhe',     defaultWidth: 280, min: 140, type: 'string' },
+    { key: 'solicitante', defaultWidth: 160, min: 100, type: 'string' },
+    { key: 'aprovador',   defaultWidth: 160, min: 100, type: 'string' },
+    { key: 'data',        defaultWidth: 110, min: 90,  type: 'date'   },
+    { key: 'valor',       defaultWidth: 130, min: 100, type: 'number' },
+    { key: 'observacoes', defaultWidth: 320, min: 160, type: 'string' },
+    { key: 'status',      defaultWidth: 120, min: 90,  type: 'string' },
+  ], [])
+
+  const {
+    sortKey, sortDir, gridTemplateColumns, toggleSort, startResize, reset, compare,
+  } = useTableLayout<HistColKey>(
+    'aprovacoes:historico:v1',
+    histColumns,
+    podeDesaprovarFip ? '48px' : undefined,
+  )
+
+  const rowsOrdenadas = useMemo(() => {
+    if (!sortKey || !sortDir) return rowsFiltradas
+    const arr = [...rowsFiltradas]
+    arr.sort((a, b) => {
+      const r = compare(a, b, sortKey)
+      return sortDir === 'asc' ? r : -r
+    })
+    return arr
+  }, [rowsFiltradas, sortKey, sortDir, compare])
+
+  const HIST_COL_LABELS: Record<HistColKey, string> = {
+    tipo: 'Tipo',
+    numero: 'Número',
+    contrato: 'Contrato',
+    detalhe: 'Fornecedor/Período',
+    solicitante: 'Solicitante',
+    aprovador: 'Aprovador',
+    data: 'Data aprov.',
+    valor: 'Valor',
+    observacoes: 'Observações',
+    status: 'Status',
+  }
+
+  const filtroPorColuna: Partial<Record<HistColKey, { values: string[]; selected: Set<string>; onChange: (s: Set<string>) => void }>> = {
+    tipo:        { values: valoresHistUnicos.tipo,        selected: hfTipo,        onChange: setHfTipo },
+    numero:      { values: valoresHistUnicos.numero,      selected: hfNumero,      onChange: setHfNumero },
+    contrato:    { values: valoresHistUnicos.contrato,    selected: hfContrato,    onChange: setHfContrato },
+    detalhe:     { values: valoresHistUnicos.detalhe,     selected: hfDetalhe,     onChange: setHfDetalhe },
+    solicitante: { values: valoresHistUnicos.solicitante, selected: hfSolicitante, onChange: setHfSolicitante },
+    aprovador:   { values: valoresHistUnicos.aprovador,   selected: hfAprovador,   onChange: setHfAprovador },
+    data:        { values: valoresHistUnicos.dataAprov,   selected: hfDataAprov,   onChange: setHfDataAprov },
+    status:      { values: valoresHistUnicos.status,      selected: hfStatus,      onChange: setHfStatus },
+  }
 
   async function desaprovarDoHistorico(row: HistRow) {
     if (row.kind !== 'fip') {
@@ -874,129 +940,198 @@ export default function AprovacoesPage() {
         {!loading && aba === 'historico' && (
           <MaximizableCard title="Histórico de Aprovações" className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
             {(() => {
-              const gridCols = podeDesaprovarFip
-                ? '100px 110px 120px 1fr 1fr 1fr 110px 130px 110px 48px'
-                : '100px 110px 120px 1fr 1fr 1fr 110px 130px 110px'
+              const renderSortIcon = (key: HistColKey) => {
+                if (sortKey !== key) {
+                  return <ChevronsUpDown className="w-3 h-3 opacity-40" strokeWidth={2} />
+                }
+                return sortDir === 'asc'
+                  ? <ChevronUp className="w-3 h-3" strokeWidth={2.5} style={{ color: 'var(--accent)' }} />
+                  : <ChevronDown className="w-3 h-3" strokeWidth={2.5} style={{ color: 'var(--accent)' }} />
+              }
+
               return (
                 <>
-                  {/* Header com filtros Excel — sticky pra ficar visível no scroll (especialmente quando maximizado) */}
+                  {/* Barra de ações da tabela */}
                   <div
-                    className="grid text-[11px] font-semibold uppercase tracking-wide px-4 py-2.5 sticky top-0 z-10"
-                    style={{
-                      gridTemplateColumns: gridCols,
-                      gap: '8px',
-                      background: 'var(--surface-3)',
-                      borderBottom: '1px solid var(--border)',
-                      color: 'var(--text-3)',
-                    }}
+                    className="flex items-center justify-between px-4 py-2 text-[11px]"
+                    style={{ background: 'var(--surface-3)', borderBottom: '1px solid var(--border)', color: 'var(--text-3)' }}
                   >
-                    <span className="flex items-center gap-1">
-                      Tipo
-                      <ColumnFilter label="Tipo" values={valoresHistUnicos.tipo} selected={hfTipo} onChange={setHfTipo} />
-                    </span>
-                    <span className="flex items-center gap-1">
-                      Número
-                      <ColumnFilter label="Número" values={valoresHistUnicos.numero} selected={hfNumero} onChange={setHfNumero} />
-                    </span>
-                    <span className="flex items-center gap-1">
-                      Contrato
-                      <ColumnFilter label="Contrato" values={valoresHistUnicos.contrato} selected={hfContrato} onChange={setHfContrato} />
-                    </span>
-                    <span className="flex items-center gap-1">
-                      Fornecedor/Período
-                      <ColumnFilter label="Fornecedor/Período" values={valoresHistUnicos.detalhe} selected={hfDetalhe} onChange={setHfDetalhe} />
-                    </span>
-                    <span className="flex items-center gap-1">
-                      Solicitante
-                      <ColumnFilter label="Solicitante" values={valoresHistUnicos.solicitante} selected={hfSolicitante} onChange={setHfSolicitante} />
-                    </span>
-                    <span className="flex items-center gap-1">
-                      Aprovador
-                      <ColumnFilter label="Aprovador" values={valoresHistUnicos.aprovador} selected={hfAprovador} onChange={setHfAprovador} />
-                    </span>
-                    <span className="flex items-center gap-1">
-                      Data aprov.
-                      <ColumnFilter label="Data aprov." values={valoresHistUnicos.dataAprov} selected={hfDataAprov} onChange={setHfDataAprov} />
-                    </span>
-                    <span className="text-right">Valor</span>
-                    <span className="flex items-center gap-1">
-                      Status
-                      <ColumnFilter label="Status" values={valoresHistUnicos.status} selected={hfStatus} onChange={setHfStatus} />
-                    </span>
-                    {podeDesaprovarFip && <span className="text-center" title="Ações">·</span>}
+                    <span>Clique no cabeçalho para ordenar · Arraste a borda direita para redimensionar</span>
+                    <button
+                      type="button"
+                      onClick={reset}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md transition-colors"
+                      style={{ color: 'var(--text-2)' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-2)' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                      title="Volta larguras e ordenação ao padrão"
+                    >
+                      <RotateCcw className="w-3 h-3" strokeWidth={2} /> Resetar layout
+                    </button>
                   </div>
 
-                  {/* Linhas */}
-                  {rowsFiltradas.length === 0 ? (
-                    <div className="text-center py-12" style={{ color: 'var(--text-3)' }}>
-                      <Clock className="w-10 h-10 mx-auto mb-3 opacity-40" />
-                      <p className="text-sm">
-                        {rowsUnificadas.length === 0
-                          ? 'Nenhuma aprovação concluída ainda.'
-                          : 'Nenhum resultado com os filtros aplicados.'}
-                      </p>
+                  {/* Wrapper com overflow-x: garante scroll quando soma das larguras > viewport */}
+                  <div className="overflow-x-auto">
+                    {/* Header com sort + drag-resize + filtros — sticky no scroll vertical */}
+                    <div
+                      className="grid text-[11px] font-semibold uppercase tracking-wide sticky top-0 z-10"
+                      style={{
+                        gridTemplateColumns,
+                        background: 'var(--surface-3)',
+                        borderBottom: '1px solid var(--border)',
+                        color: 'var(--text-3)',
+                        minWidth: 'max-content',
+                      }}
+                    >
+                      {histColumns.map(col => {
+                        const filtro = filtroPorColuna[col.key]
+                        const isActive = sortKey === col.key
+                        const isNumeric = col.type === 'number'
+                        return (
+                          <div
+                            key={col.key}
+                            className="relative flex items-center gap-1 px-3 py-2.5 select-none"
+                            style={{
+                              borderRight: '1px solid var(--border)',
+                              background: isActive ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : undefined,
+                              justifyContent: isNumeric ? 'flex-end' : 'flex-start',
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => toggleSort(col.key)}
+                              className="flex items-center gap-1 truncate"
+                              style={{ color: isActive ? 'var(--accent)' : 'var(--text-3)' }}
+                              title={`Ordenar por ${HIST_COL_LABELS[col.key]}`}
+                            >
+                              <span className="truncate">{HIST_COL_LABELS[col.key]}</span>
+                              {renderSortIcon(col.key)}
+                            </button>
+                            {filtro && (
+                              <ColumnFilter
+                                label={HIST_COL_LABELS[col.key]}
+                                values={filtro.values}
+                                selected={filtro.selected}
+                                onChange={filtro.onChange}
+                              />
+                            )}
+                            {/* Drag handle de resize */}
+                            <span
+                              onMouseDown={e => startResize(col.key, e)}
+                              onClick={e => e.stopPropagation()}
+                              className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize"
+                              style={{ background: 'transparent' }}
+                              onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent)' }}
+                              onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                              title="Arraste para redimensionar"
+                            />
+                          </div>
+                        )
+                      })}
+                      {podeDesaprovarFip && (
+                        <div className="px-2 py-2.5 text-center" title="Ações">·</div>
+                      )}
                     </div>
-                  ) : (
-                    rowsFiltradas.map((row, idx) => {
+
+                    {/* Linhas */}
+                    {rowsOrdenadas.length === 0 ? (
+                      <div className="text-center py-12" style={{ color: 'var(--text-3)' }}>
+                        <Clock className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                        <p className="text-sm">
+                          {rowsUnificadas.length === 0
+                            ? 'Nenhuma aprovação concluída ainda.'
+                            : 'Nenhum resultado com os filtros aplicados.'}
+                        </p>
+                      </div>
+                    ) : (
+                      rowsOrdenadas.map((row, idx) => {
                       const isAprovada = row.status === 'aprovado'
                       const isRejeitada = row.status === 'rejeitado'
                       return (
                         <div
                           key={row.id}
-                          className="grid items-center px-4 py-3 transition-colors"
+                          className="grid transition-colors"
                           style={{
-                            gridTemplateColumns: gridCols,
-                            gap: '8px',
+                            gridTemplateColumns,
                             background: idx % 2 === 0 ? 'var(--surface-1)' : 'var(--surface-2)',
                             borderBottom: '1px solid var(--border)',
+                            alignItems: 'stretch',
+                            minWidth: 'max-content',
                           }}
                           onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-3)' }}
                           onMouseLeave={e => { e.currentTarget.style.background = idx % 2 === 0 ? 'var(--surface-1)' : 'var(--surface-2)' }}
                         >
                           {/* Tipo */}
-                          <span
-                            className="text-[10px] px-2 py-0.5 rounded-full font-medium text-center truncate"
-                            style={{
-                              background: row.kind === 'fip' ? 'rgba(245,158,11,0.12)' : 'rgba(139,92,246,0.12)',
-                              color: row.kind === 'fip' ? '#F59E0B' : '#8B5CF6',
-                            }}
-                          >
-                            {row.tipo}
-                          </span>
+                          <div className="flex items-center px-3 py-2.5" style={{ borderRight: '1px solid var(--border)' }}>
+                            <span
+                              className="text-[10px] px-2 py-0.5 rounded-full font-medium text-center"
+                              style={{
+                                background: row.kind === 'fip' ? 'rgba(245,158,11,0.12)' : 'rgba(139,92,246,0.12)',
+                                color: row.kind === 'fip' ? '#F59E0B' : '#8B5CF6',
+                              }}
+                            >
+                              {row.tipo}
+                            </span>
+                          </div>
                           {/* Número */}
-                          <span className="text-xs font-bold font-mono truncate" style={{ color: 'var(--accent)' }}>
+                          <div className="flex items-center px-3 py-2.5 text-xs font-bold font-mono break-all" style={{ color: 'var(--accent)', borderRight: '1px solid var(--border)' }}>
                             {row.numero}
-                          </span>
+                          </div>
                           {/* Contrato */}
-                          <span className="text-xs truncate" style={{ color: 'var(--text-2)' }}>{row.contrato}</span>
+                          <div className="flex items-center px-3 py-2.5 text-xs break-words" style={{ color: 'var(--text-2)', borderRight: '1px solid var(--border)' }}>
+                            {row.contrato}
+                          </div>
                           {/* Detalhe (fornecedor ou período) */}
-                          <span className="text-xs truncate" style={{ color: 'var(--text-1)' }} title={row.detalhe}>
+                          <div className="flex items-center px-3 py-2.5 text-xs break-words" style={{ color: 'var(--text-1)', borderRight: '1px solid var(--border)' }} title={row.detalhe}>
                             {row.detalhe}
-                          </span>
+                          </div>
                           {/* Solicitante */}
-                          <span className="text-xs truncate" style={{ color: 'var(--text-2)' }}>{row.solicitante}</span>
+                          <div className="flex items-center px-3 py-2.5 text-xs break-words" style={{ color: 'var(--text-2)', borderRight: '1px solid var(--border)' }}>
+                            {row.solicitante}
+                          </div>
                           {/* Aprovador */}
-                          <span className="text-xs truncate" style={{ color: 'var(--text-2)' }}>{row.aprovador}</span>
+                          <div className="flex items-center px-3 py-2.5 text-xs break-words" style={{ color: 'var(--text-2)', borderRight: '1px solid var(--border)' }}>
+                            {row.aprovador}
+                          </div>
                           {/* Data aprov */}
-                          <span className="text-xs" style={{ color: 'var(--text-3)' }}>{formatDate(row.data)}</span>
+                          <div className="flex items-center px-3 py-2.5 text-xs" style={{ color: 'var(--text-3)', borderRight: '1px solid var(--border)' }}>
+                            {row.data ? formatDate(row.data) : '—'}
+                          </div>
                           {/* Valor */}
-                          <span className="text-xs font-semibold text-right" style={{ color: 'var(--text-1)' }}>
+                          <div className="flex items-center justify-end px-3 py-2.5 text-xs font-semibold tabular-nums" style={{ color: 'var(--text-1)', borderRight: '1px solid var(--border)' }}>
                             {formatCurrency(row.valor)}
-                          </span>
-                          {/* Status */}
-                          <span
-                            className="text-[10px] px-2 py-0.5 rounded-full font-semibold text-center truncate inline-flex items-center gap-1 justify-center"
+                          </div>
+                          {/* Observações */}
+                          <div
+                            className="px-3 py-2.5 text-xs whitespace-pre-wrap break-words"
                             style={{
-                              background: isAprovada ? 'rgba(16,185,129,0.12)' : isRejeitada ? 'rgba(239,68,68,0.12)' : 'rgba(148,163,184,0.12)',
-                              color: isAprovada ? '#10B981' : isRejeitada ? '#EF4444' : 'var(--text-3)',
+                              color: row.observacoes ? 'var(--text-2)' : 'var(--text-3)',
+                              borderRight: '1px solid var(--border)',
+                              display: '-webkit-box',
+                              WebkitLineClamp: 6,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden',
                             }}
+                            title={row.observacoes || ''}
                           >
-                            {isAprovada ? <CheckCircle2 className="w-3 h-3" /> : isRejeitada ? <XCircle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-                            {row.statusLabel}
-                          </span>
+                            {row.observacoes || '—'}
+                          </div>
+                          {/* Status */}
+                          <div className="flex items-center px-3 py-2.5">
+                            <span
+                              className="text-[10px] px-2 py-0.5 rounded-full font-semibold inline-flex items-center gap-1"
+                              style={{
+                                background: isAprovada ? 'rgba(16,185,129,0.12)' : isRejeitada ? 'rgba(239,68,68,0.12)' : 'rgba(148,163,184,0.12)',
+                                color: isAprovada ? '#10B981' : isRejeitada ? '#EF4444' : 'var(--text-3)',
+                              }}
+                            >
+                              {isAprovada ? <CheckCircle2 className="w-3 h-3" /> : isRejeitada ? <XCircle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                              {row.statusLabel}
+                            </span>
+                          </div>
                           {/* Ações */}
                           {podeDesaprovarFip && (
-                            <div className="flex justify-center">
+                            <div className="flex items-center justify-center px-2 py-2.5">
                               {row.kind === 'fip' && isAprovada ? (
                                 <button
                                   onClick={() => desaprovarDoHistorico(row)}
@@ -1029,16 +1164,20 @@ export default function AprovacoesPage() {
                         </div>
                       )
                     })
-                  )}
+                    )}
+                  </div>{/* /overflow-x-auto */}
 
                   {/* Footer com contagem */}
-                  {rowsFiltradas.length > 0 && (
+                  {rowsOrdenadas.length > 0 && (
                     <div
                       className="flex items-center justify-between px-4 py-3"
                       style={{ background: 'var(--surface-3)', borderTop: '1px solid var(--border)' }}
                     >
                       <span className="text-xs" style={{ color: 'var(--text-3)' }}>
-                        {rowsFiltradas.length} de {rowsUnificadas.length} item(ns)
+                        {rowsOrdenadas.length} de {rowsUnificadas.length} item(ns)
+                        {sortKey && sortDir && (
+                          <> · ordenado por <strong>{HIST_COL_LABELS[sortKey]}</strong> ({sortDir === 'asc' ? '↑' : '↓'})</>
+                        )}
                       </span>
                     </div>
                   )}

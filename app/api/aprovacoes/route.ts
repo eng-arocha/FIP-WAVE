@@ -30,7 +30,7 @@ export async function GET(req: Request) {
       .from('solicitacoes_fat_direto')
       .select(`
         id, numero, status, data_solicitacao, data_aprovacao, valor_total,
-        fornecedor_razao_social, numero_pedido_fip, motivo_rejeicao,
+        fornecedor_razao_social, numero_pedido_fip, motivo_rejeicao, observacoes,
         contrato:contratos(id, numero, descricao),
         solicitante:perfis!solicitante_id(id, nome, email),
         aprovador:perfis!aprovador_id(id, nome, email)
