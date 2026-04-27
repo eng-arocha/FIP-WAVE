@@ -321,9 +321,7 @@ export async function criarSolicitacao(input: {
 
 export async function listarSolicitacoesAprovadas() {
   const admin = createAdminClient()
-  const { data, error } = await admin
-    .from('solicitacoes_fat_direto')
-    .select(`
+  const baseSelect = `
       id, numero, status, data_solicitacao, data_aprovacao, valor_total,
       fornecedor_razao_social, fornecedor_cnpj,
       contrato_id,
@@ -331,9 +329,25 @@ export async function listarSolicitacoesAprovadas() {
       solicitante:perfis!solicitante_id(nome),
       notas_fiscais:notas_fiscais_fat_direto(id, numero_nf, valor, status),
       itens:itens_solicitacao_fat_direto(id)
-    `)
-    .in('status', ['aprovado', 'aguardando_aprovacao'])
-    .order('data_solicitacao', { ascending: false })
+    `
+  const extraSelect = `${baseSelect}, observacoes, numero_pedido_fip`
+
+  // withSchemaFallback: se observacoes/numero_pedido_fip não estão no schema cache,
+  // cai no select base e a página segue funcionando (sem coluna).
+  const { data, error } = await withSchemaFallback({
+    primary: () => admin
+      .from('solicitacoes_fat_direto')
+      .select(extraSelect)
+      .in('status', ['aprovado', 'aguardando_aprovacao'])
+      .order('data_solicitacao', { ascending: false }),
+    fallback: () => admin
+      .from('solicitacoes_fat_direto')
+      .select(baseSelect)
+      .in('status', ['aprovado', 'aguardando_aprovacao'])
+      .order('data_solicitacao', { ascending: false }),
+    missingColumns: ['observacoes', 'numero_pedido_fip'],
+    context: 'listarSolicitacoesAprovadas',
+  })
   if (error) throw error
   return data || []
 }
