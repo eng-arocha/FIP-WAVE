@@ -1,11 +1,12 @@
 import { createClient } from '@supabase/supabase-js'
+import { getSupabaseUrl, getSupabaseServiceRoleKey } from './env'
 
 // Cliente com service role — NUNCA exposto ao browser
 // Usado apenas em API routes (Node.js server-side)
 export function createAdminClient() {
   return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    getSupabaseUrl(),
+    getSupabaseServiceRoleKey(),
     { auth: { autoRefreshToken: false, persistSession: false } }
   )
 }

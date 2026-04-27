@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { getSupabaseUrl, getSupabaseAnonKey } from '@/lib/supabase/env'
 
 export async function proxy(request: NextRequest) {
   // SCREENSHOTS_MODE: bypass auth for demo captures (never use in production)
@@ -15,8 +16,8 @@ export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    getSupabaseUrl(),
+    getSupabaseAnonKey(),
     {
       cookies: {
         getAll() {
@@ -54,6 +55,9 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    // Exclui assets estáticos e arquivos públicos servidos crus (manifest, robots,
+    // sitemap, ícones, fontes). Sem isso o proxy redireciona pra /login e o
+    // browser tenta parsear o HTML como JSON ('manifest.json: Syntax error').
+    '/((?!_next/static|_next/image|favicon\\.ico|manifest\\.json|robots\\.txt|sitemap\\.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff|woff2|ttf|otf)$).*)',
   ],
 }
