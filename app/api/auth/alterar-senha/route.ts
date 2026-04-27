@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createClient as createSbClient } from '@supabase/supabase-js'
+import { getSupabaseUrl, getSupabaseAnonKey } from '@/lib/supabase/env'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { validarSenhaForte } from '@/lib/auth/senha'
@@ -39,8 +40,8 @@ export async function PUT(req: Request) {
     // 2) Verifica a senha atual usando um client isolado
     //    (não persiste sessão, não afeta os cookies atuais)
     const verifier = createSbClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      getSupabaseUrl(),
+      getSupabaseAnonKey(),
       { auth: { autoRefreshToken: false, persistSession: false } }
     )
     const { error: signInError } = await verifier.auth.signInWithPassword({

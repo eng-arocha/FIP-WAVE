@@ -23,8 +23,9 @@ function buildConnString(projectRef: string, jwt: string, region: string) {
 }
 
 async function getConnection(): Promise<ReturnType<typeof postgres>> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
-  const jwt = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
+  const { getSupabaseUrl, getSupabaseServiceRoleKey } = await import('@/lib/supabase/env')
+  const url = getSupabaseUrl()
+  const jwt = getSupabaseServiceRoleKey()
 
   if (!url || !jwt) {
     throw new Error('NEXT_PUBLIC_SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY não configurados')

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import postgres from 'postgres'
 import { apiError } from '@/lib/api/error-response'
+import { getSupabaseUrl, getSupabaseServiceRoleKey } from '@/lib/supabase/env'
 
 const MIGRATION_SQL = `
 -- Tabela principal de solicitações fat direto
@@ -93,13 +94,13 @@ ON CONFLICT (id) DO NOTHING;
 export async function POST(req: Request) {
   // Verifica token de autorização
   const auth = req.headers.get('authorization') ?? ''
-  const token = auth.replace('Bearer ', '')
-  const expected = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
+  const token = auth.replace('Bearer ', '').trim()
+  const expected = getSupabaseServiceRoleKey()
   if (!token || token !== expected) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+  const url = getSupabaseUrl()
   const projectRef = url.replace('https://', '').replace('.supabase.co', '')
 
   if (!projectRef) {
