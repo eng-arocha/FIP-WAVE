@@ -129,6 +129,64 @@ export async function verificarTeto(contratoId: string, valorNovo: number): Prom
   }
 }
 
+export interface PedidoFipDuplicadoInfo {
+  numero_pedido_fip: number
+  solicitacao_existente: { id: string; numero: number; status: string; contrato_id: string }
+}
+
+/**
+ * Verifica se já existe outra solicitação ativa (não soft-deleted) com o mesmo
+ * numero_pedido_fip. Use ANTES do insert/update para devolver 409 amigável em
+ * vez de deixar o índice único estourar 23505.
+ *
+ * Retorna null se livre, ou as informações do pedido conflitante.
+ */
+export async function checkPedidoFipDuplicado(
+  numeroPedidoFip: number,
+  excludeSolId?: string,
+): Promise<PedidoFipDuplicadoInfo | null> {
+  const admin = createAdminClient()
+  let query = admin
+    .from('solicitacoes_fat_direto')
+    .select('id, numero, status, contrato_id, deletado_em')
+    .eq('numero_pedido_fip', numeroPedidoFip)
+    .is('deletado_em', null)
+    .limit(1)
+
+  if (excludeSolId) query = query.neq('id', excludeSolId)
+
+  const { data, error } = await query
+  if (error) {
+    // Se a coluna deletado_em não existir ainda no schema cache, retry sem filtro
+    if (isSchemaMissingError(error, ['deletado_em'])) {
+      let q2 = admin
+        .from('solicitacoes_fat_direto')
+        .select('id, numero, status, contrato_id')
+        .eq('numero_pedido_fip', numeroPedidoFip)
+        .limit(1)
+      if (excludeSolId) q2 = q2.neq('id', excludeSolId)
+      const { data: d2, error: e2 } = await q2
+      if (e2) throw e2
+      const found = (d2 || [])[0]
+      if (!found) return null
+      return { numero_pedido_fip: numeroPedidoFip, solicitacao_existente: found as any }
+    }
+    throw error
+  }
+
+  const found = (data || [])[0]
+  if (!found) return null
+  return {
+    numero_pedido_fip: numeroPedidoFip,
+    solicitacao_existente: {
+      id: found.id,
+      numero: found.numero,
+      status: found.status,
+      contrato_id: found.contrato_id,
+    },
+  }
+}
+
 export async function criarSolicitacao(input: {
   contrato_id: string
   solicitante_id: string
@@ -149,6 +207,16 @@ export async function criarSolicitacao(input: {
 }) {
   const admin = createAdminClient()
   const valor_total = input.itens.reduce((s, i) => s + i.valor_total, 0)
+
+  // Verificar duplicidade de numero_pedido_fip (apenas quando override explícito)
+  if (input.numero_pedido_fip) {
+    const dup = await checkPedidoFipDuplicado(input.numero_pedido_fip)
+    if (dup) {
+      const err = new Error('PEDIDO_FIP_DUPLICADO')
+      ;(err as any).pedidoFipDuplicado = dup
+      throw err
+    }
+  }
 
   // Verificar teto global do contrato
   const violation = await verificarTeto(input.contrato_id, valor_total)

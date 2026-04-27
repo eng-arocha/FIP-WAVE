@@ -1501,8 +1501,11 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
             } : undefined,
           }}
           onSaved={() => {
-            // Recarrega contrato na tela após salvar
-            fetch(`/api/contratos/${id}`).then(r => r.json()).then(setContrato).catch(() => {})
+            // Recarrega contrato na tela após salvar (ignora 4xx/5xx pra não setar erro como contrato)
+            fetch(`/api/contratos/${id}`)
+              .then(async r => (r.ok ? r.json() : null))
+              .then(d => { if (d?.id) setContrato(d) })
+              .catch(() => {})
           }}
         />
       )}
