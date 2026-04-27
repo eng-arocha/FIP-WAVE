@@ -385,6 +385,15 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
       if (res.status === 422 && data.error === 'ITEM_LIMITE_EXCEDIDO') {
         setItemLimiteViolation(data.itemViolation); setSaving(false); return
       }
+      if (res.status === 409 && data.error === 'PEDIDO_FIP_DUPLICADO') {
+        const exist = data.pedidoFipDuplicado?.solicitacao_existente
+        setErro(
+          exist
+            ? `Já existe uma solicitação com Nº Pedido FIP ${numeroPedidoFip} (FIP-${String(exist.numero).padStart(4, '0')}, status: ${exist.status}). Use outro número.`
+            : `O Nº Pedido FIP ${numeroPedidoFip} já está em uso. Use outro número.`,
+        )
+        setSaving(false); return
+      }
       if (!res.ok) { setErro(data.error || 'Erro ao salvar'); setSaving(false); return }
 
       // Upload dos anexos (múltiplos arquivos)

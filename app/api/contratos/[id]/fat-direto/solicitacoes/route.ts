@@ -74,6 +74,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         { status: 422 },
       )
     }
+    if (e.message === 'PEDIDO_FIP_DUPLICADO') {
+      return NextResponse.json(
+        { error: 'PEDIDO_FIP_DUPLICADO', pedidoFipDuplicado: (e as any).pedidoFipDuplicado },
+        { status: 409 },
+      )
+    }
+    // Defesa-em-profundidade: se o índice único disparar (race), também devolve 409
+    if (e?.code === '23505' && /numero_pedido_fip/.test(String(e?.message ?? ''))) {
+      return NextResponse.json(
+        { error: 'PEDIDO_FIP_DUPLICADO', pedidoFipDuplicado: null },
+        { status: 409 },
+      )
+    }
     return apiError(e)
   }
 }

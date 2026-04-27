@@ -362,6 +362,15 @@ export default function EditarSolicitacaoPage({ params }: { params: Promise<{ id
         body: JSON.stringify(payload),
       })
       const data = await res.json()
+      if (res.status === 409 && data.error === 'PEDIDO_FIP_DUPLICADO') {
+        const exist = data.pedidoFipDuplicado?.solicitacao_existente
+        setErro(
+          exist
+            ? `Já existe uma solicitação com Nº Pedido FIP ${numeroPedidoFip} (FIP-${String(exist.numero).padStart(4, '0')}, status: ${exist.status}). Use outro número.`
+            : `O Nº Pedido FIP ${numeroPedidoFip} já está em uso. Use outro número.`,
+        )
+        setSaving(false); return
+      }
       if (!res.ok) { setErro(data.error || 'Erro ao salvar'); setSaving(false); return }
 
       // Upload de anexos novos (append à lista existente no backend)
