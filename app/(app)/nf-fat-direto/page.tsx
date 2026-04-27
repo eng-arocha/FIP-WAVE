@@ -11,7 +11,9 @@ import {
   Receipt, Clock, CheckCircle2, Plus,
   ArrowRight, Package, Loader2, ChevronDown, ChevronUp,
   Upload, FileText, AlertTriangle, X, Download,
+  ChevronsUpDown, RotateCcw,
 } from 'lucide-react'
+import { useTableLayout, type ColumnDef } from '@/lib/hooks/use-table-layout'
 
 // ── Tolerância de saldo ─────────────────────────────────────────────────────
 const TOLERANCE = 100 // R$ 100,00
@@ -44,10 +46,12 @@ function diasAte(dateStr: string): number {
 interface Solicitacao {
   id: string
   numero: number
+  numero_pedido_fip?: number | null
   status: string
   data_solicitacao: string
   data_aprovacao?: string
   valor_total: number
+  observacoes?: string | null
   fornecedor_razao_social?: string
   fornecedor_cnpj?: string
   contrato_id: string
@@ -113,7 +117,9 @@ export default function NfFatDiretoPage() {
 
   // ── Filtros estilo Excel por coluna ────────────────────────────
   const [fNumero, setFNumero] = useState<Set<string>>(new Set())
+  const [fContrato, setFContrato] = useState<Set<string>>(new Set())
   const [fFornecedor, setFFornecedor] = useState<Set<string>>(new Set())
+  const [fCnpj, setFCnpj] = useState<Set<string>>(new Set())
   const [fData, setFData] = useState<Set<string>>(new Set())
   const [fValor, setFValor] = useState<Set<string>>(new Set())
   const [fStatusCol, setFStatusCol] = useState<Set<string>>(new Set())
@@ -125,20 +131,87 @@ export default function NfFatDiretoPage() {
   })
 
   const valoresUnicos = useMemo(() => ({
-    numero:     [...new Set(filtradasStatus.map(s => String(s.numero)))],
+    numero:     [...new Set(filtradasStatus.map(s => `FIP-${String(s.numero).padStart(4, '0')}`))],
+    contrato:   [...new Set(filtradasStatus.map(s => s.contrato?.numero || '—'))],
     fornecedor: [...new Set(filtradasStatus.map(s => s.fornecedor_razao_social || '—'))],
+    cnpj:       [...new Set(filtradasStatus.map(s => s.fornecedor_cnpj ? maskCnpj(s.fornecedor_cnpj) : '—'))],
     data:       [...new Set(filtradasStatus.map(s => s.data_solicitacao ? formatDate(s.data_solicitacao) : '—'))],
     valor:      [...new Set(filtradasStatus.map(s => formatCurrency(s.valor_total || 0)))],
     status:     [...new Set(filtradasStatus.map(s => STATUS_BADGE_RAW[s.status]?.label ?? s.status))],
   }), [filtradasStatus])
 
   const filtradas = filtradasStatus.filter(s =>
-    passaFiltro(fNumero,     String(s.numero)) &&
+    passaFiltro(fNumero,     `FIP-${String(s.numero).padStart(4, '0')}`) &&
+    passaFiltro(fContrato,   s.contrato?.numero || '—') &&
     passaFiltro(fFornecedor, s.fornecedor_razao_social || '—') &&
+    passaFiltro(fCnpj,       s.fornecedor_cnpj ? maskCnpj(s.fornecedor_cnpj) : '—') &&
     passaFiltro(fData,       s.data_solicitacao ? formatDate(s.data_solicitacao) : '—') &&
     passaFiltro(fValor,      formatCurrency(s.valor_total || 0)) &&
     passaFiltro(fStatusCol,  STATUS_BADGE_RAW[s.status]?.label ?? s.status)
   )
+
+  // ── Layout (sort + resize) com persistência por usuário ─────────
+  type ColKey =
+    | 'numero' | 'contrato' | 'fornecedor' | 'cnpj' | 'data'
+    | 'valor' | 'nfs' | 'saldo' | 'status' | 'observacoes'
+
+  const tabelaColumns = useMemo<ColumnDef<ColKey>[]>(() => [
+    { key: 'numero',      defaultWidth: 120, min: 100, type: 'number' },
+    { key: 'contrato',    defaultWidth: 130, min: 90,  type: 'string' },
+    { key: 'fornecedor',  defaultWidth: 280, min: 140, type: 'string' },
+    { key: 'cnpj',        defaultWidth: 160, min: 120, type: 'string' },
+    { key: 'data',        defaultWidth: 110, min: 90,  type: 'date'   },
+    { key: 'valor',       defaultWidth: 130, min: 100, type: 'number' },
+    { key: 'nfs',         defaultWidth: 150, min: 100, type: 'number' },
+    { key: 'saldo',       defaultWidth: 130, min: 100, type: 'number' },
+    { key: 'status',      defaultWidth: 130, min: 100, type: 'string' },
+    { key: 'observacoes', defaultWidth: 320, min: 160, type: 'string' },
+  ], [])
+
+  const {
+    sortKey, sortDir, gridTemplateColumns, toggleSort, startResize, reset, compare,
+  } = useTableLayout<ColKey>('nf-fat-direto:tabela:v1', tabelaColumns, '64px')
+
+  const filtradasOrdenadas = useMemo(() => {
+    if (!sortKey || !sortDir) return filtradas
+    const arr = [...filtradas]
+    arr.sort((a, b) => {
+      // Mapeia ColKey → valor do registro pra comparar
+      const get = (s: Solicitacao): any => {
+        switch (sortKey) {
+          case 'numero':      return s.numero
+          case 'contrato':    return s.contrato?.numero || ''
+          case 'fornecedor':  return s.fornecedor_razao_social || ''
+          case 'cnpj':        return s.fornecedor_cnpj || ''
+          case 'data':        return s.data_solicitacao || ''
+          case 'valor':       return s.valor_total || 0
+          case 'nfs':         return getTotalNfs(s)
+          case 'saldo':       return getSaldo(s)
+          case 'status':      return STATUS_BADGE_RAW[s.status]?.label ?? s.status
+          case 'observacoes': return s.observacoes || ''
+        }
+      }
+      const r = compare({ [sortKey]: get(a) }, { [sortKey]: get(b) }, sortKey)
+      return sortDir === 'asc' ? r : -r
+    })
+    return arr
+  }, [filtradas, sortKey, sortDir, compare])
+
+  const COL_LABELS: Record<ColKey, string> = {
+    numero: 'Nº', contrato: 'Contrato', fornecedor: 'Fornecedor', cnpj: 'CNPJ',
+    data: 'Data', valor: 'Valor', nfs: 'NFs Recebidas', saldo: 'Saldo',
+    status: 'Status', observacoes: 'Observações',
+  }
+
+  const filtroPorColuna: Partial<Record<ColKey, { values: string[]; selected: Set<string>; onChange: (s: Set<string>) => void }>> = {
+    numero:     { values: valoresUnicos.numero,     selected: fNumero,     onChange: setFNumero },
+    contrato:   { values: valoresUnicos.contrato,   selected: fContrato,   onChange: setFContrato },
+    fornecedor: { values: valoresUnicos.fornecedor, selected: fFornecedor, onChange: setFFornecedor },
+    cnpj:       { values: valoresUnicos.cnpj,       selected: fCnpj,       onChange: setFCnpj },
+    data:       { values: valoresUnicos.data,       selected: fData,       onChange: setFData },
+    valor:      { values: valoresUnicos.valor,      selected: fValor,      onChange: setFValor },
+    status:     { values: valoresUnicos.status,     selected: fStatusCol,  onChange: setFStatusCol },
+  }
 
   const STATUS_BADGE: Record<string, { label: string; color: string; bg: string }> = {
     aprovado:             { label: 'APROVADO',   color: '#10B981', bg: 'rgba(16,185,129,0.12)' },
@@ -216,66 +289,113 @@ export default function NfFatDiretoPage() {
     const isExpanded  = expandedSolId === sol.id
     const isExpandable = sol.status === 'aprovado' && hasSaldo
 
-    // Saldo display (±R$100 tolerance zone)
-    const saldoDisplay = Math.abs(saldo) <= TOLERANCE && nfsValidas.length > 0
-      ? { text: saldo >= 0 ? `+${formatCurrency(saldo)}` : formatCurrency(saldo), color: saldo >= 0 ? '#10B981' : '#EF4444' }
-      : null
+    const saldoColor = saldo > TOLERANCE ? '#10B981' : saldo < -TOLERANCE ? '#EF4444' : 'var(--text-3)'
 
     return (
       <div
-        className="grid grid-cols-[auto_1fr_auto_auto_auto] gap-4 px-5 py-3 items-center border-b text-sm transition-colors cursor-pointer"
-        style={{ borderColor: 'var(--border)', background: isExpanded ? 'rgba(6,182,212,0.04)' : undefined }}
+        className="grid transition-colors cursor-pointer"
+        style={{
+          gridTemplateColumns,
+          background: isExpanded ? 'rgba(6,182,212,0.04)' : undefined,
+          borderBottom: '1px solid var(--border)',
+          alignItems: 'stretch',
+          minWidth: 'max-content',
+        }}
         onMouseEnter={e => { if (!isExpanded) e.currentTarget.style.background = 'var(--surface-2)' }}
-        onMouseLeave={e => { if (!isExpanded) e.currentTarget.style.background = isExpanded ? 'rgba(6,182,212,0.04)' : '' }}
+        onMouseLeave={e => { e.currentTarget.style.background = isExpanded ? 'rgba(6,182,212,0.04)' : '' }}
       >
         {/* Nº */}
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center"
+        <div className="flex items-center gap-2 px-3 py-2.5" style={{ borderRight: '1px solid var(--border)' }}>
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
             style={{ background: nfsValidas.length > 0 ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.10)' }}>
             {nfsValidas.length > 0
               ? <CheckCircle2 className="w-3.5 h-3.5" style={{ color: '#10B981' }} />
               : <Clock className="w-3.5 h-3.5" style={{ color: '#F59E0B' }} />}
           </div>
-          <div>
-            <p className="font-bold text-xs" style={{ color: 'var(--text-1)' }}>FIP-{String(sol.numero).padStart(4, '0')}</p>
-            <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>{sol.contrato.numero}</p>
-          </div>
-        </div>
-
-        {/* Fornecedor */}
-        <div className="min-w-0">
-          <p className="font-medium truncate" style={{ color: 'var(--text-1)' }}>{sol.fornecedor_razao_social || '—'}</p>
-          <p className="text-xs truncate" style={{ color: 'var(--text-3)' }}>
-            {sol.itens.length} item(ns)
-            {nfsValidas.length > 0 && ` · NF: ${formatCurrency(totalNfSol)}`}
+          <p className="font-bold text-xs font-mono break-all" style={{ color: 'var(--accent)' }}>
+            FIP-{String(sol.numero).padStart(4, '0')}
           </p>
         </div>
 
-        {/* Data */}
-        <span className="text-xs whitespace-nowrap" style={{ color: 'var(--text-3)' }}>{formatDate(sol.data_solicitacao)}</span>
-
-        {/* Valor + saldo diff */}
-        <div className="text-right">
-          <span className="font-bold whitespace-nowrap" style={{ color: 'var(--text-1)' }}>{formatCurrency(sol.valor_total)}</span>
-          {saldoDisplay && (
-            <p className="text-[10px] font-bold mt-0.5" style={{ color: saldoDisplay.color }}>{saldoDisplay.text}</p>
-          )}
+        {/* Contrato */}
+        <div className="flex items-center px-3 py-2.5 text-xs break-words" style={{ color: 'var(--text-2)', borderRight: '1px solid var(--border)' }}>
+          {sol.contrato?.numero || '—'}
         </div>
 
-        {/* Status / Actions */}
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: badge.bg, color: badge.color }}>
+        {/* Fornecedor */}
+        <div className="px-3 py-2.5 text-xs break-words flex flex-col justify-center" style={{ color: 'var(--text-1)', borderRight: '1px solid var(--border)' }} title={sol.fornecedor_razao_social || ''}>
+          <span className="font-medium">{sol.fornecedor_razao_social || '—'}</span>
+          <span className="text-[10px] mt-0.5" style={{ color: 'var(--text-3)' }}>
+            {sol.itens.length} item(ns)
+          </span>
+        </div>
+
+        {/* CNPJ */}
+        <div className="flex items-center px-3 py-2.5 text-xs font-mono break-all" style={{ color: 'var(--text-2)', borderRight: '1px solid var(--border)' }}>
+          {sol.fornecedor_cnpj ? maskCnpj(sol.fornecedor_cnpj) : '—'}
+        </div>
+
+        {/* Data */}
+        <div className="flex items-center px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--text-3)', borderRight: '1px solid var(--border)' }}>
+          {sol.data_solicitacao ? formatDate(sol.data_solicitacao) : '—'}
+        </div>
+
+        {/* Valor */}
+        <div className="flex items-center justify-end px-3 py-2.5 text-xs font-bold tabular-nums whitespace-nowrap" style={{ color: 'var(--text-1)', borderRight: '1px solid var(--border)' }}>
+          {formatCurrency(sol.valor_total || 0)}
+        </div>
+
+        {/* NFs Recebidas */}
+        <div className="flex flex-col items-end justify-center px-3 py-2.5 text-xs tabular-nums" style={{ borderRight: '1px solid var(--border)' }}>
+          <span style={{ color: nfsValidas.length > 0 ? 'var(--text-1)' : 'var(--text-3)' }}>
+            {formatCurrency(totalNfSol)}
+          </span>
+          <span className="text-[10px] mt-0.5" style={{ color: 'var(--text-3)' }}>
+            {nfsValidas.length} NF{nfsValidas.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+
+        {/* Saldo */}
+        <div className="flex items-center justify-end px-3 py-2.5 text-xs font-semibold tabular-nums whitespace-nowrap" style={{ color: saldoColor, borderRight: '1px solid var(--border)' }}>
+          {formatCurrency(saldo)}
+        </div>
+
+        {/* Status */}
+        <div className="flex items-center px-3 py-2.5" style={{ borderRight: '1px solid var(--border)' }}>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: badge.bg, color: badge.color }}>
             {badge.label}
           </span>
+        </div>
+
+        {/* Observações */}
+        <div
+          className="px-3 py-2.5 text-xs whitespace-pre-wrap break-words"
+          style={{
+            color: sol.observacoes ? 'var(--text-2)' : 'var(--text-3)',
+            borderRight: '1px solid var(--border)',
+            display: '-webkit-box',
+            WebkitLineClamp: 6,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+          }}
+          title={sol.observacoes || ''}
+        >
+          {sol.observacoes || '—'}
+        </div>
+
+        {/* Ações */}
+        <div className="flex items-center justify-center px-2 py-2.5">
           {isExpandable && (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full inline-flex items-center gap-0.5"
               style={{ background: 'rgba(6,182,212,0.12)', color: '#06B6D4', border: '1px solid rgba(6,182,212,0.3)' }}>
               <Plus className="w-2.5 h-2.5" /> NF
             </span>
           )}
           {isExpandable
-            ? (isExpanded ? <ChevronUp className="w-3.5 h-3.5" style={{ color: '#06B6D4' }} /> : <ChevronDown className="w-3.5 h-3.5" style={{ color: 'var(--text-3)' }} />)
-            : <ArrowRight className="w-3.5 h-3.5" style={{ color: 'var(--text-3)' }} />}
+            ? (isExpanded
+                ? <ChevronUp className="w-3.5 h-3.5 ml-1" style={{ color: '#06B6D4' }} />
+                : <ChevronDown className="w-3.5 h-3.5 ml-1" style={{ color: 'var(--text-3)' }} />)
+            : <ArrowRight className="w-3.5 h-3.5 ml-1" style={{ color: 'var(--text-3)' }} />}
         </div>
       </div>
     )
@@ -367,25 +487,99 @@ export default function NfFatDiretoPage() {
                 </button>
               </div>
             </div>
-            <div className="grid grid-cols-[auto_1fr_auto_auto_auto] gap-4 px-5 py-2 text-[10px] font-bold uppercase tracking-widest border-b" style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}>
-              <span className="flex items-center gap-1">Nº <ColumnFilter label="Nº" values={valoresUnicos.numero} selected={fNumero} onChange={setFNumero} /></span>
-              <span className="flex items-center gap-1">Fornecedor <ColumnFilter label="Fornecedor" values={valoresUnicos.fornecedor} selected={fFornecedor} onChange={setFFornecedor} /></span>
-              <span className="flex items-center gap-1">Data <ColumnFilter label="Data" values={valoresUnicos.data} selected={fData} onChange={setFData} /></span>
-              <span className="flex items-center gap-1">Valor <ColumnFilter label="Valor" values={valoresUnicos.valor} selected={fValor} onChange={setFValor} /></span>
-              <span className="flex items-center gap-1">Status <ColumnFilter label="Status" values={valoresUnicos.status} selected={fStatusCol} onChange={setFStatusCol} /></span>
+            <div
+              className="flex items-center justify-between px-5 py-2 text-[11px]"
+              style={{ background: 'var(--surface-3)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', color: 'var(--text-3)' }}
+            >
+              <span>Clique no cabeçalho para ordenar · Arraste a borda direita para redimensionar</span>
+              <button
+                type="button"
+                onClick={reset}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-md transition-colors"
+                style={{ color: 'var(--text-2)' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-2)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                title="Volta larguras e ordenação ao padrão"
+              >
+                <RotateCcw className="w-3 h-3" strokeWidth={2} /> Resetar layout
+              </button>
             </div>
           </div>
+
+          {/* Wrapper com overflow-x permite resize livre — sticky vertical preservado */}
+          <div className="overflow-x-auto">
+            {/* Header com sort + resize + filtros */}
+            <div
+              className="grid text-[11px] font-semibold uppercase tracking-wide sticky top-0 z-10"
+              style={{
+                gridTemplateColumns,
+                background: 'var(--surface-3)',
+                borderBottom: '1px solid var(--border)',
+                color: 'var(--text-3)',
+                minWidth: 'max-content',
+              }}
+            >
+              {tabelaColumns.map(col => {
+                const filtro = filtroPorColuna[col.key]
+                const isActive = sortKey === col.key
+                const isNumeric = col.type === 'number'
+                return (
+                  <div
+                    key={col.key}
+                    className="relative flex items-center gap-1 px-3 py-2.5 select-none"
+                    style={{
+                      borderRight: '1px solid var(--border)',
+                      background: isActive ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : undefined,
+                      justifyContent: isNumeric ? 'flex-end' : 'flex-start',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleSort(col.key)}
+                      className="flex items-center gap-1 truncate"
+                      style={{ color: isActive ? 'var(--accent)' : 'var(--text-3)' }}
+                      title={`Ordenar por ${COL_LABELS[col.key]}`}
+                    >
+                      <span className="truncate">{COL_LABELS[col.key]}</span>
+                      {isActive
+                        ? (sortDir === 'asc'
+                            ? <ChevronUp className="w-3 h-3" strokeWidth={2.5} style={{ color: 'var(--accent)' }} />
+                            : <ChevronDown className="w-3 h-3" strokeWidth={2.5} style={{ color: 'var(--accent)' }} />)
+                        : <ChevronsUpDown className="w-3 h-3 opacity-40" strokeWidth={2} />}
+                    </button>
+                    {filtro && (
+                      <ColumnFilter
+                        label={COL_LABELS[col.key]}
+                        values={filtro.values}
+                        selected={filtro.selected}
+                        onChange={filtro.onChange}
+                      />
+                    )}
+                    <span
+                      onMouseDown={e => startResize(col.key, e)}
+                      onClick={e => e.stopPropagation()}
+                      className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize"
+                      style={{ background: 'transparent' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent)' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                      title="Arraste para redimensionar"
+                    />
+                  </div>
+                )
+              })}
+              <div className="px-2 py-2.5 text-center" title="Ações">·</div>
+            </div>
 
           {loading ? (
             <div className="flex justify-center py-12" style={{ color: 'var(--text-3)' }}>
               <Loader2 className="w-5 h-5 animate-spin mr-2" />Carregando...
             </div>
-          ) : filtradas.length === 0 ? (
+          ) : filtradasOrdenadas.length === 0 ? (
             <div className="text-center py-12">
               <Receipt className="w-10 h-10 mx-auto mb-3 opacity-30" style={{ color: 'var(--text-3)' }} />
               <p className="text-sm" style={{ color: 'var(--text-3)' }}>Nenhuma solicitação encontrada</p>
             </div>
-          ) : filtradas.map(sol => {
+          ) : filtradasOrdenadas.map(sol => {
             const saldo       = getSaldo(sol)
             const isExpandable = sol.status === 'aprovado' && temSaldo(sol)
             const isExpanded  = expandedSolId === sol.id
@@ -592,6 +786,22 @@ export default function NfFatDiretoPage() {
               </div>
             )
           })}
+          </div>{/* /overflow-x-auto */}
+
+          {/* Footer com contagem + sort ativo */}
+          {!loading && filtradasOrdenadas.length > 0 && (
+            <div
+              className="flex items-center justify-between px-4 py-3"
+              style={{ background: 'var(--surface-3)', borderTop: '1px solid var(--border)' }}
+            >
+              <span className="text-xs" style={{ color: 'var(--text-3)' }}>
+                {filtradasOrdenadas.length} de {filtradasStatus.length} item(ns)
+                {sortKey && sortDir && (
+                  <> · ordenado por <strong>{COL_LABELS[sortKey]}</strong> ({sortDir === 'asc' ? '↑' : '↓'})</>
+                )}
+              </span>
+            </div>
+          )}
         </MaximizableCard>
       </div>
     </div>
