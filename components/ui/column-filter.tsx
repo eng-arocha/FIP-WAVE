@@ -67,16 +67,35 @@ export function ColumnFilter({
   const todosMarcados = selected.size === 0 || selected.size === valoresOrdenados.length
 
   function toggleValor(v: string) {
-    // Se o estado "selected" está vazio significa "tudo selecionado" (padrão).
-    // Na primeira desmarcação, populamos com todos e removemos o valor.
-    const base = selected.size === 0 ? new Set(valoresOrdenados) : new Set(selected)
-    if (base.has(v)) base.delete(v)
-    else base.add(v)
-    onChange(base)
+    // Comportamento intuitivo:
+    //   - Estado padrão (selected vazio = todos passam): clicar define filtro
+    //     APENAS pelo valor clicado. É o que o usuário espera ao "filtrar
+    //     pelo MARCELO" — clica no MARCELO, vê só MARCELO.
+    //   - Estado __NENHUM__ (vazio explícito): clicar marca só o clicado.
+    //   - Estado misto: toggle add/remove. Se ao remover ficar vazio, volta
+    //     pra default "todos passam" (não fica preso em "nada").
+    if (selected.size === 0 || selected.has('__NENHUM__')) {
+      onChange(new Set([v]))
+      return
+    }
+    const next = new Set(selected)
+    if (next.has(v)) next.delete(v)
+    else next.add(v)
+    if (next.size === 0) {
+      onChange(new Set()) // volta pra default (todos passam)
+      return
+    }
+    onChange(next)
   }
 
   function selecionarTudo() {
-    onChange(new Set()) // vazio = tudo selecionado (padrão)
+    onChange(new Set()) // vazio = tudo selecionado (padrão, sem filtro)
+  }
+
+  function apenasVisiveis() {
+    // Útil quando há busca ativa: filtra exatamente os itens que aparecem.
+    if (filtrados.length === 0) return
+    onChange(new Set(filtrados))
   }
 
   function limparTudo() {
@@ -112,7 +131,7 @@ export function ColumnFilter({
         >
           {/* Header com busca */}
           <div className="p-2.5 border-b" style={{ borderColor: '#E5E5EA' }}>
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-1">
               <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#86868B' }}>
                 {label}
               </span>
@@ -125,6 +144,9 @@ export function ColumnFilter({
                 <X className="w-3 h-3" />
               </button>
             </div>
+            <p className="text-[10px] leading-tight mb-2" style={{ color: '#86868B' }}>
+              Click filtra apenas pelo item · click de novo remove
+            </p>
             <div className="relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3" style={{ color: '#86868B' }} />
               <input
@@ -140,21 +162,37 @@ export function ColumnFilter({
           </div>
 
           {/* Ações */}
-          <div className="flex items-center gap-2 px-2.5 py-1.5 border-b" style={{ borderColor: '#E5E5EA' }}>
+          <div className="flex items-center flex-wrap gap-x-2 gap-y-1 px-2.5 py-1.5 border-b" style={{ borderColor: '#E5E5EA' }}>
             <button
               type="button"
               onClick={selecionarTudo}
               className="text-[11px] font-medium px-2 py-0.5 rounded hover:bg-[#F5F5F7]"
               style={{ color: '#0071E3' }}
+              title="Remove o filtro (mostra tudo)"
             >
               Selecionar tudo
             </button>
+            {busca.trim() && filtrados.length > 0 && (
+              <>
+                <span style={{ color: '#C7C7CC' }}>·</span>
+                <button
+                  type="button"
+                  onClick={apenasVisiveis}
+                  className="text-[11px] font-semibold px-2 py-0.5 rounded hover:bg-[#0071E3]/10"
+                  style={{ color: '#0071E3' }}
+                  title="Filtra a tabela mostrando apenas os itens listados aqui"
+                >
+                  Apenas {filtrados.length === 1 ? 'este' : `estes (${filtrados.length})`}
+                </button>
+              </>
+            )}
             <span style={{ color: '#C7C7CC' }}>·</span>
             <button
               type="button"
               onClick={limparTudo}
               className="text-[11px] font-medium px-2 py-0.5 rounded hover:bg-[#F5F5F7]"
               style={{ color: '#86868B' }}
+              title="Esconde TODAS as linhas (filtro vazio)"
             >
               Limpar
             </button>
