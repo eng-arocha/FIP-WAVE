@@ -6,6 +6,7 @@ import { apiError } from '@/lib/api/error-response'
 import { cnpj, dataIso } from '@/lib/api/schema'
 import { validateUpload } from '@/lib/api/upload-validation'
 import { optimizeUpload } from '@/lib/server/optimize-upload'
+import { getSupabaseUrl } from '@/lib/supabase/env'
 import { log } from '@/lib/log'
 
 const BUCKET = 'contratos-documentos'
@@ -26,7 +27,23 @@ const NfSchema = z.object({
   descricao: z.string().max(2000).optional(),
   /** Override do aprovador: aceita data_emissao < data_aprovacao com auditoria. */
   override_data_anterior: z.boolean().optional(),
+  /**
+   * URL pública do arquivo já enviado direto ao Supabase (via signed URL).
+   * Usado quando o cliente bypassa o body limit do Vercel.
+   * O servidor valida que aponta pro nosso bucket.
+   */
+  arquivo_url: z.string().url().optional(),
 })
+
+/**
+ * Valida que `arquivo_url` aponta pro nosso bucket Supabase.
+ * Defesa contra cliente forjar URL externa (rastreamento / phishing).
+ */
+function isUrlNoNossoBucket(url: string): boolean {
+  const supabaseUrl = getSupabaseUrl().replace(/\/+$/, '')
+  if (!supabaseUrl) return false
+  return url.startsWith(`${supabaseUrl}/storage/v1/object/public/${BUCKET}/`)
+}
 
 export async function GET(
   _req: Request,
@@ -97,9 +114,21 @@ export async function POST(
       })
     }
 
-    // Upload do arquivo PDF/imagem da NF, se enviado
-    let arquivo_url: string | undefined
-    if (file && file.size > 0) {
+    // arquivo_url pode vir de duas fontes:
+    //   A) Cliente já fez upload direto via signed URL → vem no body
+    //   B) Cliente enviou multipart com arquivo → fazemos upload aqui
+    let arquivo_url: string | undefined = nfBody.arquivo_url
+    if (arquivo_url) {
+      if (!isUrlNoNossoBucket(arquivo_url)) {
+        return NextResponse.json(
+          { error: 'URL de arquivo inválida (deve apontar pro Storage do FIP).', code: 'URL_INVALIDA' },
+          { status: 400 },
+        )
+      }
+    }
+
+    // Path B: upload via multipart (legado / arquivos pequenos < 4MB)
+    if (!arquivo_url && file && file.size > 0) {
       // P1.6: valida MIME + magic bytes antes de aceitar o upload
       const v = await validateUpload(file)
       if (!v.ok) {

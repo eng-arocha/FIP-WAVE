@@ -251,21 +251,67 @@ export default function NfFatDiretoPage() {
     data_aprovacao: string
   } | null>(null)
 
+  /**
+   * Sobe arquivo direto pro Supabase Storage via signed URL.
+   * Bypassa o limite de body do Vercel (~4.5MB) — funciona com PDFs de
+   * qualquer tamanho até o limite do bucket (50MB).
+   */
+  async function uploadArquivoDireto(file: File, solId: string): Promise<string> {
+    const ext = (file.name.split('.').pop() || 'bin').toLowerCase()
+    // 1. Pega signed upload URL do servidor (admin-side)
+    const signRes = await fetch('/api/fat-direto/sign-nf-upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ solId, ext }),
+    })
+    if (!signRes.ok) {
+      const e = await signRes.json().catch(() => ({}))
+      throw new Error(e.error || 'Falha ao preparar upload do arquivo.')
+    }
+    const { signedUrl, publicUrl } = await signRes.json()
+    // 2. PUT direto no Supabase Storage (não passa pelo Vercel)
+    const putRes = await fetch(signedUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      body: file,
+    })
+    if (!putRes.ok) {
+      throw new Error(`Falha no upload do arquivo (HTTP ${putRes.status}).`)
+    }
+    return publicUrl
+  }
+
   async function postNf(sol: Solicitacao, overrideDataAnterior: boolean): Promise<{ ok: true } | { ok: false; status: number; data: any }> {
-    const fd = new FormData()
-    fd.append('numero_nf',  nfForm.numero_nf)
-    fd.append('emitente',   sol.fornecedor_razao_social || '')
-    fd.append('cnpj_emitente', nfForm.cnpj_emitente.replace(/\D/g, ''))
-    fd.append('valor',      nfForm.valor)
-    fd.append('data_emissao', nfForm.data_emissao)
-    if (nfForm.data_recebimento) fd.append('data_recebimento', nfForm.data_recebimento)
-    if (nfForm.data_vencimento)  fd.append('data_vencimento',  nfForm.data_vencimento)
-    if (nfFile) fd.append('arquivo', nfFile)
-    if (overrideDataAnterior) fd.append('override_data_anterior', 'true')
+    // Se há arquivo, sobe direto pro Storage primeiro (sem passar pelo Vercel)
+    let arquivo_url: string | undefined
+    if (nfFile) {
+      try {
+        arquivo_url = await uploadArquivoDireto(nfFile, sol.id)
+      } catch (e: any) {
+        return { ok: false, status: 0, data: { error: e?.message || 'Erro ao enviar arquivo.' } }
+      }
+    }
+
+    // Posta os metadados como JSON puro — payload pequeno, sem risco de 413
+    const payload: Record<string, unknown> = {
+      numero_nf: nfForm.numero_nf,
+      emitente:  sol.fornecedor_razao_social || undefined,
+      cnpj_emitente: nfForm.cnpj_emitente.replace(/\D/g, '') || undefined,
+      valor: parseFloat(nfForm.valor),
+      data_emissao: nfForm.data_emissao,
+    }
+    if (nfForm.data_recebimento) payload.data_recebimento = nfForm.data_recebimento
+    if (nfForm.data_vencimento)  payload.data_vencimento  = nfForm.data_vencimento
+    if (arquivo_url)             payload.arquivo_url      = arquivo_url
+    if (overrideDataAnterior)    payload.override_data_anterior = true
 
     const res = await fetch(
       `/api/contratos/${sol.contrato_id}/fat-direto/solicitacoes/${sol.id}/nfs`,
-      { method: 'POST', body: fd }
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      },
     )
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
@@ -308,7 +354,11 @@ export default function NfFatDiretoPage() {
           })
           return
         }
-        setNfError(result.data?.error || 'Erro ao registrar NF.')
+        // Mensagem visível com o código pra facilitar diagnóstico:
+        // ex: "[VALOR_EXCEDE_SALDO] Valor da NF (R$ 10.000) excede o saldo do pedido (R$ 5.000)."
+        const errorMsg = result.data?.error || 'Erro ao registrar NF.'
+        const errorCode = result.data?.code
+        setNfError(errorCode ? `[${errorCode}] ${errorMsg}` : errorMsg)
         return
       }
       setConfirmDataAnterior(null)
