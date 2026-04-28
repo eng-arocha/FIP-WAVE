@@ -243,7 +243,38 @@ export default function NfFatDiretoPage() {
     setNfError('')
   }
 
-  async function handleRegistrarNf(sol: Solicitacao) {
+  // Confirmação pendente de NF com data anterior à aprovação. Quando preenchido,
+  // mostra um banner inline com botões "Confirmar mesmo assim" / "Cancelar".
+  const [confirmDataAnterior, setConfirmDataAnterior] = useState<{
+    sol: Solicitacao
+    data_emissao: string
+    data_aprovacao: string
+  } | null>(null)
+
+  async function postNf(sol: Solicitacao, overrideDataAnterior: boolean): Promise<{ ok: true } | { ok: false; status: number; data: any }> {
+    const fd = new FormData()
+    fd.append('numero_nf',  nfForm.numero_nf)
+    fd.append('emitente',   sol.fornecedor_razao_social || '')
+    fd.append('cnpj_emitente', nfForm.cnpj_emitente.replace(/\D/g, ''))
+    fd.append('valor',      nfForm.valor)
+    fd.append('data_emissao', nfForm.data_emissao)
+    if (nfForm.data_recebimento) fd.append('data_recebimento', nfForm.data_recebimento)
+    if (nfForm.data_vencimento)  fd.append('data_vencimento',  nfForm.data_vencimento)
+    if (nfFile) fd.append('arquivo', nfFile)
+    if (overrideDataAnterior) fd.append('override_data_anterior', 'true')
+
+    const res = await fetch(
+      `/api/contratos/${sol.contrato_id}/fat-direto/solicitacoes/${sol.id}/nfs`,
+      { method: 'POST', body: fd }
+    )
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      return { ok: false, status: res.status, data }
+    }
+    return { ok: true }
+  }
+
+  async function handleRegistrarNf(sol: Solicitacao, overrideDataAnterior = false) {
     if (!nfForm.numero_nf || !nfForm.valor || !nfForm.data_emissao) {
       setNfError('Preencha os campos obrigatórios: Número NF, Valor e Data Emissão.')
       return
@@ -251,31 +282,36 @@ export default function NfFatDiretoPage() {
     setSavingNf(true)
     setNfError('')
     try {
-      const fd = new FormData()
-      fd.append('numero_nf',  nfForm.numero_nf)
-      fd.append('emitente',   sol.fornecedor_razao_social || '')
-      fd.append('cnpj_emitente', nfForm.cnpj_emitente.replace(/\D/g, ''))
-      fd.append('valor',      nfForm.valor)
-      fd.append('data_emissao', nfForm.data_emissao)
-      if (nfForm.data_recebimento) fd.append('data_recebimento', nfForm.data_recebimento)
-      if (nfForm.data_vencimento)  fd.append('data_vencimento',  nfForm.data_vencimento)
-      if (nfFile) fd.append('arquivo', nfFile)
-
-      const res = await fetch(
-        `/api/contratos/${sol.contrato_id}/fat-direto/solicitacoes/${sol.id}/nfs`,
-        { method: 'POST', body: fd }
-      )
-      if (!res.ok) {
-        const err = await res.json()
-        setNfError(err.error || 'Erro ao registrar NF.')
+      const result = await postNf(sol, overrideDataAnterior)
+      if (!result.ok) {
+        // Caso especial: data anterior à aprovação → não bloqueia, abre confirmação
+        const code = result.data?.code
+        const detail = result.data?.detail
+        if (result.status === 422 && code === 'DATA_INVALIDA' && detail?.override_disponivel) {
+          setConfirmDataAnterior({
+            sol,
+            data_emissao: detail.data_emissao,
+            data_aprovacao: String(detail.data_aprovacao).slice(0, 10),
+          })
+          return
+        }
+        setNfError(result.data?.error || 'Erro ao registrar NF.')
         return
       }
+      setConfirmDataAnterior(null)
       setExpandedSolId(null)
       resetForm()
       reload()
     } finally {
       setSavingNf(false)
     }
+  }
+
+  async function confirmarMesmoAssim() {
+    if (!confirmDataAnterior) return
+    const { sol } = confirmDataAnterior
+    setConfirmDataAnterior(null)
+    await handleRegistrarNf(sol, true)
   }
 
   const inputCls = 'w-full rounded-lg px-3 py-2 text-sm border bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)] placeholder:text-[var(--text-3)] outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20'
@@ -804,6 +840,64 @@ export default function NfFatDiretoPage() {
           )}
         </MaximizableCard>
       </div>
+
+      {/* Modal: confirmar NF com data anterior à aprovação */}
+      {confirmDataAnterior && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.45)' }}
+          onClick={() => !savingNf && setConfirmDataAnterior(null)}
+        >
+          <div
+            className="rounded-2xl max-w-md w-full overflow-hidden"
+            style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', boxShadow: '0 20px 50px rgba(0,0,0,0.30)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 flex items-center gap-3" style={{ borderBottom: '1px solid var(--border)', background: 'rgba(245,158,11,0.06)' }}>
+              <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'rgba(245,158,11,0.15)' }}>
+                <AlertTriangle className="w-5 h-5" style={{ color: '#F59E0B' }} strokeWidth={2} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold" style={{ color: 'var(--text-1)' }}>NF emitida antes da aprovação</h3>
+                <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>Confirme se você quer continuar</p>
+              </div>
+            </div>
+            <div className="px-5 py-4 space-y-3 text-sm" style={{ color: 'var(--text-2)' }}>
+              <p>
+                A data de emissão da NF (<strong>{formatDate(confirmDataAnterior.data_emissao)}</strong>) é
+                anterior à aprovação do pedido (<strong>{formatDate(confirmDataAnterior.data_aprovacao)}</strong>).
+              </p>
+              <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+                Isso pode acontecer quando a NF foi emitida durante a negociação,
+                antes da aprovação formal. Ao continuar, o registro fica auditado
+                como override do aprovador.
+              </p>
+            </div>
+            <div className="px-5 py-3 flex items-center justify-end gap-2" style={{ borderTop: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+              <button
+                type="button"
+                onClick={() => setConfirmDataAnterior(null)}
+                disabled={savingNf}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50"
+                style={{ color: 'var(--text-2)', border: '1px solid var(--border)' }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmarMesmoAssim}
+                disabled={savingNf}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white inline-flex items-center gap-1.5 disabled:opacity-60"
+                style={{ background: '#F59E0B' }}
+              >
+                {savingNf
+                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Salvando...</>
+                  : <>Confirmar mesmo assim</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
