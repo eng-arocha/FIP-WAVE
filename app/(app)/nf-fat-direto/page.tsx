@@ -275,6 +275,7 @@ export default function NfFatDiretoPage() {
   }
 
   async function handleRegistrarNf(sol: Solicitacao, overrideDataAnterior = false) {
+    if (savingNf) return // bloqueia duplo-click
     if (!nfForm.numero_nf || !nfForm.valor || !nfForm.data_emissao) {
       setNfError('Preencha os campos obrigatórios: Número NF, Valor e Data Emissão.')
       return
@@ -284,14 +285,26 @@ export default function NfFatDiretoPage() {
     try {
       const result = await postNf(sol, overrideDataAnterior)
       if (!result.ok) {
-        // Caso especial: data anterior à aprovação → não bloqueia, abre confirmação
+        // Caso especial: data anterior à aprovação → não bloqueia, abre confirmação.
+        // Aberto SEMPRE em DATA_INVALIDA, mesmo sem override_disponivel no detail
+        // (defesa contra deploy/cache stale do flag).
         const code = result.data?.code
-        const detail = result.data?.detail
-        if (result.status === 422 && code === 'DATA_INVALIDA' && detail?.override_disponivel) {
+        const detail = result.data?.detail || {}
+        if (result.status === 422 && code === 'DATA_INVALIDA') {
+          // Se já estávamos no override e ainda assim deu DATA_INVALIDA, isso
+          // indica que o servidor não está honrando o flag — exibe o erro real
+          // pra usuário/dev ver, em vez de loop infinito.
+          if (overrideDataAnterior) {
+            setNfError(
+              `Servidor não aceitou o override (${result.data?.error}). ` +
+              `Avise o suporte — a checagem de data não está respeitando 'override_data_anterior'.`,
+            )
+            return
+          }
           setConfirmDataAnterior({
             sol,
-            data_emissao: detail.data_emissao,
-            data_aprovacao: String(detail.data_aprovacao).slice(0, 10),
+            data_emissao: detail.data_emissao || nfForm.data_emissao,
+            data_aprovacao: String(detail.data_aprovacao || '').slice(0, 10) || '—',
           })
           return
         }
