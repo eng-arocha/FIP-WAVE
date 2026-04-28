@@ -24,6 +24,8 @@ const NfSchema = z.object({
   data_recebimento: dataIso().optional(),
   data_vencimento: dataIso().optional(),
   descricao: z.string().max(2000).optional(),
+  /** Override do aprovador: aceita data_emissao < data_aprovacao com auditoria. */
+  override_data_anterior: z.boolean().optional(),
 })
 
 export async function GET(
@@ -67,6 +69,8 @@ export async function POST(
         data_emissao:    fd.get('data_emissao') as string,
         data_recebimento:(fd.get('data_recebimento') as string) || undefined,
         data_vencimento: (fd.get('data_vencimento') as string) || undefined,
+        // Aceita 'true'/'1' como string vinda de FormData
+        override_data_anterior: ['true', '1', 'on'].includes(String(fd.get('override_data_anterior') ?? '')),
       }
       file = fd.get('arquivo') as File | null
     } else {
@@ -132,6 +136,7 @@ export async function POST(
       data_vencimento: nfBody.data_vencimento,
       descricao: nfBody.descricao,
       arquivo_url,
+      override_data_anterior: nfBody.override_data_anterior,
     })
     return NextResponse.json(nf, { status: 201 })
   } catch (e: any) {

@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isSchemaMissingError, withSchemaFallback } from '@/lib/db/resilient'
+import { log } from '@/lib/log'
 
 export async function listarSolicitacoes(contratoId: string) {
   const admin = createAdminClient()
@@ -486,6 +487,13 @@ export async function validarNotaFiscal3Way(input: {
   cnpj_emitente?: string
   valor: number
   data_emissao: string
+  /**
+   * Se true, pula a checagem 'data_emissao >= data_aprovacao' (mantém os
+   * outros checks). Use apenas quando o aprovador confirmar explicitamente
+   * que a NF antedatada é aceitável (ex.: NF emitida durante negociação,
+   * antes da aprovação formal).
+   */
+  override_data_anterior?: boolean
 }): Promise<{ saldo_antes: number; saldo_depois: number; pct_uso_pedido: number; pedido_valor: number }> {
   const admin = createAdminClient()
 
@@ -519,8 +527,9 @@ export async function validarNotaFiscal3Way(input: {
     )
   }
 
-  // Data da NF não pode ser anterior à aprovação do pedido
-  if (sol.data_aprovacao) {
+  // Data da NF não pode ser anterior à aprovação do pedido — exceto se o
+  // aprovador confirmar override explícito (ex.: NF emitida durante negociação).
+  if (sol.data_aprovacao && !input.override_data_anterior) {
     const dataEmissao = new Date(input.data_emissao + 'T00:00:00Z').getTime()
     const dataAprov = new Date(sol.data_aprovacao).getTime()
     // Margem de 1 dia pra fuso/aproximação
@@ -528,7 +537,7 @@ export async function validarNotaFiscal3Way(input: {
       throw new NFMatchError(
         'DATA_INVALIDA',
         `Data de emissão da NF (${input.data_emissao}) é anterior à aprovação do pedido (${new Date(sol.data_aprovacao).toISOString().slice(0, 10)}).`,
-        { data_emissao: input.data_emissao, data_aprovacao: sol.data_aprovacao },
+        { data_emissao: input.data_emissao, data_aprovacao: sol.data_aprovacao, override_disponivel: true },
       )
     }
   }
@@ -587,6 +596,8 @@ export async function criarNotaFiscal(input: {
   data_vencimento?: string
   descricao?: string
   arquivo_url?: string
+  /** Override explícito: aceita data_emissao anterior à aprovação (auditado). */
+  override_data_anterior?: boolean
 }) {
   // 3-way match antes de gravar — lança NFMatchError em caso de violação
   const match = await validarNotaFiscal3Way({
@@ -595,15 +606,32 @@ export async function criarNotaFiscal(input: {
     cnpj_emitente: input.cnpj_emitente,
     valor: input.valor,
     data_emissao: input.data_emissao,
+    override_data_anterior: input.override_data_anterior,
   })
+
+  // Não persistimos override_data_anterior no insert — não é coluna da tabela
+  // e logamos abaixo quando ativo.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { override_data_anterior, ...insertPayload } = input
 
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('notas_fiscais_fat_direto')
-    .insert(input)
+    .insert(insertPayload)
     .select()
     .single()
   if (error) throw error
+
+  // Auditoria: registra que a NF foi aceita com data anterior à aprovação
+  if (input.override_data_anterior) {
+    log.warn('nf_data_anterior_aprovada', {
+      nf_id: (data as any)?.id,
+      solicitacao_id: input.solicitacao_id,
+      numero_nf: input.numero_nf,
+      data_emissao: input.data_emissao,
+    })
+  }
+
   // Anexa info do match pra UI exibir barra/alerta sem nova request
   return { ...data, _match: match }
 }
