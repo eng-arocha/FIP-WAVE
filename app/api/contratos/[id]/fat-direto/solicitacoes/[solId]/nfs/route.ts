@@ -86,6 +86,17 @@ export async function POST(
     }
     const nfBody = nfParsed.data
 
+    // Diagnóstico: registra se override foi enviado, pra verificar via logs
+    // que o flag está chegando ao servidor (caso o modal de confirmação
+    // pareça não funcionar).
+    if (nfBody.override_data_anterior) {
+      log.info('nf_post_override_data_anterior', {
+        solId,
+        numero_nf: nfBody.numero_nf,
+        data_emissao: nfBody.data_emissao,
+      })
+    }
+
     // Upload do arquivo PDF/imagem da NF, se enviado
     let arquivo_url: string | undefined
     if (file && file.size > 0) {
