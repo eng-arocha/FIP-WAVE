@@ -238,7 +238,7 @@ export default function NfFatDiretoPage() {
   }
 
   function handleFileSelect(file: File) {
-    if (file.size > 15 * 1024 * 1024) { setNfError('Arquivo muito grande (máx. 15 MB).'); return }
+    if (file.size > 50 * 1024 * 1024) { setNfError('Arquivo muito grande (máx. 50 MB).'); return }
     setNfFile(file)
     setNfError('')
   }
@@ -258,6 +258,8 @@ export default function NfFatDiretoPage() {
    */
   async function uploadArquivoDireto(file: File, solId: string): Promise<string> {
     const ext = (file.name.split('.').pop() || 'bin').toLowerCase()
+    // eslint-disable-next-line no-console
+    console.info('[NF] Upload direto iniciado', { name: file.name, sizeMB: (file.size / 1024 / 1024).toFixed(2), solId })
     // 1. Pega signed upload URL do servidor (admin-side)
     const signRes = await fetch('/api/fat-direto/sign-nf-upload', {
       method: 'POST',
@@ -278,6 +280,8 @@ export default function NfFatDiretoPage() {
     if (!putRes.ok) {
       throw new Error(`Falha no upload do arquivo (HTTP ${putRes.status}).`)
     }
+    // eslint-disable-next-line no-console
+    console.info('[NF] Upload direto OK', { publicUrl })
     return publicUrl
   }
 
@@ -852,13 +856,22 @@ export default function NfFatDiretoPage() {
                             >
                               <Upload className="w-5 h-5" style={{ color: 'var(--text-3)' }} />
                               <p className="text-xs font-medium" style={{ color: 'var(--text-2)' }}>Clique ou arraste o arquivo aqui</p>
-                              <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>PDF, PNG, JPG, XML · máx. 15 MB</p>
+                              <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>PDF, PNG, JPG, XML · máx. 50 MB</p>
+                              <p className="text-[9px] font-semibold mt-0.5" style={{ color: '#10B981' }} title="O arquivo é enviado direto ao Supabase Storage via signed URL — bypassa o limite de 4.5MB do Vercel.">
+                                ✓ Upload direto ativo
+                              </p>
                             </div>
                           )}
                         </div>
 
                         {nfError && (
-                          <p className="text-xs mt-2" style={{ color: '#EF4444' }}>{nfError}</p>
+                          <div
+                            className="mt-2 rounded-lg px-3 py-2 text-xs flex items-start gap-2"
+                            style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.30)', color: '#EF4444' }}
+                          >
+                            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                            <span className="font-medium break-words">{nfError}</span>
+                          </div>
                         )}
 
                         <div className="flex gap-2 mt-3">
