@@ -22,6 +22,7 @@ const TOLERANCE = 100 // R$ 100,00
 const STATUS_BADGE_RAW: Record<string, { label: string; color: string; bg: string }> = {
   aprovado:             { label: 'APROVADO',   color: '#10B981', bg: 'rgba(16,185,129,0.12)' },
   aguardando_aprovacao: { label: 'AGUARDANDO', color: '#F59E0B', bg: 'rgba(245,158,11,0.12)' },
+  encerrado:            { label: 'ENCERRADO',  color: '#6366F1', bg: 'rgba(99,102,241,0.12)' },
 }
 
 // ── Máscara CNPJ ────────────────────────────────────────────────────────────

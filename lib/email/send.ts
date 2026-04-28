@@ -27,7 +27,7 @@ interface SendEmailParams {
   subject: string
   html: string
   /** Tipo da notificação pra trilha (default: 'lembrete'). */
-  tipo?: 'nova_medicao' | 'aprovado' | 'rejeitado' | 'ajuste_solicitado' | 'lembrete'
+  tipo?: 'nova_medicao' | 'aprovado' | 'rejeitado' | 'ajuste_solicitado' | 'lembrete' | 'encerrado'
   /** ID da medição relacionada (opcional). */
   medicao_id?: string
 }

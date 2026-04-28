@@ -41,11 +41,27 @@ export async function getSolicitacao(id: string) {
       )
     `
 
-  // Campos extras (contato/pedido/anexos): se schema cache do PostgREST
-  // ainda não os conhece, cai pro select base em vez de quebrar a página.
-  const extraSelect = `${baseSelect},
+  // Campos extras (contato/pedido/anexos/encerramento): se schema cache do
+  // PostgREST ainda não os conhece, cai pro select base em vez de quebrar.
+  // Itens ganham valor_devolvido pra UI exibir saldo livre por item.
+  const extraSelect = `
+      id, numero, status, data_solicitacao, data_aprovacao,
+      observacoes, motivo_rejeicao, valor_total, contrato_id, created_at,
+      fornecedor_razao_social, fornecedor_cnpj, fornecedor_contato,
       fornecedor_contato_nome, fornecedor_contato_telefone,
-      numero_pedido_fip, pedido_pdf_url, pedido_pdf_nome, pedido_anexos`
+      numero_pedido_fip, pedido_pdf_url, pedido_pdf_nome, pedido_anexos,
+      data_encerramento, encerrado_por_id, motivo_encerramento,
+      solicitante:perfis!solicitante_id(nome, email),
+      aprovador:perfis!aprovador_id(nome, email),
+      encerrado_por:perfis!encerrado_por_id(nome, email),
+      itens:itens_solicitacao_fat_direto(
+        id, descricao, local, qtde_solicitada, valor_unitario, valor_total, valor_devolvido,
+        tarefa:tarefa_id(id, codigo, nome, grupo_macro_id)
+      ),
+      notas_fiscais:notas_fiscais_fat_direto(
+        id, numero_nf, emitente, cnpj_emitente, valor, data_emissao, descricao, status, validado_em
+      )
+    `
 
   const { data, error } = await withSchemaFallback({
     primary: () => admin
@@ -65,6 +81,10 @@ export async function getSolicitacao(id: string) {
       'pedido_pdf_url',
       'pedido_pdf_nome',
       'pedido_anexos',
+      'data_encerramento',
+      'encerrado_por_id',
+      'motivo_encerramento',
+      'valor_devolvido',
     ],
     context: 'getSolicitacao',
   })
@@ -235,19 +255,35 @@ export async function criarSolicitacao(input: {
       .select('id, codigo, descricao, valor_total, quantidade_contratada, valor_unitario')
       .in('id', detIdsReq)
 
-    const { data: itensExist } = await admin
-      .from('itens_solicitacao_fat_direto')
-      .select('detalhamento_id, valor_total, solicitacoes_fat_direto!inner(status)')
-      .in('detalhamento_id', detIdsReq)
-      .in('solicitacoes_fat_direto.status', ['aprovado', 'aguardando_aprovacao'])
+    // Inclui valor_devolvido pra desconsiderar dos comprometimentos.
+    // withSchemaFallback: durante janela de schema cache stale (após migration 050),
+    // cai pra select sem valor_devolvido — soma normal sem subtrair (degradação OK).
+    const itensExistRes = await withSchemaFallback({
+      primary: () => admin
+        .from('itens_solicitacao_fat_direto')
+        .select('detalhamento_id, valor_total, valor_devolvido, solicitacoes_fat_direto!inner(status)')
+        .in('detalhamento_id', detIdsReq)
+        .in('solicitacoes_fat_direto.status', ['aprovado', 'aguardando_aprovacao']),
+      fallback: () => admin
+        .from('itens_solicitacao_fat_direto')
+        .select('detalhamento_id, valor_total, solicitacoes_fat_direto!inner(status)')
+        .in('detalhamento_id', detIdsReq)
+        .in('solicitacoes_fat_direto.status', ['aprovado', 'aguardando_aprovacao']),
+      missingColumns: ['valor_devolvido'],
+      context: 'criarSolicitacao_itensExist',
+    })
+    const itensExist = itensExistRes.data
 
     const aprovByDet: Record<string, number> = {}
     const pendByDet: Record<string, number> = {}
     ;(itensExist || []).forEach((it: any) => {
       if (!it.detalhamento_id) return
       const s = it.solicitacoes_fat_direto?.status
-      if (s === 'aprovado') aprovByDet[it.detalhamento_id] = (aprovByDet[it.detalhamento_id] || 0) + (it.valor_total || 0)
-      else if (s === 'aguardando_aprovacao') pendByDet[it.detalhamento_id] = (pendByDet[it.detalhamento_id] || 0) + (it.valor_total || 0)
+      // Saldo efetivo = valor_total − valor_devolvido (devoluções liberam o saldo do item)
+      const efetivo = (it.valor_total || 0) - (it.valor_devolvido || 0)
+      if (efetivo <= 0) return
+      if (s === 'aprovado') aprovByDet[it.detalhamento_id] = (aprovByDet[it.detalhamento_id] || 0) + efetivo
+      else if (s === 'aguardando_aprovacao') pendByDet[it.detalhamento_id] = (pendByDet[it.detalhamento_id] || 0) + efetivo
     })
 
     // Group new items by detalhamento
@@ -786,4 +822,234 @@ export async function listarTarefasParaSolicitacao(contratoId: string) {
       },
     }
   })
+}
+
+// ============================================================
+// Encerrar pedido + devolver saldo aos itens
+// ============================================================
+
+export class EncerramentoError extends Error {
+  code:
+    | 'PEDIDO_NAO_APROVADO'
+    | 'NF_PENDENTE_BLOQUEIA'
+    | 'DEVOLUCAO_INVALIDA'
+    | 'NAO_PERMITIDO'
+  detail: Record<string, unknown>
+  constructor(code: EncerramentoError['code'], message: string, detail: Record<string, unknown> = {}) {
+    super(message)
+    this.name = 'EncerramentoError'
+    this.code = code
+    this.detail = detail
+  }
+}
+
+export interface EncerrarSolicitacaoInput {
+  solicitacao_id: string
+  encerrado_por_id: string
+  motivo: string
+  /**
+   * Devoluções por item: { item_id, valor }. Soma deve ser igual ao saldo
+   * do pedido (com tolerância R$ 0,01). Cada valor ≤ valor_unitario do item.
+   *
+   * Se omitido, devolve tudo proporcionalmente entre os itens (útil quando
+   * pedido sem NF — equivalente a cancelamento total).
+   */
+  devolucoes?: Array<{ item_id: string; valor: number }>
+}
+
+/**
+ * Encerra um pedido aprovado, devolvendo o saldo (valor_total − soma das NFs)
+ * aos itens individuais. Após encerrar:
+ *   - status = 'encerrado'
+ *   - valor_total = soma das NFs validadas/pendentes (não-rejeitadas)
+ *   - cada item ganha valor_devolvido somado ao que tinha
+ *   - saldo dos detalhamentos é liberado automaticamente (cálculos usam
+ *     valor_unitario − valor_devolvido)
+ *
+ * Bloqueia se houver NF status='pendente' (uma rejeição posterior deixaria
+ * saldo no limbo). Permite se todas as NFs estão validadas/rejeitadas, ou
+ * se não há NF nenhuma (= cancelamento total).
+ */
+export async function encerrarSolicitacao(input: EncerrarSolicitacaoInput) {
+  const admin = createAdminClient()
+
+  // 1) Carrega pedido + itens + nfs (single roundtrip por relação)
+  const [{ data: sol }, { data: itens }, { data: nfs }] = await Promise.all([
+    admin.from('solicitacoes_fat_direto')
+      .select('id, status, valor_total, contrato_id, numero, numero_pedido_fip, fornecedor_razao_social, fornecedor_cnpj')
+      .eq('id', input.solicitacao_id).single(),
+    admin.from('itens_solicitacao_fat_direto')
+      .select('id, descricao, local, valor_unitario, valor_devolvido, tarefa_id, detalhamento_id')
+      .eq('solicitacao_id', input.solicitacao_id),
+    admin.from('notas_fiscais_fat_direto')
+      .select('id, valor, status')
+      .eq('solicitacao_id', input.solicitacao_id),
+  ])
+
+  if (!sol) {
+    throw new EncerramentoError('PEDIDO_NAO_APROVADO', 'Pedido não encontrado.', {})
+  }
+  if (sol.status !== 'aprovado') {
+    throw new EncerramentoError(
+      'PEDIDO_NAO_APROVADO',
+      `Apenas pedidos aprovados podem ser encerrados (status atual: ${sol.status}).`,
+      { status: sol.status },
+    )
+  }
+
+  const nfsAtivas = (nfs || []).filter((n: any) => n.status !== 'rejeitada')
+  const nfsPendentes = nfsAtivas.filter((n: any) => n.status === 'pendente')
+  if (nfsPendentes.length > 0) {
+    throw new EncerramentoError(
+      'NF_PENDENTE_BLOQUEIA',
+      `Existe(m) ${nfsPendentes.length} NF(s) pendente(s) de validação. Valide ou rejeite antes de encerrar o pedido.`,
+      { qtd_pendentes: nfsPendentes.length },
+    )
+  }
+
+  const totalNfs = nfsAtivas.reduce((s: number, n: any) => s + Number(n.valor || 0), 0)
+  const valorOriginal = Number(sol.valor_total || 0)
+  const saldoPedido = valorOriginal - totalNfs
+
+  // Tolerância: saldo ≤ R$0,01 considerado "zerado", encerra direto sem devolução.
+  if (saldoPedido <= 0.01) {
+    const { error: updErr } = await admin
+      .from('solicitacoes_fat_direto')
+      .update({
+        status: 'encerrado',
+        data_encerramento: new Date().toISOString(),
+        encerrado_por_id: input.encerrado_por_id,
+        motivo_encerramento: input.motivo,
+        // valor_total já igual a totalNfs, sem mudança
+      })
+      .eq('id', input.solicitacao_id)
+    if (updErr) throw updErr
+    return {
+      saldo_devolvido: 0,
+      total_nfs: totalNfs,
+      valor_original: valorOriginal,
+      devolucoes_aplicadas: [] as Array<{ item_id: string; valor: number; descricao: string }>,
+    }
+  }
+
+  // 2) Calcula devoluções: usa o que veio no input ou distribui proporcionalmente
+  const itensAtivos = (itens || []).map((it: any) => ({
+    id: it.id,
+    descricao: it.descricao || '',
+    valor_unitario: Number(it.valor_unitario || 0),
+    valor_devolvido_atual: Number(it.valor_devolvido || 0),
+    saldo_disponivel: Math.max(0, Number(it.valor_unitario || 0) - Number(it.valor_devolvido || 0)),
+    detalhamento_id: it.detalhamento_id,
+  }))
+
+  let devolucoes: Array<{ item_id: string; valor: number }>
+  if (input.devolucoes && input.devolucoes.length > 0) {
+    devolucoes = input.devolucoes
+  } else {
+    // Distribuição proporcional: cada item recebe sua fatia do saldo do pedido
+    // proporcional ao seu saldo disponível. Útil pra "cancelar tudo" quando NF=0.
+    const totalDisponivel = itensAtivos.reduce((s, it) => s + it.saldo_disponivel, 0)
+    if (totalDisponivel < saldoPedido - 0.01) {
+      throw new EncerramentoError(
+        'DEVOLUCAO_INVALIDA',
+        'Saldo do pedido excede a soma dos saldos disponíveis dos itens — não é possível distribuir.',
+        { saldo_pedido: saldoPedido, total_disponivel: totalDisponivel },
+      )
+    }
+    devolucoes = itensAtivos.map(it => ({
+      item_id: it.id,
+      valor: totalDisponivel > 0 ? (it.saldo_disponivel / totalDisponivel) * saldoPedido : 0,
+    }))
+  }
+
+  // 3) Validações: cada devolução ≤ saldo disponível do item; soma = saldoPedido
+  const itemMap = new Map(itensAtivos.map(it => [it.id, it]))
+  let somaDevolucoes = 0
+  for (const d of devolucoes) {
+    const it = itemMap.get(d.item_id)
+    if (!it) {
+      throw new EncerramentoError('DEVOLUCAO_INVALIDA', `Item ${d.item_id} não pertence ao pedido.`, { item_id: d.item_id })
+    }
+    if (d.valor < 0) {
+      throw new EncerramentoError('DEVOLUCAO_INVALIDA', `Valor de devolução não pode ser negativo (item ${it.descricao}).`, { item_id: d.item_id, valor: d.valor })
+    }
+    if (d.valor > it.saldo_disponivel + 0.01) {
+      throw new EncerramentoError(
+        'DEVOLUCAO_INVALIDA',
+        `Devolução do item "${it.descricao}" (R$ ${d.valor.toFixed(2)}) excede o saldo disponível (R$ ${it.saldo_disponivel.toFixed(2)}).`,
+        { item_id: d.item_id, valor: d.valor, max: it.saldo_disponivel },
+      )
+    }
+    somaDevolucoes += d.valor
+  }
+  if (Math.abs(somaDevolucoes - saldoPedido) > 0.01) {
+    throw new EncerramentoError(
+      'DEVOLUCAO_INVALIDA',
+      `Soma das devoluções (R$ ${somaDevolucoes.toFixed(2)}) deve ser igual ao saldo do pedido (R$ ${saldoPedido.toFixed(2)}).`,
+      { soma_devolucoes: somaDevolucoes, saldo_pedido: saldoPedido },
+    )
+  }
+
+  // 4) Aplica em lote: UPDATE itens (cada um) + UPDATE solicitacao
+  // (Postgres aceita batch via upsert ou UPDATE serial; preferimos serial pra
+  //  manter integridade individual e logs claros.)
+  const devolucoesAplicadas: Array<{ item_id: string; valor: number; descricao: string }> = []
+  for (const d of devolucoes) {
+    if (d.valor <= 0) continue
+    const it = itemMap.get(d.item_id)!
+    const novoValorDevolvido = it.valor_devolvido_atual + d.valor
+    const { error } = await admin
+      .from('itens_solicitacao_fat_direto')
+      .update({ valor_devolvido: novoValorDevolvido })
+      .eq('id', d.item_id)
+    if (error) {
+      // Schema cache stale: a coluna pode não estar no PostgREST cache ainda
+      if (isSchemaMissingError(error, ['valor_devolvido'])) {
+        throw new EncerramentoError(
+          'NAO_PERMITIDO',
+          'Coluna valor_devolvido ainda não disponível no schema cache. Rode a migration 050 e recarregue o cache (Settings → API → Reload schema cache).',
+          { hint: 'migration_050_pendente' },
+        )
+      }
+      throw error
+    }
+    devolucoesAplicadas.push({ item_id: d.item_id, valor: d.valor, descricao: it.descricao })
+  }
+
+  const { error: updSolErr } = await admin
+    .from('solicitacoes_fat_direto')
+    .update({
+      status: 'encerrado',
+      valor_total: totalNfs, // ajusta valor pra refletir o efetivo recebido
+      data_encerramento: new Date().toISOString(),
+      encerrado_por_id: input.encerrado_por_id,
+      motivo_encerramento: input.motivo,
+    })
+    .eq('id', input.solicitacao_id)
+  if (updSolErr) {
+    if (isSchemaMissingError(updSolErr, ['data_encerramento', 'encerrado_por_id', 'motivo_encerramento'])) {
+      throw new EncerramentoError(
+        'NAO_PERMITIDO',
+        'Colunas de auditoria de encerramento ainda não disponíveis. Rode a migration 050 e recarregue o schema cache.',
+        { hint: 'migration_050_pendente' },
+      )
+    }
+    throw updSolErr
+  }
+
+  log.info('pedido_encerrado', {
+    solicitacao_id: input.solicitacao_id,
+    encerrado_por_id: input.encerrado_por_id,
+    valor_original: valorOriginal,
+    total_nfs: totalNfs,
+    saldo_devolvido: saldoPedido,
+    qtd_devolucoes: devolucoesAplicadas.length,
+  })
+
+  return {
+    saldo_devolvido: saldoPedido,
+    total_nfs: totalNfs,
+    valor_original: valorOriginal,
+    devolucoes_aplicadas: devolucoesAplicadas,
+  }
 }
