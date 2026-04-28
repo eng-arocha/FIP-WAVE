@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { apiError } from '@/lib/api/error-response'
 
-const BUCKET = 'contratos-documentos'
+const BUCKET = 'faturamento-direto'
 
 /**
  * Gera signed upload URL pra cliente subir arquivo de NF DIRETO ao Supabase
