@@ -296,3 +296,175 @@ export function templateSolicitacaoAprovadaFornecedor(p: SolicitacaoAprovadaPayl
 
   return { subject, html, text }
 }
+
+// ============================================================
+// Template: Pedido encerrado com devolução de saldo
+// ============================================================
+
+export interface PedidoEncerradoPayload {
+  numero_fip: number
+  fornecedor_razao_social: string | null
+  fornecedor_cnpj: string | null
+  valor_original: number
+  total_nfs: number
+  saldo_devolvido: number
+  motivo: string | null
+  encerrado_por_nome: string | null
+  data_encerramento: string // ISO
+  devolucoes: Array<{
+    descricao: string
+    valor: number
+    codigo_detalhamento?: string | null
+  }>
+}
+
+/**
+ * E-mail de notificação interna informando que um pedido aprovado foi
+ * encerrado e o saldo retornou aos itens originais. Mesmo layout visual
+ * do template de aprovação.
+ */
+export function templatePedidoEncerrado(p: PedidoEncerradoPayload): {
+  subject: string
+  html: string
+  text: string
+} {
+  const fip = `FIP-${String(p.numero_fip).padStart(4, '0')}`
+  const subject = `[${fip}] Pedido encerrado — saldo de ${fmt(p.saldo_devolvido)} devolvido`
+
+  const dataFmt = (() => {
+    try { return new Date(p.data_encerramento).toLocaleDateString('pt-BR') }
+    catch { return '' }
+  })()
+
+  const devolucoesHtml = p.devolucoes
+    .filter(d => d.valor > 0)
+    .map(d => `
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;">
+          ${d.codigo_detalhamento ? `<span style="font-family:ui-monospace,monospace;background:#f1f5f9;padding:1px 6px;border-radius:4px;font-size:11px;margin-right:6px;">${escapeHtml(d.codigo_detalhamento)}</span>` : ''}
+          ${escapeHtml(d.descricao)}
+        </td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600;color:#059669;">+ ${fmt(d.valor)}</td>
+      </tr>
+    `).join('')
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>${subject}</title>
+</head>
+<body style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;color:#0f172a;">
+  <div style="max-width:680px;margin:0 auto;padding:24px;">
+
+    <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+
+      <!-- Header -->
+      <div style="background:#475569;color:#ffffff;padding:24px;">
+        <h1 style="margin:0;font-size:20px;">Pedido encerrado — saldo devolvido</h1>
+        <p style="margin:6px 0 0;font-size:13px;opacity:0.9;">${fip} · Obra WAVE</p>
+      </div>
+
+      <!-- Saudação -->
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
+        <p style="margin:0 0 12px;font-size:15px;font-weight:600;color:#0f172a;">
+          Notificação interna da Obra WAVE
+        </p>
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#475569;">
+          O pedido <strong>${fip}</strong> foi <strong>encerrado</strong> em
+          ${dataFmt} por <strong>${escapeHtml(p.encerrado_por_nome || 'Gestão')}</strong>.
+          O saldo não-utilizado de <strong>${fmt(p.saldo_devolvido)}</strong> foi
+          devolvido aos itens originais e está disponível para novos pedidos.
+        </p>
+      </div>
+
+      <!-- 1. RESUMO FINANCEIRO -->
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
+        <h2 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">1. Resumo financeiro</h2>
+        <table style="width:100%;font-size:14px;">
+          <tr><td style="padding:6px 0;color:#64748b;">Valor original do pedido</td><td style="padding:6px 0;text-align:right;font-weight:600;">${fmt(p.valor_original)}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Total recebido em NFs</td><td style="padding:6px 0;text-align:right;font-weight:600;">${fmt(p.total_nfs)}</td></tr>
+          <tr style="border-top:2px solid #e5e7eb;"><td style="padding:8px 0;color:#0f172a;font-weight:700;">Saldo devolvido aos itens</td><td style="padding:8px 0;text-align:right;font-weight:700;color:#059669;">${fmt(p.saldo_devolvido)}</td></tr>
+        </table>
+      </div>
+
+      <!-- 2. FORNECEDOR -->
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
+        <h2 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">2. Fornecedor</h2>
+        <table style="width:100%;font-size:14px;">
+          <tr><td style="padding:4px 0;color:#64748b;width:160px;">Razão Social</td><td style="padding:4px 0;font-weight:600;">${escapeHtml(p.fornecedor_razao_social || '—')}</td></tr>
+          ${p.fornecedor_cnpj ? `<tr><td style="padding:4px 0;color:#64748b;">CNPJ</td><td style="padding:4px 0;font-weight:600;font-family:ui-monospace,monospace;">${maskCnpj(p.fornecedor_cnpj)}</td></tr>` : ''}
+        </table>
+      </div>
+
+      <!-- 3. DEVOLUÇÃO POR ITEM -->
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
+        <h2 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">3. Devolução por item (saldo liberado)</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="background:#f8fafc;">
+              <th style="padding:8px 12px;text-align:left;font-weight:600;color:#64748b;border-bottom:1px solid #e5e7eb;">Descrição</th>
+              <th style="padding:8px 12px;text-align:right;font-weight:600;color:#64748b;border-bottom:1px solid #e5e7eb;">Valor devolvido</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${devolucoesHtml || `<tr><td colspan="2" style="padding:12px;text-align:center;color:#64748b;">Nenhuma devolução listada.</td></tr>`}
+            <tr style="background:#f0fdf4;">
+              <td style="padding:10px 12px;font-weight:700;border-top:2px solid #d1d5db;">TOTAL DEVOLVIDO</td>
+              <td style="padding:10px 12px;text-align:right;font-weight:700;color:#059669;border-top:2px solid #d1d5db;">${fmt(p.saldo_devolvido)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      ${p.motivo ? `
+      <!-- 4. MOTIVO -->
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
+        <h2 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">4. Motivo</h2>
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#475569;white-space:pre-wrap;">${escapeHtml(p.motivo)}</p>
+      </div>
+      ` : ''}
+
+      <!-- 5. RESPONSÁVEL -->
+      <div style="padding:24px;">
+        <h2 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">${p.motivo ? '5' : '4'}. Encerrado por</h2>
+        <p style="margin:0;font-size:14px;color:#0f172a;font-weight:600;">${escapeHtml(p.encerrado_por_nome || 'Gestão WAVE')}</p>
+      </div>
+
+    </div>
+
+    <p style="margin:16px 0 0;font-size:12px;color:#64748b;text-align:center;">
+      Este é um e-mail automático de notificação interna da Obra WAVE.<br>
+      Dúvidas? Responda este e-mail — sua mensagem vai pra gestão.
+    </p>
+
+  </div>
+</body>
+</html>`
+
+  const text = [
+    `${subject}`,
+    '',
+    `O pedido ${fip} foi ENCERRADO em ${dataFmt} por ${p.encerrado_por_nome || 'Gestão'}.`,
+    `Saldo de ${fmt(p.saldo_devolvido)} devolvido aos itens originais.`,
+    '',
+    `1. RESUMO FINANCEIRO`,
+    `   Valor original: ${fmt(p.valor_original)}`,
+    `   Total NFs:      ${fmt(p.total_nfs)}`,
+    `   Devolvido:      ${fmt(p.saldo_devolvido)}`,
+    '',
+    `2. FORNECEDOR`,
+    `   ${p.fornecedor_razao_social || '—'}`,
+    p.fornecedor_cnpj ? `   CNPJ: ${maskCnpj(p.fornecedor_cnpj)}` : '',
+    '',
+    `3. DEVOLUÇÃO POR ITEM`,
+    ...p.devolucoes.filter(d => d.valor > 0).map(d => `   + ${fmt(d.valor)} — ${d.descricao}`),
+    `   TOTAL: ${fmt(p.saldo_devolvido)}`,
+    '',
+    p.motivo ? `4. MOTIVO\n   ${p.motivo}` : '',
+    '',
+    `— Gestão WAVE`,
+  ].filter(Boolean).join('\n')
+
+  return { subject, html, text }
+}

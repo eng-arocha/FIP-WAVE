@@ -7,9 +7,10 @@ import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { ArrowLeft, CheckCircle, XCircle, FileText, Plus, Package, Trash2, Mail, Send, PlayCircle } from 'lucide-react'
+import { ArrowLeft, CheckCircle, XCircle, FileText, Plus, Package, Trash2, Mail, Send, PlayCircle, RotateCcw } from 'lucide-react'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 import { EmailEnvolvidosModal } from '@/components/fat-direto/email-envolvidos-modal'
+import { EncerrarPedidoModal } from '@/components/fat-direto/encerrar-pedido-modal'
 
 interface Solicitacao {
   id: string
@@ -33,6 +34,7 @@ interface Solicitacao {
     qtde_solicitada: number
     valor_unitario: number
     valor_total: number
+    valor_devolvido?: number
     tarefa?: { codigo: string; nome: string }
   }>
   notas_fiscais?: Array<{
@@ -51,6 +53,7 @@ const STATUS_COLORS: Record<string, string> = {
   aprovado: '#10B981',
   rejeitado: '#EF4444',
   cancelado: '#475569',
+  encerrado: '#6366F1',
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -59,6 +62,7 @@ const STATUS_LABELS: Record<string, string> = {
   aprovado: 'Aprovado',
   rejeitado: 'Rejeitado',
   cancelado: 'Cancelado',
+  encerrado: 'Encerrado',
 }
 
 export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id: string; solId: string }> }) {
@@ -76,6 +80,9 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
   const [erro, setErro] = useState('')
   // Dialog de aprovação: pergunta se quer aprovar (com ou sem notificação)
   const [showApprovalDialog, setShowApprovalDialog] = useState(false)
+  const [showEncerrarModal, setShowEncerrarModal] = useState(false)
+  // Lista de envolvidos do contrato pra modal de encerramento (notificação por email)
+  const [envolvidosContrato, setEnvolvidosContrato] = useState<Array<{ id: string; nome: string | null; email: string }>>([])
   // Modal de envio de notificação aos envolvidos (checkbox + preview)
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [emailModalMode, setEmailModalMode] = useState<'aprovar' | 'reenviar'>('aprovar')
@@ -131,6 +138,21 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
 
   // Recarrega saldo quando abre o formulário de NF — mostra estado atualizado
   useEffect(() => { if (showNFForm) carregarSaldo() }, [showNFForm])
+
+  // Carrega envolvidos do contrato uma vez quando modal de encerramento abre
+  // (reutiliza email-preview que já retorna a lista junto)
+  useEffect(() => {
+    if (!showEncerrarModal || envolvidosContrato.length > 0) return
+    fetch(`/api/contratos/${id}/fat-direto/solicitacoes/${solId}/email-preview`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.envolvidos && Array.isArray(data.envolvidos)) {
+          setEnvolvidosContrato(data.envolvidos)
+        }
+      })
+      .catch(() => {/* lista vazia segue OK */})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showEncerrarModal])
 
   // Auto-preencher CNPJ do emitente com o do fornecedor do pedido (se houver)
   useEffect(() => {
@@ -426,7 +448,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
           <Card style={{ background: 'var(--surface-1)', border: '1px solid rgba(239,68,68,0.2)' }}>
             <CardContent className="pt-4 pb-4">
               <p className="text-sm text-red-400 font-semibold mb-3">Ações de Administrador</p>
-              <div className="flex gap-3">
+              <div className="flex gap-3 flex-wrap">
                 {sol.status === 'aprovado' && (
                   <Button
                     onClick={() => acao('aguardando_aprovacao')}
@@ -435,6 +457,17 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                     className="gap-2 border border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
                   >
                     <XCircle className="w-4 h-4" /> Desaprovar
+                  </Button>
+                )}
+                {sol.status === 'aprovado' && (
+                  <Button
+                    onClick={() => setShowEncerrarModal(true)}
+                    disabled={acting}
+                    variant="ghost"
+                    className="gap-2 border border-orange-500/30 text-orange-400 hover:bg-orange-500/10"
+                    title="Encerra o pedido e devolve o saldo (não recebido em NF) aos itens originais. Irreversível."
+                  >
+                    <RotateCcw className="w-4 h-4" /> Encerrar e devolver saldo
                   </Button>
                 )}
                 <Button
@@ -683,6 +716,27 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
           setEmailSucesso(`Notificação enviada para ${qtd} envolvido${qtd > 1 ? 's' : ''}.`)
           load()
         }}
+      />
+
+      <EncerrarPedidoModal
+        open={showEncerrarModal}
+        onClose={() => setShowEncerrarModal(false)}
+        contratoId={id}
+        solId={solId}
+        numeroPedidoFip={(sol as any)?.numero_pedido_fip ?? sol.numero}
+        valorTotalPedido={Number(sol.valor_total || 0)}
+        totalNfsRecebidas={(sol.notas_fiscais || [])
+          .filter(nf => nf.status !== 'rejeitada')
+          .reduce((s, nf) => s + Number(nf.valor || 0), 0)}
+        itens={(sol.itens || []).map(it => ({
+          id: it.id,
+          descricao: it.descricao,
+          valor_unitario: Number(it.valor_unitario || 0),
+          valor_devolvido: Number(it.valor_devolvido || 0),
+          codigo: it.tarefa?.codigo ?? null,
+        }))}
+        envolvidos={envolvidosContrato}
+        onSuccess={() => { load(); carregarSaldo() }}
       />
     </div>
   )
