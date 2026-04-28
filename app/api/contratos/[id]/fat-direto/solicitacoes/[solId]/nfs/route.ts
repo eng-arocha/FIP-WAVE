@@ -9,7 +9,7 @@ import { optimizeUpload } from '@/lib/server/optimize-upload'
 import { getSupabaseUrl } from '@/lib/supabase/env'
 import { log } from '@/lib/log'
 
-const BUCKET = 'contratos-documentos'
+const BUCKET = 'faturamento-direto'
 
 /**
  * Schema da NF. Cobre tanto o path JSON quanto o multipart (após
