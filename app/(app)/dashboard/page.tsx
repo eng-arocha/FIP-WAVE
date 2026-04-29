@@ -278,9 +278,14 @@ export default function DashboardPage() {
         }
       />
 
-      {/* ── Sticky KPI bar ── */}
+      {/* ── Sticky KPI bar ──
+          Layout: 4 cards principais na 1ª linha + 2 cards expandidos (Saldo +
+          Retenção) na 2ª linha em telas grandes. Em telas médias 2x3, em
+          mobile 1x6. Saldo e Retenção são "agregados resumo" — merecem mais
+          espaço.
+       */}
       <div className="sticky top-14 z-10 px-3 sm:px-6 py-3 border-b" style={{ background: 'var(--background)', borderColor: 'var(--border)' }}>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
 
           {/* Card 1 — Total Contratado → Estrutura */}
           <Link href={primeiroContratoId ? `/contratos/${primeiroContratoId}/estrutura` : '/contratos'}>
@@ -356,9 +361,10 @@ export default function DashboardPage() {
             </div>
           </Link>
 
-          {/* Card 5 — Saldo → Estrutura do 1º contrato (aba financeira) */}
-          <Link href={primeiroContratoId ? `/contratos/${primeiroContratoId}/estrutura?tab=financeiro` : '/contratos'}>
-            <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer col-span-2 sm:col-span-1 h-full"
+          {/* Card 5 — Saldo → Estrutura do 1º contrato (aba financeira)
+              Ocupa 2 colunas em telas grandes (linha 2) — destaque pra agregado */}
+          <Link href={primeiroContratoId ? `/contratos/${primeiroContratoId}/estrutura?tab=financeiro` : '/contratos'} className="col-span-2 lg:col-span-2">
+            <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full"
               style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(71,85,105,0.50)' }}
               onMouseEnter={e => (e.currentTarget.style.borderColor = '#475569')}
               onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
@@ -387,9 +393,9 @@ export default function DashboardPage() {
             </div>
           </Link>
 
-          {/* Card 6 — Retenção contratual acumulada */}
-          <Link href="/documentos/retencoes">
-            <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer col-span-2 sm:col-span-1 h-full"
+          {/* Card 6 — Retenção contratual acumulada (linha 2, span 2) */}
+          <Link href="/documentos/retencoes" className="col-span-2 lg:col-span-2">
+            <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full"
               style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(99,102,241,0.50)' }}
               onMouseEnter={e => (e.currentTarget.style.borderColor = '#6366F1')}
               onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
@@ -398,9 +404,21 @@ export default function DashboardPage() {
                 <TrendingUp className="w-4 h-4 flex-shrink-0 hidden sm:block" style={{ color: '#818CF8' }} />
               </div>
               <p className="text-sm sm:text-xl font-bold" style={{ color: '#818CF8' }}>{formatCurrency(animatedRetencao)}</p>
-              <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
-                acumulada em <span className="font-semibold" style={{ color: 'var(--text-2)' }}>{qtdMedicoesComRetencao}</span> medição{qtdMedicoesComRetencao !== 1 ? 'ões' : ''} aprovada{qtdMedicoesComRetencao !== 1 ? 's' : ''}
+              <p className="text-[10px] mb-2" style={{ color: 'var(--text-3)' }}>
+                acumulada em <span className="font-semibold" style={{ color: 'var(--text-2)' }}>{qtdMedicoesComRetencao}</span> medição{qtdMedicoesComRetencao !== 1 ? 'ões' : ''} aprovada{qtdMedicoesComRetencao !== 1 ? 's' : ''} · ver relatório →
               </p>
+              <div className="grid grid-cols-2 gap-1 pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
+                <div>
+                  <p className="text-[9px]" style={{ color: 'var(--text-3)' }}>Total medido (serviços)</p>
+                  <p className="text-[10px] font-semibold truncate" style={{ color: 'var(--text-2)' }}>{formatCurrency(totalMedidoServico)}</p>
+                </div>
+                <div>
+                  <p className="text-[9px]" style={{ color: 'var(--text-3)' }}>% retido s/ medido</p>
+                  <p className="text-[10px] font-semibold truncate" style={{ color: '#818CF8' }}>
+                    {totalMedidoServico > 0 ? ((totalRetencao / totalMedidoServico) * 100).toFixed(2).replace('.', ',') + '%' : '—'}
+                  </p>
+                </div>
+              </div>
             </div>
           </Link>
         </div>

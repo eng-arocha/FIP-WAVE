@@ -285,14 +285,13 @@ function PedidosFatDiretoContent() {
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Filtros simples (busca NF e intervalo de datas)
-  // Para as views vindas do Dashboard (aprovadas e com-nf), o default é
-  // 01/01/2026 → hoje — garante janela clara já no load. A view padrão
-  // (sem query param) começa sem filtro de data.
-  const hojeISO = new Date().toISOString().slice(0, 10)
-  const temDefaultData = view === 'aprovadas' || view === 'com-nf'
-  const [dataInicio, setDataInicio] = useState(temDefaultData ? '2026-01-01' : '')
-  const [dataFim, setDataFim]       = useState(temDefaultData ? hojeISO      : '')
+  // Filtros simples (busca NF e intervalo de datas).
+  // SEM default automático de data: views vindas do dashboard mostram TUDO
+  // de cara; usuário pode aplicar período se quiser refinar. Default
+  // hardcoded quebrava o filtro pra registros aprovados sem data_aprovacao
+  // (que existem em pedidos antigos).
+  const [dataInicio, setDataInicio] = useState('')
+  const [dataFim, setDataFim]       = useState('')
   const [nfBusca, setNfBusca] = useState('')
 
   // Filtros tipo Excel — um Set<string> por coluna (vazio = tudo selecionado)
@@ -508,14 +507,14 @@ function PedidosFatDiretoContent() {
                  padrão o filtro é sobre a data da solicitação. */}
             <div className="flex flex-col gap-1">
               <label className="text-[11px] font-medium" style={{ color: 'var(--text-3)' }}>
-                {temDefaultData ? 'Data aprovação início' : 'Data início'}
+                {view === 'aprovadas' || view === 'com-nf' ? 'Data aprovação início' : 'Data início'}
               </label>
               <input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)}
                 className={inputCls} style={inputStyle} />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-[11px] font-medium" style={{ color: 'var(--text-3)' }}>
-                {temDefaultData ? 'Data aprovação fim' : 'Data fim'}
+                {view === 'aprovadas' || view === 'com-nf' ? 'Data aprovação fim' : 'Data fim'}
               </label>
               <input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)}
                 className={inputCls} style={inputStyle} />
