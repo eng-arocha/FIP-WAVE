@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { isSchemaMissingError } from '@/lib/db/resilient'
+import { isSchemaMissingError, withSchemaFallback } from '@/lib/db/resilient'
 
 /**
  * Resumo financeiro consolidado da obra (contrato), no contexto de uma
@@ -71,17 +71,37 @@ interface CalcArgs {
 export async function calcularResumoFinanceiroObra(args: CalcArgs): Promise<ResumoFinanceiroObra> {
   const admin = createAdminClient()
 
-  // 1) Carrega contrato + medição atual
-  const [{ data: contrato }, { data: medicao }] = await Promise.all([
-    admin.from('contratos')
+  // 1) Carrega contrato (resiliente a percentual_retencao ausente — migration 051)
+  const contratoRes = await withSchemaFallback({
+    primary: () => admin.from('contratos')
       .select('id, numero, valor_total, valor_servicos, valor_material_direto, percentual_retencao')
       .eq('id', args.contrato_id)
       .single(),
-    admin.from('medicoes')
+    fallback: () => admin.from('contratos')
+      .select('id, numero, valor_total, valor_servicos, valor_material_direto')
+      .eq('id', args.contrato_id)
+      .single(),
+    missingColumns: ['percentual_retencao'],
+    context: 'calcularResumoFinanceiroObra:contrato',
+  })
+  if (contratoRes.error) throw contratoRes.error
+  const contrato = contratoRes.data
+
+  // 2) Carrega medição (resiliente a snapshots de retenção ausentes)
+  const medicaoRes = await withSchemaFallback({
+    primary: () => admin.from('medicoes')
+      .select('id, contrato_id, valor_total, status, data_aprovacao, data_submissao, andamento_fisico_pct, valor_financeiro_proporcional, valor_retencao_garantia')
+      .eq('id', args.medicao_id)
+      .single(),
+    fallback: () => admin.from('medicoes')
       .select('id, contrato_id, valor_total, status, data_aprovacao, data_submissao')
       .eq('id', args.medicao_id)
       .single(),
-  ])
+    missingColumns: ['andamento_fisico_pct', 'valor_financeiro_proporcional', 'valor_retencao_garantia'],
+    context: 'calcularResumoFinanceiroObra:medicao',
+  })
+  if (medicaoRes.error) throw medicaoRes.error
+  const medicao = medicaoRes.data
 
   if (!contrato) throw new Error(`Contrato ${args.contrato_id} não encontrado`)
   if (!medicao)  throw new Error(`Medição ${args.medicao_id} não encontrada`)
@@ -124,22 +144,31 @@ export async function calcularResumoFinanceiroObra(args: CalcArgs): Promise<Resu
     : acumuladoServicosAprovadas + valor_medicao_atual
 
   // 4) Material — NFs recebidas (acumulado + período)
-  // Usa created_at da NF como timestamp (data_emissao seria mais semântico mas
-  // não reflete quando a NF foi lançada no sistema — pode bagunçar o "período").
-  const { data: nfsAtivas } = await admin
-    .from('notas_fiscais_fat_direto')
-    .select(`
-      id, valor, status, created_at,
-      sol:solicitacao_id ( contrato_id )
-    `)
-    .neq('status', 'rejeitada')
+  // Em vez de join inline (frágil em PostgREST), 2 queries: pega ids de
+  // solicitações do contrato, depois NFs com solicitacao_id IN (...).
+  const { data: solsDoContrato } = await admin
+    .from('solicitacoes_fat_direto')
+    .select('id')
+    .eq('contrato_id', args.contrato_id)
+  const solIds = (solsDoContrato || []).map((s: any) => s.id)
 
-  const nfsDoContrato = (nfsAtivas || []).filter((nf: any) => nf.sol?.contrato_id === args.contrato_id)
-  const nfsRecebidasAcumulado = nfsDoContrato.reduce((s: number, n: any) => s + Number(n.valor || 0), 0)
+  let nfsDoContrato: Array<{ valor: number; created_at: string | null }> = []
+  if (solIds.length > 0) {
+    const { data: nfsAtivas } = await admin
+      .from('notas_fiscais_fat_direto')
+      .select('id, valor, status, created_at')
+      .in('solicitacao_id', solIds)
+      .neq('status', 'rejeitada')
+    nfsDoContrato = (nfsAtivas || []).map((n: any) => ({
+      valor: Number(n.valor || 0),
+      created_at: n.created_at ?? null,
+    }))
+  }
+  const nfsRecebidasAcumulado = nfsDoContrato.reduce((s, n) => s + n.valor, 0)
   const nfsRecebidasPeriodo = inicioPeriodo
     ? nfsDoContrato
-        .filter((n: any) => n.created_at && n.created_at > inicioPeriodo)
-        .reduce((s: number, n: any) => s + Number(n.valor || 0), 0)
+        .filter(n => n.created_at && n.created_at > inicioPeriodo)
+        .reduce((s, n) => s + n.valor, 0)
     : nfsRecebidasAcumulado // primeira medição: tudo é "do período"
 
   // 5) Material — solicitações aprovadas (compromisso firmado).

@@ -388,7 +388,7 @@ export default function DashboardPage() {
           </Link>
 
           {/* Card 6 — Retenção contratual acumulada */}
-          <Link href="/documentos/medicoes-servico">
+          <Link href="/documentos/retencoes">
             <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer col-span-2 sm:col-span-1 h-full"
               style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(99,102,241,0.50)' }}
               onMouseEnter={e => (e.currentTarget.style.borderColor = '#6366F1')}
