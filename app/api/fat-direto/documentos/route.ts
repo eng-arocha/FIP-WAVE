@@ -57,29 +57,16 @@ export async function GET(req: Request) {
     }
     // "aprovadas" = todos os aprovados (comportamento padrão do endpoint)
 
-    // Para aprovadas/com-nf, range de datas aplica em data_aprovacao MAS
-    // aceita registros com data_aprovacao NULL caindo pra data_solicitacao
-    // (compatibilidade: pedidos aprovados antes do campo virar obrigatório
-    // ficam com data_aprovacao = null e seriam excluídos pelo filtro).
+    // Filtro de data:
+    //   - View padrão (rascunhos/outros): aplica em data_solicitacao no servidor.
+    //   - Views aprovadas/com-nf: NÃO filtra no servidor — o client aplica
+    //     usando coalesce(data_aprovacao, data_solicitacao, created_at).
+    //     Motivo: registros legados podem ter data_aprovacao=NULL e seriam
+    //     excluídos pelo filtro server-side. Cliente é mais flexível.
     const usaDataAprov = view === 'aprovadas' || view === 'com-nf'
-    if (dataInicio || dataFim) {
-      if (usaDataAprov) {
-        const conds: string[] = []
-        if (dataInicio && dataFim) {
-          conds.push(`and(data_aprovacao.gte.${dataInicio},data_aprovacao.lte.${dataFim}T23:59:59)`)
-          conds.push(`and(data_aprovacao.is.null,data_solicitacao.gte.${dataInicio},data_solicitacao.lte.${dataFim}T23:59:59)`)
-        } else if (dataInicio) {
-          conds.push(`data_aprovacao.gte.${dataInicio}`)
-          conds.push(`and(data_aprovacao.is.null,data_solicitacao.gte.${dataInicio})`)
-        } else if (dataFim) {
-          conds.push(`data_aprovacao.lte.${dataFim}T23:59:59`)
-          conds.push(`and(data_aprovacao.is.null,data_solicitacao.lte.${dataFim}T23:59:59)`)
-        }
-        if (conds.length > 0) query = query.or(conds.join(','))
-      } else {
-        if (dataInicio) query = query.gte('data_solicitacao', dataInicio)
-        if (dataFim) query = query.lte('data_solicitacao', dataFim + 'T23:59:59')
-      }
+    if (!usaDataAprov) {
+      if (dataInicio) query = query.gte('data_solicitacao', dataInicio)
+      if (dataFim) query = query.lte('data_solicitacao', dataFim + 'T23:59:59')
     }
     if (nfNumero) query = query.ilike('nf_numero', `%${nfNumero}%`)
     if (contratoId) query = query.eq('contrato_id', contratoId)

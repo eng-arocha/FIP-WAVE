@@ -24,6 +24,7 @@ interface Pedido {
   status: string
   data_solicitacao: string
   data_aprovacao: string | null
+  created_at?: string | null
   valor_total: number
   fornecedor_razao_social: string
   fornecedor_cnpj: string
@@ -286,12 +287,14 @@ function PedidosFatDiretoContent() {
   const [loading, setLoading] = useState(true)
 
   // Filtros simples (busca NF e intervalo de datas).
-  // SEM default automático de data: views vindas do dashboard mostram TUDO
-  // de cara; usuário pode aplicar período se quiser refinar. Default
-  // hardcoded quebrava o filtro pra registros aprovados sem data_aprovacao
-  // (que existem em pedidos antigos).
-  const [dataInicio, setDataInicio] = useState('')
-  const [dataFim, setDataFim]       = useState('')
+  // Para views vindas do Dashboard (aprovadas/com-nf): default 01/01/2026 → hoje.
+  // Filtro é aplicado no CLIENT (a partir de data_aprovacao || data_solicitacao
+  // || created_at) — endpoint retorna tudo aprovado, evita o problema de
+  // registros sem data_aprovacao caírem fora do range.
+  const hojeISO = new Date().toISOString().slice(0, 10)
+  const temDefaultData = view === 'aprovadas' || view === 'com-nf'
+  const [dataInicio, setDataInicio] = useState(temDefaultData ? '2026-01-01' : '')
+  const [dataFim, setDataFim]       = useState(temDefaultData ? hojeISO      : '')
   const [nfBusca, setNfBusca] = useState('')
 
   // Filtros tipo Excel — um Set<string> por coluna (vazio = tudo selecionado)
@@ -434,6 +437,13 @@ function PedidosFatDiretoContent() {
 
   // Lista final aplicando os filtros estilo Excel no client
   const pedidosFiltrados = useMemo(() => {
+    // Filtro de data no client (apenas pra views aprovadas/com-nf — endpoint
+    // já filtra a view padrão). Usa coalesce data_aprovacao || data_solicitacao ||
+    // created_at — se uma das datas faltar, cai pra próxima. Garante que
+    // pedidos sem data_aprovacao não sumam do range.
+    const dataInicioISO = dataInicio ? new Date(dataInicio + 'T00:00:00').getTime() : -Infinity
+    const dataFimISO    = dataFim    ? new Date(dataFim    + 'T23:59:59.999').getTime() : Infinity
+
     return pedidos.filter(p => {
       const pedidoStr      = p.numero_pedido_fip ? `FIP-${String(p.numero_pedido_fip).padStart(4,'0')}` : `#${p.numero}`
       const statusStr      = STATUS_DOC[p.status_documento]?.label ?? p.status_documento
@@ -442,9 +452,22 @@ function PedidosFatDiretoContent() {
       if (!passaFiltro(filtroSolicitante, nomeExibicao(p.solicitante)))       return false
       if (!passaFiltro(filtroAprovador,   nomeExibicao(p.aprovador)))         return false
       if (!passaFiltro(filtroStatus,      statusStr))                         return false
+
+      // Filtro de data — só pra views aprovadas/com-nf (resto já filtra no server)
+      if (view === 'aprovadas' || view === 'com-nf') {
+        const refStr = p.data_aprovacao || p.data_solicitacao || p.created_at
+        if (refStr) {
+          const refTs = new Date(refStr).getTime()
+          if (Number.isFinite(refTs)) {
+            if (refTs < dataInicioISO) return false
+            if (refTs > dataFimISO) return false
+          }
+        }
+        // Se nenhuma data conhecida, NÃO esconde — deixa aparecer
+      }
       return true
     })
-  }, [pedidos, filtroPedido, filtroFornecedor, filtroSolicitante, filtroAprovador, filtroStatus])
+  }, [pedidos, view, dataInicio, dataFim, filtroPedido, filtroFornecedor, filtroSolicitante, filtroAprovador, filtroStatus])
 
   const totalFiltrado = pedidosFiltrados.reduce((s, p) => s + (p.valor_total || 0), 0)
   const temFiltroAtivo = !!(
