@@ -14,7 +14,8 @@ import {
 } from '@/components/ui/dialog'
 import {
   ArrowLeft, CheckCircle2, XCircle, MessageSquare, Download,
-  FileText, User, Calendar, Hash, Clock, Paperclip, AlertCircle, Loader2, Trash2, Undo2
+  FileText, User, Calendar, Hash, Clock, Paperclip, AlertCircle, Loader2, Trash2, Undo2,
+  Mail, TrendingUp,
 } from 'lucide-react'
 import {
   formatCurrency, formatDatetime, formatDate,
@@ -22,12 +23,14 @@ import {
 } from '@/lib/utils'
 import { MEDICAO_STATUS_LABELS, TIPO_MEDICAO_LABELS, MedicaoStatus } from '@/types'
 import { usePermissoes } from '@/lib/context/permissoes-context'
+import { EmailLiberacaoMedicaoModal } from '@/components/medicoes/email-liberacao-medicao-modal'
 
 export default function MedicaoDetailPage({ params }: { params: Promise<{ id: string; medicaoId: string }> }) {
   const { id: contratoId, medicaoId } = use(params)
 
   const [medicao, setMedicao] = useState<any>(null)
   const [modalAprovar, setModalAprovar] = useState(false)
+  const [modalLiberacao, setModalLiberacao] = useState<'aprovar' | 'reenviar' | null>(null)
   const [modalRejeitar, setModalRejeitar] = useState(false)
   const [comentario, setComentario] = useState('')
   const [motivo, setMotivo] = useState('')
@@ -220,9 +223,12 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                     <p className="text-2xl font-bold text-blue-400">{formatCurrency(medicao.valor_total)}</p>
                   </div>
                   {isPendente && (
-                    <div className="flex gap-2">
-                      <Button variant="success" size="sm" onClick={() => setModalAprovar(true)}>
+                    <div className="flex gap-2 flex-wrap">
+                      <Button variant="success" size="sm" onClick={() => setModalLiberacao('aprovar')}>
                         <CheckCircle2 className="w-4 h-4" />
+                        Aprovar e liberar NF
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => setModalAprovar(true)} title="Aprova sem disparar email">
                         Aprovar
                       </Button>
                       <Button variant="destructive" size="sm" onClick={() => setModalRejeitar(true)}>
@@ -230,6 +236,12 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                         Rejeitar
                       </Button>
                     </div>
+                  )}
+                  {!isPendente && status === 'aprovado' && (
+                    <Button variant="ghost" size="sm" onClick={() => setModalLiberacao('reenviar')} className="border border-blue-500/30 text-blue-400 hover:bg-blue-500/10">
+                      <Mail className="w-4 h-4" />
+                      Reenviar email de liberação
+                    </Button>
                   )}
                 </div>
 
@@ -272,6 +284,78 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                 )}
               </CardContent>
             </Card>
+
+            {/* Cálculo de Retenção Contratual (snapshot pós-aprovação OU estimativa pré-aprovação)
+                — visível pra fornecedor/solicitante saber o impacto da retenção desde o início. */}
+            {(() => {
+              const aprovado = status === 'aprovado'
+              // Estimativa pré-aprovação: calcula on-the-fly com dados do contrato
+              const valorMedicao = Number(medicao.valor_total ?? 0)
+              const valorServicos = Number(medicao.contrato?.valor_servicos ?? 0)
+              const valorContrato = Number(medicao.contrato?.valor_total ?? 0)
+              const pctRetencao = Number(medicao.contrato?.percentual_retencao ?? 5)
+              const andamentoCalc = valorServicos > 0 ? (valorMedicao / valorServicos) * 100 : 0
+              const propCalc = valorServicos > 0 ? (valorMedicao / valorServicos) * valorContrato : 0
+              const retencaoCalc = propCalc * (pctRetencao / 100)
+              // Em aprovado, usa snapshot. Em outros status, usa cálculo on-the-fly.
+              const andamento = aprovado ? Number(medicao.andamento_fisico_pct ?? andamentoCalc) : andamentoCalc
+              const proporcional = aprovado ? Number(medicao.valor_financeiro_proporcional ?? propCalc) : propCalc
+              const retencao = aprovado ? Number(medicao.valor_retencao_garantia ?? retencaoCalc) : retencaoCalc
+
+              if (retencao <= 0 || valorServicos <= 0) return null
+
+              const titulo = aprovado ? 'Retenção contratual desta medição' : 'Estimativa de retenção contratual'
+              const aviso = aprovado
+                ? 'NF integral será emitida. A retenção é descontada pelo WAVE no pagamento, conforme cláusulas contratuais.'
+                : 'Cálculo prévio com base no valor atual da medição. Se aprovada, a retenção será congelada (snapshot) com estes valores.'
+
+              return (
+                <Card style={{ background: 'var(--surface-1)', border: '1px solid rgba(99,102,241,0.30)' }}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2" style={{ color: '#818CF8' }}>
+                      <TrendingUp className="w-4 h-4" />
+                      {titulo}
+                      {!aprovado && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider" style={{ background: 'rgba(99,102,241,0.18)', color: '#818CF8' }}>
+                          Prévia
+                        </span>
+                      )}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                      <div>
+                        <p className="text-[var(--text-3)] mb-0.5">Andamento físico</p>
+                        <p className="font-bold tabular-nums" style={{ color: 'var(--text-1)' }}>
+                          {andamento.toFixed(2).replace('.', ',')}%
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[var(--text-3)] mb-0.5">Valor financeiro proporcional</p>
+                        <p className="font-bold tabular-nums" style={{ color: 'var(--text-1)' }}>
+                          {formatCurrency(proporcional)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[var(--text-3)] mb-0.5">Retenção ({pctRetencao.toFixed(2).replace('.', ',')}%)</p>
+                        <p className="font-bold tabular-nums" style={{ color: '#818CF8' }}>
+                          {formatCurrency(retencao)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[var(--text-3)] mb-0.5">Líquido a pagar</p>
+                        <p className="font-bold tabular-nums" style={{ color: '#10B981' }}>
+                          {formatCurrency(valorMedicao - retencao)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 pt-3 border-t text-[11px]" style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}>
+                      <strong style={{ color: 'var(--text-2)' }}>NF integral:</strong> {formatCurrency(valorMedicao)}. {aviso}
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })()}
 
             {/* Ações de Administrador */}
             {isAdmin && !isPendente && (
@@ -536,6 +620,18 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <EmailLiberacaoMedicaoModal
+        open={modalLiberacao !== null}
+        onClose={() => setModalLiberacao(null)}
+        contratoId={contratoId}
+        medicaoId={medicaoId}
+        modo={modalLiberacao ?? 'aprovar'}
+        onSent={() => {
+          setStatus('aprovado')
+          setModalLiberacao(null)
+        }}
+      />
     </div>
   )
 }

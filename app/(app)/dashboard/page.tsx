@@ -83,6 +83,8 @@ export default function DashboardPage() {
   const [totalNfFatDireto, setTotalNfFatDireto] = useState(0)
   const [totalNfsLancadas, setTotalNfsLancadas] = useState(0)
   const [totalSolAprovadas, setTotalSolAprovadas] = useState(0)
+  const [totalRetencao, setTotalRetencao] = useState(0)
+  const [qtdMedicoesComRetencao, setQtdMedicoesComRetencao] = useState(0)
   const [valorServicos, setValorServicos] = useState(0)
   const [valorMaterialDireto, setValorMaterialDireto] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -112,6 +114,8 @@ export default function DashboardPage() {
         setTotalSolAprovadas(data.total_sol_aprovadas || 0)
         setValorServicos(data.valor_servicos || 0)
         setValorMaterialDireto(data.valor_material_direto || 0)
+        setTotalRetencao(data.total_retencao_acumulada || 0)
+        setQtdMedicoesComRetencao(data.qtd_medicoes_com_retencao || 0)
       }
       if (hierRes.ok) {
         const data = await hierRes.json()
@@ -149,6 +153,7 @@ export default function DashboardPage() {
   const animatedMedidoServico  = useCountUp(totalMedidoServico)
   const animatedNfFatDireto    = useCountUp(totalNfFatDireto)
   const animatedSaldo          = useCountUp(totalSaldo)
+  const animatedRetencao       = useCountUp(totalRetencao)
   const animatedTotalContratos = useCountUp(contratos.length)
   const animatedNfsLancadas    = useCountUp(totalNfsLancadas)
   const animatedSolAprovadas   = useCountUp(totalSolAprovadas)
@@ -379,6 +384,23 @@ export default function DashboardPage() {
                   <p className="text-[10px] font-semibold truncate" style={{ color: '#6366F1' }}>{formatCurrency(totalNfsLancadas)}</p>
                 </div>
               </div>
+            </div>
+          </Link>
+
+          {/* Card 6 — Retenção contratual acumulada */}
+          <Link href="/documentos/medicoes-servico">
+            <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer col-span-2 sm:col-span-1 h-full"
+              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(99,102,241,0.50)' }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = '#6366F1')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
+              <div className="flex items-start justify-between mb-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>Retenção Contratual</p>
+                <TrendingUp className="w-4 h-4 flex-shrink-0 hidden sm:block" style={{ color: '#818CF8' }} />
+              </div>
+              <p className="text-sm sm:text-xl font-bold" style={{ color: '#818CF8' }}>{formatCurrency(animatedRetencao)}</p>
+              <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
+                acumulada em <span className="font-semibold" style={{ color: 'var(--text-2)' }}>{qtdMedicoesComRetencao}</span> medição{qtdMedicoesComRetencao !== 1 ? 'ões' : ''} aprovada{qtdMedicoesComRetencao !== 1 ? 's' : ''}
+              </p>
             </div>
           </Link>
         </div>
