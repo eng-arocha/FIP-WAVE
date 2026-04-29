@@ -105,7 +105,7 @@ export default function RelatorioRetencoesPage() {
   // ── Layout (sort + resize) com persistência ───────────────────
   type ColKey =
     | 'contrato' | 'numero' | 'periodo' | 'data_aprovacao'
-    | 'valor_medido' | 'andamento_fisico' | 'valor_proporcional'
+    | 'valor_medido' | 'andamento_fisico'
     | 'pct_retencao' | 'valor_retencao' | 'liquido' | 'aprovador'
 
   const colunas = useMemo<ColumnDef<ColKey>[]>(() => [
@@ -115,7 +115,6 @@ export default function RelatorioRetencoesPage() {
     { key: 'data_aprovacao',     defaultWidth: 110, min: 90,  type: 'date'   },
     { key: 'valor_medido',       defaultWidth: 130, min: 100, type: 'number' },
     { key: 'andamento_fisico',   defaultWidth: 110, min: 90,  type: 'number' },
-    { key: 'valor_proporcional', defaultWidth: 150, min: 110, type: 'number' },
     { key: 'pct_retencao',       defaultWidth: 90,  min: 70,  type: 'number' },
     { key: 'valor_retencao',     defaultWidth: 140, min: 110, type: 'number' },
     { key: 'liquido',            defaultWidth: 140, min: 110, type: 'number' },
@@ -123,7 +122,7 @@ export default function RelatorioRetencoesPage() {
   ], [])
 
   const { sortKey, sortDir, gridTemplateColumns, toggleSort, startResize, reset, compare } =
-    useTableLayout<ColKey>('relatorio-retencoes:tabela:v1', colunas, '48px')
+    useTableLayout<ColKey>('relatorio-retencoes:tabela:v2', colunas, '48px')
 
   const linhasOrdenadas = useMemo(() => {
     if (!sortKey || !sortDir) return linhasFiltradas
@@ -137,7 +136,6 @@ export default function RelatorioRetencoesPage() {
           case 'data_aprovacao':     return l.data_aprovacao
           case 'valor_medido':       return l.valor_medido
           case 'andamento_fisico':   return l.andamento_fisico_pct
-          case 'valor_proporcional': return l.valor_financeiro_proporcional
           case 'pct_retencao':       return l.contrato.percentual_retencao
           case 'valor_retencao':     return l.valor_retencao
           case 'liquido':            return l.liquido_a_pagar
@@ -153,7 +151,7 @@ export default function RelatorioRetencoesPage() {
   const COL_LABELS: Record<ColKey, string> = {
     contrato: 'Contrato', numero: 'Medição', periodo: 'Período', data_aprovacao: 'Data aprov.',
     valor_medido: 'Valor medido', andamento_fisico: 'Andamento %',
-    valor_proporcional: 'Proporcional', pct_retencao: '% Ret.',
+    pct_retencao: '% Ret.',
     valor_retencao: 'Retenção', liquido: 'Líquido', aprovador: 'Aprovador',
   }
 
@@ -309,13 +307,12 @@ export default function RelatorioRetencoesPage() {
                     { header: 'Medição',        get: (l: any) => `MED-${String(l.numero).padStart(3, '0')}` },
                     { header: 'Período',        get: (l: any) => l.periodo_referencia },
                     { header: 'Data Aprovação', get: (l: any) => l.data_aprovacao ? formatDate(l.data_aprovacao) : '' },
-                    { header: 'Valor Medido',                  get: (l: any) => Number(l.valor_medido) },
-                    { header: 'Andamento Físico %',            get: (l: any) => Number(l.andamento_fisico_pct) },
-                    { header: 'Valor Financeiro Proporcional', get: (l: any) => Number(l.valor_financeiro_proporcional) },
-                    { header: '% Retenção',                    get: (l: any) => Number(l.contrato.percentual_retencao) },
-                    { header: 'Retenção',     get: (l: any) => Number(l.valor_retencao) },
-                    { header: 'Líquido',      get: (l: any) => Number(l.liquido_a_pagar) },
-                    { header: 'Aprovador',    get: (l: any) => l.aprovador_nome || '' },
+                    { header: 'Valor Medido',       get: (l: any) => Number(l.valor_medido) },
+                    { header: 'Andamento Físico %', get: (l: any) => Number(l.andamento_fisico_pct) },
+                    { header: '% Retenção',         get: (l: any) => Number(l.contrato.percentual_retencao) },
+                    { header: 'Retenção',  get: (l: any) => Number(l.valor_retencao) },
+                    { header: 'Líquido',   get: (l: any) => Number(l.liquido_a_pagar) },
+                    { header: 'Aprovador', get: (l: any) => l.aprovador_nome || '' },
                   ],
                 )}
                 disabled={linhasOrdenadas.length === 0}
@@ -433,9 +430,6 @@ export default function RelatorioRetencoesPage() {
                   {pctFmt(l.andamento_fisico_pct)}
                 </div>
                 <div className="flex items-center justify-end px-3 py-2.5 text-xs tabular-nums" style={{ color: 'var(--text-2)', borderRight: '1px solid var(--border)' }}>
-                  {formatCurrency(l.valor_financeiro_proporcional)}
-                </div>
-                <div className="flex items-center justify-end px-3 py-2.5 text-xs tabular-nums" style={{ color: 'var(--text-2)', borderRight: '1px solid var(--border)' }}>
                   {pctFmt(l.contrato.percentual_retencao)}
                 </div>
                 <div className="flex items-center justify-end px-3 py-2.5 text-xs font-bold tabular-nums whitespace-nowrap" style={{ color: '#818CF8', borderRight: '1px solid var(--border)' }}>
@@ -466,11 +460,10 @@ export default function RelatorioRetencoesPage() {
           {linhasOrdenadas.length > 0 && (
             <div className="grid text-xs font-bold tabular-nums px-4 py-3"
               style={{ gridTemplateColumns, background: 'var(--surface-3)', borderTop: '2px solid var(--border)', color: 'var(--text-1)' }}>
-              <div className="px-3 col-span-4 flex items-center" style={{ gridColumn: 'span 4' }}>
+              <div className="px-3 flex items-center" style={{ gridColumn: 'span 4' }}>
                 Total filtrado ({linhasOrdenadas.length})
               </div>
               <div className="text-right px-3" style={{ color: 'var(--text-2)' }}>{formatCurrency(totalMedidoFiltrado)}</div>
-              <div className="px-3"></div>
               <div className="px-3"></div>
               <div className="px-3"></div>
               <div className="text-right px-3" style={{ color: '#818CF8' }}>{formatCurrency(totalRetencaoFiltrado)}</div>

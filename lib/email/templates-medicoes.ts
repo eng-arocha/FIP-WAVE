@@ -241,8 +241,7 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
         <table style="width:100%;font-size:14px;">
           <tr><td style="padding:6px 0;color:#64748b;">Valor medido (NF integral)</td><td style="padding:6px 0;text-align:right;font-weight:700;font-size:16px;color:#0f766e;">${fmt(valorMedicao)}</td></tr>
           <tr><td style="padding:6px 0;color:#64748b;">Andamento físico desta medição</td><td style="padding:6px 0;text-align:right;">${pctFmt(p.resumo.retencao.andamento_fisico_pct)} do contrato</td></tr>
-          <tr><td style="padding:6px 0;color:#64748b;">Valor financeiro proporcional</td><td style="padding:6px 0;text-align:right;">${fmt(p.resumo.retencao.valor_financeiro_proporcional)}</td></tr>
-          <tr><td style="padding:6px 0;color:#64748b;">Retenção contratual (${pctFmt(p.resumo.retencao.percentual_aplicado, 2)} sobre proporcional)</td><td style="padding:6px 0;text-align:right;color:#b91c1c;font-weight:600;">− ${fmt(p.resumo.retencao.valor)}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Retenção contratual (${pctFmt(p.resumo.retencao.percentual_aplicado, 2)})</td><td style="padding:6px 0;text-align:right;color:#b91c1c;font-weight:600;">− ${fmt(p.resumo.retencao.valor)}</td></tr>
           <tr style="border-top:2px solid #e5e7eb;"><td style="padding:8px 0;color:#0f172a;font-weight:700;">Líquido a pagar</td><td style="padding:8px 0;text-align:right;font-weight:700;color:#059669;">${fmt(p.resumo.retencao.liquido_a_pagar)}</td></tr>
         </table>
 
@@ -351,7 +350,6 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
     `RESUMO DA MEDIÇÃO`,
     `  Valor medido (NF integral):     ${fmt(valorMedicao)}`,
     `  Andamento físico desta medição: ${pctFmt(p.resumo.retencao.andamento_fisico_pct)}`,
-    `  Valor financeiro proporcional:  ${fmt(p.resumo.retencao.valor_financeiro_proporcional)}`,
     `  Retenção (${pctFmt(p.resumo.retencao.percentual_aplicado)}):              − ${fmt(p.resumo.retencao.valor)}`,
     `  Líquido a pagar:                ${fmt(p.resumo.retencao.liquido_a_pagar)}`,
     '',
