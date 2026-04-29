@@ -486,6 +486,34 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
           </Card>
         )}
 
+        {/* Observações — exibe por extenso (whitespace-pre-wrap) pra ler todo o conteúdo */}
+        {sol.observacoes && sol.observacoes.trim().length > 0 && (
+          <Card style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2" style={{ color: 'var(--text-1)' }}>
+                <FileText className="w-4 h-4" style={{ color: 'var(--text-3)' }} />
+                Observações do pedido
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div
+                className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap break-words"
+                style={{
+                  color: 'var(--text-2)',
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '0.5rem',
+                  padding: '12px 14px',
+                  maxHeight: '400px',
+                  overflowY: 'auto',
+                }}
+              >
+                {sol.observacoes}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Items */}
         <Card style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <CardHeader className="pb-3">
