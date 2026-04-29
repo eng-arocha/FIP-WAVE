@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Upload, Trash2, Plus, AlertCircle, Info, Loader2, User, ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react'
+import { ArrowLeft, Upload, Trash2, Plus, AlertCircle, Info, Loader2, User, ChevronDown, ChevronUp, ChevronsUpDown, TrendingUp } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { TipoAnexo } from '@/types'
 import { createClient } from '@/lib/supabase/client'
@@ -82,6 +82,26 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
       .then(r => r.json())
       .then(data => setEstrutura(Array.isArray(data) ? data : []))
       .finally(() => setLoadingEstrutura(false))
+  }, [contratoId])
+
+  // Carrega dados do contrato pra calcular estimativa de retenção no passo 4
+  const [contratoFin, setContratoFin] = useState<{
+    valor_total: number
+    valor_servicos: number
+    percentual_retencao: number
+  } | null>(null)
+  useEffect(() => {
+    fetch(`/api/contratos/${contratoId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(c => {
+        if (!c?.id) return
+        setContratoFin({
+          valor_total: Number(c.valor_total || 0),
+          valor_servicos: Number(c.valor_servicos || 0),
+          percentual_retencao: Number(c.percentual_retencao ?? 5),
+        })
+      })
+      .catch(() => {/* silencioso — card não aparece */})
   }, [contratoId])
 
   useEffect(() => {
@@ -472,14 +492,67 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                 </div>
               </CardContent>
             </Card>
-            <div className="p-4 bg-amber-900/30 border border-amber-800/50 rounded-lg flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-              <div className="text-xs text-amber-400">
-                <p className="font-semibold mb-0.5">Antes de submeter, confirme:</p>
-                <ul className="list-disc list-inside space-y-0.5">
-                  <li>Todos os quantitativos estão corretos e comprovados</li>
-                  <li>Os documentos estão anexados</li>
-                  <li>A medição será enviada para aprovação da equipe FIP</li>
+
+            {/* Estimativa de Retenção Contratual (cálculo on-the-fly com dados do contrato) */}
+            {contratoFin && contratoFin.valor_servicos > 0 && totalMedicao > 0 && (() => {
+              const andamento = (totalMedicao / contratoFin.valor_servicos) * 100
+              const retencao = (totalMedicao / contratoFin.valor_servicos) * contratoFin.valor_total * (contratoFin.percentual_retencao / 100)
+              const liquido = totalMedicao - retencao
+              return (
+                <Card style={{ background: 'var(--surface-1)', border: '1px solid rgba(99,102,241,0.30)' }}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2" style={{ color: '#818CF8' }}>
+                      <TrendingUp className="w-4 h-4" />
+                      Estimativa de retenção contratual
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider" style={{ background: 'rgba(99,102,241,0.18)', color: '#818CF8' }}>
+                        Prévia
+                      </span>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-3 gap-3 text-xs">
+                      <div>
+                        <p className="text-[var(--text-3)] mb-0.5">Andamento físico</p>
+                        <p className="font-bold tabular-nums" style={{ color: 'var(--text-1)' }}>
+                          {andamento.toFixed(2).replace('.', ',')}%
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[var(--text-3)] mb-0.5">Retenção ({contratoFin.percentual_retencao.toFixed(2).replace('.', ',')}%)</p>
+                        <p className="font-bold tabular-nums" style={{ color: '#818CF8' }}>
+                          {formatCurrency(retencao)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[var(--text-3)] mb-0.5">Líquido a receber</p>
+                        <p className="font-bold tabular-nums" style={{ color: '#10B981' }}>
+                          {formatCurrency(liquido)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 pt-3 border-t text-[11px]" style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}>
+                      <strong style={{ color: 'var(--text-2)' }}>NF integral:</strong> {formatCurrency(totalMedicao)}.
+                      A retenção será descontada pelo WAVE no pagamento, conforme cláusulas contratuais.
+                      Cálculo prévio — congelado se a medição for aprovada.
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })()}
+
+            {/* Aviso de submissão — contraste alto, fundo âmbar sólido + texto escuro/claro com peso */}
+            <div className="p-4 rounded-lg flex items-start gap-2.5"
+              style={{
+                background: 'rgba(245,158,11,0.18)',
+                border: '1px solid rgba(245,158,11,0.55)',
+              }}>
+              <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: '#F59E0B' }} strokeWidth={2.2} />
+              <div className="text-sm" style={{ color: 'var(--text-1)' }}>
+                <p className="font-bold mb-1" style={{ color: '#F59E0B' }}>Antes de submeter, confirme:</p>
+                <ul className="list-disc list-inside space-y-1 text-xs" style={{ color: 'var(--text-2)' }}>
+                  <li>Todos os quantitativos estão corretos e comprovados.</li>
+                  <li>Os documentos estão anexados.</li>
+                  <li>A medição será enviada para aprovação da equipe FIP.</li>
                 </ul>
               </div>
             </div>

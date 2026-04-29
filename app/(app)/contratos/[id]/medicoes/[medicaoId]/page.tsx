@@ -323,17 +323,11 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
                       <div>
                         <p className="text-[var(--text-3)] mb-0.5">Andamento físico</p>
                         <p className="font-bold tabular-nums" style={{ color: 'var(--text-1)' }}>
                           {andamento.toFixed(2).replace('.', ',')}%
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-[var(--text-3)] mb-0.5">Valor financeiro proporcional</p>
-                        <p className="font-bold tabular-nums" style={{ color: 'var(--text-1)' }}>
-                          {formatCurrency(proporcional)}
                         </p>
                       </div>
                       <div>
