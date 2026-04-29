@@ -45,12 +45,12 @@ export async function getMedicoesHistorico() {
 
 export async function getMedicao(id: string) {
   const supabase = await createClient()
-  const { data, error } = await supabase
+  const tryWith = async (contratoCols: string) => supabase
     .from('medicoes')
     .select(`
       *,
       contrato:contratos(
-        id, numero, descricao,
+        ${contratoCols},
         contratante:empresas!contratos_contratante_id_fkey(nome, email_contato),
         contratado:empresas!contratos_contratado_id_fkey(nome, email_contato)
       ),
@@ -64,6 +64,18 @@ export async function getMedicao(id: string) {
     `)
     .eq('id', id)
     .single()
+
+  // Tenta com percentual_retencao (migration 051); fallback sem ele.
+  const cols = 'id, numero, descricao, valor_total, valor_servicos, valor_material_direto, percentual_retencao'
+  let { data, error } = await tryWith(cols)
+  if (error && (
+    (error as any).code === 'PGRST204' ||
+    String((error as any).message || '').includes('percentual_retencao')
+  )) {
+    const fallback = await tryWith('id, numero, descricao, valor_total, valor_servicos, valor_material_direto')
+    if (fallback.error) throw fallback.error
+    return fallback.data
+  }
   if (error) throw error
   return data
 }
@@ -138,11 +150,63 @@ export async function createMedicao(input: {
 
 export async function aprovarMedicao(id: string, aprovadorNome: string, aprovadorEmail: string, comentario?: string) {
   const supabase = await createClient()
-  const { error: medError } = await supabase
+
+  // Calcula snapshots de retenção antes do UPDATE
+  // (busca contrato + medição direto pra não depender de outros helpers)
+  const { data: medSnap } = await supabase
     .from('medicoes')
-    .update({ status: 'aprovado', data_aprovacao: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .select('valor_total, contrato_id')
     .eq('id', id)
-  if (medError) throw medError
+    .single()
+  const { data: contrSnap } = medSnap
+    ? await supabase
+        .from('contratos')
+        .select('valor_total, valor_servicos, percentual_retencao')
+        .eq('id', (medSnap as any).contrato_id)
+        .single()
+    : { data: null }
+
+  const valorMedido = Number((medSnap as any)?.valor_total || 0)
+  const valorServicos = Number((contrSnap as any)?.valor_servicos || 0)
+  const valorTotalContrato = Number((contrSnap as any)?.valor_total || 0)
+  const pctRetencao = Number((contrSnap as any)?.percentual_retencao ?? 5)
+
+  const andamento_fisico_pct = valorServicos > 0
+    ? (valorMedido / valorServicos) * 100
+    : 0
+  const valor_financeiro_proporcional = valorServicos > 0
+    ? (valorMedido / valorServicos) * valorTotalContrato
+    : 0
+  const valor_retencao_garantia = valor_financeiro_proporcional * (pctRetencao / 100)
+
+  // UPDATE com snapshots — resiliente a colunas ausentes (migration 051 stale)
+  const updateBase: Record<string, unknown> = {
+    status: 'aprovado',
+    data_aprovacao: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }
+  const updateExtra: Record<string, unknown> = {
+    ...updateBase,
+    andamento_fisico_pct,
+    valor_financeiro_proporcional,
+    valor_retencao_garantia,
+  }
+
+  const tryUpdate = await supabase.from('medicoes').update(updateExtra).eq('id', id)
+  if (tryUpdate.error) {
+    const msg = (tryUpdate.error as any).message || ''
+    const code = (tryUpdate.error as any).code || ''
+    const isSchemaStale =
+      code === 'PGRST204' ||
+      ['andamento_fisico_pct', 'valor_financeiro_proporcional', 'valor_retencao_garantia']
+        .some(c => msg.includes(c))
+    if (isSchemaStale) {
+      const retry = await supabase.from('medicoes').update(updateBase).eq('id', id)
+      if (retry.error) throw retry.error
+    } else {
+      throw tryUpdate.error
+    }
+  }
 
   await supabase.from('aprovacoes').insert({
     medicao_id: id,

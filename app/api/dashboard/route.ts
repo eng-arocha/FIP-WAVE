@@ -15,6 +15,7 @@ export async function GET() {
       { data: solsAprovadas },
       { data: contratosRaw },
       { data: allNfs },
+      retencoesQuery,
     ] = await Promise.all([
       supabase.from('vw_resumo_contrato').select('*'),
       supabase.from('medicoes')
@@ -26,6 +27,8 @@ export async function GET() {
       admin.from('solicitacoes_fat_direto').select('id, valor_total').eq('status', 'aprovado'),
       admin.from('contratos').select('valor_servicos, valor_material_direto').eq('status', 'ativo'),
       admin.from('notas_fiscais_fat_direto').select('valor, status').neq('status', 'rejeitada'),
+      // Retenção acumulada (medição 051) — resiliente caso schema cache stale
+      admin.from('medicoes').select('valor_retencao_garantia').eq('status', 'aprovado'),
     ])
 
     // NFs de solicitações aprovadas (para Medição Fat. Direto legado)
@@ -50,6 +53,19 @@ export async function GET() {
     const valorServicos       = (contratosRaw || []).reduce((acc: number, c: any) => acc + (c.valor_servicos || 0), 0)
     const valorMaterialDireto = (contratosRaw || []).reduce((acc: number, c: any) => acc + (c.valor_material_direto || 0), 0)
 
+    // Retenção acumulada (degradação OK se coluna ainda não no schema cache)
+    let totalRetencao = 0
+    let qtdMedicoesComRetencao = 0
+    if (!retencoesQuery.error) {
+      totalRetencao = (retencoesQuery.data || []).reduce(
+        (acc: number, m: any) => acc + Number(m.valor_retencao_garantia || 0),
+        0,
+      )
+      qtdMedicoesComRetencao = (retencoesQuery.data || []).filter(
+        (m: any) => Number(m.valor_retencao_garantia || 0) > 0,
+      ).length
+    }
+
     return NextResponse.json({
       contratos: contratos || [],
       medicoes_recentes: medicoesPendentes || [],
@@ -59,6 +75,8 @@ export async function GET() {
       total_sol_aprovadas: totalSolAprovadas,
       valor_servicos: valorServicos,
       valor_material_direto: valorMaterialDireto,
+      total_retencao_acumulada: totalRetencao,
+      qtd_medicoes_com_retencao: qtdMedicoesComRetencao,
     })
   } catch (e: any) {
     return apiError(e)
