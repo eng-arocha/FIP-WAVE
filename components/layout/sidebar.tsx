@@ -100,6 +100,7 @@ export function Sidebar({
   const documentosItems = [
     { label: 'Pedidos FD',    href: '/documentos/faturamento-direto', icon: FileArchive,   modulo: 'documentos' },
     { label: 'Med. Serviços', href: '/documentos/medicoes-servico',   icon: ClipboardList, modulo: 'documentos' },
+    { label: 'Retenções',     href: '/documentos/retencoes',          icon: TrendingUp,    modulo: 'documentos' },
   ].filter(item => temPermissao(item.modulo, 'visualizar'))
 
   const isCadastroActive = pathname.startsWith('/empresas') || pathname.startsWith('/usuarios') || pathname.startsWith('/perfis') || pathname.startsWith('/admin')
