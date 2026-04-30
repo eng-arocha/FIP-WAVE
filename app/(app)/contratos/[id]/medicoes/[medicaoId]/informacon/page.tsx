@@ -141,6 +141,60 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
   const tag = `MED-${String(data.medicao.numero).padStart(3, '0')}`
   const dataReferencia = data.medicao.data_aprovacao || data.medicao.data_submissao
 
+  // Mapa visual por status
+  const statusInfo = (() => {
+    switch (data.medicao.status) {
+      case 'aprovado':
+        return {
+          label: 'Boletim oficial · Medição aprovada',
+          descricao: data.medicao.data_aprovacao
+            ? `Aprovada em ${formatDate(data.medicao.data_aprovacao)}. Valores congelados (snapshots).`
+            : 'Aprovada. Valores congelados (snapshots).',
+          color: '#10B981',
+          bg: 'rgba(16,185,129,0.10)',
+          border: 'rgba(16,185,129,0.40)',
+          isPrevia: false,
+        }
+      case 'submetido':
+      case 'em_analise':
+        return {
+          label: 'Prévia · Aguardando aprovação',
+          descricao: 'Cálculo on-the-fly. Valores e acumulado podem mudar até a aprovação. Não use ainda pra lançamento oficial.',
+          color: '#3B82F6',
+          bg: 'rgba(59,130,246,0.10)',
+          border: 'rgba(59,130,246,0.40)',
+          isPrevia: true,
+        }
+      case 'rascunho':
+        return {
+          label: 'Prévia · Rascunho',
+          descricao: 'Medição ainda não submetida. Use pra simulação.',
+          color: '#F59E0B',
+          bg: 'rgba(245,158,11,0.10)',
+          border: 'rgba(245,158,11,0.40)',
+          isPrevia: true,
+        }
+      case 'rejeitado':
+        return {
+          label: 'Medição rejeitada',
+          descricao: 'Esta medição foi rejeitada — boletim apenas referência.',
+          color: '#EF4444',
+          bg: 'rgba(239,68,68,0.10)',
+          border: 'rgba(239,68,68,0.40)',
+          isPrevia: true,
+        }
+      default:
+        return {
+          label: data.medicao.status,
+          descricao: '',
+          color: 'var(--text-3)',
+          bg: 'var(--surface-2)',
+          border: 'var(--border)',
+          isPrevia: true,
+        }
+    }
+  })()
+
   return (
     <div className="flex-1" style={{ background: 'var(--background)' }}>
       <Topbar title={`Boletim INFORMACON · ${tag}`} subtitle={`Período ${data.medicao.periodo_referencia} · Contrato ${data.medicao.contrato.numero}`} />
@@ -202,6 +256,27 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
             >
               <Printer className="w-3.5 h-3.5" /> Imprimir / PDF
             </button>
+          </div>
+        </div>
+
+        {/* Banner de status — esclarece se é prévia ou oficial */}
+        <div className="rounded-lg px-4 py-3 flex items-start gap-3"
+          style={{ background: statusInfo.bg, border: `1px solid ${statusInfo.border}` }}>
+          <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+            style={{ background: statusInfo.bg, border: `1px solid ${statusInfo.border}` }}>
+            {statusInfo.isPrevia
+              ? <TrendingUp className="w-4 h-4" style={{ color: statusInfo.color }} />
+              : <FileText  className="w-4 h-4" style={{ color: statusInfo.color }} />}
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-bold" style={{ color: statusInfo.color }}>
+              {statusInfo.label}
+            </p>
+            {statusInfo.descricao && (
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-2)' }}>
+                {statusInfo.descricao}
+              </p>
+            )}
           </div>
         </div>
 

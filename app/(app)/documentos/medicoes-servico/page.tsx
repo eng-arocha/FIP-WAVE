@@ -7,7 +7,7 @@ import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { ChevronRight, Loader2, ClipboardList, Plus, Building2, X } from 'lucide-react'
+import { ChevronRight, Loader2, ClipboardList, Plus, Building2, X, FileText } from 'lucide-react'
 import { formatCurrency, formatDate, getMedicaoStatusColor } from '@/lib/utils'
 import { MEDICAO_STATUS_LABELS, MedicaoStatus } from '@/types'
 
@@ -163,10 +163,10 @@ export default function MedicoesServicoPage() {
         ) : (
           <div className="space-y-3">
             {lista.map(m => (
-              <Link key={m.id} href={`/contratos/${m.contrato?.id}/medicoes/${m.id}`}>
-                <Card className="hover:shadow-md transition-shadow cursor-pointer">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-4">
+              <Card key={m.id} className="hover:shadow-md transition-shadow">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-4">
+                    <Link href={`/contratos/${m.contrato?.id}/medicoes/${m.id}`} className="flex items-center gap-4 flex-1 cursor-pointer">
                       <div className="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-500/20 flex flex-col items-center justify-center flex-shrink-0">
                         <span className="text-[10px] text-purple-400/60 font-medium">MED</span>
                         <span className="text-base font-bold text-purple-400 leading-tight">#{String(m.numero).padStart(2, '0')}</span>
@@ -188,11 +188,22 @@ export default function MedicoesServicoPage() {
                           {m.status === 'aprovado' && m.data_aprovacao ? `Aprovado ${formatDate(m.data_aprovacao)}` : m.data_submissao ? `Submetido ${formatDate(m.data_submissao)}` : ''}
                         </p>
                       </div>
-                      <ChevronRight className="w-4 h-4 text-[var(--text-3)]" />
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
+                    </Link>
+                    {/* Boletim INFORMACON — acesso rápido em qualquer status */}
+                    <Link
+                      href={`/contratos/${m.contrato?.id}/medicoes/${m.id}/informacon`}
+                      title="Abrir Boletim INFORMACON (prévia se não-aprovado)"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <button className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10 transition-colors">
+                        <FileText className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Boletim</span>
+                      </button>
+                    </Link>
+                    <ChevronRight className="w-4 h-4 text-[var(--text-3)]" />
+                  </div>
+                </CardContent>
+              </Card>
             ))}
           </div>
         )}
