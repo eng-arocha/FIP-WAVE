@@ -56,7 +56,7 @@ export async function getMedicao(id: string) {
       ),
       medicao_itens(
         *,
-        detalhamento:detalhamentos(codigo, descricao, unidade, valor_unitario)
+        detalhamento:detalhamentos(codigo, descricao, unidade, valor_unitario, valor_material_unit, valor_servico_unit)
       ),
       medicao_anexos(*),
       notas_fiscais(*),

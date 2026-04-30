@@ -220,7 +220,34 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                         {TIPO_MEDICAO_LABELS[medicao.tipo as keyof typeof TIPO_MEDICAO_LABELS]}
                       </Badge>
                     </div>
-                    <p className="text-2xl font-bold text-blue-400">{formatCurrency(medicao.valor_total)}</p>
+                    {(() => {
+                      // Calcula serviço puro (vai pra NF) a partir dos itens
+                      const valorTotal = Number(medicao.valor_total || 0)
+                      let materialMed = 0
+                      let servicoMed = 0
+                      for (const it of (medicao.medicao_itens || []) as any[]) {
+                        const qtd = Number(it.quantidade_medida || 0)
+                        materialMed += qtd * Number(it.detalhamento?.valor_material_unit || 0)
+                        servicoMed  += qtd * Number(it.detalhamento?.valor_servico_unit || 0)
+                      }
+                      // Sanity: se sem mat/serv unit, fallback pro total
+                      if (materialMed === 0 && servicoMed === 0 && valorTotal > 0) {
+                        servicoMed = valorTotal
+                      }
+                      return (
+                        <div className="space-y-1">
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-[11px] text-[var(--text-3)] uppercase font-semibold tracking-wide">Serviço (NF a emitir)</span>
+                            <span className="text-2xl font-bold" style={{ color: '#0F766E' }}>{formatCurrency(servicoMed)}</span>
+                          </div>
+                          <div className="flex items-baseline gap-3 text-[11px]" style={{ color: 'var(--text-3)' }}>
+                            <span>Material: <strong style={{ color: 'var(--text-2)' }}>{formatCurrency(materialMed)}</strong></span>
+                            <span>·</span>
+                            <span>Total executado: <strong style={{ color: 'var(--text-2)' }}>{formatCurrency(valorTotal)}</strong></span>
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </div>
                   {isPendente && (
                     <div className="flex gap-2 flex-wrap">
@@ -296,33 +323,46 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                 — visível pra fornecedor/solicitante saber o impacto da retenção desde o início. */}
             {(() => {
               const aprovado = status === 'aprovado'
-              const valorServicoMedido = Number(medicao.valor_total ?? 0)
+              const valorTotalMedicao = Number(medicao.valor_total ?? 0)  // mat + serv
               const valorContrato = Number(medicao.contrato?.valor_total ?? 0)
               const pctRetencao = Number(medicao.contrato?.percentual_retencao ?? 5)
 
-              // Calcula material correspondente on-the-fly a partir dos itens
-              // (qtde × detalhamento.valor_material_unit). Em medições já aprovadas
-              // usa snapshot persistido em medicao.valor_material_correspondente.
-              let materialCorrespondente = Number(medicao.valor_material_correspondente ?? 0)
-              if (!materialCorrespondente) {
-                materialCorrespondente = (medicao.medicao_itens || []).reduce((s: number, it: any) => {
+              // Calcula MATERIAL e SERVIÇO separadamente a partir dos itens
+              // (qtde × valor_material_unit ou valor_servico_unit do detalhamento).
+              // Em medições aprovadas, prefere snapshot persistido em medicao.
+              let materialCorrespondente = 0
+              let servicoMedido = 0
+              if (aprovado && Number(medicao.valor_material_correspondente ?? 0) > 0) {
+                materialCorrespondente = Number(medicao.valor_material_correspondente)
+                // serviço = total − material (já que valor_total é mat + serv)
+                servicoMedido = Math.max(0, valorTotalMedicao - materialCorrespondente)
+              } else {
+                for (const it of (medicao.medicao_itens || []) as any[]) {
                   const qtd = Number(it.quantidade_medida || 0)
                   const matUnit = Number(it.detalhamento?.valor_material_unit || 0)
-                  return s + qtd * matUnit
-                }, 0)
+                  const servUnit = Number(it.detalhamento?.valor_servico_unit || 0)
+                  materialCorrespondente += qtd * matUnit
+                  servicoMedido += qtd * servUnit
+                }
+                // Sanity: se mat/serv unit não estavam disponíveis (ambos zero),
+                // assume valor_total = serviço (legado). Evita zerar tudo.
+                if (materialCorrespondente === 0 && servicoMedido === 0 && valorTotalMedicao > 0) {
+                  servicoMedido = valorTotalMedicao
+                }
               }
 
-              const baseRetencao = materialCorrespondente + valorServicoMedido
+              const baseRetencao = materialCorrespondente + servicoMedido
               const retencao = aprovado
                 ? Number(medicao.valor_retencao_garantia ?? (baseRetencao * pctRetencao / 100))
                 : baseRetencao * pctRetencao / 100
+              const liquidoNF = servicoMedido - retencao
               const andamento = valorContrato > 0 ? (baseRetencao / valorContrato) * 100 : 0
 
-              if (retencao <= 0 || baseRetencao <= 0) return null
+              if (baseRetencao <= 0) return null
 
               const titulo = aprovado ? 'Retenção contratual desta medição' : 'Estimativa de retenção contratual'
               const aviso = aprovado
-                ? 'NF integral (serviço) será emitida. A retenção é descontada pelo WAVE no pagamento, conforme cláusulas contratuais.'
+                ? 'NF integral (apenas serviço) será emitida. A retenção é descontada pelo WAVE no pagamento, conforme cláusulas contratuais.'
                 : 'Cálculo prévio. Se aprovada, valores são congelados como snapshot.'
 
               return (
@@ -347,9 +387,9 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                         </p>
                       </div>
                       <div>
-                        <p className="text-[var(--text-3)] mb-0.5">Serviço medido</p>
-                        <p className="font-bold tabular-nums" style={{ color: 'var(--text-1)' }}>
-                          {formatCurrency(valorServicoMedido)}
+                        <p className="text-[var(--text-3)] mb-0.5">Serviço medido <span className="text-[10px] font-bold ml-1 px-1 rounded" style={{ background: 'rgba(15,118,110,0.15)', color: '#0F766E' }}>NF</span></p>
+                        <p className="font-bold tabular-nums" style={{ color: '#0F766E' }}>
+                          {formatCurrency(servicoMedido)}
                         </p>
                       </div>
                       <div>
@@ -365,15 +405,16 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                         </p>
                       </div>
                       <div>
-                        <p className="text-[var(--text-3)] mb-0.5">Líquido NF</p>
+                        <p className="text-[var(--text-3)] mb-0.5">Líquido a pagar</p>
                         <p className="font-bold tabular-nums" style={{ color: '#10B981' }}>
-                          {formatCurrency(valorServicoMedido - retencao)}
+                          {formatCurrency(liquidoNF)}
                         </p>
                       </div>
                     </div>
                     <div className="mt-3 pt-3 border-t text-[11px]" style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}>
                       <strong style={{ color: 'var(--text-2)' }}>Andamento físico:</strong> {andamento.toFixed(2).replace('.', ',')}% do contrato.
-                      <strong style={{ color: 'var(--text-2)', marginLeft: 8 }}>NF integral (serviço):</strong> {formatCurrency(valorServicoMedido)}. {aviso}
+                      <strong style={{ color: 'var(--text-2)', marginLeft: 8 }}>NF a emitir (serviço):</strong> {formatCurrency(servicoMedido)}.
+                      Material será faturado direto pelos pedidos FIP. {aviso}
                     </div>
                   </CardContent>
                 </Card>
@@ -438,10 +479,32 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr className="border-t-2 border-[var(--border-hover)]">
-                      <td colSpan={5} className="pt-2 font-bold text-[var(--text-2)]">Total da Medição</td>
-                      <td className="pt-2 text-right font-bold text-blue-400 text-sm">{formatCurrency(medicao.valor_total)}</td>
-                    </tr>
+                    {(() => {
+                      let mat = 0, serv = 0
+                      for (const it of (medicao.medicao_itens || []) as any[]) {
+                        const qtd = Number(it.quantidade_medida || 0)
+                        mat += qtd * Number(it.detalhamento?.valor_material_unit || 0)
+                        serv += qtd * Number(it.detalhamento?.valor_servico_unit || 0)
+                      }
+                      const tot = Number(medicao.valor_total || 0)
+                      if (mat === 0 && serv === 0 && tot > 0) serv = tot
+                      return (
+                        <>
+                          <tr className="border-t-2 border-[var(--border-hover)]">
+                            <td colSpan={5} className="pt-2 text-[11px] text-[var(--text-3)]">Material correspondente (faturamento direto FIP)</td>
+                            <td className="pt-2 text-right text-xs text-[var(--text-2)] tabular-nums">{formatCurrency(mat)}</td>
+                          </tr>
+                          <tr>
+                            <td colSpan={5} className="text-[11px] font-semibold text-teal-700/90 dark:text-teal-400">Serviço medido <span className="text-[9px] font-bold ml-1 px-1 py-0.5 rounded" style={{ background: 'rgba(15,118,110,0.15)' }}>NF a emitir</span></td>
+                            <td className="text-right font-bold text-sm tabular-nums" style={{ color: '#0F766E' }}>{formatCurrency(serv)}</td>
+                          </tr>
+                          <tr className="border-t border-[var(--border)]">
+                            <td colSpan={5} className="pt-1 font-bold text-[var(--text-2)]">Total da Medição (mat + serv)</td>
+                            <td className="pt-1 text-right font-bold text-blue-400 text-sm tabular-nums">{formatCurrency(tot)}</td>
+                          </tr>
+                        </>
+                      )
+                    })()}
                   </tfoot>
                 </table>
               </CardContent>

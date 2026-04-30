@@ -208,31 +208,41 @@ export async function calcularResumoFinanceiroObra(args: CalcArgs): Promise<Resu
         .reduce((s: number, x: any) => s + Number(x.valor_total || 0), 0)
     : aprovadoAcumulado
 
-  // 6) Retenção — NOVA FÓRMULA (5% sobre material correspondente + serviço medido).
-  // Carrega itens da medição com unitários material/serviço dos detalhamentos
-  // pra calcular o material correspondente proporcional ao % medido.
-  // Se a medição já está aprovada, prefere o snapshot persistido (medicao.valor_material_correspondente).
-  let materialCorrespondente = Number((medicao as any).valor_material_correspondente || 0)
-  if (!materialCorrespondente || (medicao as any).status !== 'aprovado') {
+  // 6) Retenção — calcula MATERIAL e SERVIÇO separadamente a partir dos itens
+  // (qtde × valor_material_unit ou valor_servico_unit). Em medição aprovada,
+  // prefere snapshot persistido. valor_total da medição = mat + serv.
+  let materialCorrespondente = 0
+  let servicoMedido = 0
+
+  const snapshotMat = Number((medicao as any).valor_material_correspondente || 0)
+  if (snapshotMat > 0 && (medicao as any).status === 'aprovado') {
+    materialCorrespondente = snapshotMat
+    servicoMedido = Math.max(0, valor_medicao_atual - snapshotMat)
+  } else {
     const { data: itensRaw } = await admin
       .from('medicao_itens')
       .select(`
         quantidade_medida,
-        detalhamento:detalhamentos ( valor_material_unit )
+        detalhamento:detalhamentos ( valor_material_unit, valor_servico_unit )
       `)
       .eq('medicao_id', args.medicao_id)
-    materialCorrespondente = (itensRaw || []).reduce((s: number, it: any) => {
+    for (const it of (itensRaw || []) as any[]) {
       const qtd = Number(it.quantidade_medida || 0)
-      const matUnit = Number(it.detalhamento?.valor_material_unit || 0)
-      return s + qtd * matUnit
-    }, 0)
+      materialCorrespondente += qtd * Number(it.detalhamento?.valor_material_unit || 0)
+      servicoMedido          += qtd * Number(it.detalhamento?.valor_servico_unit  || 0)
+    }
+    // Sanity: se mat+serv unit ausentes, usa valor_total como serviço (legado)
+    if (materialCorrespondente === 0 && servicoMedido === 0 && valor_medicao_atual > 0) {
+      servicoMedido = valor_medicao_atual
+    }
   }
 
-  const baseRetencao = materialCorrespondente + valor_medicao_atual
+  const baseRetencao = materialCorrespondente + servicoMedido
   const valor_retencao = baseRetencao * (percentual_retencao / 100)
   const andamento_fisico_pct = valor_total_contrato > 0
     ? (baseRetencao / valor_total_contrato) * 100
     : 0
+  const liquido_a_pagar = servicoMedido - valor_retencao
 
   return {
     contrato: {
@@ -269,10 +279,10 @@ export async function calcularResumoFinanceiroObra(args: CalcArgs): Promise<Resu
       valor: valor_retencao,
       percentual_aplicado: percentual_retencao,
       material_correspondente: materialCorrespondente,
-      servico_medido: valor_medicao_atual,
+      servico_medido: servicoMedido,  // só serviço (NF a emitir)
       base_retencao: baseRetencao,
       andamento_fisico_pct,
-      liquido_a_pagar: valor_medicao_atual - valor_retencao,
+      liquido_a_pagar,
     },
   }
 }
