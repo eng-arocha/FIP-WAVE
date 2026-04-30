@@ -223,17 +223,22 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   }, [id])
 
 
-  // Bloco de métricas financeiras (abaixo do TOTAL em qualquer nível)
+  // Bloco de métricas financeiras (linha horizontal, ocupando a largura cheia)
   function MetricasBloco({ m, align = 'right' }: { m: Metric | undefined; align?: 'right' | 'left' }) {
     const d = m || { servico_medido: 0, fat_aprovados: 0, nfs_lancadas: 0, saldo_material: 0, saldo_servico: 0 }
-    const rowClass = align === 'right' ? 'flex justify-end gap-1.5' : 'flex gap-1.5'
+    const justify = align === 'right' ? 'justify-end' : 'justify-start'
+    const sep = <span className="opacity-30" aria-hidden>·</span>
     return (
-      <div className="mt-1 space-y-0.5 text-[10px] leading-tight" style={{ color: 'var(--text-3)' }}>
-        <div className={rowClass}><span>Serv. Medido:</span><span className="font-semibold text-emerald-500 tabular-nums">{formatCurrency(d.servico_medido)}</span></div>
-        <div className={rowClass}><span>Fat. Aprovados:</span><span className="font-semibold text-blue-400 tabular-nums">{formatCurrency(d.fat_aprovados)}</span></div>
-        <div className={rowClass}><span>NFs Lançadas:</span><span className="font-semibold text-amber-400 tabular-nums">{formatCurrency(d.nfs_lancadas)}</span></div>
-        <div className={rowClass}><span>Saldo Material:</span><span className="font-semibold tabular-nums" style={{ color: d.saldo_material < 0 ? '#EF4444' : 'var(--text-2)' }}>{formatCurrency(d.saldo_material)}</span></div>
-        <div className={rowClass}><span>Saldo Serviço:</span><span className="font-semibold tabular-nums" style={{ color: d.saldo_servico < 0 ? '#EF4444' : 'var(--text-2)' }}>{formatCurrency(d.saldo_servico)}</span></div>
+      <div className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] leading-tight ${justify}`} style={{ color: 'var(--text-3)' }}>
+        <span className="inline-flex items-center gap-1"><span>Serv. Medido:</span><span className="font-semibold text-emerald-500 tabular-nums">{formatCurrency(d.servico_medido)}</span></span>
+        {sep}
+        <span className="inline-flex items-center gap-1"><span>Fat. Aprovados:</span><span className="font-semibold text-blue-400 tabular-nums">{formatCurrency(d.fat_aprovados)}</span></span>
+        {sep}
+        <span className="inline-flex items-center gap-1"><span>NFs Lançadas:</span><span className="font-semibold text-amber-400 tabular-nums">{formatCurrency(d.nfs_lancadas)}</span></span>
+        {sep}
+        <span className="inline-flex items-center gap-1"><span>Saldo Material:</span><span className="font-semibold tabular-nums" style={{ color: d.saldo_material < 0 ? '#EF4444' : 'var(--text-2)' }}>{formatCurrency(d.saldo_material)}</span></span>
+        {sep}
+        <span className="inline-flex items-center gap-1"><span>Saldo Serviço:</span><span className="font-semibold tabular-nums" style={{ color: d.saldo_servico < 0 ? '#EF4444' : 'var(--text-2)' }}>{formatCurrency(d.saldo_servico)}</span></span>
       </div>
     )
   }
@@ -1194,8 +1199,10 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                           <p className="font-bold text-[var(--text-1)]">{formatCurrency(vGrupo)}</p>
                           <p className="text-xs text-[var(--text-3)]">Medido: {formatCurrency(g.valor_medido ?? 0)}</p>
                           <p className="text-xs text-emerald-500/80">Saldo: {formatCurrency(saldoGrupo)}</p>
-                          <MetricasBloco m={metrics.grupos[g.id]} />
                         </div>
+                      </div>
+                      <div className="px-4 pb-2 -mt-1">
+                        <MetricasBloco m={metrics.grupos[g.id]} />
                       </div>
 
                       {/* Tarefas + detalhamentos */}
@@ -1228,8 +1235,10 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                                   <span className="font-semibold text-sm text-[var(--text-2)] flex-1 truncate">{t.nome}</span>
                                   <div className="text-right min-w-[200px]">
                                     <span className="text-xs font-medium text-[var(--text-2)]">{formatCurrency(valorTarefa)}</span>
-                                    <MetricasBloco m={metrics.tarefas[t.id]} />
                                   </div>
+                                </div>
+                                <div className="px-8 pb-2 -mt-1 bg-[var(--surface-1)]">
+                                  <MetricasBloco m={metrics.tarefas[t.id]} />
                                 </div>
 
                                 {/* Detalhamentos — 10 colunas conforme planilha oficial */}
@@ -1301,9 +1310,8 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                                               <span className={`text-right tabular-nums ${colMoActive ? 'font-semibold text-amber-400' : 'text-[var(--text-2)]'}`}>{formatCurrency(subMo)}</span>
                                               <span className="text-right tabular-nums font-semibold text-[var(--text-1)]">{formatCurrency(total)}</span>
                                             </div>
-                                            <div className="grid grid-cols-[40px_1fr_80px_50px_40px_90px_90px_100px_100px_100px] gap-2 mt-0.5">
-                                              <span className="col-span-9" />
-                                              <MetricasBloco m={mDet} />
+                                            <div className="mt-0.5 px-2">
+                                              <MetricasBloco m={mDet} align="left" />
                                             </div>
                                           </div>
                                         )
