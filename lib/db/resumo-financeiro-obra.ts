@@ -56,9 +56,15 @@ export interface ResumoFinanceiroObra {
   retencao: {
     valor: number                          // base × percentual_retencao
     percentual_aplicado: number            // contrato.percentual_retencao
-    valor_financeiro_proporcional: number  // andamento × valor_total_contrato
-    andamento_fisico_pct: number           // valor_medido / valor_servicos × 100 (esta medição)
-    /** Líquido = valor_total da medição − retenção (NF integral, retenção descontada no pagamento) */
+    /** Material correspondente desta medição (qtde × valor_material_unit). */
+    material_correspondente: number
+    /** Serviço medido desta medição (= medicao.valor_total). */
+    servico_medido: number
+    /** Base da retenção = material_correspondente + servico_medido. */
+    base_retencao: number
+    /** Andamento físico = (mat + serv executados nesta medição) / valor_total_contrato × 100. */
+    andamento_fisico_pct: number
+    /** Líquido = valor_total da medição (serviço, NF integral) − retenção. */
     liquido_a_pagar: number
   }
 }
@@ -90,14 +96,14 @@ export async function calcularResumoFinanceiroObra(args: CalcArgs): Promise<Resu
   // 2) Carrega medição (resiliente a snapshots de retenção ausentes)
   const medicaoRes = await withSchemaFallback({
     primary: () => admin.from('medicoes')
-      .select('id, contrato_id, valor_total, status, data_aprovacao, data_submissao, andamento_fisico_pct, valor_financeiro_proporcional, valor_retencao_garantia')
+      .select('id, contrato_id, valor_total, status, data_aprovacao, data_submissao, andamento_fisico_pct, valor_material_correspondente, valor_retencao_garantia')
       .eq('id', args.medicao_id)
       .single(),
     fallback: () => admin.from('medicoes')
       .select('id, contrato_id, valor_total, status, data_aprovacao, data_submissao')
       .eq('id', args.medicao_id)
       .single(),
-    missingColumns: ['andamento_fisico_pct', 'valor_financeiro_proporcional', 'valor_retencao_garantia'],
+    missingColumns: ['andamento_fisico_pct', 'valor_material_correspondente', 'valor_retencao_garantia'],
     context: 'calcularResumoFinanceiroObra:medicao',
   })
   if (medicaoRes.error) throw medicaoRes.error
@@ -202,14 +208,31 @@ export async function calcularResumoFinanceiroObra(args: CalcArgs): Promise<Resu
         .reduce((s: number, x: any) => s + Number(x.valor_total || 0), 0)
     : aprovadoAcumulado
 
-  // 6) Retenção (snapshot atual — usa valor desta medição)
-  const andamento_fisico_pct = valor_servicos > 0
-    ? (valor_medicao_atual / valor_servicos) * 100
+  // 6) Retenção — NOVA FÓRMULA (5% sobre material correspondente + serviço medido).
+  // Carrega itens da medição com unitários material/serviço dos detalhamentos
+  // pra calcular o material correspondente proporcional ao % medido.
+  // Se a medição já está aprovada, prefere o snapshot persistido (medicao.valor_material_correspondente).
+  let materialCorrespondente = Number((medicao as any).valor_material_correspondente || 0)
+  if (!materialCorrespondente || (medicao as any).status !== 'aprovado') {
+    const { data: itensRaw } = await admin
+      .from('medicao_itens')
+      .select(`
+        quantidade_medida,
+        detalhamento:detalhamentos ( valor_material_unit )
+      `)
+      .eq('medicao_id', args.medicao_id)
+    materialCorrespondente = (itensRaw || []).reduce((s: number, it: any) => {
+      const qtd = Number(it.quantidade_medida || 0)
+      const matUnit = Number(it.detalhamento?.valor_material_unit || 0)
+      return s + qtd * matUnit
+    }, 0)
+  }
+
+  const baseRetencao = materialCorrespondente + valor_medicao_atual
+  const valor_retencao = baseRetencao * (percentual_retencao / 100)
+  const andamento_fisico_pct = valor_total_contrato > 0
+    ? (baseRetencao / valor_total_contrato) * 100
     : 0
-  const valor_financeiro_proporcional = valor_servicos > 0
-    ? (valor_medicao_atual / valor_servicos) * valor_total_contrato
-    : 0
-  const valor_retencao = valor_financeiro_proporcional * (percentual_retencao / 100)
 
   return {
     contrato: {
@@ -245,7 +268,9 @@ export async function calcularResumoFinanceiroObra(args: CalcArgs): Promise<Resu
     retencao: {
       valor: valor_retencao,
       percentual_aplicado: percentual_retencao,
-      valor_financeiro_proporcional,
+      material_correspondente: materialCorrespondente,
+      servico_medido: valor_medicao_atual,
+      base_retencao: baseRetencao,
       andamento_fisico_pct,
       liquido_a_pagar: valor_medicao_atual - valor_retencao,
     },

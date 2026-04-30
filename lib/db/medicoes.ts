@@ -151,8 +151,7 @@ export async function createMedicao(input: {
 export async function aprovarMedicao(id: string, aprovadorNome: string, aprovadorEmail: string, comentario?: string) {
   const supabase = await createClient()
 
-  // Calcula snapshots de retenção antes do UPDATE
-  // (busca contrato + medição direto pra não depender de outros helpers)
+  // Carrega medição + contrato + itens com unitários separados de mat/serv
   const { data: medSnap } = await supabase
     .from('medicoes')
     .select('valor_total, contrato_id')
@@ -161,25 +160,47 @@ export async function aprovarMedicao(id: string, aprovadorNome: string, aprovado
   const { data: contrSnap } = medSnap
     ? await supabase
         .from('contratos')
-        .select('valor_total, valor_servicos, percentual_retencao')
+        .select('valor_total, percentual_retencao')
         .eq('id', (medSnap as any).contrato_id)
         .single()
     : { data: null }
+  const { data: itensSnap } = await supabase
+    .from('medicao_itens')
+    .select(`
+      id, quantidade_medida,
+      detalhamento:detalhamentos ( valor_material_unit, valor_servico_unit )
+    `)
+    .eq('medicao_id', id)
 
-  const valorMedido = Number((medSnap as any)?.valor_total || 0)
-  const valorServicos = Number((contrSnap as any)?.valor_servicos || 0)
   const valorTotalContrato = Number((contrSnap as any)?.valor_total || 0)
   const pctRetencao = Number((contrSnap as any)?.percentual_retencao ?? 5)
 
-  const andamento_fisico_pct = valorServicos > 0
-    ? (valorMedido / valorServicos) * 100
-    : 0
-  const valor_financeiro_proporcional = valorServicos > 0
-    ? (valorMedido / valorServicos) * valorTotalContrato
-    : 0
-  const valor_retencao_garantia = valor_financeiro_proporcional * (pctRetencao / 100)
+  // Calcula material e serviço por item (cada componente separadamente, pra
+  // proteger contra inconsistência caso valor_unitario != mat_unit + serv_unit).
+  let valorMaterialCorrespondente = 0
+  let valorServicoMedidoTotal = 0
+  const updatesItens: Array<{ id: string; mat: number; serv: number }> = []
+  for (const it of (itensSnap || []) as any[]) {
+    const qtd = Number(it.quantidade_medida || 0)
+    const matUnit = Number(it.detalhamento?.valor_material_unit || 0)
+    const servUnit = Number(it.detalhamento?.valor_servico_unit || 0)
+    const matCorrespondente = qtd * matUnit
+    const servCorrespondente = qtd * servUnit
+    valorMaterialCorrespondente += matCorrespondente
+    valorServicoMedidoTotal += servCorrespondente
+    updatesItens.push({ id: it.id, mat: matCorrespondente, serv: servCorrespondente })
+  }
 
-  // UPDATE com snapshots — resiliente a colunas ausentes (migration 051 stale)
+  // Retenção (nova fórmula contratual): 5% sobre material + serviço executados.
+  const baseRetencao = valorMaterialCorrespondente + valorServicoMedidoTotal
+  const valor_retencao_garantia = baseRetencao * (pctRetencao / 100)
+
+  // Andamento físico = total executado (mat + serv) / valor total do contrato
+  const andamento_fisico_pct = valorTotalContrato > 0
+    ? (baseRetencao / valorTotalContrato) * 100
+    : 0
+
+  // UPDATE da medição com snapshots
   const updateBase: Record<string, unknown> = {
     status: 'aprovado',
     data_aprovacao: new Date().toISOString(),
@@ -188,7 +209,7 @@ export async function aprovarMedicao(id: string, aprovadorNome: string, aprovado
   const updateExtra: Record<string, unknown> = {
     ...updateBase,
     andamento_fisico_pct,
-    valor_financeiro_proporcional,
+    valor_material_correspondente: valorMaterialCorrespondente,
     valor_retencao_garantia,
   }
 
@@ -198,7 +219,7 @@ export async function aprovarMedicao(id: string, aprovadorNome: string, aprovado
     const code = (tryUpdate.error as any).code || ''
     const isSchemaStale =
       code === 'PGRST204' ||
-      ['andamento_fisico_pct', 'valor_financeiro_proporcional', 'valor_retencao_garantia']
+      ['andamento_fisico_pct', 'valor_material_correspondente', 'valor_retencao_garantia']
         .some(c => msg.includes(c))
     if (isSchemaStale) {
       const retry = await supabase.from('medicoes').update(updateBase).eq('id', id)
@@ -206,6 +227,27 @@ export async function aprovarMedicao(id: string, aprovadorNome: string, aprovado
     } else {
       throw tryUpdate.error
     }
+  }
+
+  // UPDATE dos itens (snapshot mat/serv correspondente). Em paralelo,
+  // resiliente: se colunas ainda não estão no schema cache, ignora.
+  if (updatesItens.length > 0) {
+    await Promise.all(updatesItens.map(async u => {
+      const { error } = await supabase
+        .from('medicao_itens')
+        .update({
+          valor_material_correspondente: u.mat,
+          valor_servico_correspondente: u.serv,
+        })
+        .eq('id', u.id)
+      if (error) {
+        const msg = (error as any).message || ''
+        const code = (error as any).code || ''
+        const isSchemaStale = code === 'PGRST204' ||
+          ['valor_material_correspondente', 'valor_servico_correspondente'].some(c => msg.includes(c))
+        if (!isSchemaStale) throw error
+      }
+    }))
   }
 
   await supabase.from('aprovacoes').insert({

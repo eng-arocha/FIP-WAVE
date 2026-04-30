@@ -104,7 +104,9 @@ export interface LiberacaoMedicaoPayload {
     retencao: {
       valor: number
       percentual_aplicado: number
-      valor_financeiro_proporcional: number
+      material_correspondente: number
+      servico_medido: number
+      base_retencao: number
       andamento_fisico_pct: number
       liquido_a_pagar: number
     }
@@ -126,7 +128,9 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
   const numFmt = String(p.numero_medicao).padStart(3, '0')
   const tag = `MED-${numFmt}`
   const prefixo = p.reenvio ? '[REENVIO] ' : ''
-  const valorMedicao = p.resumo.servicos.esta_medicao
+  // valorMedicao usado em totais e header — pega o SERVIÇO MEDIDO (que é o
+  // que entra na NF do fornecedor), não o total mat+serv.
+  const valorMedicao = p.resumo.retencao.servico_medido || p.resumo.servicos.esta_medicao
   const subject = `${prefixo}[${tag}] Medição aprovada — emita NF de ${fmt(valorMedicao)}`
 
   const itensHtml = p.itens.map(it => `
@@ -239,19 +243,23 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
       <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
         <h2 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">3. Resumo desta medição</h2>
         <table style="width:100%;font-size:14px;">
-          <tr><td style="padding:6px 0;color:#64748b;">Valor medido (NF integral)</td><td style="padding:6px 0;text-align:right;font-weight:700;font-size:16px;color:#0f766e;">${fmt(valorMedicao)}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Material correspondente medido</td><td style="padding:6px 0;text-align:right;">${fmt(p.resumo.retencao.material_correspondente)}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Serviço medido (NF a emitir)</td><td style="padding:6px 0;text-align:right;font-weight:700;font-size:16px;color:#0f766e;">${fmt(p.resumo.retencao.servico_medido)}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Base de retenção (mat + serv)</td><td style="padding:6px 0;text-align:right;color:#475569;">${fmt(p.resumo.retencao.base_retencao)}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Retenção contratual (${pctFmt(p.resumo.retencao.percentual_aplicado, 2)} sobre a base)</td><td style="padding:6px 0;text-align:right;color:#b91c1c;font-weight:600;">− ${fmt(p.resumo.retencao.valor)}</td></tr>
+          <tr style="border-top:2px solid #e5e7eb;"><td style="padding:8px 0;color:#0f172a;font-weight:700;">Líquido a pagar (NF − retenção)</td><td style="padding:8px 0;text-align:right;font-weight:700;color:#059669;">${fmt(p.resumo.retencao.liquido_a_pagar)}</td></tr>
           <tr><td style="padding:6px 0;color:#64748b;">Andamento físico desta medição</td><td style="padding:6px 0;text-align:right;">${pctFmt(p.resumo.retencao.andamento_fisico_pct)} do contrato</td></tr>
-          <tr><td style="padding:6px 0;color:#64748b;">Retenção contratual (${pctFmt(p.resumo.retencao.percentual_aplicado, 2)})</td><td style="padding:6px 0;text-align:right;color:#b91c1c;font-weight:600;">− ${fmt(p.resumo.retencao.valor)}</td></tr>
-          <tr style="border-top:2px solid #e5e7eb;"><td style="padding:8px 0;color:#0f172a;font-weight:700;">Líquido a pagar</td><td style="padding:8px 0;text-align:right;font-weight:700;color:#059669;">${fmt(p.resumo.retencao.liquido_a_pagar)}</td></tr>
         </table>
 
         <!-- Aviso destacado -->
         <div style="margin-top:14px;background:#fffbeb;border:1px solid #f59e0b;color:#92400e;padding:12px 14px;border-radius:8px;font-size:13px;">
           <strong>⚠ Importante — emissão da NF</strong><br>
-          A Nota Fiscal deve ser emitida pelo <strong>VALOR INTEGRAL</strong> (${fmt(valorMedicao)}).
-          A retenção de <strong>${fmt(p.resumo.retencao.valor)}</strong> será descontada
-          pelo WAVE no momento do pagamento, <strong>conforme cláusulas contratuais</strong>.
-          Não emita NF com valor líquido — pode causar divergência fiscal.
+          A Nota Fiscal de serviço deve ser emitida pelo <strong>VALOR INTEGRAL</strong>
+          (${fmt(p.resumo.retencao.servico_medido)}). A retenção de
+          <strong>${fmt(p.resumo.retencao.valor)}</strong> (5% sobre material + serviço executados =
+          ${fmt(p.resumo.retencao.base_retencao)}) será descontada pelo WAVE no momento do
+          pagamento, <strong>conforme cláusulas contratuais</strong>. Não emita NF com valor
+          líquido — pode causar divergência fiscal.
         </div>
       </div>
 
@@ -348,13 +356,15 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
     `Medição ${tag} — Período ${p.periodo_referencia} — Obra WAVE`,
     '',
     `RESUMO DA MEDIÇÃO`,
-    `  Valor medido (NF integral):     ${fmt(valorMedicao)}`,
-    `  Andamento físico desta medição: ${pctFmt(p.resumo.retencao.andamento_fisico_pct)}`,
-    `  Retenção (${pctFmt(p.resumo.retencao.percentual_aplicado)}):              − ${fmt(p.resumo.retencao.valor)}`,
-    `  Líquido a pagar:                ${fmt(p.resumo.retencao.liquido_a_pagar)}`,
+    `  Material correspondente:    ${fmt(p.resumo.retencao.material_correspondente)}`,
+    `  Serviço medido (NF a emitir): ${fmt(p.resumo.retencao.servico_medido)}`,
+    `  Base de retenção:           ${fmt(p.resumo.retencao.base_retencao)}`,
+    `  Retenção (${pctFmt(p.resumo.retencao.percentual_aplicado)}):           − ${fmt(p.resumo.retencao.valor)}`,
+    `  Líquido a pagar:            ${fmt(p.resumo.retencao.liquido_a_pagar)}`,
+    `  Andamento físico:           ${pctFmt(p.resumo.retencao.andamento_fisico_pct)} do contrato`,
     '',
-    `⚠ NF deve ser emitida pelo VALOR INTEGRAL (${fmt(valorMedicao)}).`,
-    `   Retenção descontada pelo WAVE no pagamento conforme contrato.`,
+    `⚠ NF emitida pelo VALOR INTEGRAL do serviço (${fmt(p.resumo.retencao.servico_medido)}).`,
+    `   Retenção 5% sobre material + serviço executados, descontada no pagamento.`,
     '',
     `RESUMO FINANCEIRO DA OBRA (${ehPrimeira ? 'desde início' : periodoLabel})`,
     `  Serviços — esta medição:    ${fmt(p.resumo.servicos.esta_medicao)}`,

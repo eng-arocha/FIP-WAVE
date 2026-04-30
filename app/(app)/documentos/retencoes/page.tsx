@@ -25,11 +25,12 @@ interface LinhaRelatorio {
     valor_servicos: number
     percentual_retencao: number
   }
-  valor_medido: number
+  valor_medido: number  // total mat + serv
+  material_correspondente: number
+  servico_medido: number
   andamento_fisico_pct: number
-  valor_financeiro_proporcional: number
   valor_retencao: number
-  liquido_a_pagar: number
+  liquido_a_pagar: number  // serviço − retenção
   aprovador_nome: string | null
 }
 
@@ -105,7 +106,7 @@ export default function RelatorioRetencoesPage() {
   // ── Layout (sort + resize) com persistência ───────────────────
   type ColKey =
     | 'contrato' | 'numero' | 'periodo' | 'data_aprovacao'
-    | 'valor_medido' | 'andamento_fisico'
+    | 'material' | 'servico' | 'andamento_fisico'
     | 'pct_retencao' | 'valor_retencao' | 'liquido' | 'aprovador'
 
   const colunas = useMemo<ColumnDef<ColKey>[]>(() => [
@@ -113,7 +114,8 @@ export default function RelatorioRetencoesPage() {
     { key: 'numero',             defaultWidth: 110, min: 90,  type: 'string' },
     { key: 'periodo',            defaultWidth: 100, min: 80,  type: 'string' },
     { key: 'data_aprovacao',     defaultWidth: 110, min: 90,  type: 'date'   },
-    { key: 'valor_medido',       defaultWidth: 130, min: 100, type: 'number' },
+    { key: 'material',           defaultWidth: 130, min: 100, type: 'number' },
+    { key: 'servico',            defaultWidth: 130, min: 100, type: 'number' },
     { key: 'andamento_fisico',   defaultWidth: 110, min: 90,  type: 'number' },
     { key: 'pct_retencao',       defaultWidth: 90,  min: 70,  type: 'number' },
     { key: 'valor_retencao',     defaultWidth: 140, min: 110, type: 'number' },
@@ -122,7 +124,7 @@ export default function RelatorioRetencoesPage() {
   ], [])
 
   const { sortKey, sortDir, gridTemplateColumns, toggleSort, startResize, reset, compare } =
-    useTableLayout<ColKey>('relatorio-retencoes:tabela:v2', colunas, '48px')
+    useTableLayout<ColKey>('relatorio-retencoes:tabela:v3', colunas, '48px')
 
   const linhasOrdenadas = useMemo(() => {
     if (!sortKey || !sortDir) return linhasFiltradas
@@ -134,7 +136,8 @@ export default function RelatorioRetencoesPage() {
           case 'numero':             return l.numero
           case 'periodo':            return l.periodo_referencia
           case 'data_aprovacao':     return l.data_aprovacao
-          case 'valor_medido':       return l.valor_medido
+          case 'material':           return l.material_correspondente
+          case 'servico':            return l.servico_medido
           case 'andamento_fisico':   return l.andamento_fisico_pct
           case 'pct_retencao':       return l.contrato.percentual_retencao
           case 'valor_retencao':     return l.valor_retencao
@@ -150,9 +153,10 @@ export default function RelatorioRetencoesPage() {
 
   const COL_LABELS: Record<ColKey, string> = {
     contrato: 'Contrato', numero: 'Medição', periodo: 'Período', data_aprovacao: 'Data aprov.',
-    valor_medido: 'Valor medido', andamento_fisico: 'Andamento %',
+    material: 'Material', servico: 'Serviço',
+    andamento_fisico: 'Andamento %',
     pct_retencao: '% Ret.',
-    valor_retencao: 'Retenção', liquido: 'Líquido', aprovador: 'Aprovador',
+    valor_retencao: 'Retenção', liquido: 'Líquido NF', aprovador: 'Aprovador',
   }
 
   const filtroPorColuna: Partial<Record<ColKey, { values: string[]; selected: Set<string>; onChange: (s: Set<string>) => void }>> = {
@@ -162,8 +166,10 @@ export default function RelatorioRetencoesPage() {
     aprovador: { values: valoresUnicos.aprovador, selected: fAprovador, onChange: setFAprovador },
   }
 
-  const totalRetencaoFiltrado = linhasOrdenadas.reduce((s, l) => s + l.valor_retencao, 0)
-  const totalMedidoFiltrado = linhasOrdenadas.reduce((s, l) => s + l.valor_medido, 0)
+  const totalRetencaoFiltrado  = linhasOrdenadas.reduce((s, l) => s + l.valor_retencao, 0)
+  const totalMaterialFiltrado  = linhasOrdenadas.reduce((s, l) => s + l.material_correspondente, 0)
+  const totalServicoFiltrado   = linhasOrdenadas.reduce((s, l) => s + l.servico_medido, 0)
+  const totalLiquidoFiltrado   = totalServicoFiltrado - totalRetencaoFiltrado
 
   return (
     <div className="flex-1" style={{ background: 'var(--background)' }}>
@@ -307,11 +313,12 @@ export default function RelatorioRetencoesPage() {
                     { header: 'Medição',        get: (l: any) => `MED-${String(l.numero).padStart(3, '0')}` },
                     { header: 'Período',        get: (l: any) => l.periodo_referencia },
                     { header: 'Data Aprovação', get: (l: any) => l.data_aprovacao ? formatDate(l.data_aprovacao) : '' },
-                    { header: 'Valor Medido',       get: (l: any) => Number(l.valor_medido) },
-                    { header: 'Andamento Físico %', get: (l: any) => Number(l.andamento_fisico_pct) },
-                    { header: '% Retenção',         get: (l: any) => Number(l.contrato.percentual_retencao) },
+                    { header: 'Material Correspondente', get: (l: any) => Number(l.material_correspondente) },
+                    { header: 'Serviço Medido',          get: (l: any) => Number(l.servico_medido) },
+                    { header: 'Andamento Físico %',      get: (l: any) => Number(l.andamento_fisico_pct) },
+                    { header: '% Retenção',              get: (l: any) => Number(l.contrato.percentual_retencao) },
                     { header: 'Retenção',  get: (l: any) => Number(l.valor_retencao) },
-                    { header: 'Líquido',   get: (l: any) => Number(l.liquido_a_pagar) },
+                    { header: 'Líquido NF',get: (l: any) => Number(l.liquido_a_pagar) },
                     { header: 'Aprovador', get: (l: any) => l.aprovador_nome || '' },
                   ],
                 )}
@@ -423,8 +430,11 @@ export default function RelatorioRetencoesPage() {
                 <div className="flex items-center px-3 py-2.5 text-xs" style={{ color: 'var(--text-3)', borderRight: '1px solid var(--border)' }}>
                   {l.data_aprovacao ? formatDate(l.data_aprovacao) : '—'}
                 </div>
+                <div className="flex items-center justify-end px-3 py-2.5 text-xs tabular-nums whitespace-nowrap" style={{ color: 'var(--text-2)', borderRight: '1px solid var(--border)' }}>
+                  {formatCurrency(l.material_correspondente)}
+                </div>
                 <div className="flex items-center justify-end px-3 py-2.5 text-xs font-semibold tabular-nums whitespace-nowrap" style={{ color: 'var(--text-1)', borderRight: '1px solid var(--border)' }}>
-                  {formatCurrency(l.valor_medido)}
+                  {formatCurrency(l.servico_medido)}
                 </div>
                 <div className="flex items-center justify-end px-3 py-2.5 text-xs tabular-nums" style={{ color: 'var(--text-2)', borderRight: '1px solid var(--border)' }}>
                   {pctFmt(l.andamento_fisico_pct)}
@@ -463,11 +473,12 @@ export default function RelatorioRetencoesPage() {
               <div className="px-3 flex items-center" style={{ gridColumn: 'span 4' }}>
                 Total filtrado ({linhasOrdenadas.length})
               </div>
-              <div className="text-right px-3" style={{ color: 'var(--text-2)' }}>{formatCurrency(totalMedidoFiltrado)}</div>
+              <div className="text-right px-3" style={{ color: 'var(--text-2)' }}>{formatCurrency(totalMaterialFiltrado)}</div>
+              <div className="text-right px-3" style={{ color: 'var(--text-2)' }}>{formatCurrency(totalServicoFiltrado)}</div>
               <div className="px-3"></div>
               <div className="px-3"></div>
               <div className="text-right px-3" style={{ color: '#818CF8' }}>{formatCurrency(totalRetencaoFiltrado)}</div>
-              <div className="text-right px-3" style={{ color: '#10B981' }}>{formatCurrency(totalMedidoFiltrado - totalRetencaoFiltrado)}</div>
+              <div className="text-right px-3" style={{ color: '#10B981' }}>{formatCurrency(totalLiquidoFiltrado)}</div>
               <div className="px-3"></div>
               <div className="px-3"></div>
             </div>

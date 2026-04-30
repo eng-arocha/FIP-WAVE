@@ -493,11 +493,33 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
               </CardContent>
             </Card>
 
-            {/* Estimativa de Retenção Contratual (cálculo on-the-fly com dados do contrato) */}
-            {contratoFin && contratoFin.valor_servicos > 0 && totalMedicao > 0 && (() => {
-              const andamento = (totalMedicao / contratoFin.valor_servicos) * 100
-              const retencao = (totalMedicao / contratoFin.valor_servicos) * contratoFin.valor_total * (contratoFin.percentual_retencao / 100)
-              const liquido = totalMedicao - retencao
+            {/* Estimativa de Retenção Contratual (nova fórmula contratual)
+                Calcula material e serviço executados nesta medição (delta × qtd ×
+                valor_unit_mat ou _serv). Retenção = (mat + serv) × percentual. */}
+            {contratoFin && totalMedicao > 0 && (() => {
+              let totalMaterial = 0
+              let totalServico = 0
+              for (const grupo of estrutura || []) {
+                for (const tarefa of (grupo as any).tarefas || []) {
+                  for (const det of (tarefa as any).detalhamentos || []) {
+                    const pct = percentualMedicao[det.id] ?? 0
+                    const acum = acumulado[det.id] || 0
+                    const delta = pct - acum
+                    if (delta > 0) {
+                      const fator = (delta / 100) * (Number(det.quantidade_contratada) || 0)
+                      totalMaterial += fator * (Number(det.valor_material_unit) || 0)
+                      totalServico  += fator * (Number(det.valor_servico_unit)  || 0)
+                    }
+                  }
+                }
+              }
+              const baseRetencao = totalMaterial + totalServico
+              if (baseRetencao <= 0) return null
+              const pctRet = contratoFin.percentual_retencao || 5
+              const retencao = baseRetencao * (pctRet / 100)
+              const liquidoNF = totalServico - retencao
+              const andamento = contratoFin.valor_total > 0 ? (baseRetencao / contratoFin.valor_total) * 100 : 0
+
               return (
                 <Card style={{ background: 'var(--surface-1)', border: '1px solid rgba(99,102,241,0.30)' }}>
                   <CardHeader className="pb-2">
@@ -510,30 +532,43 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-3 gap-3 text-xs">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 text-xs">
                       <div>
-                        <p className="text-[var(--text-3)] mb-0.5">Andamento físico</p>
+                        <p className="text-[var(--text-3)] mb-0.5">Material correspondente</p>
                         <p className="font-bold tabular-nums" style={{ color: 'var(--text-1)' }}>
-                          {andamento.toFixed(2).replace('.', ',')}%
+                          {formatCurrency(totalMaterial)}
                         </p>
                       </div>
                       <div>
-                        <p className="text-[var(--text-3)] mb-0.5">Retenção ({contratoFin.percentual_retencao.toFixed(2).replace('.', ',')}%)</p>
+                        <p className="text-[var(--text-3)] mb-0.5">Serviço medido</p>
+                        <p className="font-bold tabular-nums" style={{ color: 'var(--text-1)' }}>
+                          {formatCurrency(totalServico)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[var(--text-3)] mb-0.5">Base ({pctRet.toFixed(2).replace('.', ',')}%)</p>
+                        <p className="font-bold tabular-nums" style={{ color: 'var(--text-2)' }}>
+                          {formatCurrency(baseRetencao)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[var(--text-3)] mb-0.5">Retenção</p>
                         <p className="font-bold tabular-nums" style={{ color: '#818CF8' }}>
                           {formatCurrency(retencao)}
                         </p>
                       </div>
                       <div>
-                        <p className="text-[var(--text-3)] mb-0.5">Líquido a receber</p>
+                        <p className="text-[var(--text-3)] mb-0.5">Líquido NF</p>
                         <p className="font-bold tabular-nums" style={{ color: '#10B981' }}>
-                          {formatCurrency(liquido)}
+                          {formatCurrency(liquidoNF)}
                         </p>
                       </div>
                     </div>
                     <div className="mt-3 pt-3 border-t text-[11px]" style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}>
-                      <strong style={{ color: 'var(--text-2)' }}>NF integral:</strong> {formatCurrency(totalMedicao)}.
-                      A retenção será descontada pelo WAVE no pagamento, conforme cláusulas contratuais.
-                      Cálculo prévio — congelado se a medição for aprovada.
+                      <strong style={{ color: 'var(--text-2)' }}>NF integral (serviço):</strong> {formatCurrency(totalServico)}.
+                      Retenção descontada no pagamento pelo WAVE, conforme cláusulas contratuais.
+                      Andamento físico desta medição: <strong>{andamento.toFixed(2).replace('.', ',')}%</strong> do contrato.
+                      Cálculo prévio — valores congelados na aprovação.
                     </div>
                   </CardContent>
                 </Card>
