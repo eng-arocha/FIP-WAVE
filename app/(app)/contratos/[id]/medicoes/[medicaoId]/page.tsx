@@ -303,11 +303,11 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                       Reenviar email de liberação
                     </Button>
                   )}
-                  {/* Boletim INFORMACON — disponível em qualquer status (útil em rascunho pra prévia) */}
+                  {/* Boletim INFORMAKON — disponível em qualquer status (útil em rascunho pra prévia) */}
                   <Link href={`/contratos/${contratoId}/medicoes/${medicaoId}/informacon`}>
                     <Button variant="ghost" size="sm" className="border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10">
                       <FileText className="w-4 h-4" />
-                      Boletim INFORMACON
+                      Boletim INFORMAKON
                     </Button>
                   </Link>
                 </div>

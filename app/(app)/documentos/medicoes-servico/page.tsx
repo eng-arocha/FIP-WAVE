@@ -189,10 +189,10 @@ export default function MedicoesServicoPage() {
                         </p>
                       </div>
                     </Link>
-                    {/* Boletim INFORMACON — acesso rápido em qualquer status */}
+                    {/* Boletim INFORMAKON — acesso rápido em qualquer status */}
                     <Link
                       href={`/contratos/${m.contrato?.id}/medicoes/${m.id}/informacon`}
-                      title="Abrir Boletim INFORMACON (prévia se não-aprovado)"
+                      title="Abrir Boletim INFORMAKON (prévia se não-aprovado)"
                       onClick={e => e.stopPropagation()}
                     >
                       <button className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10 transition-colors">

@@ -37,7 +37,9 @@ interface Linha {
   material_retido: number
   fip_faturar: number
   wave_servico: number
-  total_informakon: number
+  valor_total_medido: number
+  dados_informakon: number
+  total_informakon: number // alias (= dados_informakon)
   pct_informakon: number
   base_retencao: number
   retencao: number
@@ -66,6 +68,8 @@ interface Resp {
     material_retido: number
     fip_faturar: number
     wave_servico: number
+    valor_total_medido: number
+    dados_informakon: number
     total_informakon: number
     base_retencao: number
     retencao: number
@@ -106,7 +110,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
     const headers = [
       'Código', 'Descrição',
       'Mat. Medido', 'NF Terceiro', 'Saldo Aprov.', 'NF Desc.', 'Gap', 'Retido', 'FIP Fat-Dir',
-      'Wave (Serv.)', 'Total Informakon', '% Informakon', 'Retenção',
+      'Wave (Serv.)', '% Serv. Med.', 'Valor Total Medido', 'Dados Informakon', '% Informakon', 'Retenção',
     ]
     const rows = linhasExibidas.map(l => [
       l.codigo, l.descricao,
@@ -118,7 +122,9 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
       l.material_retido.toFixed(2).replace('.', ','),
       l.fip_faturar.toFixed(2).replace('.', ','),
       l.wave_servico.toFixed(2).replace('.', ','),
-      l.total_informakon.toFixed(2).replace('.', ','),
+      pctFmt(l.pct_medido),
+      l.valor_total_medido.toFixed(2).replace('.', ','),
+      l.dados_informakon.toFixed(2).replace('.', ','),
       pctFmt(l.pct_informakon, 4),
       l.retencao.toFixed(2).replace('.', ','),
     ])
@@ -136,7 +142,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
   if (loading) {
     return (
       <div className="flex-1" style={{ background: 'var(--background)' }}>
-        <Topbar title="Boletim INFORMACON" />
+        <Topbar title="Boletim INFORMAKON" />
         <div className="p-6 flex items-center justify-center" style={{ color: 'var(--text-3)' }}>
           <Loader2 className="w-5 h-5 animate-spin mr-2" /> Carregando...
         </div>
@@ -147,7 +153,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
   if (!data) {
     return (
       <div className="flex-1" style={{ background: 'var(--background)' }}>
-        <Topbar title="Boletim INFORMACON" />
+        <Topbar title="Boletim INFORMAKON" />
         <div className="p-6 text-center" style={{ color: 'var(--text-3)' }}>Medição não encontrada</div>
       </div>
     )
@@ -212,7 +218,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
 
   return (
     <div className="flex-1" style={{ background: 'var(--background)' }}>
-      <Topbar title={`Boletim INFORMACON · ${tag}`} subtitle={`Período ${data.medicao.periodo_referencia} · Contrato ${data.medicao.contrato.numero}`} />
+      <Topbar title={`Boletim INFORMAKON · ${tag}`} subtitle={`Período ${data.medicao.periodo_referencia} · Contrato ${data.medicao.contrato.numero}`} />
 
       <div className="p-4 sm:p-6 space-y-4">
         {/* Cabeçalho com voltar e ações */}
@@ -251,7 +257,9 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   { header: 'Retido', get: (l: any) => Number(l.material_retido) },
                   { header: 'FIP Fat-Dir', get: (l: any) => Number(l.fip_faturar) },
                   { header: 'Wave (Serv.)', get: (l: any) => Number(l.wave_servico) },
-                  { header: 'Total Informakon', get: (l: any) => Number(l.total_informakon) },
+                  { header: '% Serv. Med.', get: (l: any) => Number(l.pct_medido) },
+                  { header: 'Valor Total Medido', get: (l: any) => Number(l.valor_total_medido) },
+                  { header: 'Dados Informakon', get: (l: any) => Number(l.dados_informakon) },
                   { header: '% Informakon', get: (l: any) => Number(l.pct_informakon) },
                   { header: 'Retenção', get: (l: any) => Number(l.retencao) },
                 ],
@@ -306,7 +314,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
           <Card label="FIP (Material)" value={formatCurrency(data.totais.fip_faturar)} accent="#3B82F6" hint="Fat-direto FIP a criar" />
           <Card label="NF terceiro descontada" value={formatCurrency(data.totais.nf_descontavel)} accent="var(--text-2)" hint="Já lançadas no item" />
           <Card label="Material retido" value={formatCurrency(data.totais.material_retido)} accent="#F59E0B" hint="Aguarda NF terceiro" />
-          <Card label="Total Informakon" value={formatCurrency(data.totais.total_informakon)} accent="#10B981" hint={`Retenção ${pctFmt(data.medicao.contrato.percentual_retencao)}: ${formatCurrency(data.totais.retencao)}`} />
+          <Card label="Dados Informakon" value={formatCurrency(data.totais.dados_informakon)} accent="#10B981" hint={`Wave + NF Desc. (sem FIP) · Retenção ${pctFmt(data.medicao.contrato.percentual_retencao)} sobre Valor Total Medido: ${formatCurrency(data.totais.retencao)}`} />
         </div>
 
         {/* Tabela */}
@@ -329,7 +337,9 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(245,158,11,0.05)' }}>Retido</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.05)' }}>FIP Fat-Dir</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>Wave (Serv.)</th>
-                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(16,185,129,0.05)' }}>Total Informakon</th>
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>% Serv. Med.</th>
+                  <th style={{ ...th(), textAlign: 'right' }}>Valor Total Medido</th>
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(16,185,129,0.05)' }}>Dados Informakon</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(16,185,129,0.05)' }}>% Informakon</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(99,102,241,0.05)' }}>Retenção</th>
                 </tr>
@@ -337,7 +347,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
               <tbody>
                 {linhasExibidas.length === 0 ? (
                   <tr>
-                    <td colSpan={13} style={{ padding: 36, textAlign: 'center', color: 'var(--text-3)' }}>
+                    <td colSpan={15} style={{ padding: 36, textAlign: 'center', color: 'var(--text-3)' }}>
                       <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
                       Nenhum item com quantidade medida nesta medição.
                       {!mostrarTodos && (
@@ -360,7 +370,9 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                     <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(245,158,11,0.04)', color: l.material_retido > 0 ? '#F59E0B' : 'var(--text-3)' }}>{formatCurrency(l.material_retido)}</td>
                     <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(59,130,246,0.04)', color: l.fip_faturar > 0 ? '#3B82F6' : 'var(--text-3)' }}>{formatCurrency(l.fip_faturar)}</td>
                     <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(15,118,110,0.04)', color: '#0F766E' }}>{formatCurrency(l.wave_servico)}</td>
-                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', background: 'rgba(16,185,129,0.06)', color: '#10B981' }}>{formatCurrency(l.total_informakon)}</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)', color: '#0F766E' }}>{pctFmt(l.pct_medido)}</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(l.valor_total_medido)}</td>
+                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', background: 'rgba(16,185,129,0.06)', color: '#10B981' }}>{formatCurrency(l.dados_informakon)}</td>
                     <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(16,185,129,0.06)' }}>{pctFmt(l.pct_informakon, 4)}</td>
                     <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', background: 'rgba(99,102,241,0.06)', color: '#818CF8' }}>{formatCurrency(l.retencao)}</td>
                   </tr>
@@ -378,7 +390,9 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(245,158,11,0.06)', color: '#F59E0B' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.material_retido, 0))}</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(59,130,246,0.06)', color: '#3B82F6' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.fip_faturar, 0))}</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)', color: '#0F766E' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.wave_servico, 0))}</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(16,185,129,0.10)', color: '#10B981' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.total_informakon, 0))}</td>
+                    <td style={{ ...td(), background: 'rgba(15,118,110,0.06)' }}></td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.valor_total_medido, 0))}</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(16,185,129,0.10)', color: '#10B981' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.dados_informakon, 0))}</td>
                     <td style={{ ...td(), background: 'rgba(16,185,129,0.10)' }}></td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(99,102,241,0.10)', color: '#818CF8' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.retencao, 0))}</td>
                   </tr>
@@ -390,8 +404,8 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
 
         <p className="text-[11px] print:hidden" style={{ color: 'var(--text-3)' }}>
           <TrendingUp className="inline w-3 h-3 mr-1" />
-          No Informakon, lance por item o <strong>% Informakon</strong> (já recalculado pra refletir
-          NFs descontadas e material retido) — não o % físico medido. Retenção {pctFmt(data.medicao.contrato.percentual_retencao)} aplicada sobre <em>Total Informakon</em> (Wave + NF Desc. + FIP).
+          No Informakon, lance por item o <strong>% Informakon</strong> — Dados Informakon = Wave + NF Desc.
+          (FIP Fat-Dir <em>não entra</em>: a NF ainda não existe). Retenção {pctFmt(data.medicao.contrato.percentual_retencao)} aplicada sobre <em>Valor Total Medido</em> (% medido × valor global do item) e abatida da NF da Wave.
           Clique em <strong>Critério</strong> pra ver a regra completa.
         </p>
       </div>
@@ -440,11 +454,13 @@ function HelpModal({ onClose, pctRetencao }: { onClose: () => void; pctRetencao:
               <li><strong>NF Desc.</strong> = MIN(Mat. Medido, NF Terceiro). É o quanto desconta no Informakon.</li>
               <li><strong>Gap</strong> = Mat. Medido − NF Desc. (parte do material não coberta por NF).</li>
               <li><strong>Retido</strong> = MIN(Gap, Saldo Aprov.). Não pago nesta medição — aguarda chegar NF terceiro.</li>
-              <li><strong>FIP Fat-Dir</strong> = Gap − Retido. Solicitação de fat-direto criada automaticamente em nome da FIP (status: aprovado).</li>
+              <li><strong>FIP Fat-Dir</strong> = Gap − Retido. Solicitação de fat-direto criada automaticamente em nome da FIP (status: aprovado). <em>Ainda assim NÃO entra no Dados Informakon</em> — a NF ainda não foi emitida.</li>
               <li><strong>Wave (Serv.)</strong> = qtd × <code>valor_servico_unit</code>. NF da Wave a emitir.</li>
-              <li><strong>Total Informakon</strong> = Wave + NF Desc. + FIP Fat-Dir. <em>NÃO inclui Retido</em>.</li>
-              <li><strong>% Informakon</strong> = Total Informakon ÷ valor global do item × 100. <strong>Recalculado</strong> — use este, não o % físico.</li>
-              <li><strong>Retenção</strong> = {pctFmt(pctRetencao)} × Total Informakon.</li>
+              <li><strong>% Serv. Med.</strong> = qtd medida ÷ qtd contratada × 100 (físico).</li>
+              <li><strong>Valor Total Medido</strong> = Mat. Medido + Serv. Medido (físico, sem ajuste).</li>
+              <li><strong>Dados Informakon</strong> = Wave + NF Desc. <em>FIP Fat-Dir NÃO entra</em> (NF ainda não existe; só desconta o que já foi efetivamente lançado).</li>
+              <li><strong>% Informakon</strong> = Dados Informakon ÷ valor global do item × 100. <strong>Use este pra lançar</strong>, não o % físico.</li>
+              <li><strong>Retenção</strong> = % medido × valor global do item × {pctFmt(pctRetencao)} (= Valor Total Medido × {pctFmt(pctRetencao)}). É abatida da NF da Wave (serviço).</li>
             </ul>
           </section>
 
@@ -460,9 +476,9 @@ function HelpModal({ onClose, pctRetencao }: { onClose: () => void; pctRetencao:
                     <th style={{ ...th(), textAlign: 'right' }}>NF Desc.</th>
                     <th style={{ ...th(), textAlign: 'right' }}>Gap</th>
                     <th style={{ ...th(), textAlign: 'right' }}>Retido</th>
-                    <th style={{ ...th(), textAlign: 'right' }}>FIP</th>
+                    <th style={{ ...th(), textAlign: 'right' }}>FIP (a criar)</th>
                     <th style={{ ...th(), textAlign: 'right' }}>Wave</th>
-                    <th style={{ ...th(), textAlign: 'right' }}>Total</th>
+                    <th style={{ ...th(), textAlign: 'right' }}>Dados Inf.</th>
                     <th style={{ ...th(), textAlign: 'right' }}>% Inf.</th>
                   </tr>
                 </thead>
@@ -476,8 +492,8 @@ function HelpModal({ onClose, pctRetencao }: { onClose: () => void; pctRetencao:
                     <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>0</td>
                     <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#3B82F6' }}>7.687</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', color: '#0F766E' }}>7.687</td>
-                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#10B981' }}>15.373,89</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>50,00%</td>
+                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#10B981' }}>7.687</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>25,00%</td>
                   </tr>
                   <tr style={{ borderTop: '1px solid var(--border)' }}>
                     <td style={td()}><strong>B</strong> NF cobre tudo</td>
@@ -512,12 +528,16 @@ function HelpModal({ onClose, pctRetencao }: { onClose: () => void; pctRetencao:
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', color: '#F59E0B' }}>1.000</td>
                     <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#3B82F6' }}>1.000</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', color: '#0F766E' }}>7.687</td>
-                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#10B981' }}>14.373,89</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>46,7479%</td>
+                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#10B981' }}>13.373,89</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>43,4955%</td>
                   </tr>
                 </tbody>
               </table>
             </div>
+          </section>
+
+          <section className="rounded-lg p-3" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.30)' }}>
+            <p className="text-[12px]"><strong style={{ color: '#10B981' }}>Por que C e D dão o mesmo Dados Informakon?</strong> Porque <em>FIP Fat-Dir não entra</em> — só desconta NF efetivamente lançada. A diferença entre C e D fica registrada nas colunas Retido (C: 2.000) e FIP Fat-Dir (D: 1.000 a criar). Quando a NF terceira do saldo aprovado chegar, vira NF Desc. nas próximas medições.</p>
           </section>
 
           <section className="rounded-lg p-3" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.30)' }}>

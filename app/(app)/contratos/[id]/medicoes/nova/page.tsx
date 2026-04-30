@@ -592,16 +592,16 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
               </div>
             </div>
 
-            {/* Link informativo: Boletim INFORMACON disponível após submeter */}
+            {/* Link informativo: Boletim INFORMAKON disponível após submeter */}
             <div className="rounded-lg px-4 py-3 flex items-start gap-2.5"
               style={{ background: 'rgba(99,102,241,0.10)', border: '1px solid rgba(99,102,241,0.35)' }}>
               <TrendingUp className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: '#818CF8' }} strokeWidth={2} />
               <div className="text-xs" style={{ color: 'var(--text-2)' }}>
                 <p className="font-semibold mb-0.5" style={{ color: '#818CF8' }}>
-                  Após submeter, o Boletim INFORMACON estará disponível
+                  Após submeter, o Boletim INFORMAKON estará disponível
                 </p>
                 <p>
-                  Página de planilha-resumo pra lançamento manual no INFORMACON com material/serviço
+                  Página de planilha-resumo pra lançamento manual no INFORMAKON com material/serviço
                   por subitem, percentual acumulado, retenção e botões de Copiar (TSV) / CSV / Imprimir.
                   Acesse pela detail page da medição ou em <strong>Documentos → Med. Serviços</strong>.
                 </p>

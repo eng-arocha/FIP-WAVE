@@ -6,7 +6,7 @@ import { isSchemaMissingError } from '@/lib/db/resilient'
 /**
  * GET /api/contratos/[id]/medicoes/[medicaoId]/informacon
  *
- * Retorna o "boletim INFORMACON" — uma planilha-resumo da medição com,
+ * Retorna o "boletim INFORMAKON" — uma planilha-resumo da medição com,
  * por subitem (detalhamento):
  *   - código, descrição, local, unidade
  *   - quantidade contratada, quantidade medida nesta, % desta medição
@@ -200,11 +200,17 @@ export async function GET(
         const fipFaturar     = Math.max(0, gapMaterial - materialRetido)
 
         const waveServico    = servMedido
-        const totalInformakon = waveServico + nfDescontavel + fipFaturar
+        // Dados Informakon: SOMENTE o que pode ser efetivamente descontado AGORA
+        // (Wave + NF terceiro já lançada). FIP Fat-Dir NÃO entra — ainda não há NF.
+        const dadosInformakon = waveServico + nfDescontavel
         const valorGlobalItem = qtdContr * valorUnit
-        const pctInformakon  = valorGlobalItem > 0 ? (totalInformakon / valorGlobalItem) * 100 : 0
-        const retencao5pct   = totalInformakon * (pctRetencao / 100)
-        const baseRet        = totalInformakon
+        const pctInformakon  = valorGlobalItem > 0 ? (dadosInformakon / valorGlobalItem) * 100 : 0
+        // Valor total medido (físico): mat + serv (sem desconto, só medido)
+        const valorTotalMedido = matMedido + servMedido
+        // Retenção: % medido × valor global × 5% = valor_total_medido × 5%
+        // É abatida da NF da Wave (serviço)
+        const retencao5pct   = valorTotalMedido * (pctRetencao / 100)
+        const baseRet        = valorTotalMedido
 
         return {
           medicao_item_id: it.id,
@@ -234,7 +240,10 @@ export async function GET(
           material_retido: materialRetido,
           fip_faturar: fipFaturar,
           wave_servico: waveServico,
-          total_informakon: totalInformakon,
+          valor_total_medido: valorTotalMedido,
+          dados_informakon: dadosInformakon,
+          // alias mantido pra compat: total_informakon = dados_informakon
+          total_informakon: dadosInformakon,
           pct_informakon: pctInformakon,
           base_retencao: baseRet,
           retencao: retencao5pct,
@@ -257,6 +266,8 @@ export async function GET(
       material_retido: acc.material_retido + l.material_retido,
       fip_faturar:     acc.fip_faturar     + l.fip_faturar,
       wave_servico:    acc.wave_servico    + l.wave_servico,
+      valor_total_medido: acc.valor_total_medido + l.valor_total_medido,
+      dados_informakon: acc.dados_informakon + l.dados_informakon,
       total_informakon: acc.total_informakon + l.total_informakon,
       base_retencao:   acc.base_retencao   + l.base_retencao,
       retencao:        acc.retencao        + l.retencao,
@@ -265,7 +276,8 @@ export async function GET(
     }), {
       material_medido: 0, servico_medido: 0,
       nf_terceiro: 0, saldo_aprovado: 0, nf_descontavel: 0, gap_material: 0,
-      material_retido: 0, fip_faturar: 0, wave_servico: 0, total_informakon: 0,
+      material_retido: 0, fip_faturar: 0, wave_servico: 0,
+      valor_total_medido: 0, dados_informakon: 0, total_informakon: 0,
       base_retencao: 0, retencao: 0,
       material_acumulado: 0, servico_acumulado: 0,
     })
