@@ -42,6 +42,18 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
   const { perfilAtual } = usePermissoes()
   const isAdmin = perfilAtual === 'admin'
 
+  // Totais financeiros (mat, serv, retenção) puxados do endpoint /informacon
+  // — fonte da verdade pra evitar inconsistência com o Boletim. Cai pra
+  // cálculo on-the-fly se a request falhar.
+  const [totaisInformacon, setTotaisInformacon] = useState<{
+    material_medido: number
+    servico_medido: number
+    base_retencao: number
+    retencao: number
+    pct_retencao: number
+    valor_total_contrato: number
+  } | null>(null)
+
   async function fetchMedicao() {
     const res = await fetch(`/api/contratos/${contratoId}/medicoes/${medicaoId}`)
     if (res.ok) {
@@ -51,8 +63,27 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
     }
   }
 
+  // Carrega totais financeiros via /informacon (endpoint que calcula mat e serv
+  // separadamente por item — fonte da verdade pra evitar inconsistência).
+  async function fetchTotaisInformacon() {
+    try {
+      const res = await fetch(`/api/contratos/${contratoId}/medicoes/${medicaoId}/informacon`)
+      if (!res.ok) return
+      const data = await res.json()
+      setTotaisInformacon({
+        material_medido: Number(data.totais?.material_medido || 0),
+        servico_medido:  Number(data.totais?.servico_medido  || 0),
+        base_retencao:   Number(data.totais?.base_retencao   || 0),
+        retencao:        Number(data.totais?.retencao        || 0),
+        pct_retencao:    Number(data.medicao?.contrato?.percentual_retencao ?? 5),
+        valor_total_contrato: Number(data.medicao?.contrato?.valor_total || 0),
+      })
+    } catch {/* fallback pro cálculo client-side existente */}
+  }
+
   useEffect(() => {
     fetchMedicao()
+    fetchTotaisInformacon()
     // Load historical measurements for anomaly detection
     fetch(`/api/contratos/${contratoId}/medicoes`)
       .then(r => r.ok ? r.json() : [])
@@ -221,26 +252,28 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                       </Badge>
                     </div>
                     {(() => {
-                      // Calcula serviço puro (vai pra NF) a partir dos itens
+                      // Fonte da verdade: totaisInformacon (calculado server-side
+                      // pelo endpoint /informacon). Fallback: itens da medição.
                       const valorTotal = Number(medicao.valor_total || 0)
-                      let materialMed = 0
-                      let servicoMed = 0
-                      for (const it of (medicao.medicao_itens || []) as any[]) {
-                        const qtd = Number(it.quantidade_medida || 0)
-                        materialMed += qtd * Number(it.detalhamento?.valor_material_unit || 0)
-                        servicoMed  += qtd * Number(it.detalhamento?.valor_servico_unit || 0)
-                      }
-                      // Sanity: se sem mat/serv unit, fallback pro total
-                      if (materialMed === 0 && servicoMed === 0 && valorTotal > 0) {
-                        servicoMed = valorTotal
+                      let materialMed = totaisInformacon?.material_medido ?? 0
+                      let servicoMed  = totaisInformacon?.servico_medido  ?? 0
+                      if (!totaisInformacon) {
+                        for (const it of (medicao.medicao_itens || []) as any[]) {
+                          const qtd = Number(it.quantidade_medida || 0)
+                          materialMed += qtd * Number(it.detalhamento?.valor_material_unit || 0)
+                          servicoMed  += qtd * Number(it.detalhamento?.valor_servico_unit || 0)
+                        }
+                        if (materialMed === 0 && servicoMed === 0 && valorTotal > 0) {
+                          servicoMed = valorTotal
+                        }
                       }
                       return (
                         <div className="space-y-1">
-                          <div className="flex items-baseline gap-2">
+                          <div className="flex items-baseline gap-2 flex-wrap">
                             <span className="text-[11px] text-[var(--text-3)] uppercase font-semibold tracking-wide">Serviço (NF a emitir)</span>
                             <span className="text-2xl font-bold" style={{ color: '#0F766E' }}>{formatCurrency(servicoMed)}</span>
                           </div>
-                          <div className="flex items-baseline gap-3 text-[11px]" style={{ color: 'var(--text-3)' }}>
+                          <div className="flex items-baseline gap-3 text-[11px] flex-wrap" style={{ color: 'var(--text-3)' }}>
                             <span>Material: <strong style={{ color: 'var(--text-2)' }}>{formatCurrency(materialMed)}</strong></span>
                             <span>·</span>
                             <span>Total executado: <strong style={{ color: 'var(--text-2)' }}>{formatCurrency(valorTotal)}</strong></span>
@@ -323,38 +356,39 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                 — visível pra fornecedor/solicitante saber o impacto da retenção desde o início. */}
             {(() => {
               const aprovado = status === 'aprovado'
-              const valorTotalMedicao = Number(medicao.valor_total ?? 0)  // mat + serv
-              const valorContrato = Number(medicao.contrato?.valor_total ?? 0)
-              const pctRetencao = Number(medicao.contrato?.percentual_retencao ?? 5)
+              const valorTotalMedicao = Number(medicao.valor_total ?? 0)
+              const valorContrato = totaisInformacon?.valor_total_contrato
+                ?? Number(medicao.contrato?.valor_total ?? 0)
+              const pctRetencao = totaisInformacon?.pct_retencao
+                ?? Number(medicao.contrato?.percentual_retencao ?? 5)
 
-              // Calcula MATERIAL e SERVIÇO separadamente a partir dos itens
-              // (qtde × valor_material_unit ou valor_servico_unit do detalhamento).
-              // Em medições aprovadas, prefere snapshot persistido em medicao.
-              let materialCorrespondente = 0
-              let servicoMedido = 0
-              if (aprovado && Number(medicao.valor_material_correspondente ?? 0) > 0) {
-                materialCorrespondente = Number(medicao.valor_material_correspondente)
-                // serviço = total − material (já que valor_total é mat + serv)
-                servicoMedido = Math.max(0, valorTotalMedicao - materialCorrespondente)
-              } else {
-                for (const it of (medicao.medicao_itens || []) as any[]) {
-                  const qtd = Number(it.quantidade_medida || 0)
-                  const matUnit = Number(it.detalhamento?.valor_material_unit || 0)
-                  const servUnit = Number(it.detalhamento?.valor_servico_unit || 0)
-                  materialCorrespondente += qtd * matUnit
-                  servicoMedido += qtd * servUnit
-                }
-                // Sanity: se mat/serv unit não estavam disponíveis (ambos zero),
-                // assume valor_total = serviço (legado). Evita zerar tudo.
-                if (materialCorrespondente === 0 && servicoMedido === 0 && valorTotalMedicao > 0) {
-                  servicoMedido = valorTotalMedicao
+              // Fonte da verdade: totaisInformacon (calculado server-side).
+              // Fallback: cálculo on-the-fly pelos itens.
+              let materialCorrespondente = totaisInformacon?.material_medido ?? 0
+              let servicoMedido          = totaisInformacon?.servico_medido  ?? 0
+
+              if (!totaisInformacon) {
+                if (aprovado && Number(medicao.valor_material_correspondente ?? 0) > 0) {
+                  materialCorrespondente = Number(medicao.valor_material_correspondente)
+                  servicoMedido = Math.max(0, valorTotalMedicao - materialCorrespondente)
+                } else {
+                  for (const it of (medicao.medicao_itens || []) as any[]) {
+                    const qtd = Number(it.quantidade_medida || 0)
+                    materialCorrespondente += qtd * Number(it.detalhamento?.valor_material_unit || 0)
+                    servicoMedido          += qtd * Number(it.detalhamento?.valor_servico_unit  || 0)
+                  }
+                  if (materialCorrespondente === 0 && servicoMedido === 0 && valorTotalMedicao > 0) {
+                    servicoMedido = valorTotalMedicao
+                  }
                 }
               }
 
-              const baseRetencao = materialCorrespondente + servicoMedido
+              const baseRetencao = totaisInformacon?.base_retencao
+                ?? (materialCorrespondente + servicoMedido)
+              const retencaoServer = totaisInformacon?.retencao
               const retencao = aprovado
-                ? Number(medicao.valor_retencao_garantia ?? (baseRetencao * pctRetencao / 100))
-                : baseRetencao * pctRetencao / 100
+                ? Number(medicao.valor_retencao_garantia ?? retencaoServer ?? (baseRetencao * pctRetencao / 100))
+                : (retencaoServer ?? baseRetencao * pctRetencao / 100)
               const liquidoNF = servicoMedido - retencao
               const andamento = valorContrato > 0 ? (baseRetencao / valorContrato) * 100 : 0
 
@@ -480,11 +514,15 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                   </tbody>
                   <tfoot>
                     {(() => {
-                      let mat = 0, serv = 0
-                      for (const it of (medicao.medicao_itens || []) as any[]) {
-                        const qtd = Number(it.quantidade_medida || 0)
-                        mat += qtd * Number(it.detalhamento?.valor_material_unit || 0)
-                        serv += qtd * Number(it.detalhamento?.valor_servico_unit || 0)
+                      // Fonte da verdade: totaisInformacon. Fallback: cálculo on-the-fly.
+                      let mat = totaisInformacon?.material_medido ?? 0
+                      let serv = totaisInformacon?.servico_medido ?? 0
+                      if (!totaisInformacon) {
+                        for (const it of (medicao.medicao_itens || []) as any[]) {
+                          const qtd = Number(it.quantidade_medida || 0)
+                          mat += qtd * Number(it.detalhamento?.valor_material_unit || 0)
+                          serv += qtd * Number(it.detalhamento?.valor_servico_unit || 0)
+                        }
                       }
                       const tot = Number(medicao.valor_total || 0)
                       if (mat === 0 && serv === 0 && tot > 0) serv = tot
