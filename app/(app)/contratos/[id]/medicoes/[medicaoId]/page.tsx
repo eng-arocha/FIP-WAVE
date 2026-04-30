@@ -243,6 +243,13 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                       Reenviar email de liberação
                     </Button>
                   )}
+                  {/* Boletim INFORMACON — disponível em qualquer status (útil em rascunho pra prévia) */}
+                  <Link href={`/contratos/${contratoId}/medicoes/${medicaoId}/informacon`}>
+                    <Button variant="ghost" size="sm" className="border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10">
+                      <FileText className="w-4 h-4" />
+                      Boletim INFORMACON
+                    </Button>
+                  </Link>
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
@@ -289,25 +296,34 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                 — visível pra fornecedor/solicitante saber o impacto da retenção desde o início. */}
             {(() => {
               const aprovado = status === 'aprovado'
-              // Estimativa pré-aprovação: calcula on-the-fly com dados do contrato
-              const valorMedicao = Number(medicao.valor_total ?? 0)
-              const valorServicos = Number(medicao.contrato?.valor_servicos ?? 0)
+              const valorServicoMedido = Number(medicao.valor_total ?? 0)
               const valorContrato = Number(medicao.contrato?.valor_total ?? 0)
               const pctRetencao = Number(medicao.contrato?.percentual_retencao ?? 5)
-              const andamentoCalc = valorServicos > 0 ? (valorMedicao / valorServicos) * 100 : 0
-              const propCalc = valorServicos > 0 ? (valorMedicao / valorServicos) * valorContrato : 0
-              const retencaoCalc = propCalc * (pctRetencao / 100)
-              // Em aprovado, usa snapshot. Em outros status, usa cálculo on-the-fly.
-              const andamento = aprovado ? Number(medicao.andamento_fisico_pct ?? andamentoCalc) : andamentoCalc
-              const proporcional = aprovado ? Number(medicao.valor_financeiro_proporcional ?? propCalc) : propCalc
-              const retencao = aprovado ? Number(medicao.valor_retencao_garantia ?? retencaoCalc) : retencaoCalc
 
-              if (retencao <= 0 || valorServicos <= 0) return null
+              // Calcula material correspondente on-the-fly a partir dos itens
+              // (qtde × detalhamento.valor_material_unit). Em medições já aprovadas
+              // usa snapshot persistido em medicao.valor_material_correspondente.
+              let materialCorrespondente = Number(medicao.valor_material_correspondente ?? 0)
+              if (!materialCorrespondente) {
+                materialCorrespondente = (medicao.medicao_itens || []).reduce((s: number, it: any) => {
+                  const qtd = Number(it.quantidade_medida || 0)
+                  const matUnit = Number(it.detalhamento?.valor_material_unit || 0)
+                  return s + qtd * matUnit
+                }, 0)
+              }
+
+              const baseRetencao = materialCorrespondente + valorServicoMedido
+              const retencao = aprovado
+                ? Number(medicao.valor_retencao_garantia ?? (baseRetencao * pctRetencao / 100))
+                : baseRetencao * pctRetencao / 100
+              const andamento = valorContrato > 0 ? (baseRetencao / valorContrato) * 100 : 0
+
+              if (retencao <= 0 || baseRetencao <= 0) return null
 
               const titulo = aprovado ? 'Retenção contratual desta medição' : 'Estimativa de retenção contratual'
               const aviso = aprovado
-                ? 'NF integral será emitida. A retenção é descontada pelo WAVE no pagamento, conforme cláusulas contratuais.'
-                : 'Cálculo prévio com base no valor atual da medição. Se aprovada, a retenção será congelada (snapshot) com estes valores.'
+                ? 'NF integral (serviço) será emitida. A retenção é descontada pelo WAVE no pagamento, conforme cláusulas contratuais.'
+                : 'Cálculo prévio. Se aprovada, valores são congelados como snapshot.'
 
               return (
                 <Card style={{ background: 'var(--surface-1)', border: '1px solid rgba(99,102,241,0.30)' }}>
@@ -323,28 +339,41 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 text-xs">
                       <div>
-                        <p className="text-[var(--text-3)] mb-0.5">Andamento físico</p>
+                        <p className="text-[var(--text-3)] mb-0.5">Material correspondente</p>
                         <p className="font-bold tabular-nums" style={{ color: 'var(--text-1)' }}>
-                          {andamento.toFixed(2).replace('.', ',')}%
+                          {formatCurrency(materialCorrespondente)}
                         </p>
                       </div>
                       <div>
-                        <p className="text-[var(--text-3)] mb-0.5">Retenção ({pctRetencao.toFixed(2).replace('.', ',')}%)</p>
+                        <p className="text-[var(--text-3)] mb-0.5">Serviço medido</p>
+                        <p className="font-bold tabular-nums" style={{ color: 'var(--text-1)' }}>
+                          {formatCurrency(valorServicoMedido)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[var(--text-3)] mb-0.5">Base ({pctRetencao.toFixed(2).replace('.', ',')}%)</p>
+                        <p className="font-bold tabular-nums" style={{ color: 'var(--text-2)' }}>
+                          {formatCurrency(baseRetencao)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[var(--text-3)] mb-0.5">Retenção</p>
                         <p className="font-bold tabular-nums" style={{ color: '#818CF8' }}>
                           {formatCurrency(retencao)}
                         </p>
                       </div>
                       <div>
-                        <p className="text-[var(--text-3)] mb-0.5">Líquido a pagar</p>
+                        <p className="text-[var(--text-3)] mb-0.5">Líquido NF</p>
                         <p className="font-bold tabular-nums" style={{ color: '#10B981' }}>
-                          {formatCurrency(valorMedicao - retencao)}
+                          {formatCurrency(valorServicoMedido - retencao)}
                         </p>
                       </div>
                     </div>
                     <div className="mt-3 pt-3 border-t text-[11px]" style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}>
-                      <strong style={{ color: 'var(--text-2)' }}>NF integral:</strong> {formatCurrency(valorMedicao)}. {aviso}
+                      <strong style={{ color: 'var(--text-2)' }}>Andamento físico:</strong> {andamento.toFixed(2).replace('.', ',')}% do contrato.
+                      <strong style={{ color: 'var(--text-2)', marginLeft: 8 }}>NF integral (serviço):</strong> {formatCurrency(valorServicoMedido)}. {aviso}
                     </div>
                   </CardContent>
                 </Card>

@@ -27,7 +27,7 @@ export async function GET(req: Request) {
       .from('medicoes')
       .select(`
         id, numero, periodo_referencia, data_aprovacao, valor_total,
-        andamento_fisico_pct, valor_financeiro_proporcional, valor_retencao_garantia,
+        andamento_fisico_pct, valor_material_correspondente, valor_retencao_garantia,
         contrato:contratos(id, numero, descricao, valor_total, valor_servicos, percentual_retencao),
         aprovacoes:aprovacoes(aprovador_nome, acao)
       `)
@@ -46,7 +46,9 @@ export async function GET(req: Request) {
       .map((m: any) => {
         // Aprovador: pega 1ª aprovação registrada (acao='aprovado')
         const ap = (m.aprovacoes || []).find((a: any) => a.acao === 'aprovado')
-        const valor = Number(m.valor_total || 0)
+        const valorTotalMedido = Number(m.valor_total || 0)             // mat + serv
+        const matCorrespondente = Number(m.valor_material_correspondente || 0)
+        const servicoMedido = Math.max(0, valorTotalMedido - matCorrespondente)
         const retencao = Number(m.valor_retencao_garantia || 0)
         return {
           medicao_id: m.id,
@@ -60,11 +62,13 @@ export async function GET(req: Request) {
             valor_servicos: Number(m.contrato?.valor_servicos || 0),
             percentual_retencao: Number(m.contrato?.percentual_retencao ?? 5),
           },
-          valor_medido: valor,
+          valor_medido: valorTotalMedido,
+          material_correspondente: matCorrespondente,
+          servico_medido: servicoMedido,
           andamento_fisico_pct: Number(m.andamento_fisico_pct || 0),
-          valor_financeiro_proporcional: Number(m.valor_financeiro_proporcional || 0),
           valor_retencao: retencao,
-          liquido_a_pagar: valor - retencao,
+          // Líquido NF = serviço medido − retenção (a NF é só do serviço)
+          liquido_a_pagar: servicoMedido - retencao,
           aprovador_nome: ap?.aprovador_nome ?? null,
         }
       })
