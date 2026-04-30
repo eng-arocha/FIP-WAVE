@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
+import { isSchemaMissingError } from '@/lib/db/resilient'
 
 /**
  * GET /api/contratos/[id]/medicoes/[medicaoId]/informacon
@@ -25,50 +26,107 @@ export async function GET(
     const { id: contratoId, medicaoId } = await params
     const admin = createAdminClient()
 
-    // Carrega medição + itens + contrato
+    // Carrega medição em 3 etapas separadas pra ser resiliente a colunas
+    // ausentes no schema cache (migrations 011/051 podem estar pendentes)
+    // — em vez de uma query monolítica que falha inteira, monta progressivamente.
+
+    // 1) Medição (campos básicos)
     const { data: medicao, error: medErr } = await admin
       .from('medicoes')
-      .select(`
-        id, numero, periodo_referencia, status, data_aprovacao, data_submissao, valor_total,
-        contrato:contratos(id, numero, descricao, valor_total, valor_servicos, percentual_retencao),
-        medicao_itens (
-          id, quantidade_medida, valor_unitario,
+      .select('id, numero, periodo_referencia, status, data_aprovacao, data_submissao, valor_total, contrato_id')
+      .eq('id', medicaoId)
+      .single()
+    if (medErr) {
+      // medição realmente não encontrada
+      return NextResponse.json({ error: 'Medição não encontrada', detail: medErr.message }, { status: 404 })
+    }
+    if (!medicao) return NextResponse.json({ error: 'Medição não encontrada' }, { status: 404 })
+
+    // 2) Contrato (fallback se percentual_retencao não está no schema cache)
+    let contrato: any = null
+    {
+      const tryFull = await admin
+        .from('contratos')
+        .select('id, numero, descricao, valor_total, valor_servicos, percentual_retencao')
+        .eq('id', (medicao as any).contrato_id)
+        .single()
+      if (!tryFull.error) {
+        contrato = tryFull.data
+      } else if (isSchemaMissingError(tryFull.error, ['percentual_retencao'])) {
+        const fallback = await admin
+          .from('contratos')
+          .select('id, numero, descricao, valor_total, valor_servicos')
+          .eq('id', (medicao as any).contrato_id)
+          .single()
+        if (fallback.error) throw fallback.error
+        contrato = fallback.data
+      } else {
+        throw tryFull.error
+      }
+    }
+
+    // 3) Itens da medição (com detalhamentos — fallback sem mat/serv unit)
+    let medicaoItens: any[] = []
+    {
+      const tryFull = await admin
+        .from('medicao_itens')
+        .select(`
+          id, quantidade_medida, valor_unitario, detalhamento_id,
           detalhamento:detalhamentos (
             id, codigo, descricao, unidade, quantidade_contratada,
             valor_unitario, valor_material_unit, valor_servico_unit
           )
-        )
-      `)
-      .eq('id', medicaoId)
-      .single()
-    if (medErr) throw medErr
-    if (!medicao) return NextResponse.json({ error: 'Medição não encontrada' }, { status: 404 })
-
-    // Acumulado de quantidade por detalhamento (todas medições aprovadas + esta)
-    // Útil pra lançar "% acumulado" no Informacon.
-    const { data: acumRows } = await admin
-      .from('medicao_itens')
-      .select(`
-        detalhamento_id, quantidade_medida,
-        medicao:medicoes!inner(id, status, contrato_id)
-      `)
-      .eq('medicao.contrato_id', contratoId)
-
-    // Soma quantidade acumulada por detalhamento (medições aprovadas OU a atual)
-    const acumulado: Record<string, number> = {}
-    for (const r of (acumRows || []) as any[]) {
-      const isAprovada = r.medicao?.status === 'aprovado'
-      const isEsta = r.medicao?.id === medicaoId
-      if (!isAprovada && !isEsta) continue
-      const detId = r.detalhamento_id
-      if (!detId) continue
-      acumulado[detId] = (acumulado[detId] || 0) + Number(r.quantidade_medida || 0)
+        `)
+        .eq('medicao_id', medicaoId)
+      if (!tryFull.error) {
+        medicaoItens = tryFull.data || []
+      } else if (isSchemaMissingError(tryFull.error, ['valor_material_unit', 'valor_servico_unit'])) {
+        const fallback = await admin
+          .from('medicao_itens')
+          .select(`
+            id, quantidade_medida, valor_unitario, detalhamento_id,
+            detalhamento:detalhamentos (
+              id, codigo, descricao, unidade, quantidade_contratada, valor_unitario
+            )
+          `)
+          .eq('medicao_id', medicaoId)
+        if (fallback.error) throw fallback.error
+        medicaoItens = fallback.data || []
+      } else {
+        throw tryFull.error
+      }
     }
 
-    const pctRetencao = Number((medicao as any).contrato?.percentual_retencao ?? 5)
+    // Acumulado de quantidade por detalhamento (todas medições aprovadas + esta).
+    // 2 queries em vez de join inline pra evitar fragilidade do PostgREST.
+    const { data: medicoesDoContrato } = await admin
+      .from('medicoes')
+      .select('id, status')
+      .eq('contrato_id', contratoId)
+
+    const idsValidas = new Set(
+      (medicoesDoContrato || [])
+        .filter((m: any) => m.status === 'aprovado' || m.id === medicaoId)
+        .map((m: any) => m.id),
+    )
+
+    const acumulado: Record<string, number> = {}
+    if (idsValidas.size > 0) {
+      const { data: acumRows } = await admin
+        .from('medicao_itens')
+        .select('detalhamento_id, quantidade_medida, medicao_id')
+        .in('medicao_id', Array.from(idsValidas))
+      for (const r of (acumRows || []) as any[]) {
+        const detId = r.detalhamento_id
+        if (!detId) continue
+        acumulado[detId] = (acumulado[detId] || 0) + Number(r.quantidade_medida || 0)
+      }
+    }
+
+    const pctRetencao = Number(contrato?.percentual_retencao ?? 5)
 
     // Monta linhas
-    const linhas = ((medicao as any).medicao_itens || [])
+    const linhas = (medicaoItens || [])
       .map((it: any) => {
         const det = it.detalhamento
         if (!det) return null
@@ -136,9 +194,9 @@ export async function GET(
         data_aprovacao: (medicao as any).data_aprovacao,
         data_submissao: (medicao as any).data_submissao,
         contrato: {
-          id: (medicao as any).contrato?.id,
-          numero: (medicao as any).contrato?.numero,
-          valor_total: Number((medicao as any).contrato?.valor_total || 0),
+          id: contrato?.id,
+          numero: contrato?.numero,
+          valor_total: Number(contrato?.valor_total || 0),
           percentual_retencao: pctRetencao,
         },
       },
