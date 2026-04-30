@@ -125,6 +125,56 @@ export async function GET(
 
     const pctRetencao = Number(contrato?.percentual_retencao ?? 5)
 
+    // ================================================================
+    // 4) Solicitações fat-direto APROVADAS do contrato + NFs vinculadas
+    //    Para cada item de solicitação (com detalhamento_id):
+    //      - aprovado total → vira "saldo aprovado bruto" do item
+    //      - NF lançada da solicitação é alocada proporcionalmente entre
+    //        os itens (por valor_total dentro da solicitação)
+    //    Resultado por detalhamento_id:
+    //      - aprovado_total[detId]  : ∑ valor_total dos itens aprovados
+    //      - nf_alocada[detId]      : ∑ NFs alocadas proporcionalmente
+    //    "Saldo aprovado disponível" = aprovado_total − nf_alocada
+    // ================================================================
+    const aprovadoPorDet: Record<string, number> = {}
+    const nfAlocadaPorDet: Record<string, number> = {}
+    {
+      const { data: solRaw } = await admin
+        .from('solicitacoes_fat_direto')
+        .select(`
+          id, status, deletado_em,
+          itens:itens_solicitacao_fat_direto ( detalhamento_id, valor_total ),
+          nfs:notas_fiscais_fat_direto ( valor, status )
+        `)
+        .eq('contrato_id', contratoId)
+        .eq('status', 'aprovado')
+        .is('deletado_em', null)
+
+      for (const sol of (solRaw || []) as any[]) {
+        const itens = (sol.itens || []) as any[]
+        const itensVal = itens.map(it => ({
+          detId: it.detalhamento_id as string | null,
+          valor: Number(it.valor_total || 0),
+        })).filter(x => x.detId)
+
+        const totalSol = itensVal.reduce((s, it) => s + it.valor, 0)
+        for (const it of itensVal) {
+          aprovadoPorDet[it.detId!] = (aprovadoPorDet[it.detId!] || 0) + it.valor
+        }
+
+        // soma NFs da solicitação (qualquer status — pendente/validada conta como "lançada")
+        const totalNfsSol = ((sol.nfs || []) as any[])
+          .reduce((s: number, nf: any) => s + Number(nf.valor || 0), 0)
+
+        if (totalSol > 0 && totalNfsSol > 0) {
+          for (const it of itensVal) {
+            const share = it.valor / totalSol
+            nfAlocadaPorDet[it.detId!] = (nfAlocadaPorDet[it.detId!] || 0) + totalNfsSol * share
+          }
+        }
+      }
+    }
+
     // Monta linhas
     const linhas = (medicaoItens || [])
       .map((it: any) => {
@@ -137,9 +187,24 @@ export async function GET(
         const valorUnit = Number(det.valor_unitario || (matUnit + servUnit))
         const matMedido = qtdMed * matUnit
         const servMedido = qtdMed * servUnit
-        const baseRet = matMedido + servMedido
-        const retencao = baseRet * (pctRetencao / 100)
         const qtdAcum = acumulado[det.id] || 0
+
+        // === Nova lógica Wave/FIP por item ===
+        const nfTerceiroItem = nfAlocadaPorDet[det.id] || 0
+        const aprovadoItem = aprovadoPorDet[det.id] || 0
+        const saldoAprovDisponivel = Math.max(0, aprovadoItem - nfTerceiroItem)
+
+        const nfDescontavel  = Math.min(matMedido, nfTerceiroItem)
+        const gapMaterial    = Math.max(0, matMedido - nfDescontavel)
+        const materialRetido = Math.min(gapMaterial, saldoAprovDisponivel)
+        const fipFaturar     = Math.max(0, gapMaterial - materialRetido)
+
+        const waveServico    = servMedido
+        const totalInformakon = waveServico + nfDescontavel + fipFaturar
+        const valorGlobalItem = qtdContr * valorUnit
+        const pctInformakon  = valorGlobalItem > 0 ? (totalInformakon / valorGlobalItem) * 100 : 0
+        const retencao5pct   = totalInformakon * (pctRetencao / 100)
+        const baseRet        = totalInformakon
 
         return {
           medicao_item_id: it.id,
@@ -155,15 +220,24 @@ export async function GET(
           valor_unitario: valorUnit,
           valor_material_unit: matUnit,
           valor_servico_unit: servUnit,
-          // valores totais do item (referência contratual)
-          valor_total_item: qtdContr * valorUnit,
+          valor_total_item: valorGlobalItem,
           valor_material_total_item: qtdContr * matUnit,
           valor_servico_total_item: qtdContr * servUnit,
-          // medido nesta medição
+          // medido (físico × preços contratuais)
           material_medido: matMedido,
           servico_medido: servMedido,
+          // === Novos campos: lógica Wave/FIP ===
+          nf_terceiro: nfTerceiroItem,
+          saldo_aprovado: saldoAprovDisponivel,
+          nf_descontavel: nfDescontavel,
+          gap_material: gapMaterial,
+          material_retido: materialRetido,
+          fip_faturar: fipFaturar,
+          wave_servico: waveServico,
+          total_informakon: totalInformakon,
+          pct_informakon: pctInformakon,
           base_retencao: baseRet,
-          retencao,
+          retencao: retencao5pct,
           // acumulado (todas medições aprovadas + esta) em R$
           material_acumulado: qtdAcum * matUnit,
           servico_acumulado: qtdAcum * servUnit,
@@ -176,12 +250,23 @@ export async function GET(
     const totais = linhas.reduce((acc: any, l: any) => ({
       material_medido: acc.material_medido + l.material_medido,
       servico_medido:  acc.servico_medido  + l.servico_medido,
+      nf_terceiro:     acc.nf_terceiro     + l.nf_terceiro,
+      saldo_aprovado:  acc.saldo_aprovado  + l.saldo_aprovado,
+      nf_descontavel:  acc.nf_descontavel  + l.nf_descontavel,
+      gap_material:    acc.gap_material    + l.gap_material,
+      material_retido: acc.material_retido + l.material_retido,
+      fip_faturar:     acc.fip_faturar     + l.fip_faturar,
+      wave_servico:    acc.wave_servico    + l.wave_servico,
+      total_informakon: acc.total_informakon + l.total_informakon,
       base_retencao:   acc.base_retencao   + l.base_retencao,
       retencao:        acc.retencao        + l.retencao,
       material_acumulado: acc.material_acumulado + l.material_acumulado,
       servico_acumulado:  acc.servico_acumulado  + l.servico_acumulado,
     }), {
-      material_medido: 0, servico_medido: 0, base_retencao: 0, retencao: 0,
+      material_medido: 0, servico_medido: 0,
+      nf_terceiro: 0, saldo_aprovado: 0, nf_descontavel: 0, gap_material: 0,
+      material_retido: 0, fip_faturar: 0, wave_servico: 0, total_informakon: 0,
+      base_retencao: 0, retencao: 0,
       material_acumulado: 0, servico_acumulado: 0,
     })
 

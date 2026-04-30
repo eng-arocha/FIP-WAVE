@@ -7,7 +7,7 @@ import { MaximizableCard } from '@/components/ui/maximizable-card'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { exportCsv } from '@/lib/utils/csv'
 import {
-  ArrowLeft, Loader2, Download, Copy, Check, FileText, TrendingUp, Printer,
+  ArrowLeft, Loader2, Download, Copy, Check, FileText, TrendingUp, Printer, HelpCircle, X,
 } from 'lucide-react'
 
 interface Linha {
@@ -29,6 +29,16 @@ interface Linha {
   valor_servico_total_item: number
   material_medido: number
   servico_medido: number
+  // Novos campos: lógica Wave/FIP
+  nf_terceiro: number
+  saldo_aprovado: number
+  nf_descontavel: number
+  gap_material: number
+  material_retido: number
+  fip_faturar: number
+  wave_servico: number
+  total_informakon: number
+  pct_informakon: number
   base_retencao: number
   retencao: number
   material_acumulado: number
@@ -49,6 +59,14 @@ interface Resp {
   totais: {
     material_medido: number
     servico_medido: number
+    nf_terceiro: number
+    saldo_aprovado: number
+    nf_descontavel: number
+    gap_material: number
+    material_retido: number
+    fip_faturar: number
+    wave_servico: number
+    total_informakon: number
     base_retencao: number
     retencao: number
     material_acumulado: number
@@ -66,6 +84,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
   const [data, setData] = useState<Resp | null>(null)
   const [loading, setLoading] = useState(true)
   const [copiado, setCopiado] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
 
   useEffect(() => {
     fetch(`/api/contratos/${contratoId}/medicoes/${medicaoId}/informacon`)
@@ -85,26 +104,22 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
     if (!data) return
     // TSV (cola direto em Excel/Google Sheets)
     const headers = [
-      'Código', 'Descrição', 'Unidade', 'Qtd Contratada', 'Qtd Medida', '% Medido',
-      'Qtd Acumulada', '% Acumulado',
-      'Mat. Unit.', 'Mat. Medido', 'Mat. Acumulado',
-      'Serv. Unit.', 'Serv. Medido', 'Serv. Acumulado',
-      'Base Retenção', 'Retenção',
+      'Código', 'Descrição',
+      'Mat. Medido', 'NF Terceiro', 'Saldo Aprov.', 'NF Desc.', 'Gap', 'Retido', 'FIP Fat-Dir',
+      'Wave (Serv.)', 'Total Informakon', '% Informakon', 'Retenção',
     ]
     const rows = linhasExibidas.map(l => [
-      l.codigo, l.descricao, l.unidade,
-      l.quantidade_contratada.toFixed(3).replace('.', ','),
-      l.quantidade_medida.toFixed(3).replace('.', ','),
-      pctFmt(l.pct_medido),
-      l.quantidade_acumulada.toFixed(3).replace('.', ','),
-      pctFmt(l.pct_acumulado),
-      l.valor_material_unit.toFixed(2).replace('.', ','),
+      l.codigo, l.descricao,
       l.material_medido.toFixed(2).replace('.', ','),
-      l.material_acumulado.toFixed(2).replace('.', ','),
-      l.valor_servico_unit.toFixed(2).replace('.', ','),
-      l.servico_medido.toFixed(2).replace('.', ','),
-      l.servico_acumulado.toFixed(2).replace('.', ','),
-      l.base_retencao.toFixed(2).replace('.', ','),
+      l.nf_terceiro.toFixed(2).replace('.', ','),
+      l.saldo_aprovado.toFixed(2).replace('.', ','),
+      l.nf_descontavel.toFixed(2).replace('.', ','),
+      l.gap_material.toFixed(2).replace('.', ','),
+      l.material_retido.toFixed(2).replace('.', ','),
+      l.fip_faturar.toFixed(2).replace('.', ','),
+      l.wave_servico.toFixed(2).replace('.', ','),
+      l.total_informakon.toFixed(2).replace('.', ','),
+      pctFmt(l.pct_informakon, 4),
       l.retencao.toFixed(2).replace('.', ','),
     ])
     const tsv = [headers, ...rows].map(r => r.join('\t')).join('\n')
@@ -228,19 +243,16 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                 [
                   { header: 'Código', get: (l: any) => l.codigo },
                   { header: 'Descrição', get: (l: any) => l.descricao },
-                  { header: 'Unidade', get: (l: any) => l.unidade },
-                  { header: 'Qtd Contratada', get: (l: any) => Number(l.quantidade_contratada) },
-                  { header: 'Qtd Medida', get: (l: any) => Number(l.quantidade_medida) },
-                  { header: '% Medido', get: (l: any) => Number(l.pct_medido) },
-                  { header: 'Qtd Acumulada', get: (l: any) => Number(l.quantidade_acumulada) },
-                  { header: '% Acumulado', get: (l: any) => Number(l.pct_acumulado) },
-                  { header: 'Mat. Unit.', get: (l: any) => Number(l.valor_material_unit) },
                   { header: 'Mat. Medido', get: (l: any) => Number(l.material_medido) },
-                  { header: 'Mat. Acumulado', get: (l: any) => Number(l.material_acumulado) },
-                  { header: 'Serv. Unit.', get: (l: any) => Number(l.valor_servico_unit) },
-                  { header: 'Serv. Medido', get: (l: any) => Number(l.servico_medido) },
-                  { header: 'Serv. Acumulado', get: (l: any) => Number(l.servico_acumulado) },
-                  { header: 'Base Retenção', get: (l: any) => Number(l.base_retencao) },
+                  { header: 'NF Terceiro', get: (l: any) => Number(l.nf_terceiro) },
+                  { header: 'Saldo Aprov.', get: (l: any) => Number(l.saldo_aprovado) },
+                  { header: 'NF Desc.', get: (l: any) => Number(l.nf_descontavel) },
+                  { header: 'Gap', get: (l: any) => Number(l.gap_material) },
+                  { header: 'Retido', get: (l: any) => Number(l.material_retido) },
+                  { header: 'FIP Fat-Dir', get: (l: any) => Number(l.fip_faturar) },
+                  { header: 'Wave (Serv.)', get: (l: any) => Number(l.wave_servico) },
+                  { header: 'Total Informakon', get: (l: any) => Number(l.total_informakon) },
+                  { header: '% Informakon', get: (l: any) => Number(l.pct_informakon) },
                   { header: 'Retenção', get: (l: any) => Number(l.retencao) },
                 ],
               )}
@@ -255,6 +267,14 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
               style={{ background: 'var(--surface-2)', color: 'var(--text-2)', border: '1px solid var(--border)' }}
             >
               <Printer className="w-3.5 h-3.5" /> Imprimir / PDF
+            </button>
+            <button
+              onClick={() => setShowHelp(true)}
+              className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium"
+              style={{ background: 'rgba(59,130,246,0.10)', color: '#3B82F6', border: '1px solid rgba(59,130,246,0.40)' }}
+              title="Como interpretar as colunas — regra Wave/FIP"
+            >
+              <HelpCircle className="w-3.5 h-3.5" /> Critério
             </button>
           </div>
         </div>
@@ -280,13 +300,13 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
           </div>
         </div>
 
-        {/* Cards de totais — bom pra lançamento */}
+        {/* Cards de totais — refletem a lógica Wave/FIP */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-          <Card label="Material medido" value={formatCurrency(data.totais.material_medido)} accent="var(--text-1)" />
-          <Card label="Serviço medido" value={formatCurrency(data.totais.servico_medido)} accent="#0F766E" hint="(NF a emitir)" />
-          <Card label="Base de retenção" value={formatCurrency(data.totais.base_retencao)} accent="var(--text-2)" hint={`(${pctFmt(data.medicao.contrato.percentual_retencao)} aplicado)`} />
-          <Card label="Retenção" value={formatCurrency(data.totais.retencao)} accent="#818CF8" />
-          <Card label="Líquido NF" value={formatCurrency(data.totais.servico_medido - data.totais.retencao)} accent="#10B981" />
+          <Card label="Wave (Serviço)" value={formatCurrency(data.totais.wave_servico)} accent="#0F766E" hint="NF Wave a emitir" />
+          <Card label="FIP (Material)" value={formatCurrency(data.totais.fip_faturar)} accent="#3B82F6" hint="Fat-direto FIP a criar" />
+          <Card label="NF terceiro descontada" value={formatCurrency(data.totais.nf_descontavel)} accent="var(--text-2)" hint="Já lançadas no item" />
+          <Card label="Material retido" value={formatCurrency(data.totais.material_retido)} accent="#F59E0B" hint="Aguarda NF terceiro" />
+          <Card label="Total Informakon" value={formatCurrency(data.totais.total_informakon)} accent="#10B981" hint={`Retenção ${pctFmt(data.medicao.contrato.percentual_retencao)}: ${formatCurrency(data.totais.retencao)}`} />
         </div>
 
         {/* Tabela */}
@@ -296,30 +316,28 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
           style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}
         >
           <div className="overflow-x-auto">
-            <table className="w-full text-xs" style={{ minWidth: 1400, color: 'var(--text-1)', borderCollapse: 'collapse' }}>
+            <table className="w-full text-xs" style={{ minWidth: 1500, color: 'var(--text-1)', borderCollapse: 'collapse' }}>
               <thead style={{ background: 'var(--surface-3)', position: 'sticky', top: 0, zIndex: 10 }}>
                 <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  <th style={th()}>Código</th>
+                  <th style={th()}>Item</th>
                   <th style={{ ...th(), textAlign: 'left' }}>Descrição</th>
-                  <th style={th()}>Un.</th>
-                  <th style={{ ...th(), textAlign: 'right' }}>Qtd Contr.</th>
-                  <th style={{ ...th(), textAlign: 'right' }}>Qtd Med.</th>
-                  <th style={{ ...th(), textAlign: 'right' }}>% Med.</th>
-                  <th style={{ ...th(), textAlign: 'right' }}>Qtd Acum.</th>
-                  <th style={{ ...th(), textAlign: 'right' }}>% Acum.</th>
-                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>Mat. Unit.</th>
-                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>Mat. Medido</th>
-                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>Mat. Acum.</th>
-                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.05)' }}>Serv. Unit.</th>
-                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.05)' }}>Serv. Medido</th>
-                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.05)' }}>Serv. Acum.</th>
+                  <th style={{ ...th(), textAlign: 'right' }}>Mat. Medido</th>
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>NF Terceiro</th>
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>Saldo Aprov.</th>
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>NF Desc.</th>
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(245,158,11,0.05)' }}>Gap</th>
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(245,158,11,0.05)' }}>Retido</th>
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.05)' }}>FIP Fat-Dir</th>
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>Wave (Serv.)</th>
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(16,185,129,0.05)' }}>Total Informakon</th>
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(16,185,129,0.05)' }}>% Informakon</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(99,102,241,0.05)' }}>Retenção</th>
                 </tr>
               </thead>
               <tbody>
                 {linhasExibidas.length === 0 ? (
                   <tr>
-                    <td colSpan={15} style={{ padding: 36, textAlign: 'center', color: 'var(--text-3)' }}>
+                    <td colSpan={13} style={{ padding: 36, textAlign: 'center', color: 'var(--text-3)' }}>
                       <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
                       Nenhum item com quantidade medida nesta medição.
                       {!mostrarTodos && (
@@ -333,19 +351,17 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   <tr key={l.medicao_item_id || l.detalhamento_id}
                     style={{ borderBottom: '1px solid var(--border)', background: idx % 2 === 0 ? 'var(--surface-1)' : 'var(--surface-2)' }}>
                     <td style={td('font-mono font-bold', '#3B82F6')}>{l.codigo}</td>
-                    <td style={{ ...td('break-words'), textAlign: 'left', maxWidth: 280 }}>{l.descricao}</td>
-                    <td style={{ ...td(), textAlign: 'center' }}>{l.unidade}</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{l.quantidade_contratada.toFixed(3).replace('.', ',')}</td>
-                    <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right' }}>{l.quantidade_medida.toFixed(3).replace('.', ',')}</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{pctFmt(l.pct_medido)}</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right', color: 'var(--text-3)' }}>{l.quantidade_acumulada.toFixed(3).replace('.', ',')}</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right', color: 'var(--text-3)' }}>{pctFmt(l.pct_acumulado)}</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.valor_material_unit)}</td>
-                    <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.material_medido)}</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right', color: 'var(--text-3)', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.material_acumulado)}</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(59,130,246,0.04)' }}>{formatCurrency(l.valor_servico_unit)}</td>
-                    <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(59,130,246,0.04)' }}>{formatCurrency(l.servico_medido)}</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right', color: 'var(--text-3)', background: 'rgba(59,130,246,0.04)' }}>{formatCurrency(l.servico_acumulado)}</td>
+                    <td style={{ ...td('break-words'), textAlign: 'left', maxWidth: 240 }}>{l.descricao}</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(l.material_medido)}</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.nf_terceiro)}</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.saldo_aprovado)}</td>
+                    <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.nf_descontavel)}</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(245,158,11,0.04)', color: 'var(--text-3)' }}>{formatCurrency(l.gap_material)}</td>
+                    <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(245,158,11,0.04)', color: l.material_retido > 0 ? '#F59E0B' : 'var(--text-3)' }}>{formatCurrency(l.material_retido)}</td>
+                    <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(59,130,246,0.04)', color: l.fip_faturar > 0 ? '#3B82F6' : 'var(--text-3)' }}>{formatCurrency(l.fip_faturar)}</td>
+                    <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(15,118,110,0.04)', color: '#0F766E' }}>{formatCurrency(l.wave_servico)}</td>
+                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', background: 'rgba(16,185,129,0.06)', color: '#10B981' }}>{formatCurrency(l.total_informakon)}</td>
+                    <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(16,185,129,0.06)' }}>{pctFmt(l.pct_informakon, 4)}</td>
                     <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', background: 'rgba(99,102,241,0.06)', color: '#818CF8' }}>{formatCurrency(l.retencao)}</td>
                   </tr>
                 ))}
@@ -353,13 +369,17 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
               {linhasExibidas.length > 0 && (
                 <tfoot>
                   <tr style={{ background: 'var(--surface-3)', fontWeight: 700, borderTop: '2px solid var(--border)' }}>
-                    <td colSpan={8} style={{ ...td(), textAlign: 'right' }}>TOTAIS</td>
-                    <td style={{ ...td(), background: 'rgba(15,118,110,0.06)' }}></td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.material_medido, 0))}</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)', color: 'var(--text-3)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.material_acumulado, 0))}</td>
-                    <td style={{ ...td(), background: 'rgba(59,130,246,0.06)' }}></td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(59,130,246,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.servico_medido, 0))}</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(59,130,246,0.06)', color: 'var(--text-3)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.servico_acumulado, 0))}</td>
+                    <td colSpan={2} style={{ ...td(), textAlign: 'right' }}>TOTAIS</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.material_medido, 0))}</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.nf_terceiro, 0))}</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.saldo_aprovado, 0))}</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.nf_descontavel, 0))}</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(245,158,11,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.gap_material, 0))}</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(245,158,11,0.06)', color: '#F59E0B' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.material_retido, 0))}</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(59,130,246,0.06)', color: '#3B82F6' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.fip_faturar, 0))}</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)', color: '#0F766E' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.wave_servico, 0))}</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(16,185,129,0.10)', color: '#10B981' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.total_informakon, 0))}</td>
+                    <td style={{ ...td(), background: 'rgba(16,185,129,0.10)' }}></td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(99,102,241,0.10)', color: '#818CF8' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.retencao, 0))}</td>
                   </tr>
                 </tfoot>
@@ -370,9 +390,144 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
 
         <p className="text-[11px] print:hidden" style={{ color: 'var(--text-3)' }}>
           <TrendingUp className="inline w-3 h-3 mr-1" />
-          Use os valores acima pra lançar a medição no INFORMACON: % medido por item (material e serviço seguem o mesmo %),
-          retenção total por item ({pctFmt(data.medicao.contrato.percentual_retencao)} sobre material + serviço executados).
+          No Informakon, lance por item o <strong>% Informakon</strong> (já recalculado pra refletir
+          NFs descontadas e material retido) — não o % físico medido. Retenção {pctFmt(data.medicao.contrato.percentual_retencao)} aplicada sobre <em>Total Informakon</em> (Wave + NF Desc. + FIP).
+          Clique em <strong>Critério</strong> pra ver a regra completa.
         </p>
+      </div>
+
+      {showHelp && <HelpModal onClose={() => setShowHelp(false)} pctRetencao={data.medicao.contrato.percentual_retencao} />}
+    </div>
+  )
+}
+
+function HelpModal({ onClose, pctRetencao }: { onClose: () => void; pctRetencao: number }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 print:hidden"
+      style={{ background: 'rgba(0,0,0,0.6)' }}
+      onClick={onClose}
+    >
+      <div
+        className="rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+        style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 sticky top-0" style={{ background: 'var(--surface-1)', borderBottom: '1px solid var(--border)' }}>
+          <h2 className="text-base font-bold" style={{ color: 'var(--text-1)' }}>
+            Critério de cálculo Wave / FIP
+          </h2>
+          <button onClick={onClose} className="rounded-lg p-1 hover:bg-[var(--surface-2)]" aria-label="Fechar">
+            <X className="w-5 h-5" style={{ color: 'var(--text-2)' }} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4 text-[13px]" style={{ color: 'var(--text-2)' }}>
+          <section>
+            <h3 className="font-bold mb-1" style={{ color: 'var(--text-1)' }}>Atores</h3>
+            <ul className="list-disc pl-5 space-y-0.5">
+              <li><strong>WAVE INSTALACOES SPE LTDA</strong> — emite NF do <strong>serviço</strong> (parcela mão-de-obra do item).</li>
+              <li><strong>FIP ENGENHARIA ELETRICA LTDA</strong> — empresa garantidora; emite NF de <strong>material</strong> via fat-direto automático quando não há cobertura por NF terceiro nem saldo aprovado.</li>
+            </ul>
+          </section>
+
+          <section>
+            <h3 className="font-bold mb-1" style={{ color: 'var(--text-1)' }}>Variáveis por item medido</h3>
+            <ul className="list-disc pl-5 space-y-0.5 text-[12px]">
+              <li><strong>Mat. Medido</strong> = qtd × <code>valor_material_unit</code> do contrato.</li>
+              <li><strong>NF Terceiro</strong> = ∑ NFs (validadas/pendentes) de fat-direto APROVADO vinculadas ao item, alocadas proporcionalmente por valor dentro de cada solicitação.</li>
+              <li><strong>Saldo Aprov.</strong> = ∑ aprovado em fat-direto − NFs já lançadas (saldo aguardando NF).</li>
+              <li><strong>NF Desc.</strong> = MIN(Mat. Medido, NF Terceiro). É o quanto desconta no Informakon.</li>
+              <li><strong>Gap</strong> = Mat. Medido − NF Desc. (parte do material não coberta por NF).</li>
+              <li><strong>Retido</strong> = MIN(Gap, Saldo Aprov.). Não pago nesta medição — aguarda chegar NF terceiro.</li>
+              <li><strong>FIP Fat-Dir</strong> = Gap − Retido. Solicitação de fat-direto criada automaticamente em nome da FIP (status: aprovado).</li>
+              <li><strong>Wave (Serv.)</strong> = qtd × <code>valor_servico_unit</code>. NF da Wave a emitir.</li>
+              <li><strong>Total Informakon</strong> = Wave + NF Desc. + FIP Fat-Dir. <em>NÃO inclui Retido</em>.</li>
+              <li><strong>% Informakon</strong> = Total Informakon ÷ valor global do item × 100. <strong>Recalculado</strong> — use este, não o % físico.</li>
+              <li><strong>Retenção</strong> = {pctFmt(pctRetencao)} × Total Informakon.</li>
+            </ul>
+          </section>
+
+          <section>
+            <h3 className="font-bold mb-2" style={{ color: 'var(--text-1)' }}>4 cenários (item 1.1.4.1, valor global R$ 30.747,78, medição física 50% → mat 7.687 / serv 7.687)</h3>
+            <div className="overflow-x-auto rounded-lg" style={{ border: '1px solid var(--border)' }}>
+              <table className="w-full text-[11.5px]" style={{ borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: 'var(--surface-3)', color: 'var(--text-3)', textTransform: 'uppercase', fontSize: 9.5 }}>
+                    <th style={th()}>Cenário</th>
+                    <th style={{ ...th(), textAlign: 'right' }}>NF Terc.</th>
+                    <th style={{ ...th(), textAlign: 'right' }}>Saldo Aprov.</th>
+                    <th style={{ ...th(), textAlign: 'right' }}>NF Desc.</th>
+                    <th style={{ ...th(), textAlign: 'right' }}>Gap</th>
+                    <th style={{ ...th(), textAlign: 'right' }}>Retido</th>
+                    <th style={{ ...th(), textAlign: 'right' }}>FIP</th>
+                    <th style={{ ...th(), textAlign: 'right' }}>Wave</th>
+                    <th style={{ ...th(), textAlign: 'right' }}>Total</th>
+                    <th style={{ ...th(), textAlign: 'right' }}>% Inf.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr style={{ borderTop: '1px solid var(--border)' }}>
+                    <td style={td()}><strong>A</strong> sem NF, sem saldo</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>0</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>0</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>0</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>7.687</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>0</td>
+                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#3B82F6' }}>7.687</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', color: '#0F766E' }}>7.687</td>
+                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#10B981' }}>15.373,89</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>50,00%</td>
+                  </tr>
+                  <tr style={{ borderTop: '1px solid var(--border)' }}>
+                    <td style={td()}><strong>B</strong> NF cobre tudo</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>10.000</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>—</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>7.687</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>0</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>0</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>0</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', color: '#0F766E' }}>7.687</td>
+                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#10B981' }}>15.373,89</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>50,00%</td>
+                  </tr>
+                  <tr style={{ borderTop: '1px solid var(--border)' }}>
+                    <td style={td()}><strong>C</strong> NF parcial, saldo cobre o resto</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>5.687</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>2.000</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>5.687</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>2.000</td>
+                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#F59E0B' }}>2.000</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>0</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', color: '#0F766E' }}>7.687</td>
+                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#10B981' }}>13.373,89</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>43,4955%</td>
+                  </tr>
+                  <tr style={{ borderTop: '1px solid var(--border)' }}>
+                    <td style={td()}><strong>D</strong> NF parcial, saldo parcial</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>5.687</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>1.000</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>5.687</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>2.000</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', color: '#F59E0B' }}>1.000</td>
+                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#3B82F6' }}>1.000</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', color: '#0F766E' }}>7.687</td>
+                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#10B981' }}>14.373,89</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>46,7479%</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="rounded-lg p-3" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.30)' }}>
+            <p className="text-[12px]"><strong style={{ color: '#F59E0B' }}>⚠ Atenção pra pesos diferentes mat/serv:</strong> as colunas usam o <code>valor_material_unit</code> e <code>valor_servico_unit</code> de cada item — não há divisão fixa 50/50. O cálculo é por item, com pesos do contrato. Itens onde a parcela de material é dominante terão FIP ou retido proporcionalmente maiores.</p>
+          </section>
+
+          <section className="rounded-lg p-3" style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.30)' }}>
+            <p className="text-[12px]"><strong style={{ color: '#3B82F6' }}>Nota técnica (1ª iteração):</strong> NFs de terceiro são alocadas por proporção de valor dentro de cada solicitação fat-direto. Os agregados são totais do item — ainda não descontam material consumido em medições aprovadas anteriores. Refinamentos (snapshot por medição) virão depois.</p>
+          </section>
+        </div>
       </div>
     </div>
   )
