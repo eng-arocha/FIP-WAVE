@@ -22,7 +22,7 @@ function buildConnString(projectRef: string, jwt: string, region: string) {
   return `postgresql://postgres.${projectRef}:${jwt}@aws-0-${region}.pooler.supabase.com:5432/postgres`
 }
 
-async function getConnection(): Promise<ReturnType<typeof postgres>> {
+export async function getConnection(): Promise<ReturnType<typeof postgres>> {
   const { getSupabaseUrl, getSupabaseServiceRoleKey } = await import('@/lib/supabase/env')
   const url = getSupabaseUrl()
   const jwt = getSupabaseServiceRoleKey()

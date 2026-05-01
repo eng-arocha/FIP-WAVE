@@ -39,8 +39,10 @@ export async function proxy(request: NextRequest) {
   const isLoginPage = request.nextUrl.pathname.startsWith('/login')
   // Endpoints internos protegidos por Bearer token (service-role key) —
   // não exigem cookie Supabase auth. O próprio handler valida o token.
+  // /api/admin/migrations/status é GET somente-leitura (metadata de schema).
   const isAdminBearerEndpoint =
-    request.nextUrl.pathname === '/api/admin/migrate'
+    request.nextUrl.pathname === '/api/admin/migrate' ||
+    request.nextUrl.pathname === '/api/admin/migrations/status'
 
   if (!user && !isLoginPage && !isAdminBearerEndpoint) {
     const url = request.nextUrl.clone()
