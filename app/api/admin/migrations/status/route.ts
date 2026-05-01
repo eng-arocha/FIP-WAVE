@@ -119,7 +119,7 @@ export async function GET() {
     try {
       const { data, error } = await sb
         .from('contratos')
-        .select('id,nome,tolerancia_nf_valor,dias_alerta_pedido_atrasado')
+        .select('id,numero,descricao,tolerancia_nf_valor,dias_alerta_pedido_atrasado')
         .eq('id', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
         .maybeSingle()
       if (error) auroraConfig = { error: error.message }
