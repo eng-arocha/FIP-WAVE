@@ -649,9 +649,24 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                      Mantém o layout "boletim" (Anterior / Atual / Total / Saldo)
                      e o tfoot original com a decomposição mat/serv. */
                   (() => {
+                    // Filtro recursivo nos 3 níveis quando "Mostrar todos" está
+                    // desligado (default). Sem isso, abrir um grupo medido fazia
+                    // aparecer todas as tarefas e detalhamentos zerados — poluía.
+                    // Agora um item só aparece se ELE OU algum descendente tem
+                    // medição atual > 0.
                     const gruposExibir = mostrarTodos
                       ? planilha.grupos
-                      : planilha.grupos.filter(g => g.valor_atual > 0)
+                      : planilha.grupos
+                          .filter(g => g.valor_atual > 0)
+                          .map(g => ({
+                            ...g,
+                            tarefas: g.tarefas
+                              .filter(t => t.valor_atual > 0)
+                              .map(t => ({
+                                ...t,
+                                detalhamentos: t.detalhamentos.filter(d => d.valor_atual > 0),
+                              })),
+                          }))
 
                     const expandirTudo = () => {
                       setExpandedGrupos(new Set(planilha.grupos.map(g => g.id)))
