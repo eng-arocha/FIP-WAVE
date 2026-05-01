@@ -1,3 +1,4 @@
+// Route de divergência (PR 1) — força redeploy se Vercel falhou no anterior
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { assertPermissao } from '@/lib/api/auth'
