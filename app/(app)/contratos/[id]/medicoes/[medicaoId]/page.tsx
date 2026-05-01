@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useState, useEffect } from 'react'
+import { use, useState, useEffect, Fragment } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { Topbar } from '@/components/layout/topbar'
@@ -15,15 +15,96 @@ import {
 import {
   ArrowLeft, CheckCircle2, XCircle, MessageSquare, Download,
   FileText, User, Calendar, Hash, Clock, Paperclip, AlertCircle, Loader2, Trash2, Undo2,
-  Mail, TrendingUp,
+  Mail, TrendingUp, ChevronRight, ChevronDown,
 } from 'lucide-react'
 import {
-  formatCurrency, formatDatetime, formatDate,
+  formatCurrency, formatDatetime, formatDate, formatPercent,
   getMedicaoStatusColor
 } from '@/lib/utils'
 import { MEDICAO_STATUS_LABELS, TIPO_MEDICAO_LABELS, MedicaoStatus } from '@/types'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 import { EmailLiberacaoMedicaoModal } from '@/components/medicoes/email-liberacao-medicao-modal'
+
+// Tipos da rota /api/contratos/[id]/medicoes/[medicaoId]/planilha
+type ItemPlanilha = {
+  medicao_item_id: string
+  detalhamento_id: string | null
+  codigo: string
+  descricao: string
+  quantidade_contratada: number
+  valor_unitario_contratual: number
+  valor_global_item: number
+  qtd_anterior: number
+  valor_anterior: number
+  pct_anterior: number
+  qtd_atual: number
+  valor_atual: number
+  pct_atual: number
+  qtd_total: number
+  valor_total: number
+  pct_total: number
+  qtd_saldo: number
+  valor_saldo: number
+  pct_saldo: number
+  material_atual: number
+  servico_atual: number
+}
+
+type TotaisPlanilha = {
+  valor_global_total: number
+  valor_anterior_total: number
+  valor_atual_total: number
+  valor_total_medido: number
+  valor_saldo_total: number
+  pct_anterior_total: number
+  pct_atual_total: number
+  pct_total_medido: number
+  pct_saldo_total: number
+  material_atual_total: number
+  servico_atual_total: number
+}
+
+// Tipos hierárquicos: Grupo → Tarefa → Detalhamento (folha = ItemPlanilha)
+type DetalhamentoPlanilha = ItemPlanilha
+
+type TarefaPlanilha = {
+  id: string
+  codigo: string
+  nome: string
+  valor_global: number
+  valor_anterior: number
+  valor_atual: number
+  valor_total: number
+  valor_saldo: number
+  pct_anterior: number
+  pct_atual: number
+  pct_total: number
+  pct_saldo: number
+  detalhamentos: DetalhamentoPlanilha[]
+}
+
+type GrupoPlanilha = {
+  id: string
+  codigo: string
+  nome: string
+  valor_global: number
+  valor_anterior: number
+  valor_atual: number
+  valor_total: number
+  valor_saldo: number
+  pct_anterior: number
+  pct_atual: number
+  pct_total: number
+  pct_saldo: number
+  tarefas: TarefaPlanilha[]
+}
+
+type PlanilhaResponse = {
+  medicao: { id: string; numero: number; status: string; contrato_id: string }
+  itens: ItemPlanilha[]
+  grupos: GrupoPlanilha[]
+  totais: TotaisPlanilha
+}
 
 export default function MedicaoDetailPage({ params }: { params: Promise<{ id: string; medicaoId: string }> }) {
   const { id: contratoId, medicaoId } = use(params)
@@ -67,6 +148,27 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
     valor_total_contrato: number
   } | null>(null)
 
+  // Planilha estilo "boletim de medição": fonte da verdade pra tabela de itens
+  // (anterior, atual, total medido, saldo). Vem da rota /planilha — calculada
+  // server-side pra evitar re-cálculo de quantidades acumuladas no client.
+  const [planilha, setPlanilha] = useState<PlanilhaResponse | null>(null)
+
+  // Estrutura hierárquica: grupos e tarefas expandidos (Set<string> com IDs).
+  // - Grupos com `valor_atual > 0` começam abertos (efeito mais abaixo) pra
+  //   o usuário já ver o que foi medido sem clicar.
+  // - Tarefas começam todas fechadas (clicar abre os detalhamentos).
+  const [expandedGrupos, setExpandedGrupos] = useState<Set<string>>(new Set())
+  const [expandedTarefas, setExpandedTarefas] = useState<Set<string>>(new Set())
+  // Toggle "mostrar todos vs só os com medição"; default = só com medição.
+  const [mostrarTodos, setMostrarTodos] = useState(false)
+
+  const toggleGrupo = (id: string) => setExpandedGrupos(prev => {
+    const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s
+  })
+  const toggleTarefa = (id: string) => setExpandedTarefas(prev => {
+    const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s
+  })
+
   async function fetchMedicao() {
     const res = await fetch(`/api/contratos/${contratoId}/medicoes/${medicaoId}`)
     if (res.ok) {
@@ -97,9 +199,24 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
     } catch {/* fallback pro cálculo client-side existente */}
   }
 
+  // Carrega planilha completa (itens + totais agregados) pra tabela "Itens da Medição".
+  // Se falhar, planilha continua null e renderizamos a tabela antiga (fallback).
+  async function fetchPlanilha() {
+    try {
+      const res = await fetch(
+        `/api/contratos/${contratoId}/medicoes/${medicaoId}/planilha`,
+        { cache: 'no-store' }
+      )
+      if (!res.ok) return
+      const data: PlanilhaResponse = await res.json()
+      setPlanilha(data)
+    } catch {/* fallback pra tabela antiga */}
+  }
+
   useEffect(() => {
     fetchMedicao()
     fetchTotaisInformacon()
+    fetchPlanilha()
     // Load historical measurements for anomaly detection
     fetch(`/api/contratos/${contratoId}/medicoes`)
       .then(r => r.ok ? r.json() : [])
@@ -111,6 +228,17 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
       fetchMedicao()
     }
   }, [status])
+
+  // Quando a planilha hierárquica chega, abre por padrão todos os grupos que
+  // já tiveram medição nesta competência (valor_atual > 0). Tarefas começam
+  // fechadas — clicar no chevron abre os detalhamentos.
+  useEffect(() => {
+    if (!planilha?.grupos) return
+    const inicial = new Set<string>(
+      planilha.grupos.filter(g => g.valor_atual > 0).map(g => g.id)
+    )
+    setExpandedGrupos(inicial)
+  }, [planilha])
 
   // Realtime: auto-refresh when this measurement is approved/rejected elsewhere
   useEffect(() => {
@@ -516,93 +644,464 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                 <CardTitle className="text-sm text-[var(--text-1)]">Itens da Medição ({itens.length})</CardTitle>
               </CardHeader>
               <CardContent>
-                <table className="w-full text-xs">
-                  <thead className="sticky top-0 z-10" style={{ background: 'var(--surface-2)' }}>
-                    <tr className="border-b border-[var(--border)]">
-                      <th className="text-left py-2 text-[var(--text-3)] font-medium">Código</th>
-                      <th className="text-left py-2 text-[var(--text-3)] font-medium">Descrição</th>
-                      <th className="text-center py-2 text-[var(--text-3)] font-medium">Un.</th>
-                      <th className="text-right py-2 text-[var(--text-3)] font-medium">Qtd.</th>
-                      <th className="text-right py-2 text-[var(--text-3)] font-medium">V. Unit.</th>
-                      <th className="text-right py-2 text-[var(--text-3)] font-medium">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {itens.map((item: any, idx: number) => (
-                      <tr key={item.id} className={`border-b border-[var(--border)] ${idx % 2 === 0 ? 'bg-[var(--surface-1)]' : 'bg-[var(--surface-2)]'}`}>
-                        <td className="py-2 font-mono text-[var(--text-3)]">{item.detalhamento?.codigo}</td>
-                        <td className="py-2 text-[var(--text-2)]">{item.detalhamento?.descricao}</td>
-                        <td className="py-2 text-center text-[var(--text-3)]">{item.detalhamento?.unidade}</td>
-                        <td className="py-2 text-right text-[var(--text-1)]">{Number(item.quantidade_medida).toLocaleString('pt-BR')}</td>
-                        <td className="py-2 text-right text-[var(--text-3)]">{formatCurrency(item.valor_unitario)}</td>
-                        <td className="py-2 text-right font-semibold text-[var(--text-1)]">{formatCurrency(item.quantidade_medida * item.valor_unitario)}</td>
+                {planilha && planilha.grupos && planilha.grupos.length > 0 ? (
+                  /* Nova tabela HIERÁRQUICA: Grupo → Tarefa → Detalhamento.
+                     Mantém o layout "boletim" (Anterior / Atual / Total / Saldo)
+                     e o tfoot original com a decomposição mat/serv. */
+                  (() => {
+                    const gruposExibir = mostrarTodos
+                      ? planilha.grupos
+                      : planilha.grupos.filter(g => g.valor_atual > 0)
+
+                    const expandirTudo = () => {
+                      setExpandedGrupos(new Set(planilha.grupos.map(g => g.id)))
+                      setExpandedTarefas(new Set(
+                        planilha.grupos.flatMap(g => g.tarefas.map(t => t.id))
+                      ))
+                    }
+                    const colapsarTudo = () => {
+                      setExpandedGrupos(new Set())
+                      setExpandedTarefas(new Set())
+                    }
+
+                    const totalAlgumExpandido =
+                      expandedGrupos.size > 0 || expandedTarefas.size > 0
+
+                    return (
+                      <>
+                        {/* Toolbar acima da tabela */}
+                        <div className="flex items-center justify-between mb-2 text-[11px]">
+                          <label className="flex items-center gap-1.5 cursor-pointer select-none" style={{ color: 'var(--text-2)' }}>
+                            <input
+                              type="checkbox"
+                              checked={mostrarTodos}
+                              onChange={(e) => setMostrarTodos(e.target.checked)}
+                              className="accent-blue-500"
+                            />
+                            <span>Mostrar todos os itens (incluindo sem medição)</span>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={totalAlgumExpandido ? colapsarTudo : expandirTudo}
+                            className="px-2 py-1 rounded border hover:bg-[var(--surface-3)] transition-colors"
+                            style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
+                          >
+                            {totalAlgumExpandido ? 'Colapsar tudo' : 'Expandir tudo'}
+                          </button>
+                        </div>
+
+                        <table className="w-full text-xs">
+                          <thead className="sticky top-0 z-10" style={{ background: 'var(--surface-2)' }}>
+                            <tr className="border-b border-[var(--border)]">
+                              <th className="text-left py-2 text-[var(--text-3)] font-medium">Código</th>
+                              <th className="text-left py-2 text-[var(--text-3)] font-medium">Descrição</th>
+                              <th className="text-right py-2 text-[var(--text-3)] font-medium">Valor Global</th>
+                              <th className="text-right py-2 text-[var(--text-3)] font-medium">Med. Anterior</th>
+                              <th className="text-right py-2 font-medium" style={{ color: '#0F766E' }}>Med. Atual</th>
+                              <th className="text-right py-2 font-medium" style={{ color: '#10B981' }}>Total Medido</th>
+                              <th className="text-right py-2 font-medium" style={{ color: '#F59E0B' }}>Saldo a Medir</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {gruposExibir.map((g) => {
+                              const isGrupoOpen = expandedGrupos.has(g.id)
+                              const pctTotalBarG = Math.min(Math.max(g.pct_total, 0), 100)
+                              return (
+                                <Fragment key={`g-${g.id}`}>
+                                  {/* === LINHA DO GRUPO (nivel 1) === */}
+                                  <tr
+                                    className="border-b border-[var(--border)] cursor-pointer hover:bg-[var(--surface-3)] transition-colors"
+                                    style={{ background: 'var(--surface-2)' }}
+                                    onClick={() => toggleGrupo(g.id)}
+                                  >
+                                    <td className="py-2 font-mono font-bold" style={{ color: 'var(--text-1)' }}>
+                                      <div className="flex items-center gap-1">
+                                        {isGrupoOpen
+                                          ? <ChevronDown className="w-3.5 h-3.5 flex-shrink-0" />
+                                          : <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" />}
+                                        <span>{g.codigo}</span>
+                                      </div>
+                                    </td>
+                                    <td className="py-2 font-bold" style={{ color: 'var(--text-1)' }}>{g.nome}</td>
+                                    <td className="py-2 text-right">
+                                      <div className="text-sm font-bold tabular-nums" style={{ color: 'var(--text-1)' }}>
+                                        {formatCurrency(g.valor_global)}
+                                      </div>
+                                    </td>
+                                    <td className="py-2 text-right">
+                                      <div className="text-sm font-bold tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                        {formatPercent(g.pct_anterior)}
+                                      </div>
+                                      <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                        {formatCurrency(g.valor_anterior)}
+                                      </div>
+                                    </td>
+                                    <td className="py-2 text-right">
+                                      <div className="text-sm font-bold tabular-nums" style={{ color: '#0F766E' }}>
+                                        {formatPercent(g.pct_atual)}
+                                      </div>
+                                      <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                        {formatCurrency(g.valor_atual)}
+                                      </div>
+                                    </td>
+                                    <td className="py-2 text-right">
+                                      <div className="text-sm font-bold tabular-nums" style={{ color: '#10B981' }}>
+                                        {formatPercent(g.pct_total)}
+                                      </div>
+                                      <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                        {formatCurrency(g.valor_total)}
+                                      </div>
+                                      <div className="h-1 mt-1 rounded-full" style={{ background: 'var(--surface-3)' }}>
+                                        <div className="h-full rounded-full transition-all" style={{
+                                          width: `${pctTotalBarG}%`,
+                                          background: '#10B981',
+                                        }} />
+                                      </div>
+                                    </td>
+                                    <td className="py-2 text-right">
+                                      <div className="text-sm font-bold tabular-nums" style={{ color: '#F59E0B' }}>
+                                        {formatPercent(g.pct_saldo)}
+                                      </div>
+                                      <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                        {formatCurrency(g.valor_saldo)}
+                                      </div>
+                                    </td>
+                                  </tr>
+
+                                  {/* === LINHAS DE TAREFA (nivel 2) — só se grupo expandido === */}
+                                  {isGrupoOpen && g.tarefas.map((t) => {
+                                    const isTarefaOpen = expandedTarefas.has(t.id)
+                                    const temDetalhamentos = t.detalhamentos.length > 0
+                                    const pctTotalBarT = Math.min(Math.max(t.pct_total, 0), 100)
+                                    return (
+                                      <Fragment key={`t-${t.id}`}>
+                                        <tr
+                                          className={`border-b border-[var(--border)] ${temDetalhamentos ? 'cursor-pointer hover:bg-[var(--surface-3)]' : ''} transition-colors`}
+                                          style={{ background: 'var(--surface-1)' }}
+                                          onClick={() => temDetalhamentos && toggleTarefa(t.id)}
+                                        >
+                                          <td className="py-2 font-mono font-medium" style={{ color: 'var(--text-2)', paddingLeft: '16px' }}>
+                                            <div className="flex items-center gap-1">
+                                              {temDetalhamentos
+                                                ? (isTarefaOpen
+                                                    ? <ChevronDown className="w-3.5 h-3.5 flex-shrink-0" />
+                                                    : <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" />)
+                                                : <span className="w-3.5 h-3.5 flex-shrink-0" />}
+                                              <span>{t.codigo}</span>
+                                            </div>
+                                          </td>
+                                          <td className="py-2 font-medium" style={{ color: 'var(--text-2)' }}>{t.nome}</td>
+                                          <td className="py-2 text-right">
+                                            <div className="text-sm font-semibold tabular-nums" style={{ color: 'var(--text-2)' }}>
+                                              {formatCurrency(t.valor_global)}
+                                            </div>
+                                          </td>
+                                          <td className="py-2 text-right">
+                                            <div className="text-sm font-semibold tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                              {formatPercent(t.pct_anterior)}
+                                            </div>
+                                            <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                              {formatCurrency(t.valor_anterior)}
+                                            </div>
+                                          </td>
+                                          <td className="py-2 text-right">
+                                            <div className="text-sm font-semibold tabular-nums" style={{ color: '#0F766E' }}>
+                                              {formatPercent(t.pct_atual)}
+                                            </div>
+                                            <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                              {formatCurrency(t.valor_atual)}
+                                            </div>
+                                          </td>
+                                          <td className="py-2 text-right">
+                                            <div className="text-sm font-semibold tabular-nums" style={{ color: '#10B981' }}>
+                                              {formatPercent(t.pct_total)}
+                                            </div>
+                                            <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                              {formatCurrency(t.valor_total)}
+                                            </div>
+                                            <div className="h-1 mt-1 rounded-full" style={{ background: 'var(--surface-3)' }}>
+                                              <div className="h-full rounded-full transition-all" style={{
+                                                width: `${pctTotalBarT}%`,
+                                                background: '#10B981',
+                                              }} />
+                                            </div>
+                                          </td>
+                                          <td className="py-2 text-right">
+                                            <div className="text-sm font-semibold tabular-nums" style={{ color: '#F59E0B' }}>
+                                              {formatPercent(t.pct_saldo)}
+                                            </div>
+                                            <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                              {formatCurrency(t.valor_saldo)}
+                                            </div>
+                                          </td>
+                                        </tr>
+
+                                        {/* === LINHAS DE DETALHAMENTO (nivel 3) — só se tarefa expandida === */}
+                                        {isTarefaOpen && t.detalhamentos.map((it) => {
+                                          const pctTotalBarI = Math.min(Math.max(it.pct_total, 0), 100)
+                                          return (
+                                            <tr key={`d-${it.medicao_item_id}`} className="border-b border-[var(--border)]" style={{ background: 'var(--surface-1)' }}>
+                                              <td className="py-2 font-mono" style={{ color: 'var(--text-3)', paddingLeft: '32px' }}>{it.codigo}</td>
+                                              <td className="py-2" style={{ color: 'var(--text-2)' }}>{it.descricao}</td>
+                                              <td className="py-2 text-right">
+                                                <div className="text-sm tabular-nums" style={{ color: 'var(--text-2)' }}>
+                                                  {formatCurrency(it.valor_global_item)}
+                                                </div>
+                                                <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                                  {Number(it.quantidade_contratada).toLocaleString('pt-BR')} × {formatCurrency(it.valor_unitario_contratual)}
+                                                </div>
+                                              </td>
+                                              <td className="py-2 text-right">
+                                                <div className="text-sm font-bold tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                                  {formatPercent(it.pct_anterior)}
+                                                </div>
+                                                <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                                  {formatCurrency(it.valor_anterior)}
+                                                </div>
+                                              </td>
+                                              <td className="py-2 text-right">
+                                                <div className="text-sm font-bold tabular-nums" style={{ color: '#0F766E' }}>
+                                                  {formatPercent(it.pct_atual)}
+                                                </div>
+                                                <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                                  {formatCurrency(it.valor_atual)}
+                                                </div>
+                                              </td>
+                                              <td className="py-2 text-right">
+                                                <div className="text-sm font-bold tabular-nums" style={{ color: '#10B981' }}>
+                                                  {formatPercent(it.pct_total)}
+                                                </div>
+                                                <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                                  {formatCurrency(it.valor_total)}
+                                                </div>
+                                                <div className="h-1 mt-1 rounded-full" style={{ background: 'var(--surface-3)' }}>
+                                                  <div className="h-full rounded-full transition-all" style={{
+                                                    width: `${pctTotalBarI}%`,
+                                                    background: '#10B981',
+                                                  }} />
+                                                </div>
+                                              </td>
+                                              <td className="py-2 text-right">
+                                                <div className="text-sm font-bold tabular-nums" style={{ color: '#F59E0B' }}>
+                                                  {formatPercent(it.pct_saldo)}
+                                                </div>
+                                                <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                                  {formatCurrency(it.valor_saldo)}
+                                                </div>
+                                              </td>
+                                            </tr>
+                                          )
+                                        })}
+                                      </Fragment>
+                                    )
+                                  })}
+                                </Fragment>
+                              )
+                            })}
+
+                            {gruposExibir.length === 0 && (
+                              <tr>
+                                <td colSpan={7} className="py-6 text-center text-[var(--text-3)] text-xs italic">
+                                  Nenhum grupo com medição nesta competência. Ative "Mostrar todos os itens" pra ver a planilha completa.
+                                </td>
+                              </tr>
+                            )}
+
+                            {/* Subtotais agregados (linha em ADIÇÃO antes do tfoot original) */}
+                            {(() => {
+                              const t = planilha.totais
+                              const pctTotalBar = Math.min(Math.max(t.pct_total_medido, 0), 100)
+                              return (
+                                <tr className="border-t-2 border-[var(--border-hover)]" style={{ background: 'var(--surface-2)' }}>
+                                  <td colSpan={2} className="py-2 px-2 text-sm font-bold" style={{ color: 'var(--text-1)' }}>
+                                    Subtotal
+                                  </td>
+                                  <td className="py-2 text-right">
+                                    <div className="text-sm font-bold tabular-nums" style={{ color: 'var(--text-1)' }}>
+                                      {formatCurrency(t.valor_global_total)}
+                                    </div>
+                                  </td>
+                                  <td className="py-2 text-right">
+                                    <div className="text-sm font-bold tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                      {formatPercent(t.pct_anterior_total)}
+                                    </div>
+                                    <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                      {formatCurrency(t.valor_anterior_total)}
+                                    </div>
+                                  </td>
+                                  <td className="py-2 text-right">
+                                    <div className="text-sm font-bold tabular-nums" style={{ color: '#0F766E' }}>
+                                      {formatPercent(t.pct_atual_total)}
+                                    </div>
+                                    <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                      {formatCurrency(t.valor_atual_total)}
+                                    </div>
+                                  </td>
+                                  <td className="py-2 text-right">
+                                    <div className="text-sm font-bold tabular-nums" style={{ color: '#10B981' }}>
+                                      {formatPercent(t.pct_total_medido)}
+                                    </div>
+                                    <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                      {formatCurrency(t.valor_total_medido)}
+                                    </div>
+                                    <div className="h-1 mt-1 rounded-full" style={{ background: 'var(--surface-3)' }}>
+                                      <div className="h-full rounded-full transition-all" style={{
+                                        width: `${pctTotalBar}%`,
+                                        background: '#10B981',
+                                      }} />
+                                    </div>
+                                  </td>
+                                  <td className="py-2 text-right">
+                                    <div className="text-sm font-bold tabular-nums" style={{ color: '#F59E0B' }}>
+                                      {formatPercent(t.pct_saldo_total)}
+                                    </div>
+                                    <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                      {formatCurrency(t.valor_saldo_total)}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )
+                            })()}
+                          </tbody>
+                          <tfoot>
+                            {(() => {
+                              // tfoot ORIGINAL — decomposição mat/serv do informacon — INTACTO.
+                              // Apenas ajustamos colSpans pra novo layout (7 colunas).
+                              let mat = totaisInformacon?.material_medido ?? 0
+                              let serv = totaisInformacon?.servico_medido ?? 0
+                              if (!totaisInformacon) {
+                                for (const it of (medicao.medicao_itens || []) as any[]) {
+                                  const qtd = Number(it.quantidade_medida || 0)
+                                  mat += qtd * Number(it.detalhamento?.valor_material_unit || 0)
+                                  serv += qtd * Number(it.detalhamento?.valor_servico_unit || 0)
+                                }
+                              }
+                              const tot = Number(medicao.valor_total || 0)
+                              if (mat === 0 && serv === 0 && tot > 0) serv = tot
+                              const nfFipMaterial      = totaisInformacon?.nf_descontavel ?? 0
+                              const saldoPedAprovados  = totaisInformacon?.material_retido ?? 0
+                              const fipACriar          = totaisInformacon?.fip_faturar    ?? 0
+                              // 7 colunas: label ocupa 6, valor na última.
+                              return (
+                                <>
+                                  {/* === MATERIAL === */}
+                                  <tr className="border-t-2 border-[var(--border-hover)]">
+                                    <td colSpan={6} className="pt-2 text-sm font-bold text-right pr-4" style={{ color: 'var(--text-1)' }}>Material correspondente (faturamento direto FIP)</td>
+                                    <td className="pt-2 text-right text-sm font-bold tabular-nums" style={{ color: 'var(--text-1)' }}>{formatCurrency(mat)}</td>
+                                  </tr>
+                                  <tr>
+                                    <td colSpan={6} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ NOTA FIP Material <span className="text-[10px] font-medium opacity-75">(já descontada)</span></td>
+                                    <td className="text-right text-sm font-semibold tabular-nums" style={{ color: '#06B6D4' }}>{formatCurrency(nfFipMaterial)}</td>
+                                  </tr>
+                                  <tr>
+                                    <td colSpan={6} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ Saldo Ped. Aprovados <span className="text-[10px] font-medium opacity-75">(NF Pendentes)</span></td>
+                                    <td className="text-right text-sm font-semibold tabular-nums" style={{ color: '#F59E0B' }}>{formatCurrency(saldoPedAprovados)}</td>
+                                  </tr>
+                                  <tr>
+                                    <td colSpan={6} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ FIP a criar <span className="text-[10px] font-medium opacity-75">(NF nova)</span></td>
+                                    <td className="text-right text-sm font-semibold tabular-nums" style={{ color: '#3B82F6' }}>{formatCurrency(fipACriar)}</td>
+                                  </tr>
+                                  {/* === SERVIÇO === */}
+                                  <tr>
+                                    <td colSpan={6} className="pt-2 text-sm font-bold text-right pr-4 text-teal-700/90 dark:text-teal-400">
+                                      Serviço medido <span className="text-[10px] font-bold ml-1 px-1 py-0.5 rounded" style={{ background: 'rgba(15,118,110,0.15)' }}>NF a emitir</span>
+                                    </td>
+                                    <td className="pt-2 text-right font-bold text-sm tabular-nums" style={{ color: '#0F766E' }}>{formatCurrency(serv)}</td>
+                                  </tr>
+                                  {/* === TOTAL === */}
+                                  <tr className="border-t border-[var(--border)]">
+                                    <td colSpan={6} className="pt-1.5 pb-1 text-base font-bold text-right pr-4" style={{ color: 'var(--text-1)' }}>Total da Medição (mat + serv)</td>
+                                    <td className="pt-1.5 pb-1 text-right font-bold text-base tabular-nums" style={{ color: '#3B82F6' }}>{formatCurrency(tot)}</td>
+                                  </tr>
+                                </>
+                              )
+                            })()}
+                          </tfoot>
+                        </table>
+                      </>
+                    )
+                  })()
+                ) : (
+                  /* Fallback: tabela antiga (6 colunas) enquanto /planilha não carrega ou se falhar. */
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 z-10" style={{ background: 'var(--surface-2)' }}>
+                      <tr className="border-b border-[var(--border)]">
+                        <th className="text-left py-2 text-[var(--text-3)] font-medium">Código</th>
+                        <th className="text-left py-2 text-[var(--text-3)] font-medium">Descrição</th>
+                        <th className="text-center py-2 text-[var(--text-3)] font-medium">Un.</th>
+                        <th className="text-right py-2 text-[var(--text-3)] font-medium">Qtd.</th>
+                        <th className="text-right py-2 text-[var(--text-3)] font-medium">V. Unit.</th>
+                        <th className="text-right py-2 text-[var(--text-3)] font-medium">Total</th>
                       </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    {(() => {
-                      // Fonte da verdade: totaisInformacon. Fallback: cálculo on-the-fly.
-                      let mat = totaisInformacon?.material_medido ?? 0
-                      let serv = totaisInformacon?.servico_medido ?? 0
-                      if (!totaisInformacon) {
-                        for (const it of (medicao.medicao_itens || []) as any[]) {
-                          const qtd = Number(it.quantidade_medida || 0)
-                          mat += qtd * Number(it.detalhamento?.valor_material_unit || 0)
-                          serv += qtd * Number(it.detalhamento?.valor_servico_unit || 0)
+                    </thead>
+                    <tbody>
+                      {itens.map((item: any, idx: number) => (
+                        <tr key={item.id} className={`border-b border-[var(--border)] ${idx % 2 === 0 ? 'bg-[var(--surface-1)]' : 'bg-[var(--surface-2)]'}`}>
+                          <td className="py-2 font-mono text-[var(--text-3)]">{item.detalhamento?.codigo}</td>
+                          <td className="py-2 text-[var(--text-2)]">{item.detalhamento?.descricao}</td>
+                          <td className="py-2 text-center text-[var(--text-3)]">{item.detalhamento?.unidade}</td>
+                          <td className="py-2 text-right text-[var(--text-1)]">{Number(item.quantidade_medida).toLocaleString('pt-BR')}</td>
+                          <td className="py-2 text-right text-[var(--text-3)]">{formatCurrency(item.valor_unitario)}</td>
+                          <td className="py-2 text-right font-semibold text-[var(--text-1)]">{formatCurrency(item.quantidade_medida * item.valor_unitario)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      {(() => {
+                        let mat = totaisInformacon?.material_medido ?? 0
+                        let serv = totaisInformacon?.servico_medido ?? 0
+                        if (!totaisInformacon) {
+                          for (const it of (medicao.medicao_itens || []) as any[]) {
+                            const qtd = Number(it.quantidade_medida || 0)
+                            mat += qtd * Number(it.detalhamento?.valor_material_unit || 0)
+                            serv += qtd * Number(it.detalhamento?.valor_servico_unit || 0)
+                          }
                         }
-                      }
-                      const tot = Number(medicao.valor_total || 0)
-                      if (mat === 0 && serv === 0 && tot > 0) serv = tot
-                      // Decomposição do "Material correspondente" em 3 partes
-                      // (que devem somar mat). Vem do /informacon route.
-                      const nfFipMaterial      = totaisInformacon?.nf_descontavel ?? 0
-                      const saldoPedAprovados  = totaisInformacon?.material_retido ?? 0
-                      const fipACriar          = totaisInformacon?.fip_faturar    ?? 0
-                      // colSpan=2 deixa o label começar na coluna "V. Unit.",
-                      // visualmente mais próximo dos valores na coluna "Total".
-                      return (
-                        <>
-                          {/* === MATERIAL === */}
-                          <tr className="border-t-2 border-[var(--border-hover)]">
-                            <td colSpan={3} />
-                            <td colSpan={2} className="pt-2 text-sm font-bold text-right pr-4" style={{ color: 'var(--text-1)' }}>Material correspondente (faturamento direto FIP)</td>
-                            <td className="pt-2 text-right text-sm font-bold tabular-nums" style={{ color: 'var(--text-1)' }}>{formatCurrency(mat)}</td>
-                          </tr>
-                          {/* sub-linhas: NF descontada + Saldo pedidos aprovados + FIP a criar (somam mat) */}
-                          <tr>
-                            <td colSpan={3} />
-                            <td colSpan={2} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ NOTA FIP Material <span className="text-[10px] font-medium opacity-75">(já descontada)</span></td>
-                            <td className="text-right text-sm font-semibold tabular-nums" style={{ color: '#06B6D4' }}>{formatCurrency(nfFipMaterial)}</td>
-                          </tr>
-                          <tr>
-                            <td colSpan={3} />
-                            <td colSpan={2} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ Saldo Ped. Aprovados <span className="text-[10px] font-medium opacity-75">(NF Pendentes)</span></td>
-                            <td className="text-right text-sm font-semibold tabular-nums" style={{ color: '#F59E0B' }}>{formatCurrency(saldoPedAprovados)}</td>
-                          </tr>
-                          <tr>
-                            <td colSpan={3} />
-                            <td colSpan={2} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ FIP a criar <span className="text-[10px] font-medium opacity-75">(NF nova)</span></td>
-                            <td className="text-right text-sm font-semibold tabular-nums" style={{ color: '#3B82F6' }}>{formatCurrency(fipACriar)}</td>
-                          </tr>
-                          {/* === SERVIÇO === */}
-                          <tr>
-                            <td colSpan={3} />
-                            <td colSpan={2} className="pt-2 text-sm font-bold text-right pr-4 text-teal-700/90 dark:text-teal-400">
-                              Serviço medido <span className="text-[10px] font-bold ml-1 px-1 py-0.5 rounded" style={{ background: 'rgba(15,118,110,0.15)' }}>NF a emitir</span>
-                            </td>
-                            <td className="pt-2 text-right font-bold text-sm tabular-nums" style={{ color: '#0F766E' }}>{formatCurrency(serv)}</td>
-                          </tr>
-                          {/* === TOTAL === */}
-                          <tr className="border-t border-[var(--border)]">
-                            <td colSpan={3} />
-                            <td colSpan={2} className="pt-1.5 pb-1 text-base font-bold text-right pr-4" style={{ color: 'var(--text-1)' }}>Total da Medição (mat + serv)</td>
-                            <td className="pt-1.5 pb-1 text-right font-bold text-base tabular-nums" style={{ color: '#3B82F6' }}>{formatCurrency(tot)}</td>
-                          </tr>
-                        </>
-                      )
-                    })()}
-                  </tfoot>
-                </table>
+                        const tot = Number(medicao.valor_total || 0)
+                        if (mat === 0 && serv === 0 && tot > 0) serv = tot
+                        const nfFipMaterial      = totaisInformacon?.nf_descontavel ?? 0
+                        const saldoPedAprovados  = totaisInformacon?.material_retido ?? 0
+                        const fipACriar          = totaisInformacon?.fip_faturar    ?? 0
+                        return (
+                          <>
+                            <tr className="border-t-2 border-[var(--border-hover)]">
+                              <td colSpan={3} />
+                              <td colSpan={2} className="pt-2 text-sm font-bold text-right pr-4" style={{ color: 'var(--text-1)' }}>Material correspondente (faturamento direto FIP)</td>
+                              <td className="pt-2 text-right text-sm font-bold tabular-nums" style={{ color: 'var(--text-1)' }}>{formatCurrency(mat)}</td>
+                            </tr>
+                            <tr>
+                              <td colSpan={3} />
+                              <td colSpan={2} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ NOTA FIP Material <span className="text-[10px] font-medium opacity-75">(já descontada)</span></td>
+                              <td className="text-right text-sm font-semibold tabular-nums" style={{ color: '#06B6D4' }}>{formatCurrency(nfFipMaterial)}</td>
+                            </tr>
+                            <tr>
+                              <td colSpan={3} />
+                              <td colSpan={2} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ Saldo Ped. Aprovados <span className="text-[10px] font-medium opacity-75">(NF Pendentes)</span></td>
+                              <td className="text-right text-sm font-semibold tabular-nums" style={{ color: '#F59E0B' }}>{formatCurrency(saldoPedAprovados)}</td>
+                            </tr>
+                            <tr>
+                              <td colSpan={3} />
+                              <td colSpan={2} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ FIP a criar <span className="text-[10px] font-medium opacity-75">(NF nova)</span></td>
+                              <td className="text-right text-sm font-semibold tabular-nums" style={{ color: '#3B82F6' }}>{formatCurrency(fipACriar)}</td>
+                            </tr>
+                            <tr>
+                              <td colSpan={3} />
+                              <td colSpan={2} className="pt-2 text-sm font-bold text-right pr-4 text-teal-700/90 dark:text-teal-400">
+                                Serviço medido <span className="text-[10px] font-bold ml-1 px-1 py-0.5 rounded" style={{ background: 'rgba(15,118,110,0.15)' }}>NF a emitir</span>
+                              </td>
+                              <td className="pt-2 text-right font-bold text-sm tabular-nums" style={{ color: '#0F766E' }}>{formatCurrency(serv)}</td>
+                            </tr>
+                            <tr className="border-t border-[var(--border)]">
+                              <td colSpan={3} />
+                              <td colSpan={2} className="pt-1.5 pb-1 text-base font-bold text-right pr-4" style={{ color: 'var(--text-1)' }}>Total da Medição (mat + serv)</td>
+                              <td className="pt-1.5 pb-1 text-right font-bold text-base tabular-nums" style={{ color: '#3B82F6' }}>{formatCurrency(tot)}</td>
+                            </tr>
+                          </>
+                        )
+                      })()}
+                    </tfoot>
+                  </table>
+                )}
               </CardContent>
             </Card>
 
