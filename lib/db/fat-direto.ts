@@ -997,6 +997,102 @@ export async function recusarNotaFiscalPorDivergencia(input: {
   return r.data
 }
 
+/**
+ * Detecta pedidos fat-direto aprovados ANTES de uma data de referência
+ * que ainda têm saldo pendente (NF parcial ou nenhuma NF lançada) e
+ * estão em atraso (data_aprovacao < hoje - dias_threshold).
+ *
+ * Usado pra:
+ *  - banner pós-cadastro de NF (15 dias) — passa data_aprov do pedido novo
+ *    como referência; só lista pedidos ANTERIORES a ele.
+ *  - relatório mensal (30 dias) — passa data atual como referência;
+ *    lista todos os pedidos atrasados do contrato.
+ */
+export async function detectarPedidosAtrasados(input: {
+  contrato_id: string
+  /** Só considera pedidos com data_aprovacao < esta data. Default: agora. */
+  data_referencia?: string
+  /** Threshold em dias. Default: lê do contrato (dias_alerta_pedido_atrasado). */
+  dias_threshold?: number
+}): Promise<{
+  pedidos: Array<{
+    id: string
+    numero_pedido_fip: number
+    data_aprovacao: string
+    valor_total: number
+    total_nfs: number
+    saldo: number
+    dias_decorridos: number
+  }>
+  dias_threshold: number
+}> {
+  const admin = createAdminClient()
+
+  // Resolve threshold
+  let diasThreshold = input.dias_threshold
+  if (diasThreshold === undefined) {
+    const { data: contrato } = await admin
+      .from('contratos')
+      .select('dias_alerta_pedido_atrasado')
+      .eq('id', input.contrato_id)
+      .single()
+    diasThreshold = Number((contrato as any)?.dias_alerta_pedido_atrasado ?? 15)
+  }
+
+  const dataRef = input.data_referencia ? new Date(input.data_referencia) : new Date()
+  const corteAtraso = new Date(dataRef.getTime() - diasThreshold * 24 * 3600 * 1000)
+
+  // Pega pedidos aprovados do contrato com data_aprovacao < corteAtraso
+  const { data: sols } = await admin
+    .from('solicitacoes_fat_direto')
+    .select('id, numero_pedido_fip, data_aprovacao, valor_total, deletado_em')
+    .eq('contrato_id', input.contrato_id)
+    .eq('status', 'aprovado')
+    .is('deletado_em', null)
+    .lt('data_aprovacao', corteAtraso.toISOString())
+    .order('data_aprovacao', { ascending: true })
+
+  if (!sols || sols.length === 0) {
+    return { pedidos: [], dias_threshold: diasThreshold }
+  }
+
+  // Pega NFs ativas dos pedidos achados (1 query só)
+  const ids = sols.map((s: any) => s.id)
+  const { data: nfsRaw } = await admin
+    .from('notas_fiscais_fat_direto')
+    .select('solicitacao_id, valor, status')
+    .in('solicitacao_id', ids)
+
+  const nfsPorSol: Record<string, number> = {}
+  for (const nf of (nfsRaw || []) as any[]) {
+    if (nf.status === 'rejeitada') continue
+    nfsPorSol[nf.solicitacao_id] = (nfsPorSol[nf.solicitacao_id] || 0) + Number(nf.valor || 0)
+  }
+
+  // Filtra apenas os com saldo > 0 (parcial ou sem NF) e calcula dias
+  const hoje = new Date()
+  const pedidos = sols
+    .map((s: any) => {
+      const totalNfs = nfsPorSol[s.id] || 0
+      const saldo = Number(s.valor_total || 0) - totalNfs
+      const diasDecorridos = Math.floor(
+        (hoje.getTime() - new Date(s.data_aprovacao).getTime()) / (24 * 3600 * 1000),
+      )
+      return {
+        id: s.id,
+        numero_pedido_fip: Number(s.numero_pedido_fip || 0),
+        data_aprovacao: s.data_aprovacao,
+        valor_total: Number(s.valor_total || 0),
+        total_nfs: totalNfs,
+        saldo,
+        dias_decorridos: diasDecorridos,
+      }
+    })
+    .filter(p => p.saldo > 0.01)
+
+  return { pedidos, dias_threshold: diasThreshold }
+}
+
 export async function getResumoFatDireto(contratoId: string) {
   const admin = createAdminClient()
 

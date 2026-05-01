@@ -285,6 +285,32 @@ export default function NfFatDiretoPage() {
   } | null>(null)
   const [destinatariosSelecionados, setDestinatariosSelecionados] = useState<Set<string>>(new Set())
 
+  // Alerta contextual de pedidos anteriores pendentes (pós-cadastro NF)
+  const [alertaPedidosAtrasados, setAlertaPedidosAtrasados] = useState<{
+    contrato_id: string
+    ref_solicitacao_id: string
+    numero_nf_recente: string
+    qtd: number
+  } | null>(null)
+  // Modal de preview do email de pedidos atrasados
+  const [previewPedidosAtrasados, setPreviewPedidosAtrasados] = useState<{
+    contrato_id: string
+    ref_solicitacao_id: string
+    numero_nf_recente: string
+    preview: { subject: string; html: string }
+    envolvidos: { id: string; nome: string; email: string; perfil: string }[]
+    pedidos_atrasados: Array<{
+      numero_pedido_fip: number
+      data_aprovacao: string
+      valor_total: number
+      total_nfs: number
+      saldo: number
+      dias_decorridos: number
+    }>
+    dias_alerta: number
+  } | null>(null)
+  const [destinatariosAtraso, setDestinatariosAtraso] = useState<Set<string>>(new Set())
+
   /**
    * Sobe arquivo direto pro Supabase Storage via signed URL.
    * Bypassa o limite de body do Vercel (~4.5MB) — funciona com PDFs de
@@ -427,8 +453,102 @@ export default function NfFatDiretoPage() {
       }
       setConfirmDataAnterior(null)
       setExpandedSolId(null)
+      // Antes de resetar, captura dados pra checagem de pedidos atrasados
+      const numeroNfCadastrada = nfForm.numero_nf
       resetForm()
       reload()
+
+      // Após cadastrar NF com sucesso, checa pedidos anteriores pendentes
+      try {
+        const r = await fetch(
+          `/api/contratos/${sol.contrato_id}/fat-direto/pedidos-atrasados?ref=${sol.id}`,
+        )
+        if (r.ok) {
+          const d = await r.json()
+          if (Array.isArray(d.pedidos) && d.pedidos.length > 0) {
+            setAlertaPedidosAtrasados({
+              contrato_id: sol.contrato_id,
+              ref_solicitacao_id: sol.id,
+              numero_nf_recente: numeroNfCadastrada,
+              qtd: d.pedidos.length,
+            })
+          }
+        }
+      } catch { /* silencioso — alerta é opcional */ }
+    } finally {
+      setSavingNf(false)
+    }
+  }
+
+  async function abrirPreviewPedidosAtrasados() {
+    if (!alertaPedidosAtrasados) return
+    setSavingNf(true)
+    try {
+      const res = await fetch(
+        `/api/contratos/${alertaPedidosAtrasados.contrato_id}/fat-direto/pedidos-atrasados`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ref_solicitacao_id: alertaPedidosAtrasados.ref_solicitacao_id,
+            numero_nf_recente: alertaPedidosAtrasados.numero_nf_recente,
+            dry_run: true,
+          }),
+        },
+      )
+      const d = await res.json()
+      if (!res.ok) {
+        setNfError(d.error || 'Erro ao gerar preview.')
+        return
+      }
+      setPreviewPedidosAtrasados({
+        contrato_id: alertaPedidosAtrasados.contrato_id,
+        ref_solicitacao_id: alertaPedidosAtrasados.ref_solicitacao_id,
+        numero_nf_recente: alertaPedidosAtrasados.numero_nf_recente,
+        preview: d.preview,
+        envolvidos: d.envolvidos || [],
+        pedidos_atrasados: d.pedidos_atrasados || [],
+        dias_alerta: d.dias_alerta || 15,
+      })
+      setDestinatariosAtraso(new Set((d.envolvidos || []).map((u: any) => u.id)))
+      setAlertaPedidosAtrasados(null)
+    } catch (e: any) {
+      setNfError(e?.message || 'Erro ao gerar preview.')
+    } finally {
+      setSavingNf(false)
+    }
+  }
+
+  async function confirmarEnviarPedidosAtrasados() {
+    if (!previewPedidosAtrasados) return
+    if (destinatariosAtraso.size === 0) {
+      if (!confirm('Nenhum envolvido selecionado — fechar sem enviar email?')) return
+      setPreviewPedidosAtrasados(null)
+      return
+    }
+    setSavingNf(true)
+    try {
+      const res = await fetch(
+        `/api/contratos/${previewPedidosAtrasados.contrato_id}/fat-direto/pedidos-atrasados`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ref_solicitacao_id: previewPedidosAtrasados.ref_solicitacao_id,
+            numero_nf_recente: previewPedidosAtrasados.numero_nf_recente,
+            dry_run: false,
+            destinatarios_ids: Array.from(destinatariosAtraso),
+          }),
+        },
+      )
+      const d = await res.json()
+      if (!res.ok) {
+        setNfError(d.error || 'Erro ao enviar.')
+        return
+      }
+      setPreviewPedidosAtrasados(null)
+    } catch (e: any) {
+      setNfError(e?.message || 'Erro ao enviar.')
     } finally {
       setSavingNf(false)
     }
@@ -1271,6 +1391,121 @@ export default function NfFatDiretoPage() {
                 {savingNf
                   ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Salvando...</>
                   : <>⚠ Aprovar com override</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Banner contextual: pedidos anteriores pendentes (15 dias) */}
+      {alertaPedidosAtrasados && (
+        <div
+          className="fixed bottom-4 right-4 z-40 max-w-md rounded-2xl shadow-lg"
+          style={{ background: 'var(--surface-1)', border: '1px solid rgba(245,158,11,0.50)' }}
+        >
+          <div className="px-4 py-3 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: '#F59E0B' }} />
+            <div className="flex-1 text-sm">
+              <p className="font-bold mb-0.5" style={{ color: 'var(--text-1)' }}>
+                {alertaPedidosAtrasados.qtd} pedido(s) anterior(es) pendente(s)
+              </p>
+              <p className="text-xs mb-2" style={{ color: 'var(--text-2)' }}>
+                Detectamos pedidos aprovados antes deste sem NF lançada há mais de 15 dias.
+                Pode notificar a FIP por email.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setAlertaPedidosAtrasados(null)}
+                  className="text-xs px-2.5 py-1 rounded-lg"
+                  style={{ color: 'var(--text-2)', border: '1px solid var(--border)' }}
+                >
+                  Dispensar
+                </button>
+                <button
+                  onClick={abrirPreviewPedidosAtrasados}
+                  disabled={savingNf}
+                  className="text-xs font-semibold px-2.5 py-1 rounded-lg text-white disabled:opacity-50"
+                  style={{ background: '#F59E0B' }}
+                >
+                  {savingNf ? 'Carregando...' : 'Notificar FIP'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: preview email pedidos atrasados */}
+      {previewPedidosAtrasados && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.50)' }}
+          onClick={() => !savingNf && setPreviewPedidosAtrasados(null)}
+        >
+          <div
+            className="rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+            style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 flex items-center gap-3" style={{ borderBottom: '1px solid var(--border)', background: 'rgba(245,158,11,0.06)' }}>
+              <AlertTriangle className="w-5 h-5" style={{ color: '#F59E0B' }} />
+              <div className="flex-1">
+                <h3 className="text-sm font-bold" style={{ color: 'var(--text-1)' }}>
+                  Notificar FIP — pedidos anteriores pendentes
+                </h3>
+                <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>
+                  {previewPedidosAtrasados.pedidos_atrasados.length} pedido(s) sem NF há mais de {previewPedidosAtrasados.dias_alerta} dias
+                </p>
+              </div>
+              <button onClick={() => setPreviewPedidosAtrasados(null)} disabled={savingNf} className="rounded-lg p-1 hover:bg-[var(--surface-2)]">
+                <span className="text-lg" style={{ color: 'var(--text-2)' }}>×</span>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Assunto</p>
+                <p className="text-sm" style={{ color: 'var(--text-1)' }}>{previewPedidosAtrasados.preview.subject}</p>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Corpo do email</p>
+                <iframe
+                  srcDoc={previewPedidosAtrasados.preview.html}
+                  className="w-full rounded-lg"
+                  style={{ height: 380, border: '1px solid var(--border)', background: 'white' }}
+                  sandbox=""
+                />
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>
+                  Destinatários ({destinatariosAtraso.size}/{previewPedidosAtrasados.envolvidos.length})
+                </p>
+                <div className="space-y-1 max-h-32 overflow-y-auto rounded-lg p-2" style={{ border: '1px solid var(--border)' }}>
+                  {previewPedidosAtrasados.envolvidos.length === 0
+                    ? <p className="text-xs" style={{ color: 'var(--text-3)' }}>Nenhum envolvido cadastrado neste contrato.</p>
+                    : previewPedidosAtrasados.envolvidos.map(u => (
+                      <label key={u.id} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-[var(--surface-2)] p-1 rounded">
+                        <input
+                          type="checkbox"
+                          checked={destinatariosAtraso.has(u.id)}
+                          onChange={e => {
+                            const next = new Set(destinatariosAtraso)
+                            if (e.target.checked) next.add(u.id); else next.delete(u.id)
+                            setDestinatariosAtraso(next)
+                          }}
+                        />
+                        <span style={{ color: 'var(--text-1)' }}>{u.nome}</span>
+                        <span style={{ color: 'var(--text-3)' }}>· {u.email}</span>
+                      </label>
+                    ))}
+                </div>
+              </div>
+            </div>
+            <div className="px-5 py-3 flex items-center justify-end gap-2" style={{ borderTop: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+              <button onClick={() => setPreviewPedidosAtrasados(null)} disabled={savingNf} className="text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50" style={{ color: 'var(--text-2)', border: '1px solid var(--border)' }}>
+                Cancelar
+              </button>
+              <button onClick={confirmarEnviarPedidosAtrasados} disabled={savingNf} className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white disabled:opacity-60" style={{ background: '#F59E0B' }}>
+                {savingNf ? <><Loader2 className="w-3.5 h-3.5 animate-spin inline mr-1" /> Enviando...</> : <>Enviar email</>}
               </button>
             </div>
           </div>
