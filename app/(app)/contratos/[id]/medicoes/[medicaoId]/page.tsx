@@ -56,6 +56,11 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
      * = min(gap_material, saldo_aprovado_disponivel)
      */
     material_retido: number
+    /**
+     * Material da medição que NÃO tem nem NF lançada nem pedido aprovado —
+     * a FIP precisa criar uma NF nova. Card "FIP (MATERIAL)" do boletim.
+     */
+    fip_faturar: number
     base_retencao: number
     retencao: number
     pct_retencao: number
@@ -83,6 +88,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
         servico_medido:  Number(data.totais?.servico_medido  || 0),
         nf_descontavel:  Number(data.totais?.nf_descontavel  || 0),
         material_retido: Number(data.totais?.material_retido || 0),
+        fip_faturar:     Number(data.totais?.fip_faturar     || 0),
         base_retencao:   Number(data.totais?.base_retencao   || 0),
         retencao:        Number(data.totais?.retencao        || 0),
         pct_retencao:    Number(data.medicao?.contrato?.percentual_retencao ?? 5),
@@ -277,22 +283,27 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                           servicoMed = valorTotal
                         }
                       }
+                      // FIP a criar = parte da medição que ainda não tem NF
+                      // material lançada NEM pedido fat-direto aprovado — a FIP
+                      // precisa emitir NF nova. Card "FIP (MATERIAL)" do boletim.
+                      const fipACriar = totaisInformacon?.fip_faturar ?? 0
                       return (
                         <div className="space-y-1.5">
-                          {/* 2 destaques lado a lado: NF Material FIP + NF Serviço Wave */}
+                          {/* 2 destaques lado a lado: FIP a CRIAR (material) + Wave a emitir (serviço) */}
                           <div className="flex items-baseline gap-6 flex-wrap">
                             <div className="flex flex-col">
-                              <span className="text-[10px] text-[var(--text-3)] uppercase font-semibold tracking-wide">Material (NF FIP)</span>
-                              <span className="text-2xl font-bold leading-tight" style={{ color: '#3B82F6' }}>{formatCurrency(materialMed)}</span>
+                              <span className="text-[10px] text-[var(--text-3)] uppercase font-semibold tracking-wide">FIP a criar (Material)</span>
+                              <span className="text-2xl font-bold leading-tight" style={{ color: '#3B82F6' }}>{formatCurrency(fipACriar)}</span>
                             </div>
                             <div className="flex flex-col">
                               <span className="text-[10px] text-[var(--text-3)] uppercase font-semibold tracking-wide">Serviço (NF a emitir)</span>
                               <span className="text-2xl font-bold leading-tight" style={{ color: '#0F766E' }}>{formatCurrency(servicoMed)}</span>
                             </div>
                           </div>
-                          <div className="flex items-baseline gap-2 text-xs" style={{ color: 'var(--text-3)' }}>
-                            <span>Total executado:</span>
-                            <strong className="text-sm" style={{ color: 'var(--text-1)' }}>{formatCurrency(valorTotal)}</strong>
+                          <div className="flex items-baseline gap-3 text-xs flex-wrap" style={{ color: 'var(--text-3)' }}>
+                            <span>Material total: <strong style={{ color: 'var(--text-2)' }}>{formatCurrency(materialMed)}</strong></span>
+                            <span>·</span>
+                            <span>Total executado: <strong style={{ color: 'var(--text-1)' }}>{formatCurrency(valorTotal)}</strong></span>
                           </div>
                         </div>
                       )
@@ -542,35 +553,46 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                       }
                       const tot = Number(medicao.valor_total || 0)
                       if (mat === 0 && serv === 0 && tot > 0) serv = tot
-                      // 2 valores adicionais vindos do informakon
-                      const nfFipMaterial   = totaisInformacon?.nf_descontavel ?? 0
-                      const saldoPedAprovados = totaisInformacon?.material_retido ?? 0
-                      // colSpan=4 deixa o label começar na coluna "V. Unit.",
+                      // Decomposição do "Material correspondente" em 3 partes
+                      // (que devem somar mat). Vem do /informacon route.
+                      const nfFipMaterial      = totaisInformacon?.nf_descontavel ?? 0
+                      const saldoPedAprovados  = totaisInformacon?.material_retido ?? 0
+                      const fipACriar          = totaisInformacon?.fip_faturar    ?? 0
+                      // colSpan=2 deixa o label começar na coluna "V. Unit.",
                       // visualmente mais próximo dos valores na coluna "Total".
                       return (
                         <>
+                          {/* === MATERIAL === */}
                           <tr className="border-t-2 border-[var(--border-hover)]">
                             <td colSpan={3} />
-                            <td colSpan={2} className="pt-2 text-sm font-semibold text-right pr-4" style={{ color: 'var(--text-2)' }}>Material correspondente (faturamento direto FIP)</td>
+                            <td colSpan={2} className="pt-2 text-sm font-bold text-right pr-4" style={{ color: 'var(--text-1)' }}>Material correspondente (faturamento direto FIP)</td>
                             <td className="pt-2 text-right text-sm font-bold tabular-nums" style={{ color: 'var(--text-1)' }}>{formatCurrency(mat)}</td>
                           </tr>
+                          {/* sub-linhas: NF descontada + Saldo pedidos aprovados + FIP a criar (somam mat) */}
                           <tr>
                             <td colSpan={3} />
-                            <td colSpan={2} className="text-sm font-semibold text-right pr-4 text-teal-700/90 dark:text-teal-400">
+                            <td colSpan={2} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ NOTA FIP Material <span className="text-[10px] font-medium opacity-75">(já descontada)</span></td>
+                            <td className="text-right text-sm font-semibold tabular-nums" style={{ color: '#06B6D4' }}>{formatCurrency(nfFipMaterial)}</td>
+                          </tr>
+                          <tr>
+                            <td colSpan={3} />
+                            <td colSpan={2} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ Saldo Ped. Aprovados <span className="text-[10px] font-medium opacity-75">(NF Pendentes)</span></td>
+                            <td className="text-right text-sm font-semibold tabular-nums" style={{ color: '#F59E0B' }}>{formatCurrency(saldoPedAprovados)}</td>
+                          </tr>
+                          <tr>
+                            <td colSpan={3} />
+                            <td colSpan={2} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ FIP a criar <span className="text-[10px] font-medium opacity-75">(NF nova)</span></td>
+                            <td className="text-right text-sm font-semibold tabular-nums" style={{ color: '#3B82F6' }}>{formatCurrency(fipACriar)}</td>
+                          </tr>
+                          {/* === SERVIÇO === */}
+                          <tr>
+                            <td colSpan={3} />
+                            <td colSpan={2} className="pt-2 text-sm font-bold text-right pr-4 text-teal-700/90 dark:text-teal-400">
                               Serviço medido <span className="text-[10px] font-bold ml-1 px-1 py-0.5 rounded" style={{ background: 'rgba(15,118,110,0.15)' }}>NF a emitir</span>
                             </td>
-                            <td className="text-right font-bold text-sm tabular-nums" style={{ color: '#0F766E' }}>{formatCurrency(serv)}</td>
+                            <td className="pt-2 text-right font-bold text-sm tabular-nums" style={{ color: '#0F766E' }}>{formatCurrency(serv)}</td>
                           </tr>
-                          <tr>
-                            <td colSpan={3} />
-                            <td colSpan={2} className="text-sm font-semibold text-right pr-4" style={{ color: 'var(--text-2)' }}>NOTA FIP Material</td>
-                            <td className="text-right text-sm font-bold tabular-nums" style={{ color: '#3B82F6' }}>{formatCurrency(nfFipMaterial)}</td>
-                          </tr>
-                          <tr>
-                            <td colSpan={3} />
-                            <td colSpan={2} className="text-sm font-semibold text-right pr-4" style={{ color: 'var(--text-2)' }}>Saldo Ped. Aprovados <span className="text-[10px] font-medium opacity-75">(NF Pendentes)</span></td>
-                            <td className="text-right text-sm font-bold tabular-nums" style={{ color: '#F59E0B' }}>{formatCurrency(saldoPedAprovados)}</td>
-                          </tr>
+                          {/* === TOTAL === */}
                           <tr className="border-t border-[var(--border)]">
                             <td colSpan={3} />
                             <td colSpan={2} className="pt-1.5 pb-1 text-base font-bold text-right pr-4" style={{ color: 'var(--text-1)' }}>Total da Medição (mat + serv)</td>
