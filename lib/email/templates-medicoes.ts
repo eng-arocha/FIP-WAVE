@@ -114,6 +114,21 @@ export interface LiberacaoMedicaoPayload {
 
   aprovador_nome?: string | null
   reenvio?: boolean
+
+  /**
+   * Itens cujo % de medição foi ajustado pelo aprovador porque o
+   * fornecedor confirmou que não emitirá mais NF (saldo de pedido
+   * aprovado considerado não-faturável). Quando vazio/undefined,
+   * a seção destacada não aparece — mantém retrocompatibilidade.
+   */
+  itens_com_confirmacao_sem_nf?: Array<{
+    codigo: string
+    descricao: string
+    pct_original: number  // %
+    pct_ajustado: number  // %
+    valor_retido_absorvido: number  // R$
+    motivo: string
+  }>
 }
 
 // ============================================================
@@ -289,6 +304,54 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
         </p>
       </div>
 
+      ${(p.itens_com_confirmacao_sem_nf && p.itens_com_confirmacao_sem_nf.length > 0) ? `
+      <!-- AJUSTE DE PERCENTUAL -->
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
+        <div style="border:2px solid #f59e0b;background:#fffbeb;border-radius:10px;padding:18px;">
+          <h2 style="margin:0 0 6px;font-size:14px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.5px;">
+            ⚠ Ajuste de percentual aplicado
+          </h2>
+          <p style="margin:0 0 14px;font-size:13px;line-height:1.6;color:#78350f;">
+            Os itens abaixo tiveram o % de medição ajustado conforme decisão
+            do aprovador (saldo de pedido aprovado considerado não-faturável):
+          </p>
+          <table style="width:100%;border-collapse:collapse;font-size:12px;background:#ffffff;border-radius:6px;overflow:hidden;">
+            <thead>
+              <tr style="background:#fef3c7;">
+                <th style="padding:8px 10px;text-align:left;font-weight:600;color:#92400e;border-bottom:1px solid #fde68a;">Item</th>
+                <th style="padding:8px 10px;text-align:left;font-weight:600;color:#92400e;border-bottom:1px solid #fde68a;">Descrição</th>
+                <th style="padding:8px 10px;text-align:right;font-weight:600;color:#92400e;border-bottom:1px solid #fde68a;">% Original</th>
+                <th style="padding:8px 10px;text-align:right;font-weight:600;color:#92400e;border-bottom:1px solid #fde68a;">% Ajustado</th>
+                <th style="padding:8px 10px;text-align:right;font-weight:600;color:#92400e;border-bottom:1px solid #fde68a;">Valor Retido</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${p.itens_com_confirmacao_sem_nf.map(it => `
+                <tr>
+                  <td style="padding:8px 10px;border-bottom:1px solid #fef3c7;font-family:ui-monospace,monospace;font-weight:600;color:#0f172a;">${escapeHtml(it.codigo)}</td>
+                  <td style="padding:8px 10px;border-bottom:1px solid #fef3c7;color:#0f172a;">${escapeHtml(it.descricao)}</td>
+                  <td style="padding:8px 10px;border-bottom:1px solid #fef3c7;text-align:right;color:#475569;">${pctFmt(it.pct_original)}</td>
+                  <td style="padding:8px 10px;border-bottom:1px solid #fef3c7;text-align:right;font-weight:600;color:#92400e;">${pctFmt(it.pct_ajustado)}</td>
+                  <td style="padding:8px 10px;border-bottom:1px solid #fef3c7;text-align:right;font-weight:600;color:#b91c1c;">${fmt(it.valor_retido_absorvido)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          ${p.itens_com_confirmacao_sem_nf.map(it => `
+            <p style="margin:12px 0 0;font-size:12px;color:#78350f;line-height:1.6;">
+              <strong>${escapeHtml(it.codigo)}</strong> — Motivo registrado:
+              <em style="color:#0f172a;">"${escapeHtml(it.motivo)}"</em>
+            </p>
+          `).join('')}
+          <p style="margin:14px 0 0;font-size:12px;line-height:1.6;color:#78350f;font-style:italic;">
+            Esse ajuste protege a retenção contratual quando a NF de material
+            não chegará mais (saldo precisa ser encerrado formalmente via
+            fluxo de "Solicitar encerramento de saldo").
+          </p>
+        </div>
+      </div>
+      ` : ''}
+
       <!-- 5. ITENS MEDIDOS -->
       <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
         <h2 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">5. Itens medidos</h2>
@@ -373,6 +436,20 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
     `  Material — aprovado FIP:    ${fmt(p.resumo.material.aprovado_acumulado)} (${pctFmt(p.resumo.material.pct_aprovado_limite)} de ${fmt(p.resumo.contrato.valor_material_direto)})`,
     `  Andamento físico acumulado: ${pctFmt(p.resumo.servicos.pct_contrato)} do contrato (${fmt(p.resumo.contrato.valor_total)})`,
     '',
+    ...((p.itens_com_confirmacao_sem_nf && p.itens_com_confirmacao_sem_nf.length > 0) ? [
+      `⚠ AJUSTE DE PERCENTUAL APLICADO`,
+      `Os itens abaixo tiveram o % de medição ajustado conforme decisão do aprovador`,
+      `(saldo de pedido aprovado considerado não-faturável):`,
+      ...p.itens_com_confirmacao_sem_nf.map(it =>
+        `  ${it.codigo} — ${it.descricao}\n` +
+        `    % Original: ${pctFmt(it.pct_original)} → % Ajustado: ${pctFmt(it.pct_ajustado)} | Valor retido: ${fmt(it.valor_retido_absorvido)}\n` +
+        `    Motivo: "${it.motivo}"`
+      ),
+      '',
+      `Esse ajuste protege a retenção contratual quando a NF de material não chegará mais`,
+      `(saldo precisa ser encerrado formalmente via fluxo de "Solicitar encerramento de saldo").`,
+      '',
+    ] : []),
     `ITENS MEDIDOS`,
     ...p.itens.map(it => `  - ${it.codigo ? `${it.codigo} ` : ''}${it.descricao}${it.qtde ? ` (qtde ${it.qtde})` : ''} — ${fmt(Number(it.valor_total || 0))}`),
     `  TOTAL: ${fmt(valorMedicao)}`,

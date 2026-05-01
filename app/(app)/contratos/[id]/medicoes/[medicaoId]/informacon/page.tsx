@@ -16,7 +16,7 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import { exportCsv } from '@/lib/utils/csv'
 import {
   ArrowLeft, Loader2, Download, Copy, Check, FileText, TrendingUp, Printer, HelpCircle, X,
-  CheckCircle2, XCircle, Mail, AlertTriangle, Info,
+  CheckCircle2, XCircle, Mail, AlertTriangle, Info, Undo2,
 } from 'lucide-react'
 
 interface Linha {
@@ -134,6 +134,12 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
   const [salvandoConfirmacao, setSalvandoConfirmacao] = useState(false)
   const [erroConfirmacao, setErroConfirmacao] = useState('')
 
+  // === Modal "Desfazer aprovação" da medição ===
+  const [modalDesfazer, setModalDesfazer] = useState(false)
+  const [motivoDesfazer, setMotivoDesfazer] = useState('')
+  const [salvandoDesfazer, setSalvandoDesfazer] = useState(false)
+  const [erroDesfazer, setErroDesfazer] = useState('')
+
   const carregar = useCallback(async () => {
     setLoading(true)
     try {
@@ -241,6 +247,48 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
       await carregar()
     } finally {
       setSaving(false)
+    }
+  }
+
+  // ============================================================
+  // Desfazer aprovação da medição
+  // ============================================================
+  function abrirDesfazer() {
+    setMotivoDesfazer('')
+    setErroDesfazer('')
+    setModalDesfazer(true)
+  }
+
+  async function confirmarDesfazer() {
+    const motivoTrim = motivoDesfazer.trim()
+    if (motivoTrim.length < 10) {
+      setErroDesfazer('O motivo precisa ter pelo menos 10 caracteres.')
+      return
+    }
+    setSalvandoDesfazer(true)
+    setErroDesfazer('')
+    try {
+      const res = await fetch(
+        `/api/contratos/${contratoId}/medicoes/${medicaoId}/desfazer-aprovacao`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ motivo: motivoTrim }),
+        },
+      )
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        // 409: NFs posteriores → mostrar mensagem específica da API
+        setErroDesfazer(body?.error || `Falha (HTTP ${res.status}).`)
+        return
+      }
+      setModalDesfazer(false)
+      setMotivoDesfazer('')
+      await carregar()
+    } catch (e: any) {
+      setErroDesfazer(e?.message || 'Erro de rede.')
+    } finally {
+      setSalvandoDesfazer(false)
     }
   }
 
@@ -487,9 +535,20 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
           </div>
         )}
 
-        {/* Botão de re-disparo de email pós-aprovação (mantém paridade com a page.tsx) */}
+        {/* Botão de re-disparo de email pós-aprovação (mantém paridade com a page.tsx) +
+            botão de "Desfazer aprovação" — disponível apenas para quem pode aprovar. */}
         {!isPendente && data.medicao.status === 'aprovado' && podeAprovar && (
-          <div className="flex justify-end print:hidden">
+          <div className="flex justify-end gap-2 flex-wrap print:hidden">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={abrirDesfazer}
+              className="border border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+              title="Reverte a medição para 'submetido'. Só permitido se nenhuma NF FIP material foi lançada após a aprovação."
+            >
+              <Undo2 className="w-4 h-4" />
+              Desfazer aprovação
+            </Button>
             <Button
               variant="ghost"
               size="sm"
@@ -876,6 +935,76 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ============================ */}
+      {/*   Modal Desfazer aprovação   */}
+      {/* ============================ */}
+      <Dialog
+        open={modalDesfazer}
+        onOpenChange={(open) => {
+          if (!open && !salvandoDesfazer) {
+            setModalDesfazer(false)
+            setErroDesfazer('')
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-amber-400 flex items-center gap-2">
+              <Undo2 className="w-5 h-5" />
+              Desfazer aprovação desta medição?
+            </DialogTitle>
+            <DialogDescription className="text-[var(--text-2)]">
+              {tag} · Período {data.medicao.periodo_referencia} · Contrato {data.medicao.contrato.numero}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2 space-y-3">
+            <div className="p-3 rounded-lg text-xs"
+              style={{
+                background: 'rgba(245,158,11,0.10)',
+                border: '1px solid rgba(245,158,11,0.40)',
+                color: 'var(--text-2)',
+              }}>
+              <p className="font-semibold text-amber-400 mb-1">
+                <AlertTriangle className="inline w-3.5 h-3.5 mr-1" />
+                Atenção
+              </p>
+              A medição voltará para <strong>&quot;submetido&quot;</strong>. Só é permitido se
+              <strong> nenhuma NF FIP material </strong>
+              foi lançada após a aprovação.
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wider">
+                Motivo * (mínimo 10 caracteres)
+              </Label>
+              <Textarea
+                value={motivoDesfazer}
+                onChange={e => setMotivoDesfazer(e.target.value)}
+                placeholder="Justificativa do desfazimento da aprovação..."
+                className="min-h-[100px] bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-1)] placeholder:text-[var(--text-3)]"
+              />
+              <p className="text-[10px] text-[var(--text-3)]">
+                {motivoDesfazer.trim().length}/10 caracteres
+              </p>
+            </div>
+            {erroDesfazer && <p className="text-xs text-red-400 break-words">{erroDesfazer}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalDesfazer(false)} disabled={salvandoDesfazer}>
+              Cancelar
+            </Button>
+            <Button
+              variant="warning"
+              onClick={confirmarDesfazer}
+              loading={salvandoDesfazer}
+              disabled={motivoDesfazer.trim().length < 10}
+            >
+              <Undo2 className="w-4 h-4" />
+              Confirmar Desfazer
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

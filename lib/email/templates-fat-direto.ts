@@ -468,3 +468,434 @@ export function templatePedidoEncerrado(p: PedidoEncerradoPayload): {
 
   return { subject, html, text }
 }
+
+// ============================================================
+// Template: Solicitação de encerramento de saldo (aprovador)
+// ============================================================
+
+export interface SolicitacaoEncerramentoSaldoEmailInput {
+  // Identificação
+  numero_pedido_fip: number | null
+  contrato_numero: string  // ex: "WAVE-2025-001"
+  fornecedor_razao_social: string
+
+  // Valores
+  valor_pedido: number
+  total_nfs_lancadas: number
+  saldo_solicitado: number  // = valor_pedido - total_nfs
+
+  // Solicitação
+  motivo: string
+  solicitado_por_nome: string
+  solicitado_por_email: string
+  solicitado_em: string  // ISO timestamp
+
+  // Links
+  url_aprovacao: string  // ex: https://fip-wave.vercel.app/contratos/{id}/encerramentos
+  contrato_id: string
+}
+
+/**
+ * E-mail enviado ao aprovador quando alguém solicita o encerramento do
+ * saldo de um pedido de faturamento direto. O aprovador revisa, aprova
+ * ou rejeita a solicitação — ao aprovar, o saldo é devolvido ao teto
+ * de faturamento direto do contrato.
+ */
+export function templateSolicitacaoEncerramentoSaldo(
+  input: SolicitacaoEncerramentoSaldoEmailInput,
+): { subject: string; html: string; text: string } {
+  const fip = input.numero_pedido_fip != null
+    ? `FIP-${String(input.numero_pedido_fip).padStart(4, '0')}`
+    : 'FIP-—'
+
+  const subject = `[FIP-WAVE] Solicitação de encerramento de saldo — Pedido ${fip} (${input.contrato_numero})`
+
+  const dataFmt = (() => {
+    try {
+      return new Date(input.solicitado_em).toLocaleString('pt-BR', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      })
+    } catch { return input.solicitado_em }
+  })()
+
+  // Quantas NFs foram lançadas (não temos contagem direta, então o copy
+  // diz só o valor — se o caller quiser nomes, pode passar no motivo)
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>${subject}</title>
+</head>
+<body style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;color:#0f172a;">
+  <div style="max-width:680px;margin:0 auto;padding:24px;">
+
+    <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+
+      <!-- Header -->
+      <div style="background:#b45309;color:#ffffff;padding:24px;">
+        <h1 style="margin:0;font-size:20px;">Solicitação de encerramento de saldo</h1>
+        <p style="margin:6px 0 0;font-size:13px;opacity:0.9;">${fip} · ${escapeHtml(input.contrato_numero)} · Aguardando sua decisão</p>
+      </div>
+
+      <!-- Saudação -->
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
+        <p style="margin:0 0 12px;font-size:15px;font-weight:600;color:#0f172a;">
+          Prezado(a) Aprovador,
+        </p>
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#475569;">
+          <strong>${escapeHtml(input.fornecedor_razao_social)}</strong> solicitou o
+          encerramento do saldo do pedido <strong>${fip}</strong>
+          (contrato <strong>${escapeHtml(input.contrato_numero)}</strong>).
+        </p>
+      </div>
+
+      <!-- 1. RESUMO FINANCEIRO -->
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
+        <h2 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">1. Resumo financeiro</h2>
+        <table style="width:100%;font-size:14px;">
+          <tr><td style="padding:6px 0;color:#64748b;">Valor do pedido</td><td style="padding:6px 0;text-align:right;font-weight:600;">${fmt(input.valor_pedido)}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">NFs lançadas</td><td style="padding:6px 0;text-align:right;font-weight:600;">${fmt(input.total_nfs_lancadas)}</td></tr>
+          <tr style="border-top:2px solid #e5e7eb;"><td style="padding:8px 0;color:#0f172a;font-weight:700;">Saldo solicitado para encerramento</td><td style="padding:8px 0;text-align:right;font-weight:700;color:#b45309;">${fmt(input.saldo_solicitado)}</td></tr>
+        </table>
+      </div>
+
+      <!-- 2. MOTIVO DECLARADO -->
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
+        <h2 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">2. Motivo declarado</h2>
+        <blockquote style="margin:0;padding:12px 16px;background:#f8fafc;border-left:4px solid #b45309;font-size:14px;line-height:1.6;color:#0f172a;font-style:italic;white-space:pre-wrap;">${escapeHtml(input.motivo)}</blockquote>
+      </div>
+
+      <!-- 3. EFEITO DA APROVAÇÃO -->
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;background:#eff6ff;">
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#1e3a8a;">
+          Após sua aprovação, o saldo de <strong>${fmt(input.saldo_solicitado)}</strong>
+          será cancelado e devolvido ao teto de faturamento direto do contrato —
+          ficará disponível pra outros pedidos.
+        </p>
+      </div>
+
+      <!-- 4. CTA -->
+      <div style="padding:24px;text-align:center;border-bottom:1px solid #e2e8f0;">
+        <a href="${escapeHtml(input.url_aprovacao)}"
+           style="display:inline-block;background:#b45309;color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">
+          Revisar e decidir →
+        </a>
+      </div>
+
+      <!-- 5. SOLICITANTE -->
+      <div style="padding:24px;">
+        <h2 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">Solicitação</h2>
+        <p style="margin:0;font-size:13px;color:#475569;line-height:1.6;">
+          Solicitado por <strong>${escapeHtml(input.solicitado_por_nome)}</strong>
+          (<a href="mailto:${escapeHtml(input.solicitado_por_email)}" style="color:#1e3a8a;">${escapeHtml(input.solicitado_por_email)}</a>)
+          em ${escapeHtml(dataFmt)}.
+        </p>
+      </div>
+
+    </div>
+
+    <p style="margin:16px 0 0;font-size:12px;color:#64748b;text-align:center;">
+      Este é um e-mail automático de notificação interna da Obra WAVE.<br>
+      Dúvidas? Responda este e-mail — sua mensagem vai pra gestão.
+    </p>
+
+  </div>
+</body>
+</html>`
+
+  const text = [
+    subject,
+    '',
+    `Prezado(a) Aprovador,`,
+    '',
+    `${input.fornecedor_razao_social} solicitou o encerramento do saldo do pedido ${fip} (contrato ${input.contrato_numero}).`,
+    '',
+    `1. RESUMO FINANCEIRO`,
+    `   Valor do pedido:                    ${fmt(input.valor_pedido)}`,
+    `   NFs lançadas:                       ${fmt(input.total_nfs_lancadas)}`,
+    `   Saldo solicitado para encerramento: ${fmt(input.saldo_solicitado)}`,
+    '',
+    `2. MOTIVO DECLARADO`,
+    `   "${input.motivo}"`,
+    '',
+    `Após sua aprovação, o saldo de ${fmt(input.saldo_solicitado)} será cancelado`,
+    `e devolvido ao teto de faturamento direto do contrato — ficará disponível`,
+    `pra outros pedidos.`,
+    '',
+    `Revisar e decidir: ${input.url_aprovacao}`,
+    '',
+    `Solicitado por ${input.solicitado_por_nome} (${input.solicitado_por_email}) em ${dataFmt}.`,
+    '',
+    `— Gestão WAVE`,
+  ].join('\n')
+
+  return { subject, html, text }
+}
+
+// ============================================================
+// Template: Encerramento de saldo APROVADO (notifica fornecedor)
+// ============================================================
+
+export interface EncerramentoSaldoAprovadoEmailInput {
+  numero_pedido_fip: number | null
+  contrato_numero: string
+  fornecedor_razao_social: string
+  valor_pedido: number
+  saldo_cancelado: number
+  motivo_solicitacao: string
+  decidido_por_nome: string
+  decidido_em: string
+  url_pedido: string  // link de volta pro pedido
+}
+
+/**
+ * E-mail enviado ao fornecedor (com cópia interna) quando o aprovador
+ * APROVA a solicitação de encerramento de saldo. Confirma que o saldo
+ * foi cancelado e está de volta ao teto do contrato.
+ */
+export function templateEncerramentoSaldoAprovado(
+  input: EncerramentoSaldoAprovadoEmailInput,
+): { subject: string; html: string; text: string } {
+  const fip = input.numero_pedido_fip != null
+    ? `FIP-${String(input.numero_pedido_fip).padStart(4, '0')}`
+    : 'FIP-—'
+
+  const subject = `[FIP-WAVE] Encerramento aprovado — Pedido ${fip}`
+
+  const dataFmt = (() => {
+    try {
+      return new Date(input.decidido_em).toLocaleString('pt-BR', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      })
+    } catch { return input.decidido_em }
+  })()
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>${subject}</title>
+</head>
+<body style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;color:#0f172a;">
+  <div style="max-width:680px;margin:0 auto;padding:24px;">
+
+    <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+
+      <!-- Header -->
+      <div style="background:#166534;color:#ffffff;padding:24px;">
+        <h1 style="margin:0;font-size:20px;">Encerramento de saldo aprovado</h1>
+        <p style="margin:6px 0 0;font-size:13px;opacity:0.9;">${fip} · ${escapeHtml(input.contrato_numero)}</p>
+      </div>
+
+      <!-- Saudação -->
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
+        <p style="margin:0 0 12px;font-size:15px;font-weight:600;color:#0f172a;">
+          ${escapeHtml(input.fornecedor_razao_social)},
+        </p>
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#475569;">
+          Sua solicitação de encerramento do saldo do pedido <strong>${fip}</strong>
+          foi <strong style="color:#166534;">APROVADA</strong>.
+        </p>
+      </div>
+
+      <!-- 1. RESUMO -->
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
+        <h2 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">1. Resumo</h2>
+        <table style="width:100%;font-size:14px;">
+          <tr><td style="padding:6px 0;color:#64748b;">Valor do pedido</td><td style="padding:6px 0;text-align:right;font-weight:600;">${fmt(input.valor_pedido)}</td></tr>
+          <tr style="border-top:2px solid #e5e7eb;"><td style="padding:8px 0;color:#0f172a;font-weight:700;">Saldo cancelado e devolvido ao teto</td><td style="padding:8px 0;text-align:right;font-weight:700;color:#166534;">${fmt(input.saldo_cancelado)}</td></tr>
+        </table>
+        <p style="margin:14px 0 0;font-size:14px;line-height:1.6;color:#475569;">
+          Esse valor agora está disponível pra novos pedidos de faturamento
+          direto neste contrato.
+        </p>
+      </div>
+
+      <!-- 2. MOTIVO ORIGINAL -->
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
+        <h2 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">2. Motivo da solicitação</h2>
+        <blockquote style="margin:0;padding:12px 16px;background:#f8fafc;border-left:4px solid #166534;font-size:14px;line-height:1.6;color:#0f172a;font-style:italic;white-space:pre-wrap;">${escapeHtml(input.motivo_solicitacao)}</blockquote>
+      </div>
+
+      <!-- 3. CTA -->
+      <div style="padding:24px;text-align:center;border-bottom:1px solid #e2e8f0;">
+        <a href="${escapeHtml(input.url_pedido)}"
+           style="display:inline-block;background:#166534;color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">
+          Ver pedido →
+        </a>
+      </div>
+
+      <!-- 4. DECISÃO -->
+      <div style="padding:24px;">
+        <p style="margin:0;font-size:13px;color:#475569;line-height:1.6;">
+          Aprovado por <strong>${escapeHtml(input.decidido_por_nome)}</strong>
+          em ${escapeHtml(dataFmt)}.
+        </p>
+      </div>
+
+    </div>
+
+    <p style="margin:16px 0 0;font-size:12px;color:#64748b;text-align:center;">
+      Este é um e-mail automático de notificação interna da Obra WAVE.<br>
+      Dúvidas? Responda este e-mail — sua mensagem vai pra gestão.
+    </p>
+
+  </div>
+</body>
+</html>`
+
+  const text = [
+    subject,
+    '',
+    `${input.fornecedor_razao_social},`,
+    '',
+    `Sua solicitação de encerramento do saldo do pedido ${fip} foi APROVADA.`,
+    '',
+    `1. RESUMO`,
+    `   Valor do pedido:                    ${fmt(input.valor_pedido)}`,
+    `   Saldo cancelado e devolvido ao teto: ${fmt(input.saldo_cancelado)}`,
+    '',
+    `Esse valor agora está disponível pra novos pedidos de faturamento direto neste contrato.`,
+    '',
+    `2. MOTIVO DA SOLICITAÇÃO`,
+    `   "${input.motivo_solicitacao}"`,
+    '',
+    `Ver pedido: ${input.url_pedido}`,
+    '',
+    `Aprovado por ${input.decidido_por_nome} em ${dataFmt}.`,
+    '',
+    `— Gestão WAVE`,
+  ].join('\n')
+
+  return { subject, html, text }
+}
+
+// ============================================================
+// Template: Encerramento de saldo REJEITADO (notifica fornecedor)
+// ============================================================
+
+export interface EncerramentoSaldoRejeitadoEmailInput {
+  numero_pedido_fip: number | null
+  contrato_numero: string
+  fornecedor_razao_social: string
+  saldo_solicitado: number
+  motivo_rejeicao: string
+  decidido_por_nome: string
+  decidido_em: string
+  url_pedido: string
+}
+
+/**
+ * E-mail enviado ao fornecedor quando o aprovador REJEITA a solicitação
+ * de encerramento de saldo. O saldo continua aberto, aguardando NF.
+ */
+export function templateEncerramentoSaldoRejeitado(
+  input: EncerramentoSaldoRejeitadoEmailInput,
+): { subject: string; html: string; text: string } {
+  const fip = input.numero_pedido_fip != null
+    ? `FIP-${String(input.numero_pedido_fip).padStart(4, '0')}`
+    : 'FIP-—'
+
+  const subject = `[FIP-WAVE] Encerramento REJEITADO — Pedido ${fip}`
+
+  const dataFmt = (() => {
+    try {
+      return new Date(input.decidido_em).toLocaleString('pt-BR', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      })
+    } catch { return input.decidido_em }
+  })()
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>${subject}</title>
+</head>
+<body style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;color:#0f172a;">
+  <div style="max-width:680px;margin:0 auto;padding:24px;">
+
+    <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+
+      <!-- Header -->
+      <div style="background:#991b1b;color:#ffffff;padding:24px;">
+        <h1 style="margin:0;font-size:20px;">Encerramento de saldo rejeitado</h1>
+        <p style="margin:6px 0 0;font-size:13px;opacity:0.9;">${fip} · ${escapeHtml(input.contrato_numero)}</p>
+      </div>
+
+      <!-- Saudação -->
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
+        <p style="margin:0 0 12px;font-size:15px;font-weight:600;color:#0f172a;">
+          ${escapeHtml(input.fornecedor_razao_social)},
+        </p>
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#475569;">
+          Sua solicitação de encerramento de saldo do pedido <strong>${fip}</strong>
+          foi <strong style="color:#991b1b;">REJEITADA</strong> pelo aprovador.
+        </p>
+      </div>
+
+      <!-- 1. SITUAÇÃO ATUAL -->
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;background:#fef2f2;">
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#991b1b;">
+          O saldo de <strong>${fmt(input.saldo_solicitado)}</strong> continua
+          <strong>aberto</strong>, aguardando NF.
+        </p>
+      </div>
+
+      <!-- 2. MOTIVO DA REJEIÇÃO -->
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
+        <h2 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">2. Motivo da rejeição</h2>
+        <blockquote style="margin:0;padding:12px 16px;background:#fef2f2;border-left:4px solid #991b1b;font-size:14px;line-height:1.6;color:#0f172a;font-style:italic;white-space:pre-wrap;">${escapeHtml(input.motivo_rejeicao)}</blockquote>
+      </div>
+
+      <!-- 3. CTA -->
+      <div style="padding:24px;text-align:center;border-bottom:1px solid #e2e8f0;">
+        <a href="${escapeHtml(input.url_pedido)}"
+           style="display:inline-block;background:#991b1b;color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">
+          Ver pedido →
+        </a>
+      </div>
+
+      <!-- 4. DECISÃO -->
+      <div style="padding:24px;">
+        <p style="margin:0;font-size:13px;color:#475569;line-height:1.6;">
+          Decidido por <strong>${escapeHtml(input.decidido_por_nome)}</strong>
+          em ${escapeHtml(dataFmt)}.
+        </p>
+      </div>
+
+    </div>
+
+    <p style="margin:16px 0 0;font-size:12px;color:#64748b;text-align:center;">
+      Este é um e-mail automático de notificação interna da Obra WAVE.<br>
+      Dúvidas? Responda este e-mail — sua mensagem vai pra gestão.
+    </p>
+
+  </div>
+</body>
+</html>`
+
+  const text = [
+    subject,
+    '',
+    `${input.fornecedor_razao_social},`,
+    '',
+    `Sua solicitação de encerramento de saldo do pedido ${fip} foi REJEITADA pelo aprovador.`,
+    '',
+    `O saldo de ${fmt(input.saldo_solicitado)} continua ABERTO, aguardando NF.`,
+    '',
+    `MOTIVO DA REJEIÇÃO`,
+    `   "${input.motivo_rejeicao}"`,
+    '',
+    `Ver pedido: ${input.url_pedido}`,
+    '',
+    `Decidido por ${input.decidido_por_nome} em ${dataFmt}.`,
+    '',
+    `— Gestão WAVE`,
+  ].join('\n')
+
+  return { subject, html, text }
+}
