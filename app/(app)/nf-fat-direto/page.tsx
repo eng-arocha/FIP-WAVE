@@ -58,7 +58,15 @@ interface Solicitacao {
   contrato_id: string
   contrato: { id: string; numero: string; descricao: string }
   solicitante?: { nome: string }
-  notas_fiscais: { id: string; numero_nf: string; valor: number; status: string }[]
+  notas_fiscais: {
+    id: string
+    numero_nf: string
+    valor: number
+    status: string
+    divergencia_valor?: boolean
+    divergencia_excedente?: number
+    override_excede_saldo?: boolean
+  }[]
   itens: { id: string }[]
 }
 
@@ -252,6 +260,17 @@ export default function NfFatDiretoPage() {
     data_aprovacao: string
   } | null>(null)
 
+  // Confirmação pendente de NF que excede a tolerância de saldo configurada.
+  // Exige motivo da divergência (auditado).
+  const [confirmExcedeSaldo, setConfirmExcedeSaldo] = useState<{
+    sol: Solicitacao
+    valor_nf: number
+    saldo: number
+    excedente: number
+    tolerancia: number
+  } | null>(null)
+  const [motivoDivergencia, setMotivoDivergencia] = useState('')
+
   /**
    * Sobe arquivo direto pro Supabase Storage via signed URL.
    * Bypassa o limite de body do Vercel (~4.5MB) — funciona com PDFs de
@@ -286,7 +305,12 @@ export default function NfFatDiretoPage() {
     return publicUrl
   }
 
-  async function postNf(sol: Solicitacao, overrideDataAnterior: boolean): Promise<{ ok: true } | { ok: false; status: number; data: any }> {
+  async function postNf(
+    sol: Solicitacao,
+    overrideDataAnterior: boolean,
+    overrideExcedeSaldo = false,
+    motivoDivergenciaArg = '',
+  ): Promise<{ ok: true } | { ok: false; status: number; data: any }> {
     // Se há arquivo, sobe direto pro Storage primeiro (sem passar pelo Vercel)
     let arquivo_url: string | undefined
     if (nfFile) {
@@ -309,6 +333,10 @@ export default function NfFatDiretoPage() {
     if (nfForm.data_vencimento)  payload.data_vencimento  = nfForm.data_vencimento
     if (arquivo_url)             payload.arquivo_url      = arquivo_url
     if (overrideDataAnterior)    payload.override_data_anterior = true
+    if (overrideExcedeSaldo) {
+      payload.override_excede_saldo = true
+      payload.motivo_divergencia = motivoDivergenciaArg
+    }
 
     const res = await fetch(
       `/api/contratos/${sol.contrato_id}/fat-direto/solicitacoes/${sol.id}/nfs`,
@@ -325,7 +353,12 @@ export default function NfFatDiretoPage() {
     return { ok: true }
   }
 
-  async function handleRegistrarNf(sol: Solicitacao, overrideDataAnterior = false) {
+  async function handleRegistrarNf(
+    sol: Solicitacao,
+    overrideDataAnterior = false,
+    overrideExcedeSaldo = false,
+    motivoDivergenciaArg = '',
+  ) {
     if (savingNf) return // bloqueia duplo-click
     if (!nfForm.numero_nf || !nfForm.valor || !nfForm.data_emissao) {
       setNfError('Preencha os campos obrigatórios: Número NF, Valor e Data Emissão.')
@@ -334,13 +367,25 @@ export default function NfFatDiretoPage() {
     setSavingNf(true)
     setNfError('')
     try {
-      const result = await postNf(sol, overrideDataAnterior)
+      const result = await postNf(sol, overrideDataAnterior, overrideExcedeSaldo, motivoDivergenciaArg)
       if (!result.ok) {
         // Caso especial: data anterior à aprovação → não bloqueia, abre confirmação.
         // Aberto SEMPRE em DATA_INVALIDA, mesmo sem override_disponivel no detail
         // (defesa contra deploy/cache stale do flag).
         const code = result.data?.code
         const detail = result.data?.detail || {}
+        // Caso especial: NF excede tolerância de saldo → abre modal com motivo
+        if (result.status === 422 && code === 'VALOR_EXCEDE_SALDO' && detail.override_disponivel && !overrideExcedeSaldo) {
+          setConfirmExcedeSaldo({
+            sol,
+            valor_nf:   Number(detail.valor_nf ?? 0),
+            saldo:      Number(detail.saldo ?? 0),
+            excedente:  Number(detail.excedente ?? 0),
+            tolerancia: Number(detail.tolerancia ?? 0),
+          })
+          setMotivoDivergencia('')
+          return
+        }
         if (result.status === 422 && code === 'DATA_INVALIDA') {
           // Se já estávamos no override e ainda assim deu DATA_INVALIDA, isso
           // indica que o servidor não está honrando o flag — exibe o erro real
@@ -380,6 +425,18 @@ export default function NfFatDiretoPage() {
     const { sol } = confirmDataAnterior
     setConfirmDataAnterior(null)
     await handleRegistrarNf(sol, true)
+  }
+
+  async function confirmarExcedeSaldo() {
+    if (!confirmExcedeSaldo) return
+    if (!motivoDivergencia.trim()) {
+      setNfError('Informe o motivo da divergência (obrigatório para auditoria).')
+      return
+    }
+    const { sol } = confirmExcedeSaldo
+    const motivo = motivoDivergencia.trim()
+    setConfirmExcedeSaldo(null)
+    await handleRegistrarNf(sol, false, true, motivo)
   }
 
   const inputCls = 'w-full rounded-lg px-3 py-2 text-sm border bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)] placeholder:text-[var(--text-3)] outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20'
@@ -739,8 +796,26 @@ export default function NfFatDiretoPage() {
                             <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: '#06B6D4' }}>NFs Registradas</p>
                             <div className="space-y-1">
                               {nfsValidas.map(nf => (
-                                <div key={nf.id} className="flex justify-between text-xs">
-                                  <span style={{ color: 'var(--text-2)' }}>NF {nf.numero_nf}</span>
+                                <div key={nf.id} className="flex justify-between items-center text-xs gap-2">
+                                  <span style={{ color: 'var(--text-2)' }} className="inline-flex items-center gap-1">
+                                    NF {nf.numero_nf}
+                                    {nf.divergencia_valor && (
+                                      <span
+                                        title={
+                                          nf.override_excede_saldo
+                                            ? `Divergência ${formatCurrency(Number(nf.divergencia_excedente || 0))} — aprovada com override`
+                                            : `Divergência ${formatCurrency(Number(nf.divergencia_excedente || 0))} — dentro da tolerância`
+                                        }
+                                        className="inline-flex items-center px-1.5 rounded text-[9px] font-bold uppercase tracking-wider"
+                                        style={{
+                                          background: nf.override_excede_saldo ? 'rgba(239,68,68,0.18)' : 'rgba(245,158,11,0.18)',
+                                          color: nf.override_excede_saldo ? '#EF4444' : '#F59E0B',
+                                        }}
+                                      >
+                                        ⚠ Diverg.
+                                      </span>
+                                    )}
+                                  </span>
                                   <span className="font-bold" style={{ color: '#06B6D4' }}>{formatCurrency(nf.valor)}</span>
                                 </div>
                               ))}
@@ -970,6 +1045,79 @@ export default function NfFatDiretoPage() {
                 {savingNf
                   ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Salvando...</>
                   : <>Confirmar mesmo assim</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: confirmar NF que excede a tolerância de saldo */}
+      {confirmExcedeSaldo && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.45)' }}
+          onClick={() => !savingNf && setConfirmExcedeSaldo(null)}
+        >
+          <div
+            className="rounded-2xl max-w-md w-full overflow-hidden"
+            style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', boxShadow: '0 20px 50px rgba(0,0,0,0.30)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 flex items-center gap-3" style={{ borderBottom: '1px solid var(--border)', background: 'rgba(239,68,68,0.06)' }}>
+              <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'rgba(239,68,68,0.15)' }}>
+                <AlertTriangle className="w-5 h-5" style={{ color: '#EF4444' }} strokeWidth={2} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold" style={{ color: 'var(--text-1)' }}>NF excede tolerância do contrato</h3>
+                <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>Confirme com motivo (auditado)</p>
+              </div>
+            </div>
+            <div className="px-5 py-4 space-y-3 text-sm" style={{ color: 'var(--text-2)' }}>
+              <div className="rounded-lg p-3 space-y-1" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                <div className="flex justify-between text-xs"><span>Valor da NF</span><strong className="tabular-nums" style={{ color: 'var(--text-1)' }}>R$ {confirmExcedeSaldo.valor_nf.toFixed(2).replace('.', ',')}</strong></div>
+                <div className="flex justify-between text-xs"><span>Saldo do pedido</span><strong className="tabular-nums">R$ {confirmExcedeSaldo.saldo.toFixed(2).replace('.', ',')}</strong></div>
+                <div className="flex justify-between text-xs" style={{ color: '#EF4444' }}><span>Excedente</span><strong className="tabular-nums">R$ {confirmExcedeSaldo.excedente.toFixed(2).replace('.', ',')}</strong></div>
+                <div className="flex justify-between text-xs"><span>Tolerância configurada</span><strong className="tabular-nums">R$ {confirmExcedeSaldo.tolerancia.toFixed(2).replace('.', ',')}</strong></div>
+              </div>
+              <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+                A NF passa em <strong style={{ color: '#EF4444' }}>R$ {(confirmExcedeSaldo.excedente - confirmExcedeSaldo.tolerancia).toFixed(2).replace('.', ',')}</strong> além
+                da tolerância do contrato. Pra registrar mesmo assim, descreva o motivo —
+                fica auditado e visível em relatórios de divergência.
+              </p>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--text-2)' }}>
+                  Motivo da divergência <span style={{ color: '#EF4444' }}>*</span>
+                </label>
+                <textarea
+                  value={motivoDivergencia}
+                  onChange={e => setMotivoDivergencia(e.target.value)}
+                  rows={3}
+                  maxLength={1000}
+                  placeholder="Ex.: ICMS-ST não considerado no orçamento; frete adicional negociado; ajuste de cotação."
+                  className="w-full rounded-lg px-3 py-2 text-sm border bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)] placeholder:text-[var(--text-3)] outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500/20"
+                />
+              </div>
+            </div>
+            <div className="px-5 py-3 flex items-center justify-end gap-2" style={{ borderTop: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+              <button
+                type="button"
+                onClick={() => setConfirmExcedeSaldo(null)}
+                disabled={savingNf}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50"
+                style={{ color: 'var(--text-2)', border: '1px solid var(--border)' }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmarExcedeSaldo}
+                disabled={savingNf || !motivoDivergencia.trim()}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white inline-flex items-center gap-1.5 disabled:opacity-60"
+                style={{ background: '#EF4444' }}
+              >
+                {savingNf
+                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Salvando...</>
+                  : <>Aprovar com divergência</>}
               </button>
             </div>
           </div>

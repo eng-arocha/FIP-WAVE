@@ -46,6 +46,8 @@ export interface Contrato {
   fiscal_obra?: string
   email_fiscal?: string
   observacoes?: string
+  /** Tolerância (R$) para divergência entre valor de NF de fat-direto e saldo do pedido. */
+  tolerancia_nf_valor?: number
   created_at: string
   updated_at: string
   // Joins

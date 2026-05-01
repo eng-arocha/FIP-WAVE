@@ -38,6 +38,8 @@ const PatchBody = z.object({
   data_fim: z.string().nullable().optional(),
   status: z.enum(['rascunho', 'ativo', 'suspenso', 'encerrado', 'cancelado']).optional(),
   observacoes: z.string().max(5000).nullable().optional(),
+  // Tolerância (R$) para divergência de valor de NF de fat-direto
+  tolerancia_nf_valor: z.number().min(0).max(100000).optional(),
   // Edições opcionais nas empresas vinculadas
   contratante: z.object({
     razao_social: z.string().min(1).max(300).optional(),

@@ -27,6 +27,10 @@ const NfSchema = z.object({
   descricao: z.string().max(2000).optional(),
   /** Override do aprovador: aceita data_emissao < data_aprovacao com auditoria. */
   override_data_anterior: z.boolean().optional(),
+  /** Override do aprovador: aceita NF que excede a tolerância do contrato (auditado). */
+  override_excede_saldo: z.boolean().optional(),
+  /** Justificativa obrigatória quando override_excede_saldo=true. */
+  motivo_divergencia: z.string().trim().max(1000).optional(),
   /**
    * URL pública do arquivo já enviado direto ao Supabase (via signed URL).
    * Usado quando o cliente bypassa o body limit do Vercel.
@@ -88,6 +92,8 @@ export async function POST(
         data_vencimento: (fd.get('data_vencimento') as string) || undefined,
         // Aceita 'true'/'1' como string vinda de FormData
         override_data_anterior: ['true', '1', 'on'].includes(String(fd.get('override_data_anterior') ?? '')),
+        override_excede_saldo: ['true', '1', 'on'].includes(String(fd.get('override_excede_saldo') ?? '')),
+        motivo_divergencia: (fd.get('motivo_divergencia') as string) || undefined,
       }
       file = fd.get('arquivo') as File | null
     } else {
@@ -177,6 +183,8 @@ export async function POST(
       descricao: nfBody.descricao,
       arquivo_url,
       override_data_anterior: nfBody.override_data_anterior,
+      override_excede_saldo: nfBody.override_excede_saldo,
+      motivo_divergencia: nfBody.motivo_divergencia,
     })
     return NextResponse.json(nf, { status: 201 })
   } catch (e: any) {

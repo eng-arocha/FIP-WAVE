@@ -530,12 +530,26 @@ export async function validarNotaFiscal3Way(input: {
    * antes da aprovação formal).
    */
   override_data_anterior?: boolean
-}): Promise<{ saldo_antes: number; saldo_depois: number; pct_uso_pedido: number; pedido_valor: number }> {
+  /**
+   * Se true, autoriza explicitamente NF que excede a tolerância configurada
+   * no contrato. Exige `motivo_divergencia` preenchido (auditado).
+   */
+  override_excede_saldo?: boolean
+  motivo_divergencia?: string
+}): Promise<{
+  saldo_antes: number
+  saldo_depois: number
+  pct_uso_pedido: number
+  pedido_valor: number
+  divergencia_valor: boolean
+  divergencia_excedente: number
+  tolerancia: number
+}> {
   const admin = createAdminClient()
 
   const { data: sol, error: solErr } = await admin
     .from('solicitacoes_fat_direto')
-    .select('id, status, valor_total, fornecedor_cnpj, data_aprovacao, deletado_em')
+    .select('id, status, valor_total, fornecedor_cnpj, data_aprovacao, deletado_em, contrato_id')
     .eq('id', input.solicitacao_id)
     .single()
   if (solErr || !sol) {
@@ -604,12 +618,52 @@ export async function validarNotaFiscal3Way(input: {
   const saldoAntes = pedidoValor - somaAtivas
   const saldoDepois = saldoAntes - input.valor
 
-  if (input.valor > saldoAntes + 0.01) {
-    throw new NFMatchError(
-      'VALOR_EXCEDE_SALDO',
-      `Valor da NF (R$ ${input.valor.toFixed(2)}) excede o saldo do pedido (R$ ${saldoAntes.toFixed(2)}).`,
-      { pedido_valor: pedidoValor, soma_nfs: somaAtivas, saldo: saldoAntes, valor_nf: input.valor },
-    )
+  // Tolerância de divergência configurada no contrato (default 0)
+  // — busca de forma resiliente: se a coluna ainda não existe (migration 053
+  // não rodou), trata como 0 e mantém comportamento estrito.
+  let tolerancia = 0
+  if ((sol as any).contrato_id) {
+    const { data: contrato } = await admin
+      .from('contratos')
+      .select('tolerancia_nf_valor')
+      .eq('id', (sol as any).contrato_id)
+      .single()
+    tolerancia = Number((contrato as any)?.tolerancia_nf_valor ?? 0)
+  }
+
+  // Excedente = quanto a NF passa do saldo. Positivo = NF maior que saldo.
+  const excedente = input.valor - saldoAntes
+  const TOL_ARRED = 0.01 // arredondamento de centavos
+  const divergenciaPequena = Math.abs(excedente) > TOL_ARRED
+
+  // Caso 1: dentro do arredondamento (≤ R$ 0,01) — aceita silenciosamente.
+  // Caso 2: excedente positivo > tolerância configurada — exige override.
+  // Caso 3: excedente positivo dentro da tolerância — aceita com flag.
+  if (excedente > tolerancia + TOL_ARRED) {
+    if (!input.override_excede_saldo) {
+      throw new NFMatchError(
+        'VALOR_EXCEDE_SALDO',
+        `Valor da NF (R$ ${input.valor.toFixed(2)}) excede o saldo do pedido (R$ ${saldoAntes.toFixed(2)}) ` +
+        `em R$ ${excedente.toFixed(2)} — acima da tolerância de R$ ${tolerancia.toFixed(2)} configurada no contrato.`,
+        {
+          pedido_valor: pedidoValor,
+          soma_nfs: somaAtivas,
+          saldo: saldoAntes,
+          valor_nf: input.valor,
+          excedente,
+          tolerancia,
+          override_disponivel: true,
+        },
+      )
+    }
+    // Override aceito — exige motivo
+    if (!input.motivo_divergencia || !input.motivo_divergencia.trim()) {
+      throw new NFMatchError(
+        'VALOR_EXCEDE_SALDO',
+        'Override de saldo exige motivo da divergência (motivo_divergencia).',
+        { excedente, tolerancia, override_sem_motivo: true },
+      )
+    }
   }
 
   const usado = somaAtivas + input.valor
@@ -618,6 +672,9 @@ export async function validarNotaFiscal3Way(input: {
     saldo_depois: saldoDepois,
     pct_uso_pedido: pedidoValor > 0 ? (usado / pedidoValor) * 100 : 0,
     pedido_valor: pedidoValor,
+    divergencia_valor: divergenciaPequena,
+    divergencia_excedente: divergenciaPequena ? excedente : 0,
+    tolerancia,
   }
 }
 
@@ -634,6 +691,10 @@ export async function criarNotaFiscal(input: {
   arquivo_url?: string
   /** Override explícito: aceita data_emissao anterior à aprovação (auditado). */
   override_data_anterior?: boolean
+  /** Override explícito: aceita NF que excede a tolerância do contrato (auditado). */
+  override_excede_saldo?: boolean
+  /** Justificativa obrigatória quando override_excede_saldo=true. */
+  motivo_divergencia?: string
 }) {
   // 3-way match antes de gravar — lança NFMatchError em caso de violação
   const match = await validarNotaFiscal3Way({
@@ -643,28 +704,78 @@ export async function criarNotaFiscal(input: {
     valor: input.valor,
     data_emissao: input.data_emissao,
     override_data_anterior: input.override_data_anterior,
+    override_excede_saldo: input.override_excede_saldo,
+    motivo_divergencia: input.motivo_divergencia,
   })
 
-  // Não persistimos override_data_anterior no insert — não é coluna da tabela
-  // e logamos abaixo quando ativo.
+  // Remove campos que não são colunas da tabela
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { override_data_anterior, ...insertPayload } = input
+  const { override_data_anterior, override_excede_saldo, motivo_divergencia, ...rest } = input
+
+  // Anexa metadados de divergência calculados pelo match (se aplicável).
+  // Persistência dos flags resiliente: se a migration 053 ainda não rodou,
+  // tenta com flags; se falhar por coluna ausente, refaz sem.
+  const insertPayloadComFlags: Record<string, any> = {
+    ...rest,
+    divergencia_valor: match.divergencia_valor,
+    divergencia_excedente: match.divergencia_valor ? match.divergencia_excedente : null,
+    override_excede_saldo: !!input.override_excede_saldo,
+    motivo_divergencia: input.motivo_divergencia || null,
+  }
 
   const admin = createAdminClient()
-  const { data, error } = await admin
-    .from('notas_fiscais_fat_direto')
-    .insert(insertPayload)
-    .select()
-    .single()
-  if (error) throw error
+  let data: any
+  {
+    const r = await admin
+      .from('notas_fiscais_fat_direto')
+      .insert(insertPayloadComFlags)
+      .select()
+      .single()
+    if (r.error) {
+      // Fallback se schema cache não tem as colunas ainda
+      const isMissing = isSchemaMissingError(r.error, [
+        'divergencia_valor', 'divergencia_excedente',
+        'override_excede_saldo', 'motivo_divergencia',
+      ])
+      if (!isMissing) throw r.error
+      const r2 = await admin
+        .from('notas_fiscais_fat_direto')
+        .insert(rest)
+        .select()
+        .single()
+      if (r2.error) throw r2.error
+      data = r2.data
+    } else {
+      data = r.data
+    }
+  }
 
-  // Auditoria: registra que a NF foi aceita com data anterior à aprovação
+  // Auditoria
   if (input.override_data_anterior) {
     log.warn('nf_data_anterior_aprovada', {
       nf_id: (data as any)?.id,
       solicitacao_id: input.solicitacao_id,
       numero_nf: input.numero_nf,
       data_emissao: input.data_emissao,
+    })
+  }
+  if (input.override_excede_saldo) {
+    log.warn('nf_override_excede_saldo', {
+      nf_id: (data as any)?.id,
+      solicitacao_id: input.solicitacao_id,
+      numero_nf: input.numero_nf,
+      valor_nf: input.valor,
+      excedente: match.divergencia_excedente,
+      tolerancia: match.tolerancia,
+      motivo: input.motivo_divergencia,
+    })
+  } else if (match.divergencia_valor) {
+    log.info('nf_divergencia_dentro_tolerancia', {
+      nf_id: (data as any)?.id,
+      solicitacao_id: input.solicitacao_id,
+      numero_nf: input.numero_nf,
+      excedente: match.divergencia_excedente,
+      tolerancia: match.tolerancia,
     })
   }
 
