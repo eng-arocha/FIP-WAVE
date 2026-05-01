@@ -13,21 +13,47 @@ function keyFor(scopeId: string | null): string | 'root' {
   return scopeId === null ? ROOT_KEY : scopeId
 }
 
+/**
+ * IMPORTANTE: cache e loading são *state* (não ref). Isso é o que faz `getCached`
+ * e `isLoading` mudarem de referência quando os dados chegam, garantindo que
+ * useMemo/useEffect dos consumers recomputem. Refs espelho são usadas só para
+ * acesso síncrono dentro de fetchChildren (evita stale closure).
+ */
 export function useDashboardTreeData(
   contratoId: string,
   modo: string,
   rootScope: string | null = null,
 ) {
-  const cacheRef = useRef<ChildrenCache>(new Map())
-  const loadingRef = useRef<LoadingMap>(new Map())
-  const [, force] = useState(0)
+  const [cache, setCache] = useState<ChildrenCache>(() => new Map())
+  const [loadingMap, setLoadingMap] = useState<LoadingMap>(() => new Map())
+
+  const cacheRef = useRef(cache)
+  const loadingRef = useRef(loadingMap)
+  useEffect(() => { cacheRef.current = cache }, [cache])
+  useEffect(() => { loadingRef.current = loadingMap }, [loadingMap])
+
+  const setCacheKey = useCallback((k: string | 'root', itens: DashboardItem[]) => {
+    setCache(prev => {
+      const next = new Map(prev)
+      next.set(k, itens)
+      return next
+    })
+  }, [])
+
+  const setLoadingKey = useCallback((k: string | 'root', v: boolean) => {
+    setLoadingMap(prev => {
+      const next = new Map(prev)
+      if (v) next.set(k, true)
+      else next.delete(k)
+      return next
+    })
+  }, [])
 
   const fetchChildren = useCallback(async (scopeId: string | null): Promise<DashboardItem[]> => {
     const k = keyFor(scopeId)
     if (cacheRef.current.has(k)) return cacheRef.current.get(k)!
     if (loadingRef.current.get(k)) return []
-    loadingRef.current.set(k, true)
-    force(n => n + 1)
+    setLoadingKey(k, true)
     try {
       const url = new URL(`/api/contratos/${contratoId}/dashboard`, window.location.origin)
       url.searchParams.set('modo', modo)
@@ -36,43 +62,38 @@ export function useDashboardTreeData(
       if (!res.ok) throw new Error(`dashboard fetch ${res.status}`)
       const data = await res.json()
       const itens: DashboardItem[] = data.itens ?? []
-      cacheRef.current.set(k, itens)
+      setCacheKey(k, itens)
       return itens
     } catch (e) {
       console.error('[useDashboardTreeData] fetch error', e)
-      cacheRef.current.set(k, [])
+      setCacheKey(k, [])
       return []
     } finally {
-      loadingRef.current.delete(k)
-      force(n => n + 1)
+      setLoadingKey(k, false)
     }
-  }, [contratoId, modo])
+  }, [contratoId, modo, setCacheKey, setLoadingKey])
 
   const isLoading = useCallback((scopeId: string | null) => {
-    return loadingRef.current.get(keyFor(scopeId)) === true
-  }, [])
+    return loadingMap.get(keyFor(scopeId)) === true
+  }, [loadingMap])
 
   const getCached = useCallback((scopeId: string | null) => {
-    return cacheRef.current.get(keyFor(scopeId))
-  }, [])
+    return cache.get(keyFor(scopeId))
+  }, [cache])
 
   const invalidate = useCallback(() => {
-    cacheRef.current.clear()
-    loadingRef.current.clear()
-    force(n => n + 1)
+    setCache(new Map())
+    setLoadingMap(new Map())
   }, [])
 
   // Carga inicial robusta: faz fetch INLINE com cancellation guard.
-  // NOT depending on fetchChildren/invalidate evita race em strict mode + hydration.
   useEffect(() => {
-    cacheRef.current.clear()
-    loadingRef.current.clear()
-    force(n => n + 1)
+    setCache(new Map())
+    setLoadingMap(new Map())
 
     let cancelled = false
     const k = keyFor(rootScope)
-    loadingRef.current.set(k, true)
-    force(n => n + 1)
+    setLoadingKey(k, true)
 
     ;(async () => {
       try {
@@ -83,20 +104,19 @@ export function useDashboardTreeData(
         if (!res.ok) throw new Error(`dashboard fetch ${res.status}`)
         const data = await res.json()
         if (cancelled) return
-        cacheRef.current.set(k, data.itens ?? [])
+        setCacheKey(k, data.itens ?? [])
       } catch (e) {
         if (!cancelled) {
           console.error('[useDashboardTreeData] init fetch error', e)
-          cacheRef.current.set(k, [])
+          setCacheKey(k, [])
         }
       } finally {
-        loadingRef.current.delete(k)
-        if (!cancelled) force(n => n + 1)
+        if (!cancelled) setLoadingKey(k, false)
       }
     })()
 
     return () => { cancelled = true }
-  }, [contratoId, modo, rootScope])
+  }, [contratoId, modo, rootScope, setCacheKey, setLoadingKey])
 
   return { fetchChildren, isLoading, getCached, invalidate }
 }
