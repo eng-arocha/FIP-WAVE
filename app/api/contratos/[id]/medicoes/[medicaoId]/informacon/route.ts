@@ -277,12 +277,19 @@ export async function GET(
           ? (pctServMedAjustado / 100) * valorServicoTotalItem
           : servMedido
 
-        // Valor total medido AJUSTADO: matMedido (físico, não muda) +
-        // waveServico ajustado. O ajuste só afeta o serviço.
-        const valorTotalMedido = matMedido + waveServico
+        // Valor total medido = DADOS INFORMAKON (= o que efetivamente vai
+        // virar NF: serv físico + NF FIP descontada + FIP a criar). Por
+        // construção EXCLUI o retido (saldo de pedido aprovado pendente
+        // que não vai virar NF agora) — fecha o vazamento de retenção
+        // contratual quando a NF de material atrasa.
+        //
+        // Sem retido: matMedido = nfDescontavel + fipFaturar, então o cálculo
+        // antigo (matMedido + servMedido) já dava igual a dadosInformakon —
+        // só destravava em itens com retido > 0, onde a diferença é
+        // exatamente o material retido.
+        const valorTotalMedido = dadosInformakon
 
-        // Retenção é sobre a base AJUSTADA (porque a NF da Wave fatura
-        // sobre o % ajustado e a retenção é abatida do serviço dela).
+        // Retenção sobre a base já ajustada (= dadosInformakon).
         const baseRet = valorTotalMedido
         const retencao5pct = baseRet * (pctRetencao / 100)
 

@@ -7,10 +7,15 @@ import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { ArrowLeft, CheckCircle, XCircle, FileText, Plus, Package, Trash2, Mail, Send, PlayCircle, RotateCcw } from 'lucide-react'
+import { ArrowLeft, CheckCircle, XCircle, FileText, Plus, Package, Trash2, Mail, Send, PlayCircle, RotateCcw, Ban } from 'lucide-react'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 import { EmailEnvolvidosModal } from '@/components/fat-direto/email-envolvidos-modal'
 import { EncerrarPedidoModal } from '@/components/fat-direto/encerrar-pedido-modal'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
+} from '@/components/ui/dialog'
+import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
 
 interface Solicitacao {
   id: string
@@ -65,6 +70,9 @@ const STATUS_LABELS: Record<string, string> = {
   encerrado: 'Encerrado',
 }
 
+const MOTIVO_PADRAO_ENCERRAMENTO =
+  'fornecedor confirmou que não emitirá mais NF — material concluído com NFs já lançadas'
+
 export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id: string; solId: string }> }) {
   const { id, solId } = use(params)
   const router = useRouter()
@@ -87,6 +95,12 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [emailModalMode, setEmailModalMode] = useState<'aprovar' | 'reenviar'>('aprovar')
   const [emailSucesso, setEmailSucesso] = useState('')
+  // Modal de "Solicitar encerramento de saldo" — fluxo do solicitante (não admin)
+  const [showSolicitarEncerramento, setShowSolicitarEncerramento] = useState(false)
+  const [motivoEncerramento, setMotivoEncerramento] = useState('')
+  const [enviandoEncerramento, setEnviandoEncerramento] = useState(false)
+  const [erroEncerramento, setErroEncerramento] = useState('')
+  const [encerramentoSucesso, setEncerramentoSucesso] = useState('')
   // P2.9/P2.1: saldo do pedido pra alertar >95% e bloquear envio a esgotado
   const [saldo, setSaldo] = useState<{
     pedido_valor: number
@@ -229,6 +243,46 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
       setErro((await res.json()).error || 'Erro ao deletar')
       setActing(false)
       setConfirmDelete(false)
+    }
+  }
+
+  function abrirSolicitarEncerramento() {
+    setMotivoEncerramento(MOTIVO_PADRAO_ENCERRAMENTO)
+    setErroEncerramento('')
+    setShowSolicitarEncerramento(true)
+  }
+
+  async function confirmarSolicitacaoEncerramento() {
+    if (!motivoEncerramento.trim()) {
+      setErroEncerramento('Informe o motivo da solicitação.')
+      return
+    }
+    setEnviandoEncerramento(true)
+    setErroEncerramento('')
+    try {
+      const res = await fetch(`/api/contratos/${id}/encerramento-saldo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          solicitacao_fat_direto_id: solId,
+          motivo: motivoEncerramento.trim(),
+        }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setErroEncerramento(body?.error || `Falha (HTTP ${res.status}).`)
+        return
+      }
+      setShowSolicitarEncerramento(false)
+      setMotivoEncerramento('')
+      setEncerramentoSucesso('Solicitação enviada! O aprovador será notificado.')
+      window.setTimeout(() => setEncerramentoSucesso(''), 6000)
+      await load()
+      await carregarSaldo()
+    } catch (e: any) {
+      setErroEncerramento(e?.message || 'Erro de rede.')
+    } finally {
+      setEnviandoEncerramento(false)
     }
   }
 
@@ -437,6 +491,39 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                 >
                   <Send className="w-4 h-4" />
                   Enviar notificação aos envolvidos
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Solicitar encerramento de saldo — disponível pra qualquer usuário (Wave/fornecedor),
+            sem privilégio admin. Só aparece quando há saldo > R$ 0,01 ainda não encerrado. */}
+        {sol.status === 'aprovado' && saldo && saldo.saldo_liquido > 0.01 && (
+          <Card style={{ background: 'var(--surface-1)', border: '1px solid rgba(245,158,11,0.30)' }}>
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm text-amber-400 font-semibold mb-1">
+                    Solicitar encerramento de saldo
+                  </p>
+                  <p className="text-xs text-[var(--text-3)]">
+                    Quando o fornecedor confirmar que não emitirá mais NF para este pedido, peça o
+                    cancelamento do saldo de <strong className="text-amber-400">{formatCurrency(saldo.saldo_liquido)}</strong>.
+                    O aprovador receberá a solicitação e poderá aprovar ou rejeitar.
+                  </p>
+                  {encerramentoSucesso && (
+                    <p className="text-xs text-emerald-400 mt-2">{encerramentoSucesso}</p>
+                  )}
+                </div>
+                <Button
+                  onClick={abrirSolicitarEncerramento}
+                  disabled={acting || enviandoEncerramento}
+                  variant="ghost"
+                  className="gap-2 border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 whitespace-nowrap"
+                >
+                  <Ban className="w-4 h-4" />
+                  Solicitar encerramento de saldo
                 </Button>
               </div>
             </CardContent>
@@ -766,6 +853,67 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
         envolvidos={envolvidosContrato}
         onSuccess={() => { load(); carregarSaldo() }}
       />
+
+      {/* Modal — Solicitar encerramento de saldo (fluxo do solicitante) */}
+      <Dialog
+        open={showSolicitarEncerramento}
+        onOpenChange={(open) => {
+          if (!open && !enviandoEncerramento) {
+            setShowSolicitarEncerramento(false)
+            setErroEncerramento('')
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-amber-400 flex items-center gap-2">
+              <Ban className="w-5 h-5" />
+              Solicitar encerramento de saldo do pedido FIP-{String(sol.numero).padStart(4, '0')}
+            </DialogTitle>
+            <DialogDescription className="text-[var(--text-2)]">
+              Você está pedindo cancelamento do saldo de{' '}
+              <strong className="text-amber-400">
+                {formatCurrency(saldo?.saldo_liquido ?? 0)}
+              </strong>{' '}
+              que ainda não virou NF. O aprovador será notificado e poderá aprovar ou rejeitar.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2 space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wider">
+                Motivo *
+              </Label>
+              <Textarea
+                value={motivoEncerramento}
+                onChange={e => setMotivoEncerramento(e.target.value)}
+                placeholder="Justificativa para o encerramento do saldo..."
+                className="min-h-[100px] bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-1)] placeholder:text-[var(--text-3)]"
+              />
+            </div>
+            {erroEncerramento && (
+              <p className="text-xs text-red-400">{erroEncerramento}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowSolicitarEncerramento(false)}
+              disabled={enviandoEncerramento}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="warning"
+              onClick={confirmarSolicitacaoEncerramento}
+              loading={enviandoEncerramento}
+              disabled={!motivoEncerramento.trim()}
+            >
+              <Ban className="w-4 h-4" />
+              Confirmar Solicitação
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

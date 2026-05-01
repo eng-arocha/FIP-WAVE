@@ -144,6 +144,49 @@ async function dispararEmailLiberacaoMedicao(args: {
 
   if (!med) return { ok: false, erro: 'medição não encontrada' }
 
+  // Carrega itens com confirmação "sem mais NF" pra incluir na seção
+  // destacada do email (best-effort — se a 060 não rodou ou falha de
+  // schema, segue sem a seção).
+  let itensComConfirmacao: Array<{
+    codigo: string
+    descricao: string
+    pct_original: number
+    pct_ajustado: number
+    valor_retido_absorvido: number
+    motivo: string
+  }> | undefined
+  try {
+    const protocoloHeader = process.env.VERCEL ? 'https' : 'http'
+    const hostHeader = process.env.VERCEL_URL || 'localhost:3000'
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL
+      ?? `${protocoloHeader}://${hostHeader}`
+    const informaconRes = await fetch(
+      `${baseUrl}/api/contratos/${args.contratoId}/medicoes/${args.medicaoId}/informacon`,
+      { cache: 'no-store' },
+    )
+    if (informaconRes.ok) {
+      const informacon: any = await informaconRes.json()
+      const linhasComAjuste = ((informacon.linhas ?? []) as any[]).filter(
+        (l: any) => l.ajuste_aplicado && l.confirmacao_sem_nf,
+      )
+      if (linhasComAjuste.length > 0) {
+        itensComConfirmacao = linhasComAjuste.map((l: any) => ({
+          codigo: String(l.codigo ?? '—'),
+          descricao: String(l.descricao ?? '—'),
+          pct_original: Number(l.pct_serv_med_original ?? 0),
+          pct_ajustado: Number(l.pct_serv_med ?? 0),
+          valor_retido_absorvido: Number(l.material_retido ?? 0),
+          motivo: String(l.confirmacao_sem_nf_motivo ?? ''),
+        }))
+      }
+    }
+  } catch (e: any) {
+    log.warn('email_itens_confirmacao_sem_nf_falhou', {
+      medicaoId: args.medicaoId,
+      error: e?.message,
+    })
+  }
+
   // Resolve emails dos destinatários (valida vínculo com o contrato)
   const { data: vinculos } = await admin
     .from('usuarios_contratos')
@@ -178,6 +221,7 @@ async function dispararEmailLiberacaoMedicao(args: {
     resumo,
     aprovador_nome: args.aprovadorNome,
     reenvio: false,
+    itens_com_confirmacao_sem_nf: itensComConfirmacao,
   })
 
   const envio = await sendEmail({
