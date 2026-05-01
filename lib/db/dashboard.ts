@@ -524,3 +524,65 @@ export async function getDashboardData(
     breadcrumb,
   }
 }
+
+/**
+ * Versão "por scope" do dashboard: recebe um scopeId (UUID de um grupo_macro,
+ * tarefa ou detalhamento) e devolve os filhos diretos daquele nó, junto com
+ * metadados do scope e breadcrumb.
+ *
+ * Se scopeId for null, equivale a nível 1 (todos os grupos macro).
+ */
+export async function getDashboardChildrenByScope(
+  contratoId: string,
+  scopeId: string | null,
+): Promise<{
+  itens: DashboardItem[]
+  scope: { id: string | null; codigo: string; nome: string; nivel: 1 | 2 | 3 | null } | null
+  breadcrumb: Array<{ id: string; codigo: string; nome: string; nivel: 1 | 2 | 3 }>
+}> {
+  const admin = createAdminClient()
+  let filtros: { grupo_id?: string; tarefa_id?: string; detalhamento_id?: string } = {}
+  let scopeInfo: { id: string | null; codigo: string; nome: string; nivel: 1 | 2 | 3 | null } | null = {
+    id: null,
+    codigo: '',
+    nome: 'Todos os grupos',
+    nivel: null,
+  }
+
+  if (scopeId !== null) {
+    const grupo = await admin
+      .from('grupos_macro')
+      .select('id, codigo, nome')
+      .eq('id', scopeId)
+      .maybeSingle()
+    if (grupo.data) {
+      filtros = { grupo_id: scopeId }
+      scopeInfo = { id: scopeId, codigo: grupo.data.codigo, nome: grupo.data.nome, nivel: 1 }
+    } else {
+      const tarefa = await admin
+        .from('tarefas')
+        .select('id, codigo, nome')
+        .eq('id', scopeId)
+        .maybeSingle()
+      if (tarefa.data) {
+        filtros = { tarefa_id: scopeId }
+        scopeInfo = { id: scopeId, codigo: tarefa.data.codigo, nome: tarefa.data.nome, nivel: 2 }
+      } else {
+        const det = await admin
+          .from('detalhamentos')
+          .select('id, codigo, descricao')
+          .eq('id', scopeId)
+          .maybeSingle()
+        if (det.data) {
+          filtros = { detalhamento_id: scopeId }
+          scopeInfo = { id: scopeId, codigo: det.data.codigo, nome: det.data.descricao, nivel: 3 }
+        } else {
+          scopeInfo = null
+        }
+      }
+    }
+  }
+
+  const result = await getDashboardData(contratoId, filtros)
+  return { itens: result.itens, scope: scopeInfo, breadcrumb: result.breadcrumb }
+}
