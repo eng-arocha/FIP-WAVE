@@ -207,13 +207,15 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
           <Card style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
             <CardContent className="pt-4 pb-4">
               <div className="flex items-center justify-between mb-2">
-                <div>
-                  <span className="text-xs text-[var(--text-3)] uppercase tracking-wide font-medium">Consumo do Teto de Material</span>
-                  <span className="ml-2 text-xs font-bold" style={{ color: pctUsado > 90 ? '#EF4444' : pctUsado > 70 ? '#F59E0B' : '#10B981' }}>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xs text-[var(--text-2)] uppercase tracking-wide font-semibold">Consumo do Teto de Material</span>
+                  <span className="text-base font-bold" style={{ color: pctUsado > 90 ? '#EF4444' : pctUsado > 70 ? '#F59E0B' : '#10B981' }}>
                     {pctUsado}% usado
                   </span>
                 </div>
-                <span className="text-xs text-[var(--text-3)]">Saldo: <span className="font-bold" style={{ color: saldoDisponivel < 0 ? '#EF4444' : '#10B981' }}>{formatCurrency(saldoDisponivel)}</span></span>
+                <span className="text-base font-semibold" style={{ color: 'var(--text-2)' }}>
+                  Saldo: <span className="text-lg font-bold" style={{ color: saldoDisponivel < 0 ? '#EF4444' : '#10B981' }}>{formatCurrency(saldoDisponivel)}</span>
+                </span>
               </div>
               <div className="h-2.5 rounded-full overflow-hidden" style={{ background: 'var(--surface-3)' }}>
                 <div className="h-full rounded-full transition-all duration-500" style={{
@@ -221,9 +223,9 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
                   background: pctUsado > 90 ? '#EF4444' : pctUsado > 70 ? '#F59E0B' : 'linear-gradient(90deg, #10B981, #06B6D4)',
                 }} />
               </div>
-              <div className="flex justify-between text-[10px] text-[var(--text-3)] mt-1">
-                <span>Aprovado: {formatCurrency(totalAprovado)}</span>
-                <span>Teto: {formatCurrency(teto)}</span>
+              <div className="flex justify-between text-sm font-semibold mt-1.5" style={{ color: 'var(--text-2)' }}>
+                <span>Aprovado: <span className="font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(totalAprovado)}</span></span>
+                <span>Teto: <span className="font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(teto)}</span></span>
               </div>
             </CardContent>
           </Card>
@@ -520,11 +522,22 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
                               </p>
                               {sol.observacoes && sol.observacoes.trim() && (
                                 <p
-                                  className="text-[11px] mt-1 truncate italic"
+                                  className="text-[11px] mt-1 italic whitespace-pre-wrap break-words"
                                   style={{ color: 'var(--text-3)' }}
-                                  title={sol.observacoes}
                                 >
-                                  💬 {sol.observacoes}
+                                  {/*
+                                    Mostra o texto completo com quebra de linha
+                                    automática. `whitespace-pre-wrap` preserva
+                                    quebras intencionais; o replace abaixo
+                                    colapsa runs de 3+ \n consecutivos pra 2
+                                    (parágrafo) e remove espaços trailing por
+                                    linha — deixa mais compacto sem perder
+                                    estrutura.
+                                  */}
+                                  💬 {sol.observacoes
+                                        .replace(/[ \t]+\n/g, '\n')
+                                        .replace(/\n{3,}/g, '\n\n')
+                                        .trim()}
                                 </p>
                               )}
                             </div>
