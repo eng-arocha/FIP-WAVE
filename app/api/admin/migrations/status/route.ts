@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
+// v2 - REST via Supabase
 /**
  * GET /api/admin/migrations/status
  *
@@ -10,6 +11,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
  *
  * Não usa conexão postgres direta (Vercel bloqueia pooler em alguns casos).
  */
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
 type Check = {
   migration: string
