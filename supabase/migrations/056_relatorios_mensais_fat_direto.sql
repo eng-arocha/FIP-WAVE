@@ -38,9 +38,7 @@ CREATE INDEX IF NOT EXISTS idx_relatorios_mensais_contrato_ano_mes
   ON relatorios_mensais_fat_direto(contrato_id, ano DESC, mes DESC);
 
 COMMENT ON TABLE relatorios_mensais_fat_direto IS
-  'Relatório mensal de pedidos fat-direto com saldo pendente há > 30 dias. ' ||
-  '1 registro por (contrato, ano, mes) — idempotente. Status pendente vira ' ||
-  'enviado quando o gestor revisa e dispara o email.';
+  'Relatório mensal de pedidos fat-direto com saldo pendente há > 30 dias. 1 registro por (contrato, ano, mes) — idempotente. Status pendente vira enviado quando o gestor revisa e dispara o email.';
 COMMENT ON COLUMN relatorios_mensais_fat_direto.pedidos_snapshot IS
   'jsonb array: [{id, numero_pedido_fip, data_aprovacao, valor_total, total_nfs, saldo, dias_decorridos}, ...]';
 COMMENT ON COLUMN relatorios_mensais_fat_direto.sequencia_cobranca IS

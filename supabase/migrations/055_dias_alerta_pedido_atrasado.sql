@@ -10,7 +10,4 @@ ALTER TABLE contratos
   ADD COLUMN IF NOT EXISTS dias_alerta_pedido_atrasado INTEGER NOT NULL DEFAULT 15;
 
 COMMENT ON COLUMN contratos.dias_alerta_pedido_atrasado IS
-  'Dias após data_aprovacao do pedido sem NF correspondente que o sistema ' ||
-  'considera "atrasado". Usado pra disparar alertas pro gestor da FIP. ' ||
-  'Default 15 dias. Pra alertas mensais usa-se threshold fixo de 30 dias ' ||
-  '(separado, na rotina de relatório mensal).';
+  'Dias após data_aprovacao do pedido sem NF correspondente que o sistema considera "atrasado". Usado pra disparar alertas pro gestor da FIP. Default 15 dias. Pra alertas mensais usa-se threshold fixo de 30 dias (separado, na rotina de relatório mensal).';
