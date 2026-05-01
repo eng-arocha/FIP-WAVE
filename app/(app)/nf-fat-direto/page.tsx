@@ -1506,11 +1506,11 @@ export default function NfFatDiretoPage() {
                 type="button"
                 onClick={() => abrirPreviewDivergencia('cobrir')}
                 disabled={savingNf || !motivoDivergencia.trim() || motivoDivergencia.trim().length < 5}
-                title="Aceita a NF e emite pedido de cobertura pelo excedente. Requer saldo de teto."
+                title="Aumenta o saldo do PRÓPRIO pedido em R$ excedente, criando item de ajuste. Requer saldo no item contratual."
                 className="text-xs font-semibold px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 disabled:opacity-60"
                 style={{ background: 'rgba(59,130,246,0.10)', color: '#3B82F6', border: '1px solid rgba(59,130,246,0.40)' }}
               >
-                🔁 Emitir pedido de cobertura
+                🔁 Ajustar Saldo do Pedido
               </button>
               <button
                 type="button"
@@ -1754,13 +1754,13 @@ export default function NfFatDiretoPage() {
               <div className="flex-1">
                 <h3 className="text-sm font-bold" style={{ color: 'var(--text-1)' }}>
                   {previewDivergencia.acao === 'cobrir'
-                    ? '🔁 Pedido de cobertura — revisar email'
+                    ? '🔁 Ajustar saldo do pedido — revisar email'
                     : '❌ Recusa de NF — revisar email'}
                 </h3>
                 <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>
                   Excedente {formatCurrency(previewDivergencia.excedente)} ·
                   {previewDivergencia.acao === 'cobrir'
-                    ? ` Saldo teto restante após cobertura: ${formatCurrency(previewDivergencia.saldo_teto - previewDivergencia.excedente)}`
+                    ? ` O saldo do pedido será aumentado em ${formatCurrency(previewDivergencia.excedente)} (item de ajuste registrado no histórico).`
                     : ' NF será marcada como rejeitada (tipo: divergência sem saldo)'}
                 </p>
               </div>

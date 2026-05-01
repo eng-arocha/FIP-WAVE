@@ -8,7 +8,7 @@ import { audit } from '@/lib/api/audit'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   criarNotaFiscal,
-  criarPedidoCoberturaDivergencia,
+  ajustarSaldoPedidoPorDivergencia,
   recusarNotaFiscalPorDivergencia,
   verificarTeto,
   NFMatchError,
@@ -187,7 +187,9 @@ export async function POST(
       let preview: { subject: string; html: string }
 
       if (acao === 'cobrir') {
-        const totalAprovDepois = totalAprovAntes + excedente
+        // Novo fluxo (v2): aumenta saldo do pedido existente
+        const valorPedidoAntes = Number((pai as any).valor_total || 0)
+        const valorPedidoDepois = valorPedidoAntes + excedente
         preview = templateDivergenciaAviso({
           numero_contrato: (contrato as any).numero,
           numero_nf: nf.numero_nf,
@@ -196,12 +198,8 @@ export async function POST(
           valor_nf: nf.valor,
           numero_pedido_original: (pai as any).numero_pedido_fip ?? (pai as any).numero,
           excedente,
-          numero_pedido_novo: '(será alocado)', // só na execução real
-          teto,
-          total_aprov_antes: totalAprovAntes,
-          total_aprov_depois: totalAprovDepois,
-          saldo_antes: saldoTeto,
-          saldo_depois: saldoTeto - excedente,
+          valor_pedido_anterior: valorPedidoAntes,
+          valor_pedido_atualizado: valorPedidoDepois,
         })
       } else {
         preview = templateDivergenciaRecusa({
@@ -255,14 +253,14 @@ export async function POST(
         motivo_divergencia: motivo,
       })
 
-      // 2) Cria pedido de cobertura
-      const novoPedido = await criarPedidoCoberturaDivergencia({
+      // 2) Ajusta saldo do pedido existente (em vez de criar novo)
+      const ajuste = await ajustarSaldoPedidoPorDivergencia({
         contrato_id: contratoId,
-        pedido_pai_id: solId,
+        pedido_id: solId,
         nf_id: (novaNf as any).id,
         excedente,
         motivo,
-        aprovador_id: check.userId,
+        ajustado_por_id: check.userId,
       })
 
       // 3) Dispara email se houver destinatários selecionados
@@ -282,12 +280,8 @@ export async function POST(
             valor_nf: nf.valor,
             numero_pedido_original: (pai as any).numero_pedido_fip ?? (pai as any).numero,
             excedente,
-            numero_pedido_novo: novoPedido.numero_pedido_fip,
-            teto,
-            total_aprov_antes: totalAprovAntes,
-            total_aprov_depois: totalAprovAntes + excedente,
-            saldo_antes: saldoTeto,
-            saldo_depois: saldoTeto - excedente,
+            valor_pedido_anterior: ajuste.valor_anterior,
+            valor_pedido_atualizado: ajuste.valor_novo,
           })
           const r = await sendEmail({
             to: emails,
@@ -301,15 +295,16 @@ export async function POST(
       }
 
       await audit({
-        event: 'nf.divergencia_cobertura_emitida',
+        event: 'nf.divergencia_saldo_ajustado',
         entity_type: 'solicitacao_fat_direto',
         entity_id: solId,
         actor_id: check.userId,
         actor_email: check.userEmail ?? null,
         metadata: {
           nf_id: (novaNf as any).id,
-          novo_pedido_id: novoPedido.id,
-          numero_pedido_fip: novoPedido.numero_pedido_fip,
+          numero_pedido_fip: ajuste.numero_pedido_fip,
+          valor_anterior: ajuste.valor_anterior,
+          valor_novo: ajuste.valor_novo,
           excedente,
           motivo,
           email_enviado: emailEnviado,
@@ -322,7 +317,7 @@ export async function POST(
         ok: true,
         acao: 'cobrir',
         nf: novaNf,
-        novo_pedido: novoPedido,
+        ajuste,
         email_enviado: emailEnviado,
         destinos,
       })
@@ -427,6 +422,19 @@ export async function POST(
     if ((e as any)?.message === 'TETO_EXCEDIDO_NA_COBERTURA') {
       return NextResponse.json(
         { error: 'Saldo de teto fat-direto insuficiente.', detail: (e as any).violation },
+        { status: 422 },
+      )
+    }
+    if ((e as any)?.message === 'SALDO_DETALHAMENTO_INSUFICIENTE') {
+      const v = (e as any).violation
+      return NextResponse.json(
+        {
+          error: `Saldo do item (detalhamento) insuficiente — limite contratual ${v?.limite ? 'R$ ' + v.limite.toFixed(2) : ''} ` +
+                 `já consumido por ${v?.aprovado ? 'R$ ' + v.aprovado.toFixed(2) : 'R$ 0'} ` +
+                 `aprovados${v?.pendente > 0 ? ' + R$ ' + v.pendente.toFixed(2) + ' pendentes' : ''}. ` +
+                 `Não cabe o ajuste — opção 'Ajustar saldo' indisponível pra este item.`,
+          detail: v,
+        },
         { status: 422 },
       )
     }

@@ -30,7 +30,7 @@ function fmtDateBR(d: string | null | undefined): string {
 }
 
 // ============================================================
-// CAMINHO B — Aviso de divergência aceita com pedido de cobertura
+// CAMINHO B — Aviso: saldo do pedido AJUSTADO (não cria pedido novo)
 // ============================================================
 export interface DivergenciaAvisoPayload {
   numero_contrato: string
@@ -41,17 +41,13 @@ export interface DivergenciaAvisoPayload {
   valor_nf: number
   numero_pedido_original: number | string
   excedente: number
-  numero_pedido_novo: number | string
-  // saldos do teto fat-direto
-  teto: number
-  total_aprov_antes: number
-  total_aprov_depois: number
-  saldo_antes: number
-  saldo_depois: number
+  // Saldo do pedido (não do teto global) antes e depois do ajuste
+  valor_pedido_anterior: number
+  valor_pedido_atualizado: number
 }
 
 export function templateDivergenciaAviso(p: DivergenciaAvisoPayload): { subject: string; html: string } {
-  const subject = `⚠ Divergência de ${fmt(p.excedente)} na NF nº ${p.numero_nf} — pedido de cobertura emitido (Contrato ${p.numero_contrato})`
+  const subject = `⚠ Divergência de ${fmt(p.excedente)} na NF nº ${p.numero_nf} — saldo do pedido PED-${p.numero_pedido_original} ajustado (Contrato ${p.numero_contrato})`
 
   const html = `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -59,7 +55,7 @@ export function templateDivergenciaAviso(p: DivergenciaAvisoPayload): { subject:
 <body style="font-family: Arial, Helvetica, sans-serif; color: #1F2937; line-height: 1.55; max-width: 720px; margin: 0 auto; padding: 24px;">
 
   <div style="background: #FEF3C7; border-left: 4px solid #F59E0B; padding: 12px 16px; border-radius: 6px; margin-bottom: 24px;">
-    <strong style="color: #92400E;">⚠ Divergência detectada — pedido de cobertura emitido</strong>
+    <strong style="color: #92400E;">⚠ Divergência detectada — saldo do pedido ajustado</strong>
   </div>
 
   <p>Prezado(a) <strong>${escapeHtml(GESTOR_FIP_NOME)}</strong>,</p>
@@ -68,17 +64,17 @@ export function templateDivergenciaAviso(p: DivergenciaAvisoPayload): { subject:
 
   <p>O valor desta NF excedeu em <strong style="color: #B45309;">${fmt(p.excedente)}</strong> o saldo do pedido <strong>PED-${escapeHtml(String(p.numero_pedido_original))}</strong>, vinculado a este contrato.</p>
 
-  <p>Como há saldo disponível no teto de faturamento direto deste contrato, autorizamos a emissão de um pedido de cobertura: <strong>PED-${escapeHtml(String(p.numero_pedido_novo))}</strong>, no valor de <strong>${fmt(p.excedente)}</strong>, com a justificativa: <em>"Cobertura de divergência da NF nº ${escapeHtml(p.numero_nf)} sobre o pedido PED-${escapeHtml(String(p.numero_pedido_original))}"</em>.</p>
+  <p>Como há saldo disponível no item contratual associado, autorizamos o <strong>ajuste do saldo do próprio pedido PED-${escapeHtml(String(p.numero_pedido_original))}</strong> em <strong>+ ${fmt(p.excedente)}</strong>, com a justificativa: <em>"Ajuste de divergência da NF nº ${escapeHtml(p.numero_nf)}"</em>. Este ajuste é registrado no histórico do pedido e o valor original aprovado fica preservado para auditoria.</p>
 
   <div style="background: #FEF2F2; border-left: 4px solid #EF4444; padding: 12px 16px; border-radius: 6px; margin: 16px 0;">
     <strong style="color: #991B1B;">Atenção — registro formal:</strong>
     <ul style="margin: 8px 0 0; padding-left: 20px;">
-      <li>O controle de valores entre NFs e pedidos de faturamento direto <strong>deve ser rigoroso</strong> por parte da FIP. Cada divergência consome saldo de teto que estava reservado para outras compras previstas no contrato.</li>
-      <li><strong>Em caso de nova divergência sem saldo de teto disponível, a NF será recusada e o pagamento deverá ser realizado diretamente pela FIP</strong>, com a medição do valor correspondente em orçamento condicionada à apresentação do comprovante de pagamento.</li>
+      <li>O controle de valores entre NFs e pedidos de faturamento direto <strong>deve ser rigoroso</strong> por parte da FIP. Cada ajuste consome saldo do item contratual que estava reservado para outras NFs previstas.</li>
+      <li><strong>Em caso de nova divergência sem saldo disponível no item, a NF será recusada e o pagamento deverá ser realizado diretamente pela FIP</strong>, com a medição do valor correspondente em orçamento condicionada à apresentação do comprovante de pagamento.</li>
     </ul>
   </div>
 
-  <p><strong>Saldo do contrato após esta cobertura:</strong></p>
+  <p><strong>Saldo do pedido PED-${escapeHtml(String(p.numero_pedido_original))} após ajuste:</strong></p>
   <table style="border-collapse: collapse; width: 100%; max-width: 560px;">
     <thead>
       <tr style="background: #F3F4F6;">
@@ -88,9 +84,8 @@ export function templateDivergenciaAviso(p: DivergenciaAvisoPayload): { subject:
       </tr>
     </thead>
     <tbody>
-      <tr><td style="padding: 8px 12px; border: 1px solid #E5E7EB;">Teto fat-direto</td><td style="text-align: right; padding: 8px 12px; border: 1px solid #E5E7EB;">${fmt(p.teto)}</td><td style="text-align: right; padding: 8px 12px; border: 1px solid #E5E7EB;">${fmt(p.teto)}</td></tr>
-      <tr><td style="padding: 8px 12px; border: 1px solid #E5E7EB;">Total aprovado</td><td style="text-align: right; padding: 8px 12px; border: 1px solid #E5E7EB;">${fmt(p.total_aprov_antes)}</td><td style="text-align: right; padding: 8px 12px; border: 1px solid #E5E7EB;">${fmt(p.total_aprov_depois)}</td></tr>
-      <tr><td style="padding: 8px 12px; border: 1px solid #E5E7EB;">Saldo restante</td><td style="text-align: right; padding: 8px 12px; border: 1px solid #E5E7EB;">${fmt(p.saldo_antes)}</td><td style="text-align: right; padding: 8px 12px; border: 1px solid #E5E7EB; font-weight: bold; color: ${p.saldo_depois < 0 ? '#EF4444' : '#10B981'};">${fmt(p.saldo_depois)}</td></tr>
+      <tr><td style="padding: 8px 12px; border: 1px solid #E5E7EB;">Valor total do pedido</td><td style="text-align: right; padding: 8px 12px; border: 1px solid #E5E7EB;">${fmt(p.valor_pedido_anterior)}</td><td style="text-align: right; padding: 8px 12px; border: 1px solid #E5E7EB; font-weight: bold; color: #10B981;">${fmt(p.valor_pedido_atualizado)}</td></tr>
+      <tr><td style="padding: 8px 12px; border: 1px solid #E5E7EB;">Aumento</td><td colspan="2" style="text-align: right; padding: 8px 12px; border: 1px solid #E5E7EB; font-weight: bold; color: #B45309;">+ ${fmt(p.excedente)}</td></tr>
     </tbody>
   </table>
 
