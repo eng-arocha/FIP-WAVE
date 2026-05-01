@@ -53,7 +53,7 @@ export async function GET(
           id, detalhamento_id, valor_total, qtde_solicitada, valor_unitario,
           detalhamento:detalhamentos(codigo, descricao)
         ),
-        nfs:notas_fiscais_fat_direto (id, valor, status)
+        nfs:notas_fiscais_fat_direto!solicitacao_id (id, valor, status)
       `)
       .eq('contrato_id', contratoId)
       .eq('status', 'aprovado')

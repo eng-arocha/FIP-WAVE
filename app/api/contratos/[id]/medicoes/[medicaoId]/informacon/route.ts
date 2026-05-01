@@ -139,16 +139,21 @@ export async function GET(
     const aprovadoPorDet: Record<string, number> = {}
     const nfAlocadaPorDet: Record<string, number> = {}
     {
-      const { data: solRaw } = await admin
+      // Hint !solicitacao_id é obrigatório desde a migration 054 — antes
+      // havia só uma FK entre solicitacoes_fat_direto e notas_fiscais_fat_direto,
+      // mas a 054 adicionou origem_divergencia_nf_id criando ambiguidade.
+      // Sem o hint, PostgREST devolve PGRST201 e zera todos os agregados.
+      const { data: solRaw, error: solErr } = await admin
         .from('solicitacoes_fat_direto')
         .select(`
           id, status, deletado_em,
           itens:itens_solicitacao_fat_direto ( detalhamento_id, valor_total ),
-          nfs:notas_fiscais_fat_direto ( valor, status )
+          nfs:notas_fiscais_fat_direto!solicitacao_id ( valor, status )
         `)
         .eq('contrato_id', contratoId)
         .eq('status', 'aprovado')
         .is('deletado_em', null)
+      if (solErr) throw solErr
 
       for (const sol of (solRaw || []) as any[]) {
         const itens = (sol.itens || []) as any[]
