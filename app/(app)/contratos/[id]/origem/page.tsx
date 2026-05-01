@@ -1,22 +1,18 @@
 // app/(app)/contratos/[id]/origem/page.tsx
-import { headers } from 'next/headers'
 import Link from 'next/link'
 import { ChevronLeft } from 'lucide-react'
 import { OrigemSummary } from './origem-summary'
 import { OrigemTable } from './origem-table'
-import type { OrigemResponse } from '@/types/origem'
+import { getOrigemPageData } from '@/lib/db/origem'
+import type { DashboardModo } from '@/types/dashboard'
+import type { OrigemResponse, OrigemTipo } from '@/types/origem'
 
 export const dynamic = 'force-dynamic'
 
-async function fetchOrigem(contratoId: string, search: URLSearchParams): Promise<OrigemResponse | null> {
-  const h = await headers()
-  const host = h.get('x-forwarded-host') ?? h.get('host')
-  const proto = h.get('x-forwarded-proto') ?? 'http'
-  const base = host ? `${proto}://${host}` : process.env.NEXT_PUBLIC_SITE_URL ?? ''
-  const url = `${base}/api/contratos/${contratoId}/origem?${search.toString()}`
-  const res = await fetch(url, { cache: 'no-store' })
-  if (!res.ok) return null
-  return res.json()
+function pickOne(v: string | string[] | undefined): string | undefined {
+  if (typeof v === 'string') return v
+  if (Array.isArray(v)) return v[0]
+  return undefined
 }
 
 export default async function OrigemPage({
@@ -28,23 +24,47 @@ export default async function OrigemPage({
 }) {
   const { id } = await params
   const sp = await searchParams
-  const search = new URLSearchParams()
-  for (const [k, v] of Object.entries(sp)) {
-    if (typeof v === 'string') search.set(k, v)
-    else if (Array.isArray(v) && v[0]) search.set(k, v[0])
-  }
-  if (!search.get('modo')) search.set('modo', 'total')
-  if (!search.get('origem')) search.set('origem', 'realizado')
 
-  const from = search.get('from')
-  const data = await fetchOrigem(id, search)
-  const backHref = from ?? `/contratos/${id}?modo=${search.get('modo')}`
+  const modoRaw = pickOne(sp.modo) ?? 'total'
+  const origemRaw = pickOne(sp.origem) ?? 'realizado'
+  const scopeRaw = pickOne(sp.scope)
+  const from = pickOne(sp.from)
+
+  const modo: DashboardModo = (['total', 'material', 'servico'] as const).includes(
+    modoRaw as DashboardModo,
+  )
+    ? (modoRaw as DashboardModo)
+    : 'total'
+  const origem: OrigemTipo = origemRaw === 'saldo' ? 'saldo' : 'realizado'
+  const scopeId =
+    scopeRaw === undefined || scopeRaw === '' || scopeRaw === 'null' ? null : scopeRaw
+
+  const backHref = from ?? `/contratos/${id}?modo=${modo}`
+
+  let data: OrigemResponse | null = null
+  let errorDigest: string | null = null
+  try {
+    data = await getOrigemPageData(id, modo, origem, scopeId)
+  } catch (e) {
+    errorDigest = String((e as { message?: string })?.message ?? 'unknown')
+    console.error('[origem/page] getOrigemPageData failed', e)
+  }
 
   if (!data) {
     return (
-      <div className="p-6">
-        <Link href={backHref} className="text-sm text-[var(--accent-1)] hover:underline">← Voltar</Link>
-        <p className="mt-4 text-sm text-[var(--text-3)]">Não foi possível carregar os dados.</p>
+      <div className="p-6 max-w-[1400px] mx-auto">
+        <div className="flex items-center gap-2 mb-4 text-sm">
+          <Link href={backHref} className="inline-flex items-center gap-1 text-[var(--accent-1)] hover:underline">
+            <ChevronLeft className="w-4 h-4" /> Voltar à Visão Geral
+          </Link>
+        </div>
+        <div className="rounded-md border border-[var(--border-1)] bg-[var(--surface-1)] p-8 text-center">
+          <p className="text-sm text-[var(--text-2)]">Não foi possível carregar os dados desta página.</p>
+          {errorDigest && (
+            <p className="mt-2 text-xs text-[var(--text-3)]">Detalhe técnico: {errorDigest}</p>
+          )}
+          <p className="mt-3 text-xs text-[var(--text-3)]">Tente recarregar ou volte à Visão Geral.</p>
+        </div>
       </div>
     )
   }
