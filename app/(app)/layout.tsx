@@ -5,6 +5,7 @@ import { ForcePasswordChangeGate } from '@/components/auth/force-password-change
 import { getPerfilDoUsuarioLogado } from '@/lib/db/usuarios'
 import { getPermissoesDoUsuarioLogado } from '@/lib/db/permissoes'
 import { PermissoesProvider } from '@/lib/context/permissoes-context'
+import { RelatorioMensalTick } from '@/components/util/relatorio-mensal-tick'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const [perfil, permissoesEfetivas] = await Promise.all([
@@ -23,6 +24,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           nomeAtual={perfil?.nome ?? ''}
         >
           <EscBack />
+          <RelatorioMensalTick />
           {children}
           <CommandPalette />
         </SidebarShell>
