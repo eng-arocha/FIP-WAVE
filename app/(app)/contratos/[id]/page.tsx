@@ -586,6 +586,15 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
     return []
   }, [grupos, filtroTarefa])
 
+  // Color map antigo (Grupo[]) — mantido pra outras seções da página.
+  // Tem que ficar AQUI antes dos early returns abaixo: hooks chamados depois
+  // de um `return` condicional violam a regra dos hooks (React #310).
+  const groupColorMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    gruposOrdenados.forEach((g, i) => { map[g.id] = GROUP_PALETTE[i % GROUP_PALETTE.length] })
+    return map
+  }, [gruposOrdenados])
+
   if (loading) {
     return (
       <div className="flex-1">
@@ -638,13 +647,6 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   }
   const seriesLabels = SERIES_LABELS[viewMode]
   const mostrarBarraSaldo = viewMode !== 'total'
-
-  // Color map antigo (Grupo[]) — mantido pra outras seções da página
-  const groupColorMap = useMemo(() => {
-    const map: Record<string, string> = {}
-    gruposOrdenados.forEach((g, i) => { map[g.id] = GROUP_PALETTE[i % GROUP_PALETTE.length] })
-    return map
-  }, [gruposOrdenados])
 
   // Dados pro gráfico — usa o dashboard (drill-down sensitive)
   const dashChart = dashItensOrdenados.map((it, i) => {
