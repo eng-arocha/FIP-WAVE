@@ -13,6 +13,7 @@ type Props = {
   loading: boolean
   modo: DashboardModo
   onToggle: () => void
+  onZoom?: () => void
   onClickRealizado?: () => void
   onClickSaldo?: () => void
 }
@@ -43,7 +44,7 @@ function getValores(item: DashboardItem, modo: DashboardModo) {
 }
 
 export const DashboardTreeRow = memo(function DashboardTreeRow({
-  item, level, expanded, loading, modo, onToggle, onClickRealizado, onClickSaldo,
+  item, level, expanded, loading, modo, onToggle, onZoom, onClickRealizado, onClickSaldo,
 }: Props) {
   const v = getValores(item, modo)
   const podeExpandir = item.tem_filhos
@@ -54,15 +55,21 @@ export const DashboardTreeRow = memo(function DashboardTreeRow({
       role="treeitem"
       aria-level={level + 1}
       aria-expanded={podeExpandir ? expanded : undefined}
-      className="grid grid-cols-[minmax(220px,2fr)_1fr_1fr_1fr] items-center gap-2 px-2 py-1.5 hover:bg-[var(--surface-2)] border-b border-[var(--border-1)] cursor-default"
-      onDoubleClick={() => { if (podeExpandir) onToggle() }}
+      className="grid grid-cols-[minmax(220px,2fr)_1fr_1fr_1fr] items-center gap-2 px-2 py-1.5 hover:bg-[var(--surface-2)] border-b border-[var(--border-1)]"
       style={{ paddingLeft: `${indent + 8}px` }}
     >
-      <div className="flex items-center gap-1.5 min-w-0">
+      {/* Coluna 1: chevron + código + nome */}
+      {/* 1x click = expand/collapse, 2x click = zoom */}
+      <div
+        className={`flex items-center gap-1.5 min-w-0 ${podeExpandir || onZoom ? 'cursor-pointer' : ''}`}
+        onClick={() => { if (podeExpandir) onToggle() }}
+        onDoubleClick={() => { if (onZoom) onZoom() }}
+        title={podeExpandir ? '1× clique = expandir · 2× clique = zoom' : ''}
+      >
         {podeExpandir ? (
           <button
             type="button"
-            onClick={onToggle}
+            onClick={(e) => { e.stopPropagation(); onToggle() }}
             aria-label={expanded ? 'Colapsar' : 'Expandir'}
             className="p-0.5 rounded hover:bg-[var(--surface-3)] text-[var(--text-3)]"
           >
