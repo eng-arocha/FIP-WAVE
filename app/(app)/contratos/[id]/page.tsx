@@ -11,14 +11,12 @@ import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell
-} from 'recharts'
-import {
   ArrowLeft, Plus, FileText, Loader2, Pencil,
-  ChevronRight, ChevronDown, Layers, ArrowUpDown, Filter, Package, TrendingUp,
-  DollarSign, CheckCircle2, Wallet, ClipboardList, Search, X, Maximize2,
+  ChevronRight, ChevronDown, Layers, Filter, Package, TrendingUp,
+  DollarSign, Wallet, ClipboardList, Search, X, Maximize2,
   Download, Upload,
 } from 'lucide-react'
+import { DashboardTree } from '@/components/contratos/visao-geral'
 import { EditarContratoModal } from '@/components/contratos/editar-contrato-modal'
 import { EditableOrcamentoCell, parseBRLToNumber, type EditableCellCoordinator } from '@/components/contratos/editable-orcamento-cell'
 import {
@@ -26,7 +24,6 @@ import {
   getContratoStatusColor, getMedicaoStatusColor
 } from '@/lib/utils'
 import { CONTRATO_STATUS_LABELS, CONTRATO_TIPO_LABELS, MEDICAO_STATUS_LABELS, MedicaoStatus, ContratoTipo } from '@/types'
-import type { DashboardItem, DashboardResponse } from '@/types/dashboard'
 
 interface Contrato {
   id: string
@@ -124,13 +121,11 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   const [showMedidoResumo, setShowMedidoResumo] = useState(false)
   const [medicoes, setMedicoes] = useState<Medicao[]>([])
   const [aditivos, setAditivos] = useState<Aditivo[]>([])
-  const [fullscreenChart, setFullscreenChart] = useState<'bar' | 'pedidos' | null>(null)
+  const [fullscreenChart, setFullscreenChart] = useState<'bar' | null>(null)
 
   // === Filtros do dashboard sincronizados com a URL ===
   // Querystring: ?grupo=<id>&tarefa=<id>&det=<id>&modo=total|material|servico&sort=...
   const filtroGrupo = searchParams.get('grupo') ?? 'todos'
-  const filtroTarefa = searchParams.get('tarefa') ?? 'todos'
-  const filtroDetalhamento = searchParams.get('det') ?? 'todos'
   const viewMode = (searchParams.get('modo') ?? 'total') as 'total' | 'material' | 'servico'
   const sortBy = (searchParams.get('sort') ?? 'padrao') as
     | 'padrao' | 'valor_global_desc' | 'valor_global_asc'
@@ -147,13 +142,13 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
         next.set(key, val)
       }
     }
+    // Ao mudar modo ou scope, limpa o estado de expansão da DashboardTree
+    if ('modo' in updates || 'scope' in updates) {
+      next.delete('expand')
+    }
     const qs = next.toString()
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
   }, [searchParams, router, pathname])
-
-  // === Estado do dashboard de análise (rota /dashboard) ===
-  const [dashboardData, setDashboardData] = useState<DashboardResponse | null>(null)
-  const [dashboardLoading, setDashboardLoading] = useState(false)
 
   // Estrutura detalhada state
   const [estruturaBusca, setEstruturaBusca] = useState('')
@@ -252,31 +247,6 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
     }
     loadAditivos()
   }, [id])
-
-  // Carrega dados do dashboard sempre que filtros de drill-down mudam
-  useEffect(() => {
-    let cancelled = false
-    async function loadDashboard() {
-      setDashboardLoading(true)
-      const qs = new URLSearchParams()
-      if (filtroGrupo !== 'todos') qs.set('grupo_id', filtroGrupo)
-      if (filtroTarefa !== 'todos') qs.set('tarefa_id', filtroTarefa)
-      if (filtroDetalhamento !== 'todos') qs.set('detalhamento_id', filtroDetalhamento)
-      const url = `/api/contratos/${id}/dashboard${qs.toString() ? `?${qs.toString()}` : ''}`
-      try {
-        const res = await fetch(url, { cache: 'no-store' })
-        if (!cancelled && res.ok) {
-          const data = (await res.json()) as DashboardResponse
-          setDashboardData(data)
-        }
-      } finally {
-        if (!cancelled) setDashboardLoading(false)
-      }
-    }
-    loadDashboard()
-    return () => { cancelled = true }
-  }, [id, filtroGrupo, filtroTarefa, filtroDetalhamento])
-
 
   // Bloco de métricas financeiras (linha horizontal, ocupando a largura cheia)
   function MetricasBloco({ m, align = 'right' }: { m: Metric | undefined; align?: 'right' | 'left' }) {
@@ -499,101 +469,9 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
     return list
   }, [grupos, sortBy, viewMode, filtroGrupo])
 
-  // === Helpers do dashboard ===
-  // Valor "contratado" segundo o modo de visualização
-  const getContratado = (item: DashboardItem): number =>
-    viewMode === 'material' ? item.valor_contratado_material
-    : viewMode === 'servico' ? item.valor_contratado_servico
-    : item.valor_contratado_total
-
-  // Valor "realizado" segundo o modo
-  const getRealizado = (item: DashboardItem): number =>
-    viewMode === 'material' ? item.realizado_material
-    : viewMode === 'servico' ? item.realizado_servico
-    : item.realizado_total
-
-  // Saldo aprovado a exibir como 3a barra (apenas em modo material/servico)
-  const getSaldoAprovado = (item: DashboardItem): number =>
-    viewMode === 'material' ? item.saldo_aprovado_material
-    : viewMode === 'servico' ? item.saldo_medicao_servico
-    : 0
-
-  // Itens do nível atual (vêm do backend já ordenados por código)
-  const dashItensRaw: DashboardItem[] = dashboardData?.itens ?? []
-
-  // Lista para a TABELA (respeita sortBy)
-  const dashItensExibidos = useMemo(() => {
-    const list = [...dashItensRaw]
-    list.sort((a, b) => {
-      const va = getContratado(a)
-      const vb = getContratado(b)
-      const ra = getRealizado(a)
-      const rb = getRealizado(b)
-      switch (sortBy) {
-        case 'valor_global_desc': return vb - va
-        case 'valor_global_asc': return va - vb
-        case 'valor_medido_desc': return rb - ra
-        case 'valor_medido_asc': return ra - rb
-        case 'saldo_desc': return (vb - rb) - (va - ra)
-        case 'saldo_asc': return (va - ra) - (vb - rb)
-        case 'padrao':
-        default: return cmpCodigo(a.codigo, b.codigo)
-      }
-    })
-    return list
-  }, [dashItensRaw, sortBy, viewMode])
-
-  // Lista para o GRÁFICO (sempre ordem padrão 1→N)
-  const dashItensOrdenados = useMemo(
-    () => [...dashItensRaw].sort((a, b) => cmpCodigo(a.codigo, b.codigo)),
-    [dashItensRaw],
-  )
-
-  // Paleta de cores
-  const GROUP_PALETTE = [
-    '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444',
-    '#06B6D4', '#EC4899', '#F97316', '#14B8A6', '#6366F1',
-    '#84CC16', '#A855F7', '#FB923C', '#34D399', '#FBBF24',
-    '#38BDF8', '#E879F9', '#4ADE80', '#FCA5A5', '#93C5FD',
-  ]
-
-  const itemColorMap = useMemo(() => {
-    const map: Record<string, string> = {}
-    dashItensOrdenados.forEach((g, i) => { map[g.id] = GROUP_PALETTE[i % GROUP_PALETTE.length] })
-    return map
-  }, [dashItensOrdenados])
-
-  // Listas auxiliares pra alimentar os 3 dropdowns hierárquicos a partir
-  // do `grupos` antigo (que ainda contém estrutura completa nivelada).
-  const subgruposDoGrupo = useMemo(() => {
-    if (filtroGrupo === 'todos') return []
-    const g = grupos.find(x => x.id === filtroGrupo)
-    return (g?.tarefas ?? [])
-      .slice()
-      .sort((a, b) => cmpCodigo(a.codigo, b.codigo))
-  }, [grupos, filtroGrupo])
-
-  const detalhamentosDaTarefa = useMemo(() => {
-    if (filtroTarefa === 'todos') return []
-    for (const g of grupos) {
-      const t = (g.tarefas ?? []).find(x => x.id === filtroTarefa)
-      if (t) {
-        return (t.detalhamentos ?? [])
-          .slice()
-          .sort((a, b) => cmpCodigo(a.codigo, b.codigo))
-      }
-    }
-    return []
-  }, [grupos, filtroTarefa])
-
-  // Color map antigo (Grupo[]) — mantido pra outras seções da página.
+  // Color map antigo (Grupo[]) — mantido para outras seções da página.
   // Tem que ficar AQUI antes dos early returns abaixo: hooks chamados depois
   // de um `return` condicional violam a regra dos hooks (React #310).
-  const groupColorMap = useMemo(() => {
-    const map: Record<string, string> = {}
-    gruposOrdenados.forEach((g, i) => { map[g.id] = GROUP_PALETTE[i % GROUP_PALETTE.length] })
-    return map
-  }, [gruposOrdenados])
 
   if (loading) {
     return (
@@ -628,40 +506,6 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   const percentualMedido = contrato.percentual_medido ?? 0
   const qtdAprovadas = contrato.qtd_medicoes_aprovadas ?? 0
   const qtdPendentes = contrato.qtd_medicoes_pendentes ?? 0
-
-  const VIEW_MODE_LABELS: Record<string, string> = { total: 'Total', material: 'Material', servico: 'Serviço' }
-
-  // Título dinâmico do bloco de análise conforme o modo selecionado
-  const ANALISE_TITULO: Record<typeof viewMode, string> = {
-    total: 'Análise Global',
-    material: 'Análise Material',
-    servico: 'Análise Serviço',
-  }
-  const tituloAnalise = ANALISE_TITULO[viewMode]
-
-  // Labels das séries do gráfico conforme o modo
-  const SERIES_LABELS: Record<typeof viewMode, { contratado: string; realizado: string; saldo: string }> = {
-    total:    { contratado: 'Contratado',      realizado: 'Realizado', saldo: '' },
-    material: { contratado: 'Planejado',       realizado: 'Realizado', saldo: 'Saldo Aprovado' },
-    servico:  { contratado: 'Serv. Contratado', realizado: 'Realizado', saldo: 'Saldo Medição Aprovado' },
-  }
-  const seriesLabels = SERIES_LABELS[viewMode]
-  const mostrarBarraSaldo = viewMode !== 'total'
-
-  // Dados pro gráfico — usa o dashboard (drill-down sensitive)
-  const dashChart = dashItensOrdenados.map((it, i) => {
-    const contratado = getContratado(it)
-    const realizado = getRealizado(it)
-    const saldoAprovado = getSaldoAprovado(it)
-    return {
-      nome: it.codigo,
-      nomeFull: it.nome,
-      contratado,
-      realizado,
-      saldo: saldoAprovado,
-      color: GROUP_PALETTE[i % GROUP_PALETTE.length],
-    }
-  })
 
   return (
     <div className="flex-1">
@@ -865,12 +709,12 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
           </div>
         )}
 
-        {fullscreenChart && (
+        {fullscreenChart === 'bar' && (
           <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'var(--background)' }}>
             <div className="flex items-center justify-between px-6 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
               <div className="flex items-center gap-4">
                 <h2 className="text-base font-bold uppercase tracking-wide" style={{ color: 'var(--text-1)' }}>
-                  {tituloAnalise}
+                  Visão Geral — Tela Cheia
                 </h2>
                 <div className="flex gap-2">
                   {(['total', 'material', 'servico'] as const).map(m => (
@@ -881,7 +725,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                         color: viewMode === m ? '#fff' : 'var(--text-2)',
                         border: `1px solid ${viewMode === m ? 'var(--accent)' : 'var(--border)'}`,
                       }}>
-                      {VIEW_MODE_LABELS[m]}
+                      {m === 'total' ? 'Total' : m === 'material' ? 'Material' : 'Serviço'}
                     </button>
                   ))}
                 </div>
@@ -890,71 +734,8 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                 <X className="w-5 h-5" style={{ color: 'var(--text-2)' }} />
               </button>
             </div>
-            <div className="flex-1 p-6">
-              {fullscreenChart === 'bar' && (
-                <ResponsiveContainer width="100%" height={Math.max(600, dashChart.length * 42)}>
-                  <BarChart data={dashChart} layout="vertical" margin={{ top: 0, right: 32, left: 8, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-                    <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--text-3)' }} tickFormatter={v => `${(v / 1000000).toFixed(1)}M`} axisLine={false} tickLine={false} />
-                    <YAxis type="category" dataKey="nome" tick={{ fontSize: 11, fill: 'var(--text-2)' }} width={40} axisLine={false} tickLine={false} />
-                    <Tooltip content={({ active, payload }) => {
-                      if (!active || !payload?.length) return null
-                      const d = payload[0]?.payload
-                      const color = d?.color ?? '#3B82F6'
-                      return (
-                        <div style={{ background: '#0D1421', border: `1px solid ${color}60`, borderRadius: 8, padding: '8px 12px', fontSize: 12, minWidth: 200 }}>
-                          <p style={{ color, fontWeight: 700, marginBottom: 6 }}>{d?.nomeFull}</p>
-                          {payload.map((p: any) => (
-                            <p key={p.dataKey} style={{ color: '#FFFFFF', margin: '2px 0' }}>{p.name}: {formatCurrency(p.value as number)}</p>
-                          ))}
-                        </div>
-                      )
-                    }} />
-                    <Legend iconSize={10} wrapperStyle={{ fontSize: 12, color: 'var(--text-2)' }} />
-                    <Bar dataKey="contratado" name={seriesLabels.contratado} radius={[0, 3, 3, 0]} maxBarSize={14}>
-                      {dashChart.map((entry, i) => <Cell key={i} fill={`${entry.color}BB`} />)}
-                    </Bar>
-                    <Bar dataKey="realizado" name={seriesLabels.realizado} radius={[0, 3, 3, 0]} maxBarSize={14}>
-                      {dashChart.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                    </Bar>
-                    {mostrarBarraSaldo && (
-                      <Bar dataKey="saldo" name={seriesLabels.saldo} radius={[0, 3, 3, 0]} maxBarSize={14}>
-                        {dashChart.map((entry, i) => <Cell key={i} fill={`${entry.color}55`} stroke={entry.color} strokeWidth={1} />)}
-                      </Bar>
-                    )}
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-              {fullscreenChart === 'pedidos' && (
-                <div className="max-w-3xl mx-auto space-y-4">
-                  {dashItensExibidos.map((it, idx) => {
-                    const contratado = getContratado(it)
-                    const realizado = getRealizado(it)
-                    const saldoAprovado = getSaldoAprovado(it)
-                    const pct = contratado > 0 ? (realizado / contratado) * 100 : 0
-                    const color = itemColorMap[it.id] ?? GROUP_PALETTE[idx % GROUP_PALETTE.length]
-                    return (
-                      <div key={it.id}>
-                        <div className="flex justify-between mb-1">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-sm font-bold flex-shrink-0" style={{ color }}>{it.codigo}</span>
-                            <span className="text-sm font-medium text-[var(--text-2)] truncate">{it.nome}</span>
-                          </div>
-                          <span className="text-sm font-bold flex-shrink-0 ml-2" style={{ color }}>{formatPercent(pct)}</span>
-                        </div>
-                        <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--surface-3)' }}>
-                          <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, background: color }} />
-                        </div>
-                        <div className="flex justify-between text-xs text-[var(--text-3)] mt-0.5">
-                          <span>{seriesLabels.contratado}: {formatCurrency(contratado)}</span>
-                          <span>{seriesLabels.realizado}: {formatCurrency(realizado)}</span>
-                          <span>{mostrarBarraSaldo ? `${seriesLabels.saldo}: ${formatCurrency(saldoAprovado)}` : `Saldo: ${formatCurrency(contratado - realizado)}`}</span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
+            <div className="flex-1 overflow-auto p-6">
+              <DashboardTree contratoId={id} modo={viewMode} />
             </div>
           </div>
         )}
@@ -982,229 +763,34 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
 
           {/* Visão Geral */}
           <TabsContent value="visao-geral">
-            {/* Breadcrumb de drill-down (vazio em nível 1) */}
-            {dashboardData && dashboardData.breadcrumb.length > 0 && (
-              <div className="mb-3 flex items-center gap-1 text-xs text-[var(--text-3)] flex-wrap">
-                <button
-                  onClick={() => setFiltros({ grupo: null, tarefa: null, det: null })}
-                  className="hover:text-[var(--text-2)] underline-offset-2 hover:underline"
-                >
-                  Todos
-                </button>
-                {dashboardData.breadcrumb.map((b, i) => (
-                  <span key={b.id} className="flex items-center gap-1">
-                    <ChevronRight className="w-3 h-3" />
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>Visão Geral</h3>
+                  <div className="flex items-center gap-2">
+                    <Select value={viewMode} onValueChange={v => setFiltros({ modo: v })}>
+                      <SelectTrigger className="h-7 text-xs w-[110px]"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="total">Total</SelectItem>
+                        <SelectItem value="material">Material</SelectItem>
+                        <SelectItem value="servico">Serviço</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <button
-                      onClick={() => {
-                        if (b.nivel === 1) setFiltros({ grupo: b.id, tarefa: null, det: null })
-                        else if (b.nivel === 2) setFiltros({ tarefa: b.id, det: null })
-                        else setFiltros({ det: b.id })
-                      }}
-                      className={`${i === dashboardData.breadcrumb.length - 1 ? 'text-[var(--text-1)] font-medium' : 'hover:text-[var(--text-2)]'}`}
+                      onClick={() => setFullscreenChart('bar')}
+                      className="p-1 rounded hover:bg-[var(--surface-3)]"
+                      title="Tela cheia"
+                      data-no-maximize
                     >
-                      {b.codigo} — {b.nome}
+                      <Maximize2 className="w-4 h-4" style={{ color: 'var(--text-3)' }} />
                     </button>
-                  </span>
-                ))}
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-              {/* Chart de análise (Global / Material / Serviço conforme modo) */}
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm text-[var(--text-1)] uppercase tracking-wide">{tituloAnalise}</CardTitle>
-                  <button onClick={() => setFullscreenChart('bar')} className="p-1 rounded hover:bg-[var(--surface-3)]" title="Tela cheia">
-                    <Maximize2 className="w-4 h-4" style={{ color: 'var(--text-3)' }} />
-                  </button>
-                </CardHeader>
-                <CardContent>
-                  {dashboardLoading && dashChart.length === 0 ? (
-                    <div className="flex items-center justify-center h-64 text-xs text-[var(--text-3)]">
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Carregando…
-                    </div>
-                  ) : (
-                  <ResponsiveContainer width="100%" height={Math.max(320, dashChart.length * 32)}>
-                    <BarChart data={dashChart} layout="vertical" margin={{ top: 0, right: 24, left: 8, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-                      <XAxis type="number" tick={{ fontSize: 10, fill: 'var(--text-3)' }} tickFormatter={v => `${(v / 1000000).toFixed(1)}M`} axisLine={false} tickLine={false} />
-                      <YAxis type="category" dataKey="nome" tick={{ fontSize: 10, fill: 'var(--text-2)' }} width={36} axisLine={false} tickLine={false} />
-                      <Tooltip
-                        content={({ active, payload }) => {
-                          if (!active || !payload?.length) return null
-                          const d = payload[0]?.payload
-                          const color = d?.color ?? '#3B82F6'
-                          return (
-                            <div style={{ background: '#0D1421', border: `1px solid ${color}60`, borderRadius: 8, padding: '8px 12px', fontSize: 12, minWidth: 180 }}>
-                              <p style={{ color, fontWeight: 700, marginBottom: 6, fontSize: 11 }}>{d?.nomeFull}</p>
-                              {payload.map((p: any) => (
-                                <p key={p.dataKey} style={{ color: '#FFFFFF', margin: '2px 0' }}>
-                                  {p.name}: {formatCurrency(p.value as number)}
-                                </p>
-                              ))}
-                            </div>
-                          )
-                        }}
-                      />
-                      <Legend iconSize={10} wrapperStyle={{ fontSize: 11, color: 'var(--text-2)' }} />
-                      <Bar dataKey="contratado" name={seriesLabels.contratado} radius={[0, 2, 2, 0]} maxBarSize={10}>
-                        {dashChart.map((entry, i) => (
-                          <Cell key={i} fill={`${entry.color}BB`} />
-                        ))}
-                      </Bar>
-                      <Bar dataKey="realizado" name={seriesLabels.realizado} radius={[0, 2, 2, 0]} maxBarSize={10}>
-                        {dashChart.map((entry, i) => (
-                          <Cell key={i} fill={entry.color} />
-                        ))}
-                      </Bar>
-                      {mostrarBarraSaldo && (
-                        <Bar dataKey="saldo" name={seriesLabels.saldo} radius={[0, 2, 2, 0]} maxBarSize={10}>
-                          {dashChart.map((entry, i) => (
-                            <Cell key={i} fill={`${entry.color}55`} stroke={entry.color} strokeWidth={1} />
-                          ))}
-                        </Bar>
-                      )}
-                    </BarChart>
-                  </ResponsiveContainer>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Tabela de análise — drill-down hierárquico */}
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-sm text-[var(--text-1)] uppercase tracking-wide">{tituloAnalise}</CardTitle>
-                      <button onClick={() => setFullscreenChart('pedidos')} className="p-1 rounded hover:bg-[var(--surface-3)]" title="Tela cheia">
-                        <Maximize2 className="w-4 h-4" style={{ color: 'var(--text-3)' }} />
-                      </button>
-                    </div>
-                    {/* Controles inline — drill-down em cascata */}
-                    <div className="flex flex-wrap gap-2 pt-2">
-                      <Select value={filtroGrupo} onValueChange={v => setFiltros({ grupo: v, tarefa: null, det: null })}>
-                        <SelectTrigger className="h-7 text-[11px] w-44 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]">
-                          <SelectValue placeholder="Todos os grupos" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="todos">Todos os grupos</SelectItem>
-                          {gruposOrdenados.map(g => (
-                            <SelectItem key={g.id} value={g.id}>{g.codigo} — {g.nome.substring(0, 30)}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Select
-                        value={filtroTarefa}
-                        onValueChange={v => setFiltros({ tarefa: v, det: null })}
-                        disabled={filtroGrupo === 'todos' || subgruposDoGrupo.length === 0}
-                      >
-                        <SelectTrigger className="h-7 text-[11px] w-44 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)] disabled:opacity-40">
-                          <SelectValue placeholder="Todos os subgrupos" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="todos">Todos os subgrupos</SelectItem>
-                          {subgruposDoGrupo.map(t => (
-                            <SelectItem key={t.id} value={t.id}>{t.codigo} — {t.nome.substring(0, 30)}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Select
-                        value={filtroDetalhamento}
-                        onValueChange={v => setFiltros({ det: v })}
-                        disabled={filtroTarefa === 'todos' || detalhamentosDaTarefa.length === 0}
-                      >
-                        <SelectTrigger className="h-7 text-[11px] w-44 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)] disabled:opacity-40">
-                          <SelectValue placeholder="Todos os detalhamentos" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="todos">Todos os detalhamentos</SelectItem>
-                          {detalhamentosDaTarefa.map(d => (
-                            <SelectItem key={d.id} value={d.id}>{d.codigo} — {(d.descricao || '').substring(0, 30)}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Select value={sortBy} onValueChange={v => setFiltros({ sort: v })}>
-                        <SelectTrigger className="h-7 text-[11px] w-48 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]">
-                          <ArrowUpDown className="w-3 h-3 mr-1 flex-shrink-0" />
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="padrao">Padrão (hierárquico)</SelectItem>
-                          <SelectItem value="valor_global_desc">Contratado ↓</SelectItem>
-                          <SelectItem value="valor_global_asc">Contratado ↑</SelectItem>
-                          <SelectItem value="valor_medido_desc">Realizado ↓</SelectItem>
-                          <SelectItem value="valor_medido_asc">Realizado ↑</SelectItem>
-                          <SelectItem value="saldo_desc">Saldo ↓</SelectItem>
-                          <SelectItem value="saldo_asc">Saldo ↑</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Select value={viewMode} onValueChange={v => setFiltros({ modo: v })}>
-                        <SelectTrigger className="h-7 text-[11px] w-36 bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]">
-                          <Filter className="w-3 h-3 mr-1 flex-shrink-0" />
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="total">Total</SelectItem>
-                          <SelectItem value="material">Material</SelectItem>
-                          <SelectItem value="servico">Serviço</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      {(sortBy !== 'padrao' || viewMode !== 'total' || filtroGrupo !== 'todos' || filtroTarefa !== 'todos' || filtroDetalhamento !== 'todos') && (
-                        <button
-                          onClick={() => setFiltros({ sort: null, modo: null, grupo: null, tarefa: null, det: null })}
-                          className="text-[11px] text-[var(--text-3)] hover:text-[var(--text-2)] px-2"
-                        >
-                          Limpar
-                        </button>
-                      )}
-                    </div>
                   </div>
-                </CardHeader>
-                <CardContent className="space-y-3 max-h-[360px] overflow-y-auto">
-                  {dashboardLoading && dashItensExibidos.length === 0 ? (
-                    <div className="flex items-center justify-center h-32 text-xs text-[var(--text-3)]">
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Carregando…
-                    </div>
-                  ) : dashItensExibidos.length === 0 ? (
-                    <div className="text-xs text-[var(--text-3)] text-center py-8">Nenhum item neste nível.</div>
-                  ) : dashItensExibidos.map((it, idx) => {
-                    const contratado = getContratado(it)
-                    const realizado = getRealizado(it)
-                    const saldoAprovado = getSaldoAprovado(it)
-                    const pct = contratado > 0 ? (realizado / contratado) * 100 : 0
-                    const color = itemColorMap[it.id] ?? GROUP_PALETTE[idx % GROUP_PALETTE.length]
-                    const podeAvançar = it.tem_filhos
-                    const handleClick = () => {
-                      if (!podeAvançar) return
-                      if (it.nivel === 1) setFiltros({ grupo: it.id, tarefa: null, det: null })
-                      else if (it.nivel === 2) setFiltros({ tarefa: it.id, det: null })
-                    }
-                    return (
-                      <div key={it.id} className={podeAvançar ? 'cursor-pointer hover:opacity-90' : ''} onClick={handleClick}>
-                        <div className="flex justify-between mb-1">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-xs font-bold flex-shrink-0" style={{ color }}>{it.codigo}</span>
-                            <span className="text-xs font-medium text-[var(--text-2)] truncate">{it.nome}</span>
-                            {podeAvançar && <ChevronRight className="w-3 h-3 flex-shrink-0" style={{ color: 'var(--text-3)' }} />}
-                          </div>
-                          <span className="text-xs font-bold flex-shrink-0 ml-2" style={{ color }}>{formatPercent(pct)}</span>
-                        </div>
-                        {/* Progress bar com cor do item */}
-                        <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--surface-3)' }}>
-                          <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(pct, 100)}%`, background: color }} />
-                        </div>
-                        <div className="flex justify-between text-[10px] text-[var(--text-3)] mt-0.5">
-                          <span>{seriesLabels.contratado}: {formatCurrency(contratado)}</span>
-                          <span>{seriesLabels.realizado}: {formatCurrency(realizado)}</span>
-                          <span>{mostrarBarraSaldo ? `${seriesLabels.saldo}: ${formatCurrency(saldoAprovado)}` : `Saldo: ${formatCurrency(contratado - realizado)}`}</span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </CardContent>
-              </Card>
-            </div>
-
+                </div>
+              </CardHeader>
+              <CardContent data-no-maximize>
+                <DashboardTree contratoId={id} modo={viewMode} />
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Medições */}
