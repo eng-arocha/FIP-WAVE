@@ -2,6 +2,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { ArrowLeft } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import type { DashboardItem, DashboardModo } from '@/types/dashboard'
 import { useTreeExpansion } from '@/lib/hooks/use-tree-expansion'
@@ -23,8 +24,11 @@ export function DashboardTree({ contratoId, modo }: Props) {
   const pathname = usePathname()
   const params = useSearchParams()
 
+  const scopeRaw = params.get('scope')
+  const rootScope = scopeRaw === null || scopeRaw === '' || scopeRaw === 'null' ? null : scopeRaw
+
   const { expandedIds, isExpanded, toggle } = useTreeExpansion()
-  const { fetchChildren, isLoading, getCached } = useDashboardTreeData(contratoId, modo)
+  const { fetchChildren, isLoading, getCached } = useDashboardTreeData(contratoId, modo, rootScope)
 
   // Carregar filhos de nós expandidos
   useEffect(() => {
@@ -33,10 +37,10 @@ export function DashboardTree({ contratoId, modo }: Props) {
     })
   }, [expandedIds, fetchChildren, getCached])
 
-  // Achatar árvore visível
+  // Achatar árvore visível (a partir do rootScope, não de null)
   const flat = useMemo<FlatItem[]>(() => {
     const out: FlatItem[] = []
-    const root = getCached(null) ?? []
+    const root = getCached(rootScope) ?? []
 
     function walk(items: DashboardItem[], level: number) {
       for (const item of items) {
@@ -49,9 +53,8 @@ export function DashboardTree({ contratoId, modo }: Props) {
     }
     walk(root, 0)
     return out
-  }, [expandedIds, getCached])
+  }, [expandedIds, getCached, rootScope])
 
-  // Click vs double-click guard (para evitar abrir a origem ao tentar expandir via gráfico)
   const lastClickRef = useRef<{ id: string; t: number } | null>(null)
 
   const onToggle = useCallback((item: DashboardItem) => {
@@ -59,6 +62,18 @@ export function DashboardTree({ contratoId, modo }: Props) {
     if (!getCached(item.id)) fetchChildren(item.id)
     toggle(item.id)
   }, [fetchChildren, getCached, toggle])
+
+  const updateScope = useCallback((newScope: string | null) => {
+    const qs = new URLSearchParams(params.toString())
+    if (newScope === null) qs.delete('scope')
+    else qs.set('scope', newScope)
+    qs.delete('expand')
+    router.replace(`${pathname}?${qs.toString()}`, { scroll: false })
+  }, [params, pathname, router])
+
+  const onZoom = useCallback((item: DashboardItem) => {
+    updateScope(item.id)
+  }, [updateScope])
 
   const goToOrigem = useCallback((item: DashboardItem, origem: 'realizado' | 'saldo') => {
     const now = Date.now()
@@ -83,55 +98,71 @@ export function DashboardTree({ contratoId, modo }: Props) {
   }, [contratoId, modo, pathname, params, router])
 
   const onDoubleClickFromChart = useCallback((item: DashboardItem) => {
-    lastClickRef.current = { id: item.id, t: Date.now() }
-    onToggle(item)
-  }, [onToggle])
+    // Duplo-clique no chart = zoom (consistente com tabela)
+    onZoom(item)
+  }, [onZoom])
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3" role="tree">
-      <div className="border border-[var(--border-1)] rounded-md overflow-hidden bg-[var(--surface-1)]">
-        <div className="grid grid-cols-[minmax(220px,2fr)_1fr_1fr_1fr] items-center gap-2 px-2 py-1.5 text-[10px] uppercase text-[var(--text-3)] border-b border-[var(--border-1)] bg-[var(--surface-2)]">
-          <div>Item</div>
-          <div className="text-right">Contratado</div>
-          <div className="text-right">Realizado</div>
-          <div className="text-right">{modo === 'material' ? 'Saldo aprov.' : modo === 'servico' ? 'Saldo med.' : 'Saldo'}</div>
+    <div className="flex flex-col gap-2" role="tree">
+      {rootScope && (
+        <div className="flex items-center gap-2 text-xs text-[var(--text-3)]">
+          <button
+            type="button"
+            onClick={() => updateScope(null)}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-[var(--surface-2)] text-[var(--accent-1)]"
+          >
+            <ArrowLeft className="w-3 h-3" /> Voltar a todos
+          </button>
+          <span>·</span>
+          <span>Foco em um subgrupo</span>
         </div>
-        <div className="max-h-[60vh] overflow-y-auto">
-          {flat.length === 0 ? (
-            <div className="p-6 text-center text-sm text-[var(--text-3)]">Carregando…</div>
-          ) : flat.map(({ item, level }) => {
-            const realizadoVal =
-              modo === 'material' ? item.realizado_material
-              : modo === 'servico' ? item.realizado_servico
-              : item.realizado_total
-            const saldoVal =
-              modo === 'material' ? item.saldo_aprovado_material
-              : modo === 'servico' ? item.saldo_medicao_servico
-              : 0
-            return (
-              <DashboardTreeRow
-                key={`${item.id}-${level}`}
-                item={item}
-                level={level}
-                expanded={isExpanded(item.id)}
-                loading={isLoading(item.id)}
-                modo={modo}
-                onToggle={() => onToggle(item)}
-                onClickRealizado={realizadoVal > 0 ? () => goToOrigem(item, 'realizado') : undefined}
-                onClickSaldo={modo !== 'total' && saldoVal > 0 ? () => goToOrigem(item, 'saldo') : undefined}
-              />
-            )
-          })}
+      )}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div className="border border-[var(--border-1)] rounded-md overflow-hidden bg-[var(--surface-1)]">
+          <div className="grid grid-cols-[minmax(220px,2fr)_1fr_1fr_1fr] items-center gap-2 px-2 py-1.5 text-[10px] uppercase text-[var(--text-3)] border-b border-[var(--border-1)] bg-[var(--surface-2)]">
+            <div>Item</div>
+            <div className="text-right">Contratado</div>
+            <div className="text-right">Realizado</div>
+            <div className="text-right">{modo === 'material' ? 'Saldo aprov.' : modo === 'servico' ? 'Saldo med.' : 'Saldo'}</div>
+          </div>
+          <div className="max-h-[60vh] overflow-y-auto">
+            {flat.length === 0 ? (
+              <div className="p-6 text-center text-sm text-[var(--text-3)]">Carregando…</div>
+            ) : flat.map(({ item, level }) => {
+              const realizadoVal =
+                modo === 'material' ? item.realizado_material
+                : modo === 'servico' ? item.realizado_servico
+                : item.realizado_total
+              const saldoVal =
+                modo === 'material' ? item.saldo_aprovado_material
+                : modo === 'servico' ? item.saldo_medicao_servico
+                : 0
+              return (
+                <DashboardTreeRow
+                  key={`${item.id}-${level}`}
+                  item={item}
+                  level={level}
+                  expanded={isExpanded(item.id)}
+                  loading={isLoading(item.id)}
+                  modo={modo}
+                  onToggle={() => onToggle(item)}
+                  onZoom={() => onZoom(item)}
+                  onClickRealizado={realizadoVal > 0 ? () => goToOrigem(item, 'realizado') : undefined}
+                  onClickSaldo={modo !== 'total' && saldoVal > 0 ? () => goToOrigem(item, 'saldo') : undefined}
+                />
+              )
+            })}
+          </div>
         </div>
-      </div>
-      <div className="border border-[var(--border-1)] rounded-md p-2 bg-[var(--surface-1)] overflow-x-auto">
-        <DashboardBarChart
-          itens={flat}
-          modo={modo}
-          onDoubleClickItem={onDoubleClickFromChart}
-          onClickRealizado={(item) => goToOrigem(item, 'realizado')}
-          onClickSaldo={(item) => goToOrigem(item, 'saldo')}
-        />
+        <div className="border border-[var(--border-1)] rounded-md p-2 bg-[var(--surface-1)] overflow-x-auto">
+          <DashboardBarChart
+            itens={flat}
+            modo={modo}
+            onDoubleClickItem={onDoubleClickFromChart}
+            onClickRealizado={(item) => goToOrigem(item, 'realizado')}
+            onClickSaldo={(item) => goToOrigem(item, 'saldo')}
+          />
+        </div>
       </div>
     </div>
   )

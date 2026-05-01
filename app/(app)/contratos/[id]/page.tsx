@@ -769,7 +769,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                   <h3 className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>Visão Geral</h3>
                   <div className="flex items-center gap-2">
                     <Select value={viewMode} onValueChange={v => setFiltros({ modo: v })}>
-                      <SelectTrigger className="h-7 text-xs w-[110px]"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="h-7 text-xs w-[110px] bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)]"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="total">Total</SelectItem>
                         <SelectItem value="material">Material</SelectItem>
