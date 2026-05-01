@@ -437,21 +437,10 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                       )
                     })()}
                   </div>
-                  {isPendente && (
-                    <div className="flex gap-2 flex-wrap">
-                      <Button variant="success" size="sm" onClick={() => setModalLiberacao('aprovar')}>
-                        <CheckCircle2 className="w-4 h-4" />
-                        Aprovar e liberar NF
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setModalAprovar(true)} title="Aprova sem disparar email">
-                        Aprovar
-                      </Button>
-                      <Button variant="destructive" size="sm" onClick={() => setModalRejeitar(true)}>
-                        <XCircle className="w-4 h-4" />
-                        Rejeitar
-                      </Button>
-                    </div>
-                  )}
+                  {/* Aprovação/rejeição da medição agora vivem APENAS no Boletim
+                      INFORMAKON — porque é onde o aprovador revisa item-a-item
+                      (incluindo confirmação "sem mais NF" pra itens com retido)
+                      antes de bater o martelo. */}
                   {!isPendente && status === 'aprovado' && (
                     <Button variant="ghost" size="sm" onClick={() => setModalLiberacao('reenviar')} className="border border-blue-500/30 text-blue-400 hover:bg-blue-500/10">
                       <Mail className="w-4 h-4" />

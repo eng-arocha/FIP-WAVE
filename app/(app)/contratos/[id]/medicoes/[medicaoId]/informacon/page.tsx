@@ -1,13 +1,22 @@
 'use client'
 
-import { use, useEffect, useMemo, useState } from 'react'
+import { use, useEffect, useMemo, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { Topbar } from '@/components/layout/topbar'
 import { MaximizableCard } from '@/components/ui/maximizable-card'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
+} from '@/components/ui/dialog'
+import { EmailLiberacaoMedicaoModal } from '@/components/medicoes/email-liberacao-medicao-modal'
+import { usePermissoes } from '@/lib/context/permissoes-context'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { exportCsv } from '@/lib/utils/csv'
 import {
   ArrowLeft, Loader2, Download, Copy, Check, FileText, TrendingUp, Printer, HelpCircle, X,
+  CheckCircle2, XCircle, Mail, AlertTriangle, Info,
 } from 'lucide-react'
 
 interface Linha {
@@ -29,7 +38,7 @@ interface Linha {
   valor_servico_total_item: number
   material_medido: number
   servico_medido: number
-  // Novos campos: lógica Wave/FIP
+  // Lógica Wave/FIP
   nf_terceiro: number
   saldo_aprovado: number
   nf_descontavel: number
@@ -39,12 +48,20 @@ interface Linha {
   wave_servico: number
   valor_total_medido: number
   dados_informakon: number
-  total_informakon: number // alias (= dados_informakon)
+  total_informakon: number
   pct_informakon: number
   base_retencao: number
   retencao: number
   material_acumulado: number
   servico_acumulado: number
+  // === Novos campos da migration 060 (confirmação "sem mais NF") ===
+  // Ausentes em respostas antigas — UI deve ser resiliente.
+  ajuste_aplicado?: boolean
+  confirmacao_sem_nf?: boolean
+  confirmacao_sem_nf_em?: string | null
+  confirmacao_sem_nf_motivo?: string | null
+  pct_serv_med?: number
+  pct_serv_med_original?: number
 }
 
 interface Resp {
@@ -75,8 +92,13 @@ interface Resp {
     retencao: number
     material_acumulado: number
     servico_acumulado: number
+    // novo: contagem de itens que tiveram % ajustado
+    itens_com_ajuste?: number
   }
 }
+
+const MOTIVO_PADRAO_SEM_NF =
+  'fornecedor confirmou que não emitirá mais NF — material concluído com NFs já lançadas'
 
 function pctFmt(v: number, casas = 2): string {
   if (!Number.isFinite(v)) return '—'
@@ -90,23 +112,58 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
   const [copiado, setCopiado] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
 
-  useEffect(() => {
-    fetch(`/api/contratos/${contratoId}/medicoes/${medicaoId}/informacon`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.medicao) setData(d) })
-      .finally(() => setLoading(false))
+  // === Aprovação / rejeição da medição (trazidos da page.tsx — antes viviam lá) ===
+  const { perfilAtual, temPermissao } = usePermissoes()
+  const podeAprovar = perfilAtual === 'admin' || temPermissao('medicoes', 'aprovar')
+
+  const [modalAprovar,   setModalAprovar]   = useState(false)
+  const [modalLiberacao, setModalLiberacao] = useState<'aprovar' | 'reenviar' | null>(null)
+  const [modalRejeitar,  setModalRejeitar]  = useState(false)
+  const [comentario,     setComentario]     = useState('')
+  const [motivo,         setMotivo]         = useState('')
+  const [saving,         setSaving]         = useState(false)
+  const [erroAcao,       setErroAcao]       = useState('')
+
+  // === Modal de confirmação "sem mais NF" item-a-item ===
+  const [modalConfirmar, setModalConfirmar] = useState<{
+    item: Linha
+    /** marcar = true ou desmarcar = false (intenção do usuário) */
+    confirmar: boolean
+  } | null>(null)
+  const [motivoSemNf, setMotivoSemNf] = useState('')
+  const [salvandoConfirmacao, setSalvandoConfirmacao] = useState(false)
+  const [erroConfirmacao, setErroConfirmacao] = useState('')
+
+  const carregar = useCallback(async () => {
+    setLoading(true)
+    try {
+      const r = await fetch(`/api/contratos/${contratoId}/medicoes/${medicaoId}/informacon`, { cache: 'no-store' })
+      if (!r.ok) { setData(null); return }
+      const d = await r.json()
+      if (d?.medicao) setData(d)
+    } finally {
+      setLoading(false)
+    }
   }, [contratoId, medicaoId])
 
-  // Filtrar só itens com qtde medida nesta medição (mais limpo pro lançamento)
+  useEffect(() => { carregar() }, [carregar])
+
   const [mostrarTodos, setMostrarTodos] = useState(false)
   const linhasExibidas = useMemo(() => {
     if (!data) return []
     return mostrarTodos ? data.linhas : data.linhas.filter(l => l.quantidade_medida > 0)
   }, [data, mostrarTodos])
 
+  // Quantos itens com ajuste aplicado (fonte: totais.itens_com_ajuste se vier
+  // da rota; senão calcula no client a partir das linhas).
+  const itensComAjuste = useMemo(() => {
+    if (!data) return 0
+    if (typeof data.totais.itens_com_ajuste === 'number') return data.totais.itens_com_ajuste
+    return data.linhas.reduce((acc, l) => acc + (l.ajuste_aplicado ? 1 : 0), 0)
+  }, [data])
+
   function copiarParaClipboard() {
     if (!data) return
-    // TSV (cola direto em Excel/Google Sheets)
     const headers = [
       'Código', 'Descrição',
       'Mat. Medido', 'NF Terceiro', 'Saldo Aprov.', 'NF Desc.', 'Gap', 'Retido', 'FIP Fat-Dir',
@@ -122,7 +179,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
       l.material_retido.toFixed(2).replace('.', ','),
       l.fip_faturar.toFixed(2).replace('.', ','),
       l.wave_servico.toFixed(2).replace('.', ','),
-      pctFmt(l.pct_medido),
+      pctFmt(pctServMedExibido(l)),
       l.valor_total_medido.toFixed(2).replace('.', ','),
       l.dados_informakon.toFixed(2).replace('.', ','),
       pctFmt(l.pct_informakon, 4),
@@ -135,8 +192,97 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
     })
   }
 
-  function imprimir() {
-    window.print()
+  function imprimir() { window.print() }
+
+  // ============================================================
+  // Aprovar / rejeitar a medição (chama backend igual page.tsx fazia)
+  // ============================================================
+  async function aprovarSemEmail() {
+    setSaving(true)
+    setErroAcao('')
+    try {
+      const res = await fetch(`/api/contratos/${contratoId}/medicoes/${medicaoId}/aprovar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          aprovadorNome: 'Fiscal FIP',
+          aprovadorEmail: 'fiscal@fipengenharia.com.br',
+          comentario,
+        }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) { setErroAcao(body?.error || `Falha (HTTP ${res.status}).`); return }
+      setModalAprovar(false)
+      setComentario('')
+      await carregar()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function rejeitar() {
+    if (!motivo.trim()) return
+    setSaving(true)
+    setErroAcao('')
+    try {
+      const res = await fetch(`/api/contratos/${contratoId}/medicoes/${medicaoId}/rejeitar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          aprovadorNome: 'Fiscal FIP',
+          aprovadorEmail: 'fiscal@fipengenharia.com.br',
+          comentario: motivo,
+        }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) { setErroAcao(body?.error || `Falha (HTTP ${res.status}).`); return }
+      setModalRejeitar(false)
+      setMotivo('')
+      await carregar()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // ============================================================
+  // Confirmar / reverter "sem mais NF" item-a-item
+  // ============================================================
+  function abrirModalConfirmacao(item: Linha, confirmar: boolean) {
+    setErroConfirmacao('')
+    setMotivoSemNf(confirmar ? MOTIVO_PADRAO_SEM_NF : '')
+    setModalConfirmar({ item, confirmar })
+  }
+
+  async function salvarConfirmacao() {
+    if (!modalConfirmar) return
+    const { item, confirmar } = modalConfirmar
+    setSalvandoConfirmacao(true)
+    setErroConfirmacao('')
+    try {
+      const res = await fetch(
+        `/api/contratos/${contratoId}/medicoes/${medicaoId}/itens/${item.medicao_item_id}/confirmar-sem-nf`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            confirmar,
+            // motivo só faz sentido ao marcar — ao desmarcar, manda string vazia
+            motivo: confirmar ? motivoSemNf.trim() : '',
+          }),
+        },
+      )
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setErroConfirmacao(body?.error || `Falha (HTTP ${res.status}).`)
+        return
+      }
+      setModalConfirmar(null)
+      await carregar()
+    } catch (e: any) {
+      setErroConfirmacao(e?.message || 'Erro de rede.')
+    } finally {
+      setSalvandoConfirmacao(false)
+    }
   }
 
   if (loading) {
@@ -161,6 +307,8 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
 
   const tag = `MED-${String(data.medicao.numero).padStart(3, '0')}`
   const dataReferencia = data.medicao.data_aprovacao || data.medicao.data_submissao
+  const isPendente =
+    data.medicao.status === 'submetido' || data.medicao.status === 'em_analise'
 
   // Mapa visual por status
   const statusInfo = (() => {
@@ -257,7 +405,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   { header: 'Retido', get: (l: any) => Number(l.material_retido) },
                   { header: 'FIP Fat-Dir', get: (l: any) => Number(l.fip_faturar) },
                   { header: 'Wave (Serv.)', get: (l: any) => Number(l.wave_servico) },
-                  { header: '% Serv. Med.', get: (l: any) => Number(l.pct_medido) },
+                  { header: '% Serv. Med.', get: (l: any) => Number(pctServMedExibido(l)) },
                   { header: 'Valor Total Medido', get: (l: any) => Number(l.valor_total_medido) },
                   { header: 'Dados Informakon', get: (l: any) => Number(l.dados_informakon) },
                   { header: '% Informakon', get: (l: any) => Number(l.pct_informakon) },
@@ -286,6 +434,73 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
             </button>
           </div>
         </div>
+
+        {/* Barra de aprovação/rejeição — só visível quando o aprovador pode agir */}
+        {isPendente && podeAprovar && (
+          <div
+            className="rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap print:hidden"
+            style={{
+              background: 'rgba(59,130,246,0.06)',
+              border: '1px solid rgba(59,130,246,0.30)',
+            }}
+          >
+            <div className="flex items-start gap-2 flex-1 min-w-[260px]">
+              <Info className="w-4 h-4 mt-0.5" style={{ color: '#3B82F6' }} />
+              <div className="text-xs" style={{ color: 'var(--text-2)' }}>
+                <p className="font-semibold" style={{ color: 'var(--text-1)' }}>
+                  Aprovação da medição {tag}
+                </p>
+                <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>
+                  Revise item-a-item (incluindo confirmações &quot;sem mais NF&quot; pra itens com retido)
+                  antes de aprovar e liberar a emissão de NF.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                variant="success"
+                size="sm"
+                onClick={() => setModalLiberacao('aprovar')}
+                title="Aprova a medição e dispara email de liberação para os envolvidos"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                Aprovar e liberar NF
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setModalAprovar(true)}
+                title="Aprova sem disparar email"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                Aprovar
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setModalRejeitar(true)}
+              >
+                <XCircle className="w-4 h-4" />
+                Rejeitar
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Botão de re-disparo de email pós-aprovação (mantém paridade com a page.tsx) */}
+        {!isPendente && data.medicao.status === 'aprovado' && podeAprovar && (
+          <div className="flex justify-end print:hidden">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setModalLiberacao('reenviar')}
+              className="border border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+            >
+              <Mail className="w-4 h-4" />
+              Reenviar email de liberação
+            </Button>
+          </div>
+        )}
 
         {/* Banner de status — esclarece se é prévia ou oficial */}
         <div className="rounded-lg px-4 py-3 flex items-start gap-3"
@@ -316,6 +531,28 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
           <Card label="Material retido" value={formatCurrency(data.totais.material_retido)} accent="#F59E0B" hint="Aguarda NF terceiro" />
           <Card label="Dados Informakon" value={formatCurrency(data.totais.dados_informakon)} accent="#10B981" hint={`Wave + NF Desc. (sem FIP) · Retenção ${pctFmt(data.medicao.contrato.percentual_retencao)} sobre Valor Total Medido: ${formatCurrency(data.totais.retencao)}`} />
         </div>
+
+        {/* Aviso agregado — só aparece se há ao menos 1 ajuste aplicado */}
+        {itensComAjuste > 0 && (
+          <div
+            className="rounded-lg px-4 py-3 flex items-start gap-3"
+            style={{
+              background: 'rgba(245,158,11,0.10)',
+              border: '1px solid rgba(245,158,11,0.40)',
+            }}
+          >
+            <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: '#F59E0B' }} />
+            <div className="flex-1 text-xs" style={{ color: 'var(--text-2)' }}>
+              <p className="font-semibold" style={{ color: '#F59E0B' }}>
+                {itensComAjuste} {itensComAjuste === 1 ? 'item' : 'itens'} com confirmação &quot;sem mais NF&quot;
+                — % de medição reduzido para proteger retenção contratual.
+              </p>
+              <p className="mt-0.5" style={{ color: 'var(--text-3)' }}>
+                Veja em destaque amarelo nas linhas abaixo (ícone <AlertTriangle className="inline w-3 h-3" /> ao lado do código).
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Tabela */}
         <MaximizableCard
@@ -352,31 +589,94 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                       Nenhum item com quantidade medida nesta medição.
                       {!mostrarTodos && (
                         <div className="mt-1 text-[11px]">
-                          Marque "Mostrar todos" pra ver todos os itens do contrato.
+                          Marque &quot;Mostrar todos&quot; pra ver todos os itens do contrato.
                         </div>
                       )}
                     </td>
                   </tr>
-                ) : linhasExibidas.map((l, idx) => (
-                  <tr key={l.medicao_item_id || l.detalhamento_id}
-                    style={{ borderBottom: '1px solid var(--border)', background: idx % 2 === 0 ? 'var(--surface-1)' : 'var(--surface-2)' }}>
-                    <td style={td('font-mono font-bold', '#3B82F6')}>{l.codigo}</td>
-                    <td style={{ ...td('break-words'), textAlign: 'left', maxWidth: 240 }}>{l.descricao}</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(l.material_medido)}</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.nf_terceiro)}</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.saldo_aprovado)}</td>
-                    <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.nf_descontavel)}</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(245,158,11,0.04)', color: 'var(--text-3)' }}>{formatCurrency(l.gap_material)}</td>
-                    <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(245,158,11,0.04)', color: l.material_retido > 0 ? '#F59E0B' : 'var(--text-3)' }}>{formatCurrency(l.material_retido)}</td>
-                    <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(59,130,246,0.04)', color: l.fip_faturar > 0 ? '#3B82F6' : 'var(--text-3)' }}>{formatCurrency(l.fip_faturar)}</td>
-                    <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(15,118,110,0.04)', color: '#0F766E' }}>{formatCurrency(l.wave_servico)}</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)', color: '#0F766E' }}>{pctFmt(l.pct_medido)}</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(l.valor_total_medido)}</td>
-                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', background: 'rgba(16,185,129,0.06)', color: '#10B981' }}>{formatCurrency(l.dados_informakon)}</td>
-                    <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(16,185,129,0.06)' }}>{pctFmt(l.pct_informakon, 4)}</td>
-                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', background: 'rgba(99,102,241,0.06)', color: '#818CF8' }}>{formatCurrency(l.retencao)}</td>
-                  </tr>
-                ))}
+                ) : linhasExibidas.map((l, idx) => {
+                  const ajustado = !!l.ajuste_aplicado
+                  const podeConfirmar = l.material_retido > 0
+                  // % exibido: ajustado se confirmado-sem-NF, físico caso contrário
+                  const pctExibido = pctServMedExibido(l)
+                  const pctOriginal = l.pct_serv_med_original ?? l.pct_medido
+                  const codigoTooltip = ajustado
+                    ? `Item teve % ajustado por confirmação 'sem mais NF'. Original: ${pctFmt(pctOriginal)}, atual: ${pctFmt(pctExibido)}`
+                    : undefined
+                  const checkboxTooltip = ajustado && l.confirmacao_sem_nf_motivo
+                    ? `% original: ${pctFmt(pctOriginal)} · motivo: ${l.confirmacao_sem_nf_motivo}`
+                    : undefined
+
+                  return (
+                    <tr key={l.medicao_item_id || l.detalhamento_id}
+                      style={{
+                        borderBottom: '1px solid var(--border)',
+                        background: ajustado
+                          ? 'rgba(245,158,11,0.06)'
+                          : (idx % 2 === 0 ? 'var(--surface-1)' : 'var(--surface-2)'),
+                      }}>
+                      <td style={td('font-mono font-bold', '#3B82F6')}>
+                        <span className="inline-flex items-center gap-1.5">
+                          {ajustado && (
+                            <span
+                              title={codigoTooltip}
+                              aria-label="Item com ajuste sem mais NF"
+                              className="inline-flex"
+                            >
+                              <AlertTriangle
+                                className="w-3.5 h-3.5"
+                                style={{ color: '#F59E0B' }}
+                              />
+                            </span>
+                          )}
+                          {l.codigo}
+                        </span>
+                      </td>
+                      <td style={{ ...td('break-words'), textAlign: 'left', maxWidth: 240 }}>{l.descricao}</td>
+                      <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(l.material_medido)}</td>
+                      <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.nf_terceiro)}</td>
+                      <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.saldo_aprovado)}</td>
+                      <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.nf_descontavel)}</td>
+                      <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(245,158,11,0.04)', color: 'var(--text-3)' }}>{formatCurrency(l.gap_material)}</td>
+                      <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(245,158,11,0.04)', color: l.material_retido > 0 ? '#F59E0B' : 'var(--text-3)' }}>{formatCurrency(l.material_retido)}</td>
+                      <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(59,130,246,0.04)', color: l.fip_faturar > 0 ? '#3B82F6' : 'var(--text-3)' }}>{formatCurrency(l.fip_faturar)}</td>
+                      <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(15,118,110,0.04)', color: '#0F766E' }}>{formatCurrency(l.wave_servico)}</td>
+                      {/* % Serv. Med. — coluna que ganha o checkbox + tooltip de ajuste */}
+                      <td
+                        style={{
+                          ...td('tabular-nums'),
+                          textAlign: 'right',
+                          background: ajustado ? 'rgba(245,158,11,0.10)' : 'rgba(15,118,110,0.04)',
+                          color: ajustado ? '#F59E0B' : '#0F766E',
+                        }}
+                        title={checkboxTooltip}
+                      >
+                        <span className="inline-flex items-center gap-1.5 justify-end w-full">
+                          {podeConfirmar && (
+                            <input
+                              type="checkbox"
+                              checked={!!l.confirmacao_sem_nf}
+                              onChange={() => abrirModalConfirmacao(l, !l.confirmacao_sem_nf)}
+                              disabled={!isPendente && data.medicao.status !== 'rascunho'}
+                              className="cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 print:hidden"
+                              title={
+                                l.confirmacao_sem_nf
+                                  ? 'Reverter confirmação sem mais NF'
+                                  : 'Marcar: fornecedor confirmou que não emitirá mais NF'
+                              }
+                              aria-label="Confirmar sem mais NF"
+                            />
+                          )}
+                          <span>{pctFmt(pctExibido)}</span>
+                        </span>
+                      </td>
+                      <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(l.valor_total_medido)}</td>
+                      <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', background: 'rgba(16,185,129,0.06)', color: '#10B981' }}>{formatCurrency(l.dados_informakon)}</td>
+                      <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(16,185,129,0.06)' }}>{pctFmt(l.pct_informakon, 4)}</td>
+                      <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', background: 'rgba(99,102,241,0.06)', color: '#818CF8' }}>{formatCurrency(l.retencao)}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
               {linhasExibidas.length > 0 && (
                 <tfoot>
@@ -410,9 +710,184 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
         </p>
       </div>
 
+      {/* ============================ */}
+      {/*   Modais de aprovação        */}
+      {/* ============================ */}
+
+      {/* Aprovar SEM email */}
+      <Dialog open={modalAprovar} onOpenChange={(open) => { if (!open) { setModalAprovar(false); setErroAcao('') } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-emerald-400 flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5" />
+              Aprovar Medição {tag}
+            </DialogTitle>
+            <DialogDescription className="text-[var(--text-2)]">
+              Período: {data.medicao.periodo_referencia} · Contrato {data.medicao.contrato.numero}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2 space-y-3">
+            <div className="p-3 bg-emerald-900/20 border border-emerald-800/40 rounded-lg text-xs text-emerald-400">
+              Aprovação simples, sem disparo de email aos envolvidos. Para aprovar e disparar o email de
+              liberação, use <strong>Aprovar e liberar NF</strong>.
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wider">Comentário (opcional)</Label>
+              <Textarea
+                placeholder="Adicione observações sobre a aprovação..."
+                value={comentario}
+                onChange={e => setComentario(e.target.value)}
+                className="bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-1)] placeholder:text-[var(--text-3)]"
+              />
+            </div>
+            {erroAcao && <p className="text-xs text-red-400">{erroAcao}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalAprovar(false)} disabled={saving}>Cancelar</Button>
+            <Button variant="success" onClick={aprovarSemEmail} loading={saving}>
+              <CheckCircle2 className="w-4 h-4" />
+              Confirmar Aprovação
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rejeitar */}
+      <Dialog open={modalRejeitar} onOpenChange={(open) => { if (!open) { setModalRejeitar(false); setErroAcao('') } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-red-400 flex items-center gap-2">
+              <XCircle className="w-5 h-5" />
+              Rejeitar Medição {tag}
+            </DialogTitle>
+            <DialogDescription className="text-[var(--text-2)]">
+              Informe o motivo da rejeição. O fornecedor será notificado por e-mail.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2 space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wider">Motivo da Rejeição *</Label>
+              <Textarea
+                placeholder="Descreva claramente o motivo da rejeição e o que precisa ser corrigido..."
+                value={motivo}
+                onChange={e => setMotivo(e.target.value)}
+                className="min-h-[100px] bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-1)] placeholder:text-[var(--text-3)]"
+              />
+            </div>
+            {erroAcao && <p className="text-xs text-red-400">{erroAcao}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalRejeitar(false)} disabled={saving}>Cancelar</Button>
+            <Button variant="destructive" onClick={rejeitar} loading={saving} disabled={!motivo.trim()}>
+              <XCircle className="w-4 h-4" />
+              Confirmar Rejeição
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Aprovar e LIBERAR NF — modal grande com preview de email + envolvidos */}
+      <EmailLiberacaoMedicaoModal
+        open={modalLiberacao !== null}
+        onClose={() => setModalLiberacao(null)}
+        contratoId={contratoId}
+        medicaoId={medicaoId}
+        modo={modalLiberacao ?? 'aprovar'}
+        onSent={() => {
+          setModalLiberacao(null)
+          carregar()
+        }}
+      />
+
+      {/* ============================ */}
+      {/*   Modal Confirmar sem mais NF (item-a-item)  */}
+      {/* ============================ */}
+      <Dialog
+        open={!!modalConfirmar}
+        onOpenChange={(open) => { if (!open && !salvandoConfirmacao) { setModalConfirmar(null); setErroConfirmacao('') } }}
+      >
+        <DialogContent>
+          {modalConfirmar && (
+            <>
+              <DialogHeader>
+                <DialogTitle className={modalConfirmar.confirmar ? 'text-amber-400 flex items-center gap-2' : 'text-[var(--text-1)] flex items-center gap-2'}>
+                  {modalConfirmar.confirmar
+                    ? <><AlertTriangle className="w-5 h-5" /> Confirmar &quot;sem mais NF&quot;</>
+                    : <><X className="w-5 h-5" /> Reverter confirmação?</>}
+                </DialogTitle>
+                <DialogDescription className="text-[var(--text-2)]">
+                  Item <strong className="font-mono">{modalConfirmar.item.codigo}</strong>
+                  {' · '}
+                  {modalConfirmar.item.descricao.length > 80
+                    ? modalConfirmar.item.descricao.slice(0, 80) + '...'
+                    : modalConfirmar.item.descricao}
+                </DialogDescription>
+              </DialogHeader>
+
+              {modalConfirmar.confirmar ? (
+                <div className="py-2 space-y-3">
+                  <div className="p-3 rounded-lg text-xs"
+                    style={{
+                      background: 'rgba(245,158,11,0.10)',
+                      border: '1px solid rgba(245,158,11,0.40)',
+                      color: 'var(--text-2)',
+                    }}>
+                    Ao marcar, o <strong>% Serv. Medido</strong> deste item será reduzido pra coincidir com o
+                    <strong> % Informakon</strong> — protege a retenção contratual quando o fornecedor confirma
+                    que não emitirá mais NF para o material restante.
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wider">
+                      Motivo *
+                    </Label>
+                    <Textarea
+                      value={motivoSemNf}
+                      onChange={e => setMotivoSemNf(e.target.value)}
+                      className="min-h-[80px] bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-1)] placeholder:text-[var(--text-3)]"
+                      placeholder="Justificativa da confirmação..."
+                    />
+                  </div>
+                  {erroConfirmacao && <p className="text-xs text-red-400">{erroConfirmacao}</p>}
+                </div>
+              ) : (
+                <div className="py-2 space-y-3">
+                  <p className="text-xs" style={{ color: 'var(--text-2)' }}>
+                    Ao reverter, o <strong>% Serv. Medido</strong> volta para o valor físico
+                    {modalConfirmar.item.pct_serv_med_original !== undefined && (
+                      <> ({pctFmt(modalConfirmar.item.pct_serv_med_original)})</>
+                    )}.
+                  </p>
+                  {erroConfirmacao && <p className="text-xs text-red-400">{erroConfirmacao}</p>}
+                </div>
+              )}
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setModalConfirmar(null)} disabled={salvandoConfirmacao}>
+                  Cancelar
+                </Button>
+                <Button
+                  variant={modalConfirmar.confirmar ? 'success' : 'destructive'}
+                  loading={salvandoConfirmacao}
+                  disabled={modalConfirmar.confirmar && !motivoSemNf.trim()}
+                  onClick={salvarConfirmacao}
+                >
+                  {modalConfirmar.confirmar ? 'Confirmar' : 'Reverter'}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} pctRetencao={data.medicao.contrato.percentual_retencao} />}
     </div>
   )
+}
+
+/** % Serv. Med. exibido — usa o ajustado se disponível, senão o físico. */
+function pctServMedExibido(l: Linha): number {
+  if (typeof l.pct_serv_med === 'number' && Number.isFinite(l.pct_serv_med)) return l.pct_serv_med
+  return l.pct_medido
 }
 
 function HelpModal({ onClose, pctRetencao }: { onClose: () => void; pctRetencao: number }) {
@@ -456,7 +931,7 @@ function HelpModal({ onClose, pctRetencao }: { onClose: () => void; pctRetencao:
               <li><strong>Retido</strong> = MIN(Gap, Saldo Aprov.). Não pago nesta medição — aguarda chegar NF terceiro.</li>
               <li><strong>FIP Fat-Dir</strong> = Gap − Retido. Solicitação de fat-direto criada automaticamente em nome da FIP (status: aprovado). <em>Ainda assim NÃO entra no Dados Informakon</em> — a NF ainda não foi emitida.</li>
               <li><strong>Wave (Serv.)</strong> = qtd × <code>valor_servico_unit</code>. NF da Wave a emitir.</li>
-              <li><strong>% Serv. Med.</strong> = qtd medida ÷ qtd contratada × 100 (físico).</li>
+              <li><strong>% Serv. Med.</strong> = qtd medida ÷ qtd contratada × 100 (físico). Quando o aprovador marca &quot;sem mais NF&quot;, este % é reduzido para coincidir com o % Informakon — protegendo a retenção.</li>
               <li><strong>Valor Total Medido</strong> = Mat. Medido + Serv. Medido (físico, sem ajuste).</li>
               <li><strong>Dados Informakon</strong> = Wave + NF Desc. <em>FIP Fat-Dir NÃO entra</em> (NF ainda não existe; só desconta o que já foi efetivamente lançado).</li>
               <li><strong>% Informakon</strong> = Dados Informakon ÷ valor global do item × 100. <strong>Use este pra lançar</strong>, não o % físico.</li>
@@ -541,7 +1016,7 @@ function HelpModal({ onClose, pctRetencao }: { onClose: () => void; pctRetencao:
           </section>
 
           <section className="rounded-lg p-3" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.30)' }}>
-            <p className="text-[12px]"><strong style={{ color: '#F59E0B' }}>⚠ Atenção pra pesos diferentes mat/serv:</strong> as colunas usam o <code>valor_material_unit</code> e <code>valor_servico_unit</code> de cada item — não há divisão fixa 50/50. O cálculo é por item, com pesos do contrato. Itens onde a parcela de material é dominante terão FIP ou retido proporcionalmente maiores.</p>
+            <p className="text-[12px]"><strong style={{ color: '#F59E0B' }}>Atenção pra pesos diferentes mat/serv:</strong> as colunas usam o <code>valor_material_unit</code> e <code>valor_servico_unit</code> de cada item — não há divisão fixa 50/50. O cálculo é por item, com pesos do contrato. Itens onde a parcela de material é dominante terão FIP ou retido proporcionalmente maiores.</p>
           </section>
 
           <section className="rounded-lg p-3" style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.30)' }}>
@@ -557,7 +1032,6 @@ function th(): React.CSSProperties {
   return { padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border)' }
 }
 function td(extra?: string, color?: string): React.CSSProperties {
-  // extra é classe CSS — devolvido junto pelo caller via className. Aqui só estilo inline.
   return {
     padding: '6px 10px',
     color: color ?? 'var(--text-1)',

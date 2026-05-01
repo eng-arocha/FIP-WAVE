@@ -65,30 +65,70 @@ export async function GET(
       }
     }
 
-    // 3) Itens da medição (com detalhamentos — fallback sem mat/serv unit)
+    // 3) Itens da medição (com detalhamentos — 3 níveis de fallback de schema):
+    //    a) Tudo (mat/serv unit + colunas de confirmação sem-NF da migration 060)
+    //    b) Sem confirmação sem-NF (060 ainda não rodou)
+    //    c) Sem mat/serv unit + sem confirmação (cenário antigo)
     let medicaoItens: any[] = []
     {
+      const SELECT_FULL = `
+        id, quantidade_medida, valor_unitario, detalhamento_id,
+        confirmacao_sem_nf, confirmacao_sem_nf_em, confirmacao_sem_nf_por_id,
+        confirmacao_sem_nf_motivo,
+        detalhamento:detalhamentos (
+          id, codigo, descricao, unidade, quantidade_contratada,
+          valor_unitario, valor_material_unit, valor_servico_unit
+        )
+      `
+      const SELECT_SEM_CONFIRMACAO = `
+        id, quantidade_medida, valor_unitario, detalhamento_id,
+        detalhamento:detalhamentos (
+          id, codigo, descricao, unidade, quantidade_contratada,
+          valor_unitario, valor_material_unit, valor_servico_unit
+        )
+      `
+      const SELECT_FALLBACK_FULL = `
+        id, quantidade_medida, valor_unitario, detalhamento_id,
+        detalhamento:detalhamentos (
+          id, codigo, descricao, unidade, quantidade_contratada, valor_unitario
+        )
+      `
+
       const tryFull = await admin
         .from('medicao_itens')
-        .select(`
-          id, quantidade_medida, valor_unitario, detalhamento_id,
-          detalhamento:detalhamentos (
-            id, codigo, descricao, unidade, quantidade_contratada,
-            valor_unitario, valor_material_unit, valor_servico_unit
-          )
-        `)
+        .select(SELECT_FULL)
         .eq('medicao_id', medicaoId)
       if (!tryFull.error) {
         medicaoItens = tryFull.data || []
+      } else if (
+        isSchemaMissingError(tryFull.error, [
+          'confirmacao_sem_nf',
+          'confirmacao_sem_nf_em',
+          'confirmacao_sem_nf_por_id',
+          'confirmacao_sem_nf_motivo',
+        ])
+      ) {
+        // 060 pendente — tenta sem as colunas de confirmação
+        const trySemConfirmacao = await admin
+          .from('medicao_itens')
+          .select(SELECT_SEM_CONFIRMACAO)
+          .eq('medicao_id', medicaoId)
+        if (!trySemConfirmacao.error) {
+          medicaoItens = trySemConfirmacao.data || []
+        } else if (isSchemaMissingError(trySemConfirmacao.error, ['valor_material_unit', 'valor_servico_unit'])) {
+          const fallback = await admin
+            .from('medicao_itens')
+            .select(SELECT_FALLBACK_FULL)
+            .eq('medicao_id', medicaoId)
+          if (fallback.error) throw fallback.error
+          medicaoItens = fallback.data || []
+        } else {
+          throw trySemConfirmacao.error
+        }
       } else if (isSchemaMissingError(tryFull.error, ['valor_material_unit', 'valor_servico_unit'])) {
         const fallback = await admin
           .from('medicao_itens')
-          .select(`
-            id, quantidade_medida, valor_unitario, detalhamento_id,
-            detalhamento:detalhamentos (
-              id, codigo, descricao, unidade, quantidade_contratada, valor_unitario
-            )
-          `)
+          .select(SELECT_FALLBACK_FULL)
           .eq('medicao_id', medicaoId)
         if (fallback.error) throw fallback.error
         medicaoItens = fallback.data || []
@@ -194,7 +234,7 @@ export async function GET(
         const servMedido = qtdMed * servUnit
         const qtdAcum = acumulado[det.id] || 0
 
-        // === Nova lógica Wave/FIP por item ===
+        // === Lógica Wave/FIP por item ===
         const nfTerceiroItem = nfAlocadaPorDet[det.id] || 0
         const aprovadoItem = aprovadoPorDet[det.id] || 0
         const saldoAprovDisponivel = Math.max(0, aprovadoItem - nfTerceiroItem)
@@ -204,18 +244,47 @@ export async function GET(
         const materialRetido = Math.min(gapMaterial, saldoAprovDisponivel)
         const fipFaturar     = Math.max(0, gapMaterial - materialRetido)
 
-        const waveServico    = servMedido
-        // Dados Informakon: SOMENTE o que pode ser efetivamente descontado AGORA
-        // (Wave + NF terceiro já lançada). FIP Fat-Dir NÃO entra — ainda não há NF.
-        const dadosInformakon = waveServico + nfDescontavel
+        // Dados Informakon: agora INCLUI fipFaturar (NF FIP nova certa via
+        // cancelamento), pois o aprovador "selou" a contagem com confirmação
+        // sem-NF e o restante do material vira faturamento direto FIP.
+        // = wave_servico_físico + nf_descontavel + fip_faturar (todos os
+        // "certos" que Wave consegue descontar). Nota: usamos servMedido
+        // FÍSICO aqui — o pct_informakon resultante é o ALVO pra ajustar
+        // o pct_serv_med.
         const valorGlobalItem = qtdContr * valorUnit
-        const pctInformakon  = valorGlobalItem > 0 ? (dadosInformakon / valorGlobalItem) * 100 : 0
-        // Valor total medido (físico): mat + serv (sem desconto, só medido)
-        const valorTotalMedido = matMedido + servMedido
-        // Retenção: % medido × valor global × 5% = valor_total_medido × 5%
-        // É abatida da NF da Wave (serviço)
-        const retencao5pct   = valorTotalMedido * (pctRetencao / 100)
-        const baseRet        = valorTotalMedido
+        const valorServicoTotalItem = qtdContr * servUnit
+        const dadosInformakon = servMedido + nfDescontavel + fipFaturar
+        const pctInformakon = valorGlobalItem > 0 ? (dadosInformakon / valorGlobalItem) * 100 : 0
+
+        // Pct físico de serviço medido
+        const pctServMed = qtdContr > 0 ? (qtdMed / qtdContr) * 100 : 0
+
+        // === Confirmação sem-NF: ajuste de % serv. med. ===
+        // Quando o aprovador confirma "sem mais NF chegando" e ainda há
+        // material retido (saldo aprovado pendente), forçamos:
+        //   % serv. med. = % informakon
+        // pra evitar vazamento de retenção contratual (a Wave não pode
+        // faturar serviço sobre material que nunca virá).
+        const confirmacaoSemNf = Boolean(it.confirmacao_sem_nf)
+        const ajusteAplicado = confirmacaoSemNf && materialRetido > 0
+
+        const pctServMedAjustado = ajusteAplicado ? pctInformakon : pctServMed
+
+        // wave_servico ajustado: quando ajuste aplicado, NF Wave fatura sobre
+        // pct_serv_med_ajustado. Caso contrário, servMedido (= qtdMed × servUnit
+        // = pctServMed × valor_servico_total_item).
+        const waveServico = ajusteAplicado
+          ? (pctServMedAjustado / 100) * valorServicoTotalItem
+          : servMedido
+
+        // Valor total medido AJUSTADO: matMedido (físico, não muda) +
+        // waveServico ajustado. O ajuste só afeta o serviço.
+        const valorTotalMedido = matMedido + waveServico
+
+        // Retenção é sobre a base AJUSTADA (porque a NF da Wave fatura
+        // sobre o % ajustado e a retenção é abatida do serviço dela).
+        const baseRet = valorTotalMedido
+        const retencao5pct = baseRet * (pctRetencao / 100)
 
         return {
           medicao_item_id: it.id,
@@ -226,24 +295,29 @@ export async function GET(
           quantidade_contratada: qtdContr,
           quantidade_medida: qtdMed,
           quantidade_acumulada: qtdAcum,
-          pct_medido: qtdContr > 0 ? (qtdMed / qtdContr) * 100 : 0,
+          // pct_medido mantido como o ajustado pra a UI legacy (quem consome
+          // este campo já espera o "% serv. med. visível"). pct_serv_med_original
+          // expõe o físico puro pra contabilidade de fundo.
+          pct_medido: pctServMedAjustado,
           pct_acumulado: qtdContr > 0 ? (qtdAcum / qtdContr) * 100 : 0,
           valor_unitario: valorUnit,
           valor_material_unit: matUnit,
           valor_servico_unit: servUnit,
           valor_total_item: valorGlobalItem,
           valor_material_total_item: qtdContr * matUnit,
-          valor_servico_total_item: qtdContr * servUnit,
-          // medido (físico × preços contratuais)
+          valor_servico_total_item: valorServicoTotalItem,
+          // medido (físico × preços contratuais) — mantido pra UI que
+          // mostra "qtd × unit"
           material_medido: matMedido,
           servico_medido: servMedido,
-          // === Novos campos: lógica Wave/FIP ===
+          // === Lógica Wave/FIP ===
           nf_terceiro: nfTerceiroItem,
           saldo_aprovado: saldoAprovDisponivel,
           nf_descontavel: nfDescontavel,
           gap_material: gapMaterial,
           material_retido: materialRetido,
           fip_faturar: fipFaturar,
+          // Wave_servico: AJUSTADO quando ajuste aplicado, senão servMedido
           wave_servico: waveServico,
           valor_total_medido: valorTotalMedido,
           dados_informakon: dadosInformakon,
@@ -252,6 +326,13 @@ export async function GET(
           pct_informakon: pctInformakon,
           base_retencao: baseRet,
           retencao: retencao5pct,
+          // === Novos campos: confirmação sem-NF ===
+          pct_serv_med_original: pctServMed,
+          pct_serv_med: pctServMedAjustado,
+          ajuste_aplicado: ajusteAplicado,
+          confirmacao_sem_nf: confirmacaoSemNf,
+          confirmacao_sem_nf_em: it.confirmacao_sem_nf_em ?? null,
+          confirmacao_sem_nf_motivo: it.confirmacao_sem_nf_motivo ?? null,
           // acumulado (todas medições aprovadas + esta) em R$
           material_acumulado: qtdAcum * matUnit,
           servico_acumulado: qtdAcum * servUnit,
@@ -260,7 +341,10 @@ export async function GET(
       .filter(Boolean)
       .sort((a: any, b: any) => String(a.codigo).localeCompare(String(b.codigo), 'pt-BR', { numeric: true }))
 
-    // Totais
+    // Totais — somatório dos AJUSTADOS (wave_servico, valor_total_medido,
+    // dados_informakon, retencao, base_retencao já são os ajustados por linha).
+    // material_medido e servico_medido continuam sendo o físico puro
+    // (qtd × unit), pra UI que precisa do "raw" do físico.
     const totais = linhas.reduce((acc: any, l: any) => ({
       material_medido: acc.material_medido + l.material_medido,
       servico_medido:  acc.servico_medido  + l.servico_medido,
@@ -278,6 +362,7 @@ export async function GET(
       retencao:        acc.retencao        + l.retencao,
       material_acumulado: acc.material_acumulado + l.material_acumulado,
       servico_acumulado:  acc.servico_acumulado  + l.servico_acumulado,
+      itens_com_ajuste: acc.itens_com_ajuste + (l.ajuste_aplicado ? 1 : 0),
     }), {
       material_medido: 0, servico_medido: 0,
       nf_terceiro: 0, saldo_aprovado: 0, nf_descontavel: 0, gap_material: 0,
@@ -285,6 +370,7 @@ export async function GET(
       valor_total_medido: 0, dados_informakon: 0, total_informakon: 0,
       base_retencao: 0, retencao: 0,
       material_acumulado: 0, servico_acumulado: 0,
+      itens_com_ajuste: 0,
     })
 
     return NextResponse.json({
