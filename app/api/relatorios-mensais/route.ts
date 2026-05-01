@@ -29,7 +29,14 @@ export async function GET(req: Request) {
       .eq('status', status)
       .order('gerado_em', { ascending: false })
       .limit(100)
-    if (error) throw error
+
+    if (error) {
+      // Tabela ainda não criada (Migration 056 pendente) — retorna lista vazia
+      // pra UI não quebrar. Loga pra rastreabilidade.
+      const isMissing = /relation .* does not exist|undefined_table/i.test(error.message)
+      if (isMissing) return NextResponse.json([])
+      throw error
+    }
 
     return NextResponse.json(data || [])
   } catch (e: any) {

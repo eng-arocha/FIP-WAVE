@@ -92,11 +92,33 @@ export async function POST(
       return NextResponse.json({ error: 'Solicitação não pertence a este contrato.' }, { status: 400 })
     }
 
-    const { data: contrato } = await admin
-      .from('contratos')
-      .select('id, numero, descricao, valor_material_direto, tolerancia_nf_valor, percentual_retencao')
-      .eq('id', contratoId)
-      .single()
+    // Resiliente: se Migration 053 (tolerancia_nf_valor) ou 052 (percentual_retencao)
+    // ainda não rodou, cai pra select básico. Tolerância vira 0 (default).
+    let contrato: any = null
+    {
+      const tryFull = await admin
+        .from('contratos')
+        .select('id, numero, descricao, valor_material_direto, tolerancia_nf_valor, percentual_retencao')
+        .eq('id', contratoId)
+        .single()
+      if (!tryFull.error) {
+        contrato = tryFull.data
+      } else {
+        // Fallback: tira colunas opcionais
+        const tryBasic = await admin
+          .from('contratos')
+          .select('id, numero, descricao, valor_material_direto')
+          .eq('id', contratoId)
+          .single()
+        if (tryBasic.error) {
+          return NextResponse.json(
+            { error: 'Contrato não encontrado ou erro de schema.', detail: tryBasic.error.message },
+            { status: 404 },
+          )
+        }
+        contrato = tryBasic.data
+      }
+    }
     if (!contrato) return NextResponse.json({ error: 'Contrato não encontrado.' }, { status: 404 })
 
     const tolerancia = Number((contrato as any).tolerancia_nf_valor ?? 0)

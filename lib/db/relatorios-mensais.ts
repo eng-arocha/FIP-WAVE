@@ -19,14 +19,18 @@ export async function gerarOuObterRelatorioMensal(input: {
 }): Promise<{ id: string; criado: boolean; pedidos: number }> {
   const admin = createAdminClient()
 
-  // 1) Já existe?
-  const { data: existente } = await admin
+  // 1) Já existe? (resiliente: se tabela não existe ainda, no-op)
+  const { data: existente, error: selErr } = await admin
     .from('relatorios_mensais_fat_direto')
     .select('id, qtd_pedidos')
     .eq('contrato_id', input.contrato_id)
     .eq('ano', input.ano)
     .eq('mes', input.mes)
     .maybeSingle()
+  if (selErr && /relation .* does not exist|undefined_table/i.test(selErr.message)) {
+    log.warn('relatorio_mensal_tabela_pendente', { contrato_id: input.contrato_id })
+    return { id: '', criado: false, pedidos: 0 }
+  }
   if (existente) {
     return { id: (existente as any).id, criado: false, pedidos: (existente as any).qtd_pedidos }
   }
