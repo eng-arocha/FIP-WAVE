@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { assertPermissao } from '@/lib/api/auth'
 import { apiError } from '@/lib/api/error-response'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isSchemaMissingError } from '@/lib/db/resilient'
+import { log } from '@/lib/log'
 
 /**
  * GET /api/relatorios-mensais?status=pendente
@@ -32,9 +34,15 @@ export async function GET(req: Request) {
 
     if (error) {
       // Tabela ainda não criada (Migration 056 pendente) — retorna lista vazia
-      // pra UI não quebrar. Loga pra rastreabilidade.
-      const isMissing = /relation .* does not exist|undefined_table/i.test(error.message)
-      if (isMissing) return NextResponse.json([])
+      // pra UI não quebrar. Usa o helper que conhece PGRST205 + 42P01 +
+      // substring match na mensagem.
+      if (isSchemaMissingError(error, ['relatorios_mensais_fat_direto'])) {
+        log.warn('relatorios_mensais_tabela_pendente', {
+          code: (error as any).code,
+          message: (error as any).message,
+        })
+        return NextResponse.json([])
+      }
       throw error
     }
 

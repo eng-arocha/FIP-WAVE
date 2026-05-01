@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { detectarPedidosAtrasados } from '@/lib/db/fat-direto'
+import { isSchemaMissingError } from '@/lib/db/resilient'
 import { log } from '@/lib/log'
 
 const DIAS_THRESHOLD_RELATORIO = 30
@@ -27,8 +28,12 @@ export async function gerarOuObterRelatorioMensal(input: {
     .eq('ano', input.ano)
     .eq('mes', input.mes)
     .maybeSingle()
-  if (selErr && /relation .* does not exist|undefined_table/i.test(selErr.message)) {
-    log.warn('relatorio_mensal_tabela_pendente', { contrato_id: input.contrato_id })
+  if (selErr && isSchemaMissingError(selErr, ['relatorios_mensais_fat_direto'])) {
+    log.warn('relatorio_mensal_tabela_pendente', {
+      contrato_id: input.contrato_id,
+      code: (selErr as any).code,
+      message: (selErr as any).message,
+    })
     return { id: '', criado: false, pedidos: 0 }
   }
   if (existente) {

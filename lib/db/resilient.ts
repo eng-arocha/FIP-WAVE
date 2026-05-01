@@ -49,12 +49,19 @@ export function isSchemaMissingError(err: any, cols: string[]): boolean {
   if (!err) return false
   const msg: string = err.message ?? ''
   const code: string = err.code ?? ''
-  // Códigos conhecidos do PostgREST quando schema cache não conhece
-  // uma coluna/relação:
+  // Códigos conhecidos do PostgREST/Postgres quando schema cache não conhece
+  // uma coluna/relação ou a tabela inteira:
   //   PGRST204 — column not found
   //   PGRST200 — relationship not found
-  if (code === 'PGRST204' || code === 'PGRST200') return true
-  // Fallback: substring match nas colunas esperadas.
+  //   PGRST205 — table not found in schema cache
+  //   42P01    — undefined_table (Postgres native, vaza às vezes)
+  if (code === 'PGRST204' || code === 'PGRST200' || code === 'PGRST205' || code === '42P01') return true
+  // Fallback: substring match nos nomes esperados (cols ou tabelas).
+  // Mensagens típicas:
+  //   "column X of relation Y does not exist"
+  //   "Could not find the column 'X' of 'Y' in the schema cache"
+  //   "Could not find the table 'public.X' in the schema cache"
+  //   "relation 'X' does not exist"
   return cols.some(c => msg.includes(c))
 }
 
