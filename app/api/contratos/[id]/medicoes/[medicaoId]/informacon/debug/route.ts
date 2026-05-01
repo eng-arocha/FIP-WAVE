@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { apiError } from '@/lib/api/error-response'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -139,6 +138,17 @@ export async function GET(
       solicitacoes_aprovadas: solicitacoes,
     })
   } catch (e: any) {
-    return apiError(e)
+    // Rota de debug — expõe erro detalhado pra diagnóstico
+    return NextResponse.json(
+      {
+        error: 'debug-route-failed',
+        message: e?.message ?? String(e),
+        code: e?.code ?? null,
+        details: e?.details ?? null,
+        hint: e?.hint ?? null,
+        stack: typeof e?.stack === 'string' ? e.stack.split('\n').slice(0, 8) : null,
+      },
+      { status: 500 },
+    )
   }
 }
