@@ -964,8 +964,18 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
             <TabsTrigger value="visao-geral">Visão Geral</TabsTrigger>
             <TabsTrigger value="dados">Dados do Contrato</TabsTrigger>
             <TabsTrigger value="medicoes">Medições</TabsTrigger>
-            <TabsTrigger value="fat-direto-tab">FAT. DIRETO</TabsTrigger>
-            <TabsTrigger value="cronograma-tab">CRONOGRAMA</TabsTrigger>
+            <Link
+              href={`/contratos/${id}/fat-direto`}
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 text-[var(--text-3)] hover:text-[var(--text-1)] hover:bg-[var(--surface-2)]"
+            >
+              FAT. DIRETO
+            </Link>
+            <Link
+              href={`/contratos/${id}/cronograma`}
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 text-[var(--text-3)] hover:text-[var(--text-1)] hover:bg-[var(--surface-2)]"
+            >
+              CRONOGRAMA
+            </Link>
             <TabsTrigger value="estrutura">Estrutura</TabsTrigger>
             <TabsTrigger value="aditivos">Aditivos {aditivos.length > 0 && `(${aditivos.length})`}</TabsTrigger>
           </TabsList>
@@ -1615,30 +1625,6 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                 </div>
               )
             })()}
-          </TabsContent>
-
-          {/* FAT. DIRETO tab */}
-          <TabsContent value="fat-direto-tab">
-            <div className="flex justify-center py-8">
-              <Link href={`/contratos/${id}/fat-direto`}>
-                <Button size="sm" className="gap-2">
-                  <Plus className="w-4 h-4" />
-                  Acessar Faturamento Direto
-                </Button>
-              </Link>
-            </div>
-          </TabsContent>
-
-          {/* CRONOGRAMA tab */}
-          <TabsContent value="cronograma-tab">
-            <div className="flex justify-center py-8">
-              <Link href={`/contratos/${id}/cronograma`}>
-                <Button size="sm" className="gap-2">
-                  <Plus className="w-4 h-4" />
-                  Acessar Cronograma
-                </Button>
-              </Link>
-            </div>
           </TabsContent>
 
           {/* Aditivos */}
