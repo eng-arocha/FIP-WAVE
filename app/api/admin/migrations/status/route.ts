@@ -1,131 +1,152 @@
 import { NextResponse } from 'next/server'
-import { getConnection } from '@/lib/db/auto-migrate'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 /**
  * GET /api/admin/migrations/status
  *
- * Retorna:
- *   - applied: lista de migrations registradas em _schema_migrations
- *   - schema: existência (bool) das colunas/tabelas das migrations 053-057
- *   - aurora_config: tolerancia_nf_valor e dias_alerta_pedido_atrasado do contrato Aurora
+ * Verifica via Supabase REST (PostgREST) se as colunas/tabelas das
+ * migrations 053-057 existem. Detecção: tenta SELECT na coluna específica
+ * com LIMIT 0 — se a coluna não existir, PostgREST devolve erro 42703.
  *
- * Endpoint somente-leitura, expõe apenas metadata de schema.
+ * Não usa conexão postgres direta (Vercel bloqueia pooler em alguns casos).
  */
+
+type Check = {
+  migration: string
+  description: string
+  ok: boolean
+  error?: string
+}
+
+async function probeColumn(
+  sb: ReturnType<typeof createAdminClient>,
+  table: string,
+  columns: string[],
+): Promise<{ ok: boolean; error?: string }> {
+  // LIMIT 0 evita custo de leitura — só queremos saber se a coluna existe.
+  const { error } = await sb.from(table).select(columns.join(',')).limit(0)
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
+async function probeTable(
+  sb: ReturnType<typeof createAdminClient>,
+  table: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await sb.from(table).select('*').limit(0)
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
 export async function GET() {
-  let sql: Awaited<ReturnType<typeof getConnection>> | null = null
   try {
-    sql = await getConnection()
+    const sb = createAdminClient()
 
-    // 1) Versões aplicadas (todas, mas destacando 050+)
-    const appliedAll = await sql<{ version: string; applied_at: string }[]>`
-      SELECT version, applied_at::text AS applied_at
-        FROM _schema_migrations
-       ORDER BY version
-    `
+    const checks: Check[] = []
 
-    const target = [
-      '053_tolerancia_nf_fat_direto',
-      '054_divergencia_pedido_cobertura',
-      '055_dias_alerta_pedido_atrasado',
-      '056_relatorios_mensais_fat_direto',
-      '057_ajuste_saldo_divergencia',
-    ]
-    const appliedSet = new Set(appliedAll.map(r => r.version))
+    // 053: contratos.tolerancia_nf_valor
+    const c053a = await probeColumn(sb, 'contratos', ['tolerancia_nf_valor'])
+    checks.push({
+      migration: '053',
+      description: 'contratos.tolerancia_nf_valor',
+      ...c053a,
+    })
 
-    const targetStatus = target.map(v => ({
-      version: v,
-      registered: appliedSet.has(v),
-      applied_at: appliedAll.find(r => r.version === v)?.applied_at ?? null,
-    }))
+    // 053: notas_fiscais_fat_direto.divergencia_*
+    const c053b = await probeColumn(sb, 'notas_fiscais_fat_direto', [
+      'divergencia_valor',
+      'divergencia_excedente',
+      'override_excede_saldo',
+      'motivo_divergencia',
+    ])
+    checks.push({
+      migration: '053',
+      description: 'notas_fiscais_fat_direto: divergencia_valor, divergencia_excedente, override_excede_saldo, motivo_divergencia',
+      ...c053b,
+    })
 
-    // 2) Existência real de colunas/tabelas
-    const checks = await sql<
-      {
-        m053_contratos_tolerancia: boolean
-        m053_nf_divergencia_valor: boolean
-        m053_nf_divergencia_excedente: boolean
-        m053_nf_override: boolean
-        m053_nf_motivo: boolean
-        m054_sol_origem_id: boolean
-        m054_sol_origem_nf_id: boolean
-        m054_nf_tipo_rejeicao: boolean
-        m055_contratos_dias_alerta: boolean
-        m056_tabela_relatorios: boolean
-        m057_sol_valor_original: boolean
-        m057_sol_ajustes: boolean
-      }[]
-    >`
-      SELECT
-        EXISTS(SELECT 1 FROM information_schema.columns
-               WHERE table_name='contratos' AND column_name='tolerancia_nf_valor')                  AS m053_contratos_tolerancia,
-        EXISTS(SELECT 1 FROM information_schema.columns
-               WHERE table_name='notas_fiscais_fat_direto' AND column_name='divergencia_valor')     AS m053_nf_divergencia_valor,
-        EXISTS(SELECT 1 FROM information_schema.columns
-               WHERE table_name='notas_fiscais_fat_direto' AND column_name='divergencia_excedente') AS m053_nf_divergencia_excedente,
-        EXISTS(SELECT 1 FROM information_schema.columns
-               WHERE table_name='notas_fiscais_fat_direto' AND column_name='override_excede_saldo') AS m053_nf_override,
-        EXISTS(SELECT 1 FROM information_schema.columns
-               WHERE table_name='notas_fiscais_fat_direto' AND column_name='motivo_divergencia')    AS m053_nf_motivo,
-        EXISTS(SELECT 1 FROM information_schema.columns
-               WHERE table_name='solicitacoes_fat_direto' AND column_name='origem_divergencia_id')    AS m054_sol_origem_id,
-        EXISTS(SELECT 1 FROM information_schema.columns
-               WHERE table_name='solicitacoes_fat_direto' AND column_name='origem_divergencia_nf_id') AS m054_sol_origem_nf_id,
-        EXISTS(SELECT 1 FROM information_schema.columns
-               WHERE table_name='notas_fiscais_fat_direto' AND column_name='tipo_rejeicao')           AS m054_nf_tipo_rejeicao,
-        EXISTS(SELECT 1 FROM information_schema.columns
-               WHERE table_name='contratos' AND column_name='dias_alerta_pedido_atrasado') AS m055_contratos_dias_alerta,
-        EXISTS(SELECT 1 FROM information_schema.tables
-               WHERE table_name='relatorios_mensais_fat_direto') AS m056_tabela_relatorios,
-        EXISTS(SELECT 1 FROM information_schema.columns
-               WHERE table_name='solicitacoes_fat_direto' AND column_name='valor_aprovado_original') AS m057_sol_valor_original,
-        EXISTS(SELECT 1 FROM information_schema.columns
-               WHERE table_name='solicitacoes_fat_direto' AND column_name='ajustes_divergencia')     AS m057_sol_ajustes
-    `
+    // 054: solicitacoes_fat_direto.origem_divergencia_*
+    const c054a = await probeColumn(sb, 'solicitacoes_fat_direto', [
+      'origem_divergencia_id',
+      'origem_divergencia_nf_id',
+    ])
+    checks.push({
+      migration: '054',
+      description: 'solicitacoes_fat_direto: origem_divergencia_id, origem_divergencia_nf_id',
+      ...c054a,
+    })
 
-    const schema = checks[0] ?? null
+    // 054: notas_fiscais_fat_direto.tipo_rejeicao
+    const c054b = await probeColumn(sb, 'notas_fiscais_fat_direto', ['tipo_rejeicao'])
+    checks.push({
+      migration: '054',
+      description: 'notas_fiscais_fat_direto.tipo_rejeicao',
+      ...c054b,
+    })
 
-    // 3) Configuração do contrato Aurora (id fixo)
+    // 055: contratos.dias_alerta_pedido_atrasado
+    const c055 = await probeColumn(sb, 'contratos', ['dias_alerta_pedido_atrasado'])
+    checks.push({
+      migration: '055',
+      description: 'contratos.dias_alerta_pedido_atrasado',
+      ...c055,
+    })
+
+    // 056: tabela relatorios_mensais_fat_direto
+    const c056 = await probeTable(sb, 'relatorios_mensais_fat_direto')
+    checks.push({
+      migration: '056',
+      description: 'tabela relatorios_mensais_fat_direto',
+      ...c056,
+    })
+
+    // 057: solicitacoes_fat_direto.valor_aprovado_original / ajustes_divergencia
+    const c057 = await probeColumn(sb, 'solicitacoes_fat_direto', [
+      'valor_aprovado_original',
+      'ajustes_divergencia',
+    ])
+    checks.push({
+      migration: '057',
+      description: 'solicitacoes_fat_direto: valor_aprovado_original, ajustes_divergencia',
+      ...c057,
+    })
+
+    // Configuração do contrato Aurora (id fixo)
     let auroraConfig: any = null
     try {
-      const rows = await sql<
-        { id: string; nome: string | null; tolerancia_nf_valor: number | null; dias_alerta_pedido_atrasado: number | null }[]
-      >`
-        SELECT id, nome, tolerancia_nf_valor, dias_alerta_pedido_atrasado
-          FROM contratos
-         WHERE id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
-      `
-      auroraConfig = rows[0] ?? null
+      const { data, error } = await sb
+        .from('contratos')
+        .select('id,nome,tolerancia_nf_valor,dias_alerta_pedido_atrasado')
+        .eq('id', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+        .maybeSingle()
+      if (error) auroraConfig = { error: error.message }
+      else auroraConfig = data
     } catch (e: any) {
-      auroraConfig = { error: e.message }
+      auroraConfig = { error: e?.message ?? String(e) }
     }
 
-    // 4) Resumo
-    const allRegistered = targetStatus.every(t => t.registered)
-    const allSchemaOk = schema
-      ? Object.values(schema).every(v => v === true)
-      : false
+    const grouped: Record<string, { ok: boolean; checks: Check[] }> = {}
+    for (const c of checks) {
+      const key = `m${c.migration}`
+      if (!grouped[key]) grouped[key] = { ok: true, checks: [] }
+      grouped[key].checks.push(c)
+      if (!c.ok) grouped[key].ok = false
+    }
+
+    const allOk = Object.values(grouped).every(g => g.ok)
 
     return NextResponse.json({
-      ok: allRegistered && allSchemaOk,
-      summary: {
-        all_target_registered: allRegistered,
-        all_schema_objects_present: allSchemaOk,
-        total_applied: appliedAll.length,
-      },
-      target: targetStatus,
-      schema,
+      ok: allOk,
+      summary: Object.fromEntries(
+        Object.entries(grouped).map(([k, v]) => [k, v.ok])
+      ),
+      details: grouped,
       aurora_config: auroraConfig,
-      // Lista completa só nas últimas 10 pra não poluir
-      applied_recent: appliedAll.slice(-10),
     })
   } catch (e: any) {
-    // Endpoint de diagnóstico: retorna mensagem de erro completa pra debug.
-    // Não expõe dados sensíveis — apenas metadata de schema.
     return NextResponse.json(
       { ok: false, error: e?.message ?? String(e), code: e?.code ?? null },
       { status: 500 }
     )
-  } finally {
-    await sql?.end()
   }
 }
