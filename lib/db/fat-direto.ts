@@ -783,6 +783,220 @@ export async function criarNotaFiscal(input: {
   return { ...data, _match: match }
 }
 
+/**
+ * Cria solicitação de fat-direto AUTOMÁTICA pra cobrir divergência de NF.
+ *
+ * Caminho B do fluxo de divergência: a NF excedeu o saldo do pedido pai e
+ * há saldo de teto suficiente. Cria pedido novo (auto-aprovado) com origem
+ * referenciando o pedido pai e a NF que originou a cobertura.
+ *
+ * Validações:
+ *  - excedente > 0
+ *  - saldo de teto disponível >= excedente (chamador valida antes, mas
+ *    repetimos por defesa)
+ *  - pedido pai existe e está aprovado
+ *
+ * Retorna a nova solicitação com seu numero_pedido_fip alocado.
+ */
+export async function criarPedidoCoberturaDivergencia(input: {
+  contrato_id: string
+  pedido_pai_id: string
+  nf_id: string
+  excedente: number
+  motivo: string
+  aprovador_id?: string
+}) {
+  if (input.excedente <= 0) {
+    throw new Error('Excedente deve ser positivo pra criar pedido de cobertura.')
+  }
+
+  const admin = createAdminClient()
+
+  // 1) Verifica teto novamente (defesa)
+  const violation = await verificarTeto(input.contrato_id, input.excedente)
+  if (violation) {
+    const err = new Error('TETO_EXCEDIDO_NA_COBERTURA')
+    ;(err as any).violation = violation
+    throw err
+  }
+
+  // 2) Carrega pedido pai pra herdar fornecedor/contato/contrato
+  const { data: pai, error: paiErr } = await admin
+    .from('solicitacoes_fat_direto')
+    .select(`
+      id, numero, numero_pedido_fip, contrato_id, status, valor_total,
+      fornecedor_razao_social, fornecedor_cnpj, fornecedor_contato,
+      fornecedor_contato_nome, fornecedor_contato_telefone,
+      itens:itens_solicitacao_fat_direto ( tarefa_id, detalhamento_id, descricao, local )
+    `)
+    .eq('id', input.pedido_pai_id)
+    .single()
+  if (paiErr || !pai) throw new Error('Pedido pai não encontrado pra cobertura.')
+  if ((pai as any).status !== 'aprovado') {
+    throw new Error('Pedido pai precisa estar aprovado pra emitir cobertura.')
+  }
+
+  // 3) Pega 1 item do pai como base pra criar o item de cobertura
+  //    (descrição padronizada; tarefa/detalhamento herdados pra rastrear no
+  //    boletim Informakon)
+  const itemBase = ((pai as any).itens || [])[0]
+  if (!itemBase) throw new Error('Pedido pai sem itens — não dá pra criar cobertura.')
+
+  // 4) Aloca próximo numero_pedido_fip via sequence (criada na mig 039)
+  const { data: seq } = await admin
+    .from('contratos')
+    .select('id') // dummy, vamos chamar a function diretamente
+    .limit(1)
+    .single()
+  // Chama a sequence diretamente
+  const { data: seqRow } = await admin
+    .rpc('nextval_pedido_fip_seq' as any)
+    .single()
+    .then((r: any) => r, () => ({ data: null }))
+  // Fallback: pega max + 1 se a function não existir
+  let nextNumeroFip: number
+  if (seqRow && typeof (seqRow as any) === 'number') {
+    nextNumeroFip = Number(seqRow)
+  } else {
+    const { data: maxRow } = await admin
+      .from('solicitacoes_fat_direto')
+      .select('numero_pedido_fip')
+      .order('numero_pedido_fip', { ascending: false, nullsFirst: false })
+      .limit(1)
+      .single()
+    nextNumeroFip = Number((maxRow as any)?.numero_pedido_fip ?? 0) + 1
+  }
+  // suprime variável não usada
+  void seq
+
+  const descricaoCobertura =
+    `Cobertura de divergência da NF nº ${input.nf_id} sobre o pedido PED-${(pai as any).numero_pedido_fip ?? (pai as any).numero}`
+
+  // 5) Cria a nova solicitação com origem_divergencia_id apontando pro pai
+  //    Status já nasce como 'aprovado' (a aprovação da divergência É o ato
+  //    de autorização — mesmo padrão da fat-direto FIP automática).
+  const insertSolPayload: any = {
+    contrato_id: input.contrato_id,
+    status: 'aprovado',
+    valor_total: input.excedente,
+    observacoes: `${input.motivo}\n\n[Pedido de cobertura emitido automaticamente]`,
+    fornecedor_razao_social: (pai as any).fornecedor_razao_social,
+    fornecedor_cnpj: (pai as any).fornecedor_cnpj,
+    fornecedor_contato: (pai as any).fornecedor_contato,
+    fornecedor_contato_nome: (pai as any).fornecedor_contato_nome,
+    fornecedor_contato_telefone: (pai as any).fornecedor_contato_telefone,
+    numero_pedido_fip: nextNumeroFip,
+    aprovador_id: input.aprovador_id ?? null,
+    data_aprovacao: new Date().toISOString(),
+    solicitante_id: input.aprovador_id ?? null,
+    origem_divergencia_id: input.pedido_pai_id,
+    origem_divergencia_nf_id: input.nf_id,
+  }
+
+  let novaSolId: string
+  {
+    const r = await admin.from('solicitacoes_fat_direto').insert(insertSolPayload).select().single()
+    if (r.error) {
+      const isMissing = isSchemaMissingError(r.error, [
+        'origem_divergencia_id', 'origem_divergencia_nf_id',
+      ])
+      if (!isMissing) throw r.error
+      // Fallback: persiste sem os campos novos
+      const { origem_divergencia_id, origem_divergencia_nf_id, ...rest } = insertSolPayload
+      const r2 = await admin.from('solicitacoes_fat_direto').insert(rest).select().single()
+      if (r2.error) throw r2.error
+      novaSolId = (r2.data as any).id
+    } else {
+      novaSolId = (r.data as any).id
+    }
+  }
+
+  // 6) Insere 1 item na nova solicitação
+  const insertItemPayload: any = {
+    solicitacao_id: novaSolId,
+    tarefa_id: itemBase.tarefa_id,
+    detalhamento_id: itemBase.detalhamento_id ?? null,
+    descricao: descricaoCobertura,
+    local: itemBase.local || 'TORRE',
+    qtde_solicitada: 1,
+    valor_unitario: input.excedente,
+  }
+  const { error: itemErr } = await admin.from('itens_solicitacao_fat_direto').insert(insertItemPayload)
+  if (itemErr) throw itemErr
+
+  log.warn('nf_divergencia_pedido_novo', {
+    contrato_id: input.contrato_id,
+    pedido_pai_id: input.pedido_pai_id,
+    nova_solicitacao_id: novaSolId,
+    numero_pedido_fip: nextNumeroFip,
+    nf_id: input.nf_id,
+    excedente: input.excedente,
+    motivo: input.motivo,
+  })
+
+  return {
+    id: novaSolId,
+    numero_pedido_fip: nextNumeroFip,
+    valor_total: input.excedente,
+    origem_divergencia_id: input.pedido_pai_id,
+  }
+}
+
+/**
+ * Recusa NF por divergência sem saldo de teto (caminho C).
+ *
+ * Marca a NF com status='rejeitada' + tipo_rejeicao='divergencia_sem_saldo'
+ * + motivo_divergencia (auditoria). NÃO cria pedido novo.
+ *
+ * O email de notificação à FIP é responsabilidade do chamador (rota
+ * separada que passa por email-preview).
+ */
+export async function recusarNotaFiscalPorDivergencia(input: {
+  nf_id: string
+  motivo: string
+  aprovador_id?: string
+}) {
+  const admin = createAdminClient()
+
+  // Atualiza a NF — usa fallback se schema cache não tem as colunas novas
+  const updatePayload: any = {
+    status: 'rejeitada',
+    tipo_rejeicao: 'divergencia_sem_saldo',
+    motivo_divergencia: input.motivo,
+    validado_por_id: input.aprovador_id ?? null,
+    validado_em: new Date().toISOString(),
+  }
+  const r = await admin
+    .from('notas_fiscais_fat_direto')
+    .update(updatePayload)
+    .eq('id', input.nf_id)
+    .select()
+    .single()
+  if (r.error) {
+    const isMissing = isSchemaMissingError(r.error, ['tipo_rejeicao', 'motivo_divergencia'])
+    if (!isMissing) throw r.error
+    const { tipo_rejeicao, motivo_divergencia, ...rest } = updatePayload
+    const r2 = await admin
+      .from('notas_fiscais_fat_direto')
+      .update(rest)
+      .eq('id', input.nf_id)
+      .select()
+      .single()
+    if (r2.error) throw r2.error
+    log.warn('nf_divergencia_recusa_fip', {
+      nf_id: input.nf_id,
+      motivo: input.motivo,
+      schema_pendente: true,
+    })
+    return r2.data
+  }
+  log.warn('nf_divergencia_recusa_fip', {
+    nf_id: input.nf_id,
+    motivo: input.motivo,
+  })
+  return r.data
+}
+
 export async function getResumoFatDireto(contratoId: string) {
   const admin = createAdminClient()
 

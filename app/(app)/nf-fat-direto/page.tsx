@@ -271,6 +271,20 @@ export default function NfFatDiretoPage() {
   } | null>(null)
   const [motivoDivergencia, setMotivoDivergencia] = useState('')
 
+  // Preview de email após escolher caminho B (cobrir) ou C (recusar)
+  const [previewDivergencia, setPreviewDivergencia] = useState<{
+    sol: Solicitacao
+    acao: 'cobrir' | 'recusar'
+    motivo: string
+    excedente: number
+    saldo_teto: number
+    teto: number
+    total_aprov_antes: number
+    preview: { subject: string; html: string }
+    envolvidos: { id: string; nome: string; email: string; perfil: string }[]
+  } | null>(null)
+  const [destinatariosSelecionados, setDestinatariosSelecionados] = useState<Set<string>>(new Set())
+
   /**
    * Sobe arquivo direto pro Supabase Storage via signed URL.
    * Bypassa o limite de body do Vercel (~4.5MB) — funciona com PDFs de
@@ -427,6 +441,7 @@ export default function NfFatDiretoPage() {
     await handleRegistrarNf(sol, true)
   }
 
+  // Caminho A: aprovação override puro (NF cabe no teto, mas excede pedido)
   async function confirmarExcedeSaldo() {
     if (!confirmExcedeSaldo) return
     if (!motivoDivergencia.trim()) {
@@ -437,6 +452,123 @@ export default function NfFatDiretoPage() {
     const motivo = motivoDivergencia.trim()
     setConfirmExcedeSaldo(null)
     await handleRegistrarNf(sol, false, true, motivo)
+  }
+
+  // Caminhos B (cobrir) e C (recusar): chama divergencia/resolver com dry_run=true
+  // pra trazer preview do email + envolvidos. Depois usuário confirma e envia.
+  async function abrirPreviewDivergencia(acao: 'cobrir' | 'recusar') {
+    if (!confirmExcedeSaldo) return
+    const motivo = motivoDivergencia.trim()
+    if (!motivo || motivo.length < 5) {
+      setNfError('Informe o motivo da divergência (mínimo 5 caracteres).')
+      return
+    }
+    const { sol } = confirmExcedeSaldo
+
+    // Sobe arquivo direto se houver
+    let arquivo_url: string | undefined
+    if (nfFile) {
+      try {
+        arquivo_url = await uploadArquivoDireto(nfFile, sol.id)
+      } catch (e: any) {
+        setNfError(e?.message || 'Erro ao enviar arquivo.')
+        return
+      }
+    }
+
+    const payload = {
+      acao,
+      motivo,
+      dry_run: true,
+      nf: {
+        numero_nf: nfForm.numero_nf,
+        emitente: sol.fornecedor_razao_social || undefined,
+        cnpj_emitente: nfForm.cnpj_emitente.replace(/\D/g, '') || undefined,
+        valor: parseFloat(nfForm.valor),
+        data_emissao: nfForm.data_emissao,
+        data_recebimento: nfForm.data_recebimento || undefined,
+        data_vencimento: nfForm.data_vencimento || undefined,
+        arquivo_url,
+      },
+    }
+    setSavingNf(true)
+    try {
+      const res = await fetch(
+        `/api/contratos/${sol.contrato_id}/fat-direto/solicitacoes/${sol.id}/divergencia/resolver`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) },
+      )
+      const data = await res.json()
+      if (!res.ok) {
+        setNfError(data.error || 'Erro ao gerar preview.')
+        return
+      }
+      setConfirmExcedeSaldo(null)
+      setPreviewDivergencia({
+        sol,
+        acao,
+        motivo,
+        excedente: Number(data.excedente),
+        saldo_teto: Number(data.saldo_teto),
+        teto: Number(data.teto),
+        total_aprov_antes: Number(data.total_aprov_antes),
+        preview: data.preview,
+        envolvidos: data.envolvidos || [],
+      })
+      // Pré-seleciona todos
+      setDestinatariosSelecionados(new Set((data.envolvidos || []).map((u: any) => u.id)))
+      // Guarda arquivo_url no estado pra reusar no envio
+      ;(window as any).__divergencia_arquivo_url__ = arquivo_url
+    } catch (e: any) {
+      setNfError(e?.message || 'Erro ao gerar preview.')
+    } finally {
+      setSavingNf(false)
+    }
+  }
+
+  async function confirmarEnviarDivergencia() {
+    if (!previewDivergencia) return
+    if (destinatariosSelecionados.size === 0) {
+      if (!confirm('Nenhum envolvido selecionado — registrar a NF SEM enviar email?')) return
+    }
+    const { sol, acao, motivo } = previewDivergencia
+    const arquivo_url = (window as any).__divergencia_arquivo_url__
+    setSavingNf(true)
+    try {
+      const payload = {
+        acao,
+        motivo,
+        dry_run: false,
+        nf: {
+          numero_nf: nfForm.numero_nf,
+          emitente: sol.fornecedor_razao_social || undefined,
+          cnpj_emitente: nfForm.cnpj_emitente.replace(/\D/g, '') || undefined,
+          valor: parseFloat(nfForm.valor),
+          data_emissao: nfForm.data_emissao,
+          data_recebimento: nfForm.data_recebimento || undefined,
+          data_vencimento: nfForm.data_vencimento || undefined,
+          arquivo_url,
+        },
+        destinatarios_ids: Array.from(destinatariosSelecionados),
+      }
+      const res = await fetch(
+        `/api/contratos/${sol.contrato_id}/fat-direto/solicitacoes/${sol.id}/divergencia/resolver`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) },
+      )
+      const data = await res.json()
+      if (!res.ok) {
+        setNfError(data.error || 'Erro ao registrar.')
+        return
+      }
+      setPreviewDivergencia(null)
+      setExpandedSolId(null)
+      resetForm()
+      delete (window as any).__divergencia_arquivo_url__
+      reload()
+    } catch (e: any) {
+      setNfError(e?.message || 'Erro ao registrar.')
+    } finally {
+      setSavingNf(false)
+    }
   }
 
   const inputCls = 'w-full rounded-lg px-3 py-2 text-sm border bg-[var(--surface-1)] border-[var(--border)] text-[var(--text-1)] placeholder:text-[var(--text-3)] outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20'
@@ -1098,7 +1230,7 @@ export default function NfFatDiretoPage() {
                 />
               </div>
             </div>
-            <div className="px-5 py-3 flex items-center justify-end gap-2" style={{ borderTop: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+            <div className="px-5 py-3 flex items-center justify-end gap-2 flex-wrap" style={{ borderTop: '1px solid var(--border)', background: 'var(--surface-2)' }}>
               <button
                 type="button"
                 onClick={() => setConfirmExcedeSaldo(null)}
@@ -1110,14 +1242,138 @@ export default function NfFatDiretoPage() {
               </button>
               <button
                 type="button"
+                onClick={() => abrirPreviewDivergencia('recusar')}
+                disabled={savingNf || !motivoDivergencia.trim() || motivoDivergencia.trim().length < 5}
+                title="Recusa a NF e gera email à FIP exigindo pagamento direto"
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 disabled:opacity-60"
+                style={{ background: 'rgba(239,68,68,0.10)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.40)' }}
+              >
+                ❌ Recusar e notificar FIP
+              </button>
+              <button
+                type="button"
+                onClick={() => abrirPreviewDivergencia('cobrir')}
+                disabled={savingNf || !motivoDivergencia.trim() || motivoDivergencia.trim().length < 5}
+                title="Aceita a NF e emite pedido de cobertura pelo excedente. Requer saldo de teto."
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 disabled:opacity-60"
+                style={{ background: 'rgba(59,130,246,0.10)', color: '#3B82F6', border: '1px solid rgba(59,130,246,0.40)' }}
+              >
+                🔁 Emitir pedido de cobertura
+              </button>
+              <button
+                type="button"
                 onClick={confirmarExcedeSaldo}
                 disabled={savingNf || !motivoDivergencia.trim()}
+                title="Aprova a NF com override puro (sem novo pedido). Use só pra divergências menores."
                 className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white inline-flex items-center gap-1.5 disabled:opacity-60"
-                style={{ background: '#EF4444' }}
+                style={{ background: '#F59E0B' }}
               >
                 {savingNf
                   ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Salvando...</>
-                  : <>Aprovar com divergência</>}
+                  : <>⚠ Aprovar com override</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: preview de email de divergência (caminho B ou C) */}
+      {previewDivergencia && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.50)' }}
+          onClick={() => !savingNf && setPreviewDivergencia(null)}
+        >
+          <div
+            className="rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+            style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', boxShadow: '0 20px 50px rgba(0,0,0,0.30)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 flex items-center gap-3" style={{
+              borderBottom: '1px solid var(--border)',
+              background: previewDivergencia.acao === 'cobrir' ? 'rgba(59,130,246,0.06)' : 'rgba(239,68,68,0.06)',
+            }}>
+              <div className="flex-1">
+                <h3 className="text-sm font-bold" style={{ color: 'var(--text-1)' }}>
+                  {previewDivergencia.acao === 'cobrir'
+                    ? '🔁 Pedido de cobertura — revisar email'
+                    : '❌ Recusa de NF — revisar email'}
+                </h3>
+                <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>
+                  Excedente {formatCurrency(previewDivergencia.excedente)} ·
+                  {previewDivergencia.acao === 'cobrir'
+                    ? ` Saldo teto restante após cobertura: ${formatCurrency(previewDivergencia.saldo_teto - previewDivergencia.excedente)}`
+                    : ' NF será marcada como rejeitada (tipo: divergência sem saldo)'}
+                </p>
+              </div>
+              <button onClick={() => setPreviewDivergencia(null)} disabled={savingNf} className="rounded-lg p-1 hover:bg-[var(--surface-2)] disabled:opacity-50">
+                <span className="text-lg" style={{ color: 'var(--text-2)' }}>×</span>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Assunto</p>
+                <p className="text-sm" style={{ color: 'var(--text-1)' }}>{previewDivergencia.preview.subject}</p>
+              </div>
+
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Corpo do email</p>
+                <iframe
+                  srcDoc={previewDivergencia.preview.html}
+                  className="w-full rounded-lg"
+                  style={{ height: 380, border: '1px solid var(--border)', background: 'white' }}
+                  sandbox=""
+                />
+              </div>
+
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>
+                  Destinatários ({destinatariosSelecionados.size}/{previewDivergencia.envolvidos.length} selecionados)
+                </p>
+                <div className="space-y-1 max-h-32 overflow-y-auto rounded-lg p-2" style={{ border: '1px solid var(--border)' }}>
+                  {previewDivergencia.envolvidos.length === 0 ? (
+                    <p className="text-xs" style={{ color: 'var(--text-3)' }}>Nenhum envolvido cadastrado neste contrato.</p>
+                  ) : previewDivergencia.envolvidos.map(u => (
+                    <label key={u.id} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-[var(--surface-2)] p-1 rounded">
+                      <input
+                        type="checkbox"
+                        checked={destinatariosSelecionados.has(u.id)}
+                        onChange={e => {
+                          const next = new Set(destinatariosSelecionados)
+                          if (e.target.checked) next.add(u.id); else next.delete(u.id)
+                          setDestinatariosSelecionados(next)
+                        }}
+                      />
+                      <span style={{ color: 'var(--text-1)' }}>{u.nome}</span>
+                      <span style={{ color: 'var(--text-3)' }}>· {u.email}</span>
+                      <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'var(--surface-2)', color: 'var(--text-3)' }}>{u.perfil}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="px-5 py-3 flex items-center justify-end gap-2" style={{ borderTop: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+              <button
+                type="button"
+                onClick={() => setPreviewDivergencia(null)}
+                disabled={savingNf}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50"
+                style={{ color: 'var(--text-2)', border: '1px solid var(--border)' }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmarEnviarDivergencia}
+                disabled={savingNf}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white inline-flex items-center gap-1.5 disabled:opacity-60"
+                style={{ background: previewDivergencia.acao === 'cobrir' ? '#3B82F6' : '#EF4444' }}
+              >
+                {savingNf
+                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Salvando...</>
+                  : <>{previewDivergencia.acao === 'cobrir' ? 'Confirmar e enviar' : 'Recusar e enviar'}</>}
               </button>
             </div>
           </div>
