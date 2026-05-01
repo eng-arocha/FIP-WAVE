@@ -36,7 +36,7 @@ export async function getSolicitacao(id: string) {
         id, descricao, local, qtde_solicitada, valor_unitario, valor_total,
         tarefa:tarefa_id(id, codigo, nome, grupo_macro_id)
       ),
-      notas_fiscais:notas_fiscais_fat_direto(
+      notas_fiscais:notas_fiscais_fat_direto!solicitacao_id(
         id, numero_nf, emitente, cnpj_emitente, valor, data_emissao, descricao, status, validado_em
       )
     `
@@ -58,7 +58,7 @@ export async function getSolicitacao(id: string) {
         id, descricao, local, qtde_solicitada, valor_unitario, valor_total, valor_devolvido,
         tarefa:tarefa_id(id, codigo, nome, grupo_macro_id)
       ),
-      notas_fiscais:notas_fiscais_fat_direto(
+      notas_fiscais:notas_fiscais_fat_direto!solicitacao_id(
         id, numero_nf, emitente, cnpj_emitente, valor, data_emissao, descricao, status, validado_em
       )
     `
@@ -364,7 +364,7 @@ export async function listarSolicitacoesAprovadas() {
       contrato_id,
       contrato:contrato_id(id, numero, descricao),
       solicitante:perfis!solicitante_id(nome),
-      notas_fiscais:notas_fiscais_fat_direto(id, numero_nf, valor, status),
+      notas_fiscais:notas_fiscais_fat_direto!solicitacao_id(id, numero_nf, valor, status),
       itens:itens_solicitacao_fat_direto(id)
     `
   const extraSelect = `${baseSelect}, observacoes, numero_pedido_fip`
