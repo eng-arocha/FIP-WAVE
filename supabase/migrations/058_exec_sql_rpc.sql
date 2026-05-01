@@ -29,9 +29,7 @@ END;
 $func$;
 
 COMMENT ON FUNCTION public.exec_sql(text) IS
-  'Fallback usado pelo auto-migrate quando a conexão postgres direta falha. ' ||
-  'Restrito a service_role. Cada chamada executa um único statement SQL. ' ||
-  'NÃO usar fora do contexto de migrations.';
+  'Fallback usado pelo auto-migrate quando a conexão postgres direta falha. Restrito a service_role. Cada chamada executa um único statement SQL. NÃO usar fora do contexto de migrations.';
 
 -- Tira acesso de qualquer role exposta ao PostgREST público
 REVOKE ALL ON FUNCTION public.exec_sql(text) FROM PUBLIC;

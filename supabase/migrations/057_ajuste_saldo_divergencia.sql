@@ -14,12 +14,9 @@ ALTER TABLE solicitacoes_fat_direto
   ADD COLUMN IF NOT EXISTS ajustes_divergencia JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 COMMENT ON COLUMN solicitacoes_fat_direto.valor_aprovado_original IS
-  'Snapshot do valor_total na 1ª aprovação formal. NULL = pedido nunca foi ' ||
-  'ajustado por divergência. Preenchido automaticamente na 1ª divergência.';
+  'Snapshot do valor_total na 1ª aprovação formal. NULL = pedido nunca foi ajustado por divergência. Preenchido automaticamente na 1ª divergência.';
 COMMENT ON COLUMN solicitacoes_fat_direto.ajustes_divergencia IS
-  'Histórico jsonb de ajustes por divergência: [{nf_id, excedente, motivo, ' ||
-  'data, valor_anterior, valor_novo, ajustado_por_id, tipo}]. ' ||
-  'tipo: "divergencia_nf" (fluxo normal) ou "ajuste_retroativo" (correção manual).';
+  'Histórico jsonb de ajustes por divergência: [{nf_id, excedente, motivo, data, valor_anterior, valor_novo, ajustado_por_id, tipo}]. tipo: "divergencia_nf" (fluxo normal) ou "ajuste_retroativo" (correção manual).';
 
 CREATE INDEX IF NOT EXISTS idx_sol_fatd_ajustes
   ON solicitacoes_fat_direto((jsonb_array_length(ajustes_divergencia)))
