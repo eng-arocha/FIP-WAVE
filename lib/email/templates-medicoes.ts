@@ -16,6 +16,13 @@ const CONTRATADO = {
   cnpj: '26.736.376/0001-52',
   endereco: 'Rua Antônio Gentil, n.º 1660, Sapiranga, Fortaleza, Ceará, CEP 60.833-695',
 }
+// Empresa que efetivamente emite a NF de SERVIÇO (mão-de-obra) — distinta
+// da CONTRATANTE (que é a construtora pagadora). Material vai pela
+// CONTRATADO (FIP) via fat-direto.
+const WAVE_SPE = {
+  razaoSocial: 'WAVE INSTALACOES SPE LTDA',
+  cnpj: '99.999.999/0001-99',
+}
 const OBRA = {
   prazoMinDias: 20,
   gestorCargo: 'Gestor de Obras (autorizador)',
@@ -129,6 +136,24 @@ export interface LiberacaoMedicaoPayload {
     valor_retido_absorvido: number  // R$
     motivo: string
   }>
+
+  /**
+   * Valores de cada NF a emitir nesta medição. A NF de **material (FIP
+   * fat-direto)** deve sair PRIMEIRO; só depois de lançada no Informakon
+   * é que a NF de **serviço (Wave)** pode ser emitida pelo valor integral
+   * — pra o serviço descontar as NFs de material que já estão no sistema.
+   */
+  nfs_a_emitir: {
+    fip_material: { valor: number }   // soma de FIP Fat-Dir
+    wave_servico: { valor: number }   // soma de Wave (Serv.)
+  }
+
+  /**
+   * Somatório de FIP Fat-Dir agrupado por grupo macro (1-19). Usado
+   * pra orientar o lançamento do material no Informakon. Vazio quando
+   * nenhum item tem fip_faturar > 0.
+   */
+  fip_por_grupo_macro?: Array<{ grupo: number; nome: string; valor: number }>
 }
 
 // ============================================================
@@ -146,7 +171,13 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
   // valorMedicao usado em totais e header — pega o SERVIÇO MEDIDO (que é o
   // que entra na NF do fornecedor), não o total mat+serv.
   const valorMedicao = p.resumo.retencao.servico_medido || p.resumo.servicos.esta_medicao
-  const subject = `${prefixo}[${tag}] Medição aprovada — emita NF de ${fmt(valorMedicao)}`
+
+  const fipTotal = p.nfs_a_emitir?.fip_material?.valor || 0
+  const waveTotal = p.nfs_a_emitir?.wave_servico?.valor || valorMedicao
+  const temFipMaterial = fipTotal > 0
+  const subject = temFipMaterial
+    ? `${prefixo}[${tag}] Medição aprovada — emita 2 NFs: FIP Material ${fmt(fipTotal)} + Wave Serviço ${fmt(waveTotal)}`
+    : `${prefixo}[${tag}] Medição aprovada — emita NF Wave Serviço ${fmt(waveTotal)}`
 
   const itensHtml = p.itens.map(it => `
     <tr>
@@ -229,10 +260,94 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
           A medição <strong>${tag}</strong> referente ao período
           <strong>${escapeHtml(p.periodo_referencia)}</strong> foi
           <strong>${p.reenvio ? 'reenviada' : 'aprovada'}</strong> pela Gestão.
-          O fornecedor (FIP Engenharia) está autorizado a emitir Nota Fiscal pelo
-          <strong>valor integral medido</strong>.
+          ${temFipMaterial
+            ? 'Esta medição requer a emissão de <strong>2 Notas Fiscais</strong> em ordem obrigatória — veja o passo-a-passo abaixo.'
+            : 'O fornecedor está autorizado a emitir a Nota Fiscal de serviço pelo <strong>valor integral medido</strong>.'}
         </p>
       </div>
+
+      <!-- 0. ORDEM OBRIGATÓRIA DE EMISSÃO DAS NFs (só quando há FIP material) -->
+      ${temFipMaterial ? `
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;background:#fff7ed;">
+        <h2 style="margin:0 0 4px;font-size:14px;font-weight:700;color:#9a3412;text-transform:uppercase;letter-spacing:0.5px;">
+          ⚠ Ordem obrigatória de emissão das NFs
+        </h2>
+        <p style="margin:0 0 14px;font-size:12px;color:#9a3412;line-height:1.6;">
+          A NF de <strong>material (FIP fat-direto)</strong> precisa entrar
+          <strong>primeiro</strong> no sistema Informakon. Só depois disso a
+          NF de <strong>serviço (Wave)</strong> pode ser emitida pelo valor
+          integral, com as NFs de material já lançadas sendo descontadas
+          automaticamente no sistema.
+        </p>
+
+        <!-- Passo 1: NF FIP Material -->
+        <div style="background:#ffffff;border:2px solid #f97316;border-radius:8px;padding:14px;margin-bottom:10px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <span style="background:#f97316;color:#ffffff;font-weight:700;font-size:13px;padding:3px 10px;border-radius:6px;">1º</span>
+            <strong style="font-size:14px;color:#0f172a;">NF FIP — Material (fat-direto)</strong>
+          </div>
+          <table style="width:100%;font-size:13px;">
+            <tr><td style="padding:3px 0;color:#64748b;width:140px;">Emissora</td><td style="padding:3px 0;font-weight:600;">${escapeHtml(CONTRATADO.razaoSocial)}</td></tr>
+            <tr><td style="padding:3px 0;color:#64748b;">CNPJ</td><td style="padding:3px 0;font-family:ui-monospace,monospace;">${maskCnpj(CONTRATADO.cnpj)}</td></tr>
+            <tr><td style="padding:3px 0;color:#64748b;">Valor da NF</td><td style="padding:3px 0;font-weight:700;font-size:16px;color:#ea580c;">${fmt(fipTotal)}</td></tr>
+          </table>
+          <p style="margin:8px 0 0;font-size:12px;color:#475569;">
+            Lançar no Informakon antes da NF Wave. Detalhamento por grupo macro abaixo.
+          </p>
+        </div>
+
+        <!-- Passo 2: NF Wave Serviço -->
+        <div style="background:#ffffff;border:2px solid #0f766e;border-radius:8px;padding:14px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <span style="background:#0f766e;color:#ffffff;font-weight:700;font-size:13px;padding:3px 10px;border-radius:6px;">2º</span>
+            <strong style="font-size:14px;color:#0f172a;">NF Wave — Serviço</strong>
+            <span style="font-size:11px;color:#64748b;font-style:italic;">(somente após o Passo 1)</span>
+          </div>
+          <table style="width:100%;font-size:13px;">
+            <tr><td style="padding:3px 0;color:#64748b;width:140px;">Emissora</td><td style="padding:3px 0;font-weight:600;">${escapeHtml(WAVE_SPE.razaoSocial)}</td></tr>
+            <tr><td style="padding:3px 0;color:#64748b;">CNPJ</td><td style="padding:3px 0;font-family:ui-monospace,monospace;">${maskCnpj(WAVE_SPE.cnpj)}</td></tr>
+            <tr><td style="padding:3px 0;color:#64748b;">Valor da NF</td><td style="padding:3px 0;font-weight:700;font-size:16px;color:#0f766e;">${fmt(waveTotal)}</td></tr>
+          </table>
+          <p style="margin:8px 0 0;font-size:12px;color:#475569;">
+            Emitir pelo <strong>valor integral</strong>. Retenção será descontada no pagamento.
+          </p>
+        </div>
+      </div>
+
+      <!-- 0b. RESUMO MATERIAL POR GRUPO MACRO -->
+      ${(p.fip_por_grupo_macro && p.fip_por_grupo_macro.length > 0) ? `
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
+        <h2 style="margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">
+          Material FIP fat-direto · detalhamento por grupo macro
+        </h2>
+        <p style="margin:0 0 12px;font-size:12px;color:#94a3b8;">
+          Use este resumo pra lançar a NF FIP de material no Informakon antes do Wave.
+        </p>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;background:#f8fafc;border-radius:8px;overflow:hidden;">
+          <thead>
+            <tr style="background:#f1f5f9;">
+              <th style="padding:8px 12px;text-align:left;font-weight:600;color:#64748b;border-bottom:1px solid #e5e7eb;width:60px;">Grupo</th>
+              <th style="padding:8px 12px;text-align:left;font-weight:600;color:#64748b;border-bottom:1px solid #e5e7eb;">Categoria</th>
+              <th style="padding:8px 12px;text-align:right;font-weight:600;color:#64748b;border-bottom:1px solid #e5e7eb;">FIP fat-direto</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${p.fip_por_grupo_macro.map(g => `
+              <tr>
+                <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-family:ui-monospace,monospace;font-weight:600;">${g.grupo}</td>
+                <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;">${escapeHtml(g.nome)}</td>
+                <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600;">${fmt(g.valor)}</td>
+              </tr>
+            `).join('')}
+            <tr style="background:#fff7ed;">
+              <td colspan="2" style="padding:10px 12px;font-weight:700;border-top:2px solid #fdba74;">TOTAL FIP MATERIAL</td>
+              <td style="padding:10px 12px;text-align:right;font-weight:700;color:#ea580c;border-top:2px solid #fdba74;">${fmt(fipTotal)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      ` : ''}
+      ` : ''}
 
       <!-- 1. CONTRATANTE -->
       <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
@@ -418,6 +533,29 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
     '',
     `Medição ${tag} — Período ${p.periodo_referencia} — Obra WAVE`,
     '',
+    ...(temFipMaterial ? [
+      `⚠ ORDEM OBRIGATÓRIA DE EMISSÃO DAS NFs`,
+      `A NF de MATERIAL (FIP fat-direto) deve ser emitida e lançada no Informakon`,
+      `ANTES da NF de SERVIÇO (Wave). Só assim o Wave pode descontar as NFs`,
+      `de material já lançadas e emitir pelo valor integral.`,
+      ``,
+      `1º) NF FIP — MATERIAL (fat-direto)`,
+      `    Emissora: ${CONTRATADO.razaoSocial}`,
+      `    CNPJ:     ${maskCnpj(CONTRATADO.cnpj)}`,
+      `    Valor:    ${fmt(fipTotal)}`,
+      ``,
+      `2º) NF Wave — SERVIÇO (somente após o Passo 1)`,
+      `    Emissora: ${WAVE_SPE.razaoSocial}`,
+      `    CNPJ:     ${maskCnpj(WAVE_SPE.cnpj)}`,
+      `    Valor:    ${fmt(waveTotal)}`,
+      ``,
+      ...(p.fip_por_grupo_macro && p.fip_por_grupo_macro.length > 0 ? [
+        `MATERIAL FIP — DETALHAMENTO POR GRUPO MACRO`,
+        ...p.fip_por_grupo_macro.map(g => `  ${String(g.grupo).padStart(2)}. ${g.nome.padEnd(50)} ${fmt(g.valor)}`),
+        `  TOTAL FIP MATERIAL: ${fmt(fipTotal)}`,
+        ``,
+      ] : []),
+    ] : []),
     `RESUMO DA MEDIÇÃO`,
     `  Material correspondente:    ${fmt(p.resumo.retencao.material_correspondente)}`,
     `  Serviço medido (NF a emitir): ${fmt(p.resumo.retencao.servico_medido)}`,

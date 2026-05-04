@@ -155,6 +155,14 @@ async function dispararEmailLiberacaoMedicao(args: {
     valor_retido_absorvido: number
     motivo: string
   }> | undefined
+
+  // FIP material + Wave serviço + somatório FIP por grupo macro
+  // (extraídos das mesmas linhas do informacon — uma única chamada).
+  const { agruparPorMacro } = await import('@/lib/data/grupos-macro')
+  let fipMaterialTotal = 0
+  let waveServicoTotal = 0
+  let fipPorGrupoMacro: Array<{ grupo: number; nome: string; valor: number }> = []
+
   try {
     const protocoloHeader = process.env.VERCEL ? 'https' : 'http'
     const hostHeader = process.env.VERCEL_URL || 'localhost:3000'
@@ -166,7 +174,10 @@ async function dispararEmailLiberacaoMedicao(args: {
     )
     if (informaconRes.ok) {
       const informacon: any = await informaconRes.json()
-      const linhasComAjuste = ((informacon.linhas ?? []) as any[]).filter(
+      const linhas = ((informacon.linhas ?? []) as any[])
+
+      // 1) Itens com ajuste sem-NF (seção destacada amarela)
+      const linhasComAjuste = linhas.filter(
         (l: any) => l.ajuste_aplicado && l.confirmacao_sem_nf,
       )
       if (linhasComAjuste.length > 0) {
@@ -179,9 +190,18 @@ async function dispararEmailLiberacaoMedicao(args: {
           motivo: String(l.confirmacao_sem_nf_motivo ?? ''),
         }))
       }
+
+      // 2) Totais e somatório por grupo macro pro bloco de NFs
+      fipMaterialTotal = linhas.reduce((s, l) => s + Number(l.fip_faturar || 0), 0)
+      waveServicoTotal = linhas.reduce((s, l) => s + Number(l.wave_servico || 0), 0)
+      fipPorGrupoMacro = agruparPorMacro(
+        linhas
+          .filter((l: any) => Number(l.fip_faturar || 0) > 0)
+          .map((l: any) => ({ codigo: l.codigo, valor: Number(l.fip_faturar || 0) })),
+      )
     }
   } catch (e: any) {
-    log.warn('email_itens_confirmacao_sem_nf_falhou', {
+    log.warn('email_dados_informacon_falhou', {
       medicaoId: args.medicaoId,
       error: e?.message,
     })
@@ -222,6 +242,11 @@ async function dispararEmailLiberacaoMedicao(args: {
     aprovador_nome: args.aprovadorNome,
     reenvio: false,
     itens_com_confirmacao_sem_nf: itensComConfirmacao,
+    nfs_a_emitir: {
+      fip_material: { valor: fipMaterialTotal },
+      wave_servico: { valor: waveServicoTotal },
+    },
+    fip_por_grupo_macro: fipPorGrupoMacro,
   })
 
   const envio = await sendEmail({

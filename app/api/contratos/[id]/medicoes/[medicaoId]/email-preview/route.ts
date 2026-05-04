@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { templateLiberacaoMedicaoFornecedor } from '@/lib/email/templates-medicoes'
 import { listarUsuariosAtreladosAoContrato } from '@/lib/db/usuarios-contrato'
 import { calcularResumoFinanceiroObra } from '@/lib/db/resumo-financeiro-obra'
+import { agruparPorMacro } from '@/lib/data/grupos-macro'
 
 /**
  * GET /api/contratos/[id]/medicoes/[medicaoId]/email-preview?reenvio=true
@@ -54,6 +55,35 @@ export async function GET(
       medicao_id: medicaoId,
     })
 
+    // Calcula NFs a emitir (FIP material + Wave serviço) e somatório FIP
+    // por grupo macro a partir das linhas do informacon. Best-effort: se
+    // a chamada falhar, segue sem o bloco de NFs (template trata fallback).
+    let fipMaterial = 0
+    let waveServico = 0
+    let fipPorGrupoMacro: Array<{ grupo: number; nome: string; valor: number }> = []
+    try {
+      const protocoloHeader = process.env.VERCEL ? 'https' : 'http'
+      const hostHeader = process.env.VERCEL_URL || 'localhost:3000'
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? `${protocoloHeader}://${hostHeader}`
+      const r = await fetch(
+        `${baseUrl}/api/contratos/${contratoId}/medicoes/${medicaoId}/informacon`,
+        { cache: 'no-store' },
+      )
+      if (r.ok) {
+        const data: any = await r.json()
+        const linhas = (data.linhas ?? []) as any[]
+        fipMaterial = linhas.reduce((s, l) => s + Number(l.fip_faturar || 0), 0)
+        waveServico = linhas.reduce((s, l) => s + Number(l.wave_servico || 0), 0)
+        fipPorGrupoMacro = agruparPorMacro(
+          linhas
+            .filter(l => Number(l.fip_faturar || 0) > 0)
+            .map(l => ({ codigo: l.codigo, valor: Number(l.fip_faturar || 0) })),
+        )
+      }
+    } catch {
+      // segue sem o bloco
+    }
+
     const tpl = templateLiberacaoMedicaoFornecedor({
       numero_medicao: (medicao as any).numero,
       periodo_referencia: (medicao as any).periodo_referencia ?? '—',
@@ -69,6 +99,11 @@ export async function GET(
       resumo,
       aprovador_nome: (perfilAprov as any)?.nome ?? null,
       reenvio,
+      nfs_a_emitir: {
+        fip_material: { valor: fipMaterial },
+        wave_servico: { valor: waveServico },
+      },
+      fip_por_grupo_macro: fipPorGrupoMacro,
     })
 
     const envolvidos = await listarUsuariosAtreladosAoContrato(contratoId)
