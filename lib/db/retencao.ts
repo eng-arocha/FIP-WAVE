@@ -121,8 +121,15 @@ export async function aplicarRetencaoDaAprovacao(
     contrato_id: string
     medicao_id: string
     medicao_numero: number
-    material_medido: number
-    servico_medido: number
+    /**
+     * Base de retenção da medição. Use `informacon.totais.base_retencao`
+     * (= wave_servico + material_medido − material_retido = dados_informakon),
+     * que exclui o material retido (saldo de pedido aprovado com NF terceiro
+     * pendente) — material retido NÃO gera pagamento nesta medição, então
+     * NÃO retém também. Garante alinhamento com o card "Estimativa de
+     * retenção contratual" exibido na medição.
+     */
+    base_retencao: number
     wave_bruto: number
     pct_retencao: number  // ex.: 5 → 5%
     aprovador_id: string
@@ -139,9 +146,8 @@ export async function aplicarRetencaoDaAprovacao(
   // Saldo ANTES de qualquer movimento desta aprovação
   const saldoAntes = await getSaldoRetencao(admin, args.contrato_id)
 
-  // Crédito = 5% × (mat + serv) medido
-  const baseCredito = args.material_medido + args.servico_medido
-  const valorCredito = Math.round(baseCredito * (args.pct_retencao / 100) * 100) / 100
+  // Crédito = pct × base_retencao
+  const valorCredito = Math.round(args.base_retencao * (args.pct_retencao / 100) * 100) / 100
 
   let creditoAplicado = 0
   let saldoAposCredito = saldoAntes
@@ -152,7 +158,7 @@ export async function aplicarRetencaoDaAprovacao(
       origem_tipo: 'medicao_aprovada',
       origem_id: args.medicao_id,
       valor: valorCredito,
-      descricao: `Retenção 5% × (mat + serv) da ${tag}: 5% × R$ ${baseCredito.toFixed(2)}`,
+      descricao: `Retenção ${args.pct_retencao}% × (wave + mat − retido) da ${tag}: ${args.pct_retencao}% × R$ ${args.base_retencao.toFixed(2)}`,
       criado_por: args.aprovador_id,
     })
     creditoAplicado = valorCredito

@@ -108,8 +108,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             contrato_id: contratoId,
             medicao_id: medicaoId,
             medicao_numero: informacon.medicao.numero,
-            material_medido: informacon.totais.material_medido,
-            servico_medido: informacon.totais.servico_medido,
+            // Usa a MESMA base que aparece no card "Estimativa de retenção
+            // contratual" da página da medição — exclui material retido.
+            base_retencao: informacon.totais.base_retencao,
             wave_bruto: valorWaveBruto,
             pct_retencao: pctRetencao,
             aprovador_id: check.userId,
