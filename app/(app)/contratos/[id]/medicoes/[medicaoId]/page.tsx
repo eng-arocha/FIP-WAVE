@@ -15,7 +15,7 @@ import {
 import {
   ArrowLeft, CheckCircle2, XCircle, MessageSquare, Download,
   FileText, User, Calendar, Hash, Clock, Paperclip, AlertCircle, Loader2, Trash2, Undo2,
-  Mail, TrendingUp, ChevronRight, ChevronDown,
+  Mail, TrendingUp, ChevronRight, ChevronDown, Pencil,
 } from 'lucide-react'
 import {
   formatCurrency, formatDatetime, formatDate, formatPercent,
@@ -122,6 +122,19 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
   const [confirmDelete, setConfirmDelete] = useState(false)
   const { perfilAtual } = usePermissoes()
   const isAdmin = perfilAtual === 'admin'
+
+  // === Modal "Ajustar quantidade" — admin ajusta na própria página da medição ===
+  const [modalAjustar, setModalAjustar] = useState<{
+    detalhamento_id: string
+    codigo: string
+    descricao: string
+    quantidade_atual: number
+    quantidade_contratada: number
+  } | null>(null)
+  const [novaQtd, setNovaQtd] = useState('')
+  const [motivoAjuste, setMotivoAjuste] = useState('')
+  const [salvandoAjuste, setSalvandoAjuste] = useState(false)
+  const [erroAjuste, setErroAjuste] = useState('')
 
   // Totais financeiros (mat, serv, retenção) puxados do endpoint /informacon
   // — fonte da verdade pra evitar inconsistência com o Boletim. Cai pra
@@ -311,6 +324,66 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
     })
     setSaving(false)
     if (res.ok) { setStatus('rejeitado'); setModalRejeitar(false) }
+  }
+
+  // === Ajustar quantidade (admin) — usa rota PATCH por detalhamento_id que
+  // faz upsert (cria medicao_item se não existe). Após salvar, recarrega
+  // /planilha pra atualizar números na UI sem refresh full.
+  function abrirAjustar(it: { detalhamento_id: string | null; codigo: string; descricao: string; qtd_atual: number; quantidade_contratada: number }) {
+    if (!it.detalhamento_id) return
+    setModalAjustar({
+      detalhamento_id: it.detalhamento_id,
+      codigo: it.codigo,
+      descricao: it.descricao,
+      quantidade_atual: Number(it.qtd_atual ?? 0),
+      quantidade_contratada: Number(it.quantidade_contratada ?? 0),
+    })
+    setNovaQtd(String(it.qtd_atual ?? 0))
+    setMotivoAjuste('')
+    setErroAjuste('')
+  }
+
+  async function salvarAjuste() {
+    if (!modalAjustar) return
+    const qtyNum = Number(novaQtd.replace(',', '.'))
+    if (!Number.isFinite(qtyNum) || qtyNum < 0) {
+      setErroAjuste('Quantidade inválida.')
+      return
+    }
+    if (Math.abs(qtyNum - modalAjustar.quantidade_atual) < 1e-6) {
+      setErroAjuste('A quantidade nova é igual à atual.')
+      return
+    }
+    if (motivoAjuste.trim().length < 10) {
+      setErroAjuste('Motivo precisa ter pelo menos 10 caracteres.')
+      return
+    }
+    setSalvandoAjuste(true)
+    setErroAjuste('')
+    try {
+      const res = await fetch(
+        `/api/contratos/${contratoId}/medicoes/${medicaoId}/detalhamentos/${modalAjustar.detalhamento_id}/ajustar`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ quantidade_nova: qtyNum, motivo: motivoAjuste.trim() }),
+        },
+      )
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setErroAjuste(body?.error || `Falha (HTTP ${res.status}).`)
+        return
+      }
+      setModalAjustar(null)
+      setNovaQtd('')
+      setMotivoAjuste('')
+      // Recarrega planilha pra refletir o novo qty
+      await fetchPlanilha()
+    } catch (e: any) {
+      setErroAjuste(e?.message || 'Erro de rede.')
+    } finally {
+      setSalvandoAjuste(false)
+    }
   }
 
   const ACAO_CONFIG: Record<string, { icon: any; color: string; bg: string; label: string }> = {
@@ -844,8 +917,28 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                         {isTarefaOpen && t.detalhamentos.map((it) => {
                                           const pctTotalBarI = Math.min(Math.max(it.pct_total, 0), 100)
                                           return (
-                                            <tr key={`d-${it.medicao_item_id}`} className="border-b border-[var(--border)]" style={{ background: 'var(--surface-1)' }}>
-                                              <td className="py-2 font-mono" style={{ color: 'var(--text-3)', paddingLeft: '32px' }}>{it.codigo}</td>
+                                            <tr key={`d-${it.medicao_item_id || it.detalhamento_id}`} className="border-b border-[var(--border)]" style={{ background: 'var(--surface-1)' }}>
+                                              <td className="py-2 font-mono" style={{ color: 'var(--text-3)', paddingLeft: '32px' }}>
+                                                <span className="inline-flex items-center gap-1.5">
+                                                  {isAdmin && isPendente && it.detalhamento_id && (
+                                                    <button
+                                                      onClick={() => abrirAjustar({
+                                                        detalhamento_id: it.detalhamento_id!,
+                                                        codigo: it.codigo,
+                                                        descricao: it.descricao,
+                                                        qtd_atual: it.qtd_atual,
+                                                        quantidade_contratada: it.quantidade_contratada,
+                                                      })}
+                                                      className="text-[10px] font-medium px-1.5 py-0.5 rounded print:hidden hover:bg-orange-500/10"
+                                                      style={{ color: '#F97316', border: '1px solid rgba(249,115,22,0.4)' }}
+                                                      title="Admin: ajustar quantidade medida"
+                                                    >
+                                                      <Pencil className="inline w-3 h-3" />
+                                                    </button>
+                                                  )}
+                                                  {it.codigo}
+                                                </span>
+                                              </td>
                                               <td className="py-2" style={{ color: 'var(--text-2)' }}>{it.descricao}</td>
                                               <td className="py-2 text-right">
                                                 <div className="text-sm tabular-nums" style={{ color: 'var(--text-2)' }}>
@@ -1317,6 +1410,112 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
           setModalLiberacao(null)
         }}
       />
+
+      {/* Modal Ajustar Quantidade (admin) — também disponível aqui na página
+          da medição, não só no Boletim Informakon. */}
+      <Dialog
+        open={!!modalAjustar}
+        onOpenChange={(open) => { if (!open && !salvandoAjuste) { setModalAjustar(null); setErroAjuste('') } }}
+      >
+        <DialogContent>
+          {modalAjustar && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2" style={{ color: '#F97316' }}>
+                  <Pencil className="w-5 h-5" />
+                  Ajustar quantidade — admin
+                </DialogTitle>
+                <DialogDescription className="text-[var(--text-2)]">
+                  Item <strong className="font-mono">{modalAjustar.codigo}</strong>
+                  {' — '}
+                  {modalAjustar.descricao.length > 80
+                    ? modalAjustar.descricao.slice(0, 80) + '...'
+                    : modalAjustar.descricao}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-3 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-[var(--text-3)] font-medium uppercase tracking-wider">
+                      Quantidade atual
+                    </Label>
+                    <div className="px-3 py-2 rounded-lg font-mono text-sm" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-2)' }}>
+                      {modalAjustar.quantidade_atual}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-[var(--text-3)] font-medium uppercase tracking-wider">
+                      Quantidade contratada
+                    </Label>
+                    <div className="px-3 py-2 rounded-lg font-mono text-sm" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>
+                      {modalAjustar.quantidade_contratada}
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wider">
+                    Nova quantidade
+                  </Label>
+                  <input
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    value={novaQtd}
+                    onChange={e => setNovaQtd(e.target.value)}
+                    className="w-full bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-1)] rounded-lg px-3 py-2 outline-none font-mono"
+                    autoFocus
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wider">
+                    Motivo do ajuste <span className="text-red-400">(obrigatório, mín. 10 caracteres)</span>
+                  </Label>
+                  <Textarea
+                    placeholder="Ex.: 'Incluí item 19.1.1 (Administração) que ficou de fora.'"
+                    value={motivoAjuste}
+                    onChange={e => setMotivoAjuste(e.target.value)}
+                    className="bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-1)] placeholder:text-[var(--text-3)] min-h-[70px]"
+                  />
+                  <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
+                    O motivo aparece no histórico e no email pro solicitante. Seja específico.
+                  </p>
+                </div>
+                <div className="p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg text-xs text-orange-400">
+                  <strong>Atenção:</strong> esse ajuste fica permanente como histórico. Recalcula automaticamente os valores da medição após salvar.
+                </div>
+                {erroAjuste && (
+                  <div className="p-3 bg-red-900/20 border border-red-800/40 rounded-lg text-xs text-red-400">
+                    {erroAjuste}
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="ghost"
+                  onClick={() => { setModalAjustar(null); setErroAjuste('') }}
+                  disabled={salvandoAjuste}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={salvarAjuste}
+                  loading={salvandoAjuste}
+                  disabled={
+                    salvandoAjuste ||
+                    motivoAjuste.trim().length < 10 ||
+                    !novaQtd ||
+                    !Number.isFinite(Number(novaQtd.replace(',', '.')))
+                  }
+                  style={{ background: '#F97316' }}
+                >
+                  <Pencil className="w-4 h-4" />
+                  Salvar ajuste
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
