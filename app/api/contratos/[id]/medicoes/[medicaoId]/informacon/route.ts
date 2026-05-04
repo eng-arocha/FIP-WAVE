@@ -244,52 +244,41 @@ export async function GET(
         const materialRetido = Math.min(gapMaterial, saldoAprovDisponivel)
         const fipFaturar     = Math.max(0, gapMaterial - materialRetido)
 
-        // Dados Informakon: agora INCLUI fipFaturar (NF FIP nova certa via
-        // cancelamento), pois o aprovador "selou" a contagem com confirmação
-        // sem-NF e o restante do material vira faturamento direto FIP.
-        // = wave_servico_físico + nf_descontavel + fip_faturar (todos os
-        // "certos" que Wave consegue descontar). Nota: usamos servMedido
-        // FÍSICO aqui — o pct_informakon resultante é o ALVO pra ajustar
-        // o pct_serv_med.
         const valorGlobalItem = qtdContr * valorUnit
         const valorServicoTotalItem = qtdContr * servUnit
-        const dadosInformakon = servMedido + nfDescontavel + fipFaturar
-        const pctInformakon = valorGlobalItem > 0 ? (dadosInformakon / valorGlobalItem) * 100 : 0
 
         // Pct físico de serviço medido
         const pctServMed = qtdContr > 0 ? (qtdMed / qtdContr) * 100 : 0
 
         // === Confirmação sem-NF: ajuste de % serv. med. ===
         // Quando o aprovador confirma "sem mais NF chegando" e ainda há
-        // material retido (saldo aprovado pendente), forçamos:
-        //   % serv. med. = % informakon
-        // pra evitar vazamento de retenção contratual (a Wave não pode
-        // faturar serviço sobre material que nunca virá).
+        // material retido (saldo aprovado pendente), reduz pct_serv_med
+        // proporcionalmente ao retido pra fechar o vazamento de retenção:
+        //   pct_ajustado = pct × (1 − retido / valor_servico_total_item)
+        // Sem ajuste: pct permanece o físico.
         const confirmacaoSemNf = Boolean(it.confirmacao_sem_nf)
         const ajusteAplicado = confirmacaoSemNf && materialRetido > 0
 
-        const pctServMedAjustado = ajusteAplicado ? pctInformakon : pctServMed
+        const pctServMedAjustado = ajusteAplicado && valorServicoTotalItem > 0
+          ? Math.max(0, pctServMed - (materialRetido / valorServicoTotalItem) * 100)
+          : pctServMed
 
-        // wave_servico ajustado: quando ajuste aplicado, NF Wave fatura sobre
-        // pct_serv_med_ajustado. Caso contrário, servMedido (= qtdMed × servUnit
-        // = pctServMed × valor_servico_total_item).
-        const waveServico = ajusteAplicado
-          ? (pctServMedAjustado / 100) * valorServicoTotalItem
-          : servMedido
+        // Wave (serviço) faturado = pct_ajustado × parcela de serviço
+        const waveServico = (pctServMedAjustado / 100) * valorServicoTotalItem
 
-        // Valor total medido = DADOS INFORMAKON (= o que efetivamente vai
-        // virar NF: serv físico + NF FIP descontada + FIP a criar). Por
-        // construção EXCLUI o retido (saldo de pedido aprovado pendente
-        // que não vai virar NF agora) — fecha o vazamento de retenção
-        // contratual quando a NF de material atrasa.
-        //
-        // Sem retido: matMedido = nfDescontavel + fipFaturar, então o cálculo
-        // antigo (matMedido + servMedido) já dava igual a dadosInformakon —
-        // só destravava em itens com retido > 0, onde a diferença é
-        // exatamente o material retido.
-        const valorTotalMedido = dadosInformakon
+        // === Novas fórmulas (Ações 3 e 4) ===
+        // Valor Total Medido = % serv. med. × parcela de serviço do item
+        const valorTotalMedido = (pctServMedAjustado / 100) * valorServicoTotalItem
 
-        // Retenção sobre a base já ajustada (= dadosInformakon).
+        // Dados Informakon = Valor Total Medido − Valor Retido
+        const dadosInformakon = valorTotalMedido - materialRetido
+
+        // % Informakon = Dados Informakon ÷ parcela de serviço × 100
+        const pctInformakon = valorServicoTotalItem > 0
+          ? (dadosInformakon / valorServicoTotalItem) * 100
+          : 0
+
+        // Retenção sobre a base já ajustada (= valor total medido).
         const baseRet = valorTotalMedido
         const retencao5pct = baseRet * (pctRetencao / 100)
 

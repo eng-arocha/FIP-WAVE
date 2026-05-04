@@ -171,12 +171,13 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
   function copiarParaClipboard() {
     if (!data) return
     const headers = [
-      'Código', 'Descrição',
+      'Código', 'Descrição', '% Informakon',
       'Mat. Medido', 'NF Terceiro', 'Saldo Aprov.', 'NF Desc.', 'Gap', 'Retido', 'FIP Fat-Dir',
-      'Wave (Serv.)', '% Serv. Med.', 'Valor Total Medido', 'Dados Informakon', '% Informakon', 'Retenção',
+      'Wave (Serv.)', '% Serv. Med.', 'Valor Total Medido', 'Dados Informakon', 'Retenção',
     ]
     const rows = linhasExibidas.map(l => [
       l.codigo, l.descricao,
+      pctFmt(l.pct_informakon, 4),
       l.material_medido.toFixed(2).replace('.', ','),
       l.nf_terceiro.toFixed(2).replace('.', ','),
       l.saldo_aprovado.toFixed(2).replace('.', ','),
@@ -188,7 +189,6 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
       pctFmt(pctServMedExibido(l)),
       l.valor_total_medido.toFixed(2).replace('.', ','),
       l.dados_informakon.toFixed(2).replace('.', ','),
-      pctFmt(l.pct_informakon, 4),
       l.retencao.toFixed(2).replace('.', ','),
     ])
     const tsv = [headers, ...rows].map(r => r.join('\t')).join('\n')
@@ -445,6 +445,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                 [
                   { header: 'Código', get: (l: any) => l.codigo },
                   { header: 'Descrição', get: (l: any) => l.descricao },
+                  { header: '% Informakon', get: (l: any) => Number(l.pct_informakon) },
                   { header: 'Mat. Medido', get: (l: any) => Number(l.material_medido) },
                   { header: 'NF Terceiro', get: (l: any) => Number(l.nf_terceiro) },
                   { header: 'Saldo Aprov.', get: (l: any) => Number(l.saldo_aprovado) },
@@ -456,7 +457,6 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   { header: '% Serv. Med.', get: (l: any) => Number(pctServMedExibido(l)) },
                   { header: 'Valor Total Medido', get: (l: any) => Number(l.valor_total_medido) },
                   { header: 'Dados Informakon', get: (l: any) => Number(l.dados_informakon) },
-                  { header: '% Informakon', get: (l: any) => Number(l.pct_informakon) },
                   { header: 'Retenção', get: (l: any) => Number(l.retencao) },
                 ],
               )}
@@ -625,6 +625,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                 <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                   <th style={th()}>Item</th>
                   <th style={{ ...th(), textAlign: 'left' }}>Descrição</th>
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(16,185,129,0.05)' }}>% Informakon</th>
                   <th style={{ ...th(), textAlign: 'right' }}>Mat. Medido</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>NF Terceiro</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>Saldo Aprov.</th>
@@ -636,7 +637,6 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>% Serv. Med.</th>
                   <th style={{ ...th(), textAlign: 'right' }}>Valor Total Medido</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(16,185,129,0.05)' }}>Dados Informakon</th>
-                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(16,185,129,0.05)' }}>% Informakon</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(99,102,241,0.05)' }}>Retenção</th>
                 </tr>
               </thead>
@@ -655,15 +655,11 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   </tr>
                 ) : linhasExibidas.map((l, idx) => {
                   const ajustado = !!l.ajuste_aplicado
-                  const podeConfirmar = l.material_retido > 0
                   // % exibido: ajustado se confirmado-sem-NF, físico caso contrário
                   const pctExibido = pctServMedExibido(l)
                   const pctOriginal = l.pct_serv_med_original ?? l.pct_medido
                   const codigoTooltip = ajustado
                     ? `Item teve % ajustado por confirmação 'sem mais NF'. Original: ${pctFmt(pctOriginal)}, atual: ${pctFmt(pctExibido)}`
-                    : undefined
-                  const checkboxTooltip = ajustado && l.confirmacao_sem_nf_motivo
-                    ? `% original: ${pctFmt(pctOriginal)} · motivo: ${l.confirmacao_sem_nf_motivo}`
                     : undefined
 
                   return (
@@ -692,6 +688,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                         </span>
                       </td>
                       <td style={{ ...td('break-words'), textAlign: 'left', maxWidth: 240 }}>{l.descricao}</td>
+                      <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(16,185,129,0.06)' }}>{pctFmt(l.pct_informakon, 4)}</td>
                       <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(l.material_medido)}</td>
                       <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.nf_terceiro)}</td>
                       <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.saldo_aprovado)}</td>
@@ -700,7 +697,6 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                       <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(245,158,11,0.04)', color: l.material_retido > 0 ? '#F59E0B' : 'var(--text-3)' }}>{formatCurrency(l.material_retido)}</td>
                       <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(59,130,246,0.04)', color: l.fip_faturar > 0 ? '#3B82F6' : 'var(--text-3)' }}>{formatCurrency(l.fip_faturar)}</td>
                       <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(15,118,110,0.04)', color: '#0F766E' }}>{formatCurrency(l.wave_servico)}</td>
-                      {/* % Serv. Med. — coluna que ganha o checkbox + tooltip de ajuste */}
                       <td
                         style={{
                           ...td('tabular-nums'),
@@ -708,30 +704,11 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                           background: ajustado ? 'rgba(245,158,11,0.10)' : 'rgba(15,118,110,0.04)',
                           color: ajustado ? '#F59E0B' : '#0F766E',
                         }}
-                        title={checkboxTooltip}
                       >
-                        <span className="inline-flex items-center gap-1.5 justify-end w-full">
-                          {podeConfirmar && (
-                            <input
-                              type="checkbox"
-                              checked={!!l.confirmacao_sem_nf}
-                              onChange={() => abrirModalConfirmacao(l, !l.confirmacao_sem_nf)}
-                              disabled={!isPendente && data.medicao.status !== 'rascunho'}
-                              className="cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 print:hidden"
-                              title={
-                                l.confirmacao_sem_nf
-                                  ? 'Reverter confirmação sem mais NF'
-                                  : 'Marcar: fornecedor confirmou que não emitirá mais NF'
-                              }
-                              aria-label="Confirmar sem mais NF"
-                            />
-                          )}
-                          <span>{pctFmt(pctExibido)}</span>
-                        </span>
+                        {pctFmt(pctExibido)}
                       </td>
                       <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(l.valor_total_medido)}</td>
                       <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', background: 'rgba(16,185,129,0.06)', color: '#10B981' }}>{formatCurrency(l.dados_informakon)}</td>
-                      <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(16,185,129,0.06)' }}>{pctFmt(l.pct_informakon, 4)}</td>
                       <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', background: 'rgba(99,102,241,0.06)', color: '#818CF8' }}>{formatCurrency(l.retencao)}</td>
                     </tr>
                   )
@@ -741,6 +718,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                 <tfoot>
                   <tr style={{ background: 'var(--surface-3)', fontWeight: 700, borderTop: '2px solid var(--border)' }}>
                     <td colSpan={2} style={{ ...td(), textAlign: 'right' }}>TOTAIS</td>
+                    <td style={{ ...td(), background: 'rgba(16,185,129,0.10)' }}></td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.material_medido, 0))}</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.nf_terceiro, 0))}</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.saldo_aprovado, 0))}</td>
@@ -752,7 +730,6 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                     <td style={{ ...td(), background: 'rgba(15,118,110,0.06)' }}></td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.valor_total_medido, 0))}</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(16,185,129,0.10)', color: '#10B981' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.dados_informakon, 0))}</td>
-                    <td style={{ ...td(), background: 'rgba(16,185,129,0.10)' }}></td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(99,102,241,0.10)', color: '#818CF8' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.retencao, 0))}</td>
                   </tr>
                 </tfoot>
