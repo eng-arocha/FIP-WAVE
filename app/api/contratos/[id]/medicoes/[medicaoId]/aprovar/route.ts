@@ -156,32 +156,24 @@ async function dispararEmailLiberacaoMedicao(args: {
     motivo: string
   }> | undefined
 
-  // FIP material + Wave serviço + somatório FIP por grupo macro
-  // (extraídos das mesmas linhas do informacon — uma única chamada).
+  // FIP material + Wave serviço + itens com ajuste + somatório FIP por
+  // grupo macro — calculados direto via lib/db/informacon-data (sem
+  // self-fetch HTTP, que falha em prod no Vercel).
   const { agruparPorMacro } = await import('@/lib/data/grupos-macro')
+  const { calcularInformaconData } = await import('@/lib/db/informacon-data')
   let fipMaterialTotal = 0
   let waveServicoTotal = 0
   let fipPorGrupoMacro: Array<{ grupo: number; nome: string; valor: number }> = []
 
   try {
-    const protocoloHeader = process.env.VERCEL ? 'https' : 'http'
-    const hostHeader = process.env.VERCEL_URL || 'localhost:3000'
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL
-      ?? `${protocoloHeader}://${hostHeader}`
-    const informaconRes = await fetch(
-      `${baseUrl}/api/contratos/${args.contratoId}/medicoes/${args.medicaoId}/informacon`,
-      { cache: 'no-store' },
-    )
-    if (informaconRes.ok) {
-      const informacon: any = await informaconRes.json()
-      const linhas = ((informacon.linhas ?? []) as any[])
+    const informacon = await calcularInformaconData(admin, args.contratoId, args.medicaoId)
+    if (informacon) {
+      const linhas = informacon.linhas
 
       // 1) Itens com ajuste sem-NF (seção destacada amarela)
-      const linhasComAjuste = linhas.filter(
-        (l: any) => l.ajuste_aplicado && l.confirmacao_sem_nf,
-      )
+      const linhasComAjuste = linhas.filter(l => l.ajuste_aplicado && l.confirmacao_sem_nf)
       if (linhasComAjuste.length > 0) {
-        itensComConfirmacao = linhasComAjuste.map((l: any) => ({
+        itensComConfirmacao = linhasComAjuste.map(l => ({
           codigo: String(l.codigo ?? '—'),
           descricao: String(l.descricao ?? '—'),
           pct_original: Number(l.pct_serv_med_original ?? 0),
@@ -192,12 +184,12 @@ async function dispararEmailLiberacaoMedicao(args: {
       }
 
       // 2) Totais e somatório por grupo macro pro bloco de NFs
-      fipMaterialTotal = linhas.reduce((s, l) => s + Number(l.fip_faturar || 0), 0)
-      waveServicoTotal = linhas.reduce((s, l) => s + Number(l.wave_servico || 0), 0)
+      fipMaterialTotal = linhas.reduce((s, l) => s + l.fip_faturar, 0)
+      waveServicoTotal = linhas.reduce((s, l) => s + l.wave_servico, 0)
       fipPorGrupoMacro = agruparPorMacro(
         linhas
-          .filter((l: any) => Number(l.fip_faturar || 0) > 0)
-          .map((l: any) => ({ codigo: l.codigo, valor: Number(l.fip_faturar || 0) })),
+          .filter(l => l.fip_faturar > 0)
+          .map(l => ({ codigo: l.codigo, valor: l.fip_faturar })),
       )
     }
   } catch (e: any) {
