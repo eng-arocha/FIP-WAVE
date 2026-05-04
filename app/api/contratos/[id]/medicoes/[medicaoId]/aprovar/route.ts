@@ -470,9 +470,13 @@ async function dispararEmailLiberacaoMedicao(args: {
       fip_material: { valor: fipMaterialTotal },
       // NF Wave: valor LÍQUIDO (= bruto − débito do livro-razão de retenção).
       // O breakdown completo (saldo antes/depois, crédito, débito) vai pro
-      // bloco de retenção do email.
+      // bloco de retenção do email. Se o cálculo de retenção falhou,
+      // valorWaveLiquido fica em 0 — nesse caso volta pro bruto pra não
+      // exibir R$ 0,00.
       wave_servico: {
-        valor: args.valorWaveLiquido ?? waveServicoTotal,
+        valor: (args.valorWaveLiquido && args.valorWaveLiquido > 0)
+          ? args.valorWaveLiquido
+          : waveServicoTotal,
         valor_bruto: args.retencaoBreakdown?.wave_bruto ?? waveServicoTotal,
         retencao: args.retencaoBreakdown?.debito ?? 0,
       },

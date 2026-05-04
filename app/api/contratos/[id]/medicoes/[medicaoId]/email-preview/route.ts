@@ -7,6 +7,7 @@ import { listarUsuariosAtreladosAoContrato } from '@/lib/db/usuarios-contrato'
 import { calcularResumoFinanceiroObra } from '@/lib/db/resumo-financeiro-obra'
 import { calcularInformaconData } from '@/lib/db/informacon-data'
 import { agruparPorMacro } from '@/lib/data/grupos-macro'
+import { getSaldoRetencao } from '@/lib/db/retencao'
 
 /**
  * GET /api/contratos/[id]/medicoes/[medicaoId]/email-preview?reenvio=true
@@ -70,6 +71,15 @@ export async function GET(
       ajustado_por_nome: string | null
       ajustado_em: string
     }> = []
+    // Simula a aplicação do livro-razão de retenção pra mostrar no preview o
+    // MESMO valor líquido que será cobrado na aprovação (= bruto − débito).
+    // Cai pro fallback "bruto − retencao_informacon" se a tabela ainda não
+    // existe (migration 062 pendente).
+    let saldoRetAntes = 0
+    let creditoRet = 0
+    let debitoRet = 0
+    let saldoRetDepois = 0
+    let waveLiquido = 0
     const informaconData = await calcularInformaconData(admin, contratoId, medicaoId)
     if (informaconData) {
       const linhas = informaconData.linhas
@@ -85,6 +95,24 @@ export async function GET(
       resumo.retencao.valor = informaconData.totais.retencao
       resumo.retencao.base_retencao = informaconData.totais.base_retencao
       resumo.retencao.liquido_a_pagar = waveServico - informaconData.totais.retencao
+
+      // Simula o livro-razão (= mesmo cálculo de aplicarRetencaoDaAprovacao,
+      // sem persistir): credita 5% × base_retencao, debita até zerar contra
+      // o bruto da Wave. Se a tabela 062 ainda não existe, cai num fallback
+      // simples (= bruto − retencao do informacon).
+      try {
+        saldoRetAntes = await getSaldoRetencao(admin, contratoId)
+        creditoRet = Math.round(informaconData.totais.retencao * 100) / 100
+        const saldoAposCredito = saldoRetAntes + creditoRet
+        debitoRet = Math.round(Math.min(saldoAposCredito, waveServico) * 100) / 100
+        saldoRetDepois = saldoAposCredito - debitoRet
+        waveLiquido = Math.max(0, waveServico - debitoRet)
+      } catch {
+        // migration 062 pendente — fallback usa retenção informativa
+        creditoRet = informaconData.totais.retencao
+        debitoRet = creditoRet
+        waveLiquido = Math.max(0, waveServico - creditoRet)
+      }
 
       // Ajustes do admin (migration 061) — pega o último ajuste de cada item
       for (const l of linhas) {
@@ -120,8 +148,24 @@ export async function GET(
       reenvio,
       nfs_a_emitir: {
         fip_material: { valor: fipMaterial },
-        wave_servico: { valor: waveServico },
+        // Valor LÍQUIDO da NF Wave = bruto − débito do livro-razão.
+        // É o que a Wave SPE deverá emitir efetivamente (já com retenção
+        // descontada). Bruto e retenção descontada vão no breakdown abaixo.
+        wave_servico: {
+          valor: waveLiquido > 0 ? waveLiquido : waveServico,
+          valor_bruto: waveServico,
+          retencao: debitoRet,
+        },
       },
+      retencao_breakdown: informaconData
+        ? {
+            saldo_antes: saldoRetAntes,
+            credito: creditoRet,
+            debito: debitoRet,
+            saldo_depois: saldoRetDepois,
+            wave_bruto: waveServico,
+          }
+        : undefined,
       fip_por_grupo_macro: fipPorGrupoMacro,
       ajustes_admin: ajustesAdmin.length > 0 ? ajustesAdmin : undefined,
     })
