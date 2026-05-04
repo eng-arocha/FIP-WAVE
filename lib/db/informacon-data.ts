@@ -310,7 +310,12 @@ export async function calcularInformaconData(
       const dadosInformakon = waveServico + matMedido - materialRetido
       const pctInformakon = valorGlobalItem > 0 ? (dadosInformakon / valorGlobalItem) * 100 : 0
       const alteradoPorRetido = materialRetido > 0
-      const baseRet = valorTotalMedido
+      // Retenção sobre o que está efetivamente sendo faturado nesta medição
+      // (mat NF descontável + FIP fat-direto + serviço Wave) = dados_informakon.
+      // Captura corretamente itens 100% material (ex.: grupo 19 Administração)
+      // que não geram NF de serviço — antes da correção a retenção desses
+      // itens dava zero porque a base era só wave_servico.
+      const baseRet = dadosInformakon
       const retencao5pct = baseRet * (pctRetencao / 100)
 
       const linha: InformaconLinha = {
