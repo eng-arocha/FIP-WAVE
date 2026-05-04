@@ -169,6 +169,17 @@ export interface LiberacaoMedicaoPayload {
     ajustado_por_nome: string | null
     ajustado_em: string
   }>
+
+  /**
+   * Quando a aprovação criou automaticamente um rascunho de solicitação
+   * fat-direto (porque ha fip_faturar > 0), passa o id e a URL aqui pra
+   * incluir um link no bloco "Ordem obrigatoria de emissao das NFs"
+   * orientando o admin a abrir, completar fornecedor/numero e submeter.
+   */
+  solicitacao_fat_direto_rascunho?: {
+    id: string
+    url: string
+  }
 }
 
 // ============================================================
@@ -311,6 +322,17 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
           <p style="margin:8px 0 0;font-size:12px;color:#475569;">
             Lançar no Informakon antes da NF Wave. Detalhamento por grupo macro abaixo.
           </p>
+          ${p.solicitacao_fat_direto_rascunho ? `
+          <p style="margin:10px 0 0;font-size:13px;">
+            <a href="${escapeHtml(p.solicitacao_fat_direto_rascunho.url)}"
+               style="display:inline-block;padding:8px 14px;background:#f97316;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:12px;">
+              📋 Abrir rascunho de solicitação fat-direto
+            </a>
+            <span style="color:#64748b;font-size:11px;margin-left:8px;">
+              (já criado automaticamente — complete fornecedor/número e submeta)
+            </span>
+          </p>
+          ` : ''}
         </div>
 
         <!-- Passo 2: NF Wave Serviço -->

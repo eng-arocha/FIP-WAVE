@@ -73,6 +73,62 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       request: req,
     })
 
+    // C — Auto-cria rascunho de solicitação fat-direto pra os itens com
+    // fip_faturar > 0 nesta medição. Best-effort: se falhar, segue o
+    // fluxo normal (admin cria manual depois). O ID da solicitação criada
+    // vai pro response e pro email.
+    let solicitacaoFatDiretoId: string | null = null
+    let solicitacaoFatDiretoValor: number | null = null
+    try {
+      const { calcularInformaconData } = await import('@/lib/db/informacon-data')
+      const { criarSolicitacaoRascunhoDeMedicao } = await import('@/lib/db/fat-direto')
+      const informacon = await calcularInformaconData(admin, contratoId, medicaoId)
+      if (informacon) {
+        const itensFipFaturar = informacon.linhas
+          .filter(l => l.fip_faturar > 0)
+          .map(l => ({
+            detalhamento_id: l.detalhamento_id,
+            descricao: l.descricao,
+            valor_total: l.fip_faturar,
+          }))
+        if (itensFipFaturar.length > 0) {
+          const sol = await criarSolicitacaoRascunhoDeMedicao({
+            contrato_id: contratoId,
+            solicitante_id: check.userId,
+            medicao_id: medicaoId,
+            medicao_numero: informacon.medicao.numero,
+            itens: itensFipFaturar,
+          })
+          solicitacaoFatDiretoId = sol.id
+          solicitacaoFatDiretoValor = Number(sol.valor_total ?? 0)
+          await audit({
+            event: 'solicitacao_fat_direto.rascunho_auto_criado_da_medicao',
+            entity_type: 'solicitacao_fat_direto',
+            entity_id: sol.id,
+            actor_id: check.userId,
+            actor_nome: aprovadorNome,
+            actor_email: aprovadorEmail,
+            metadata: {
+              medicao_id: medicaoId,
+              valor_total: solicitacaoFatDiretoValor,
+              itens_count: itensFipFaturar.length,
+            },
+            request: req,
+          })
+          log.info('rascunho_fat_direto_auto_criado', {
+            medicao_id: medicaoId,
+            solicitacao_id: sol.id,
+            valor: solicitacaoFatDiretoValor,
+          })
+        }
+      }
+    } catch (e: any) {
+      log.warn('rascunho_fat_direto_auto_falhou', {
+        medicao_id: medicaoId,
+        error: e?.message,
+      })
+    }
+
     // Webhook outbound (best-effort, não bloqueia resposta)
     void emitWebhook('medicao.aprovada', {
       medicao_id: medicaoId,
@@ -102,6 +158,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           medicaoId,
           aprovadorNome,
           destinatariosIds: destinatarios_ids!,
+          solicitacaoFatDiretoId,
         })
       } catch (e: any) {
         log.warn('email_liberacao_medicao_falhou', { medicaoId, error: e?.message })
@@ -109,7 +166,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       }
     }
 
-    return NextResponse.json({ ok: true, email_liberacao: emailLiberacao })
+    return NextResponse.json({
+      ok: true,
+      email_liberacao: emailLiberacao,
+      solicitacao_fat_direto: solicitacaoFatDiretoId
+        ? { id: solicitacaoFatDiretoId, valor_total: solicitacaoFatDiretoValor }
+        : null,
+    })
   } catch (e: any) {
     return apiError(e)
   }
@@ -124,6 +187,7 @@ async function dispararEmailLiberacaoMedicao(args: {
   medicaoId: string
   aprovadorNome: string
   destinatariosIds: string[]
+  solicitacaoFatDiretoId?: string | null
 }): Promise<{ ok: boolean; qtd?: number; erro?: string }> {
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const admin = createAdminClient()
@@ -272,6 +336,12 @@ async function dispararEmailLiberacaoMedicao(args: {
     },
     fip_por_grupo_macro: fipPorGrupoMacro,
     ajustes_admin: ajustesAdmin.length > 0 ? ajustesAdmin : undefined,
+    solicitacao_fat_direto_rascunho: args.solicitacaoFatDiretoId
+      ? {
+          id: args.solicitacaoFatDiretoId,
+          url: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://fip-wave.vercel.app'}/contratos/${args.contratoId}/fat-direto/solicitacoes/${args.solicitacaoFatDiretoId}`,
+        }
+      : undefined,
   })
 
   const envio = await sendEmail({

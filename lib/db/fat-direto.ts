@@ -356,6 +356,94 @@ export async function criarSolicitacao(input: {
   return sol
 }
 
+/**
+ * Cria uma solicitação fat-direto em status `rascunho` automaticamente,
+ * a partir dos itens com FIP fat-direto > 0 de uma medição recém-aprovada.
+ *
+ * Diferente de `criarSolicitacao`:
+ *   - Status nasce `rascunho` (não `aguardando_aprovacao`) — admin completa
+ *     fornecedor/numero/observações depois e só aí submete pra aprovação.
+ *   - **Sem validações de teto / limite por detalhamento** — a medição
+ *     que origina já foi validada pelo admin, e o material já foi
+ *     fisicamente medido. Bloquear aqui só atrapalharia.
+ *   - Sem geração automática de número (numero_pedido_fip fica NULL,
+ *     admin atribui manualmente ao completar o rascunho).
+ *
+ * Retorna a solicitação criada. Lança erro se inserir falhar.
+ */
+export async function criarSolicitacaoRascunhoDeMedicao(input: {
+  contrato_id: string
+  solicitante_id: string
+  medicao_id: string
+  medicao_numero: number
+  itens: Array<{
+    detalhamento_id: string
+    descricao: string
+    valor_total: number  // = fip_faturar do item
+  }>
+}) {
+  const admin = createAdminClient()
+
+  if (input.itens.length === 0) {
+    throw new Error('Nenhum item com fip_faturar > 0 — sem rascunho a criar.')
+  }
+
+  // Busca tarefa_id de cada detalhamento (campo obrigatório em itens)
+  const detIds = input.itens.map(i => i.detalhamento_id)
+  const { data: dets, error: detErr } = await admin
+    .from('detalhamentos')
+    .select('id, tarefa_id')
+    .in('id', detIds)
+  if (detErr) throw detErr
+  const tarefaPorDet = new Map<string, string>()
+  for (const d of (dets || []) as any[]) {
+    if (d.id && d.tarefa_id) tarefaPorDet.set(d.id, d.tarefa_id)
+  }
+
+  const valor_total = input.itens.reduce((s, i) => s + i.valor_total, 0)
+  const tag = `MED-${String(input.medicao_numero).padStart(3, '0')}`
+
+  const insertPayload: Record<string, unknown> = {
+    contrato_id: input.contrato_id,
+    solicitante_id: input.solicitante_id,
+    observacoes: `Rascunho gerado automaticamente da aprovação da medição ${tag}. Complete fornecedor/numero/observações antes de submeter.`,
+    valor_total,
+    status: 'rascunho',
+  }
+
+  const { data: sol, error } = await admin
+    .from('solicitacoes_fat_direto')
+    .insert(insertPayload)
+    .select()
+    .single()
+  if (error) throw error
+
+  const itensPayload = input.itens.map(i => ({
+    solicitacao_id: sol.id,
+    tarefa_id: tarefaPorDet.get(i.detalhamento_id) ?? null,
+    detalhamento_id: i.detalhamento_id,
+    descricao: i.descricao,
+    local: 'TORRE',  // default schema; admin ajusta se necessário
+    qtde_solicitada: 1,
+    valor_unitario: i.valor_total,
+  })).filter(it => it.tarefa_id !== null)
+
+  if (itensPayload.length === 0) {
+    // Nenhum dos detalhamentos tinha tarefa associada — desfaz o cabeçalho
+    await admin.from('solicitacoes_fat_direto').delete().eq('id', sol.id)
+    throw new Error('Nenhum dos itens tinha tarefa_id resolvido — rascunho cancelado.')
+  }
+
+  const { error: itErr } = await admin.from('itens_solicitacao_fat_direto').insert(itensPayload)
+  if (itErr) {
+    // Desfaz cabeçalho em caso de falha nos itens
+    await admin.from('solicitacoes_fat_direto').delete().eq('id', sol.id)
+    throw itErr
+  }
+
+  return sol
+}
+
 export async function listarSolicitacoesAprovadas() {
   const admin = createAdminClient()
   const baseSelect = `
