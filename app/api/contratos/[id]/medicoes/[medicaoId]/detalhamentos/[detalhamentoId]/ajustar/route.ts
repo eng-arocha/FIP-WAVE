@@ -85,14 +85,34 @@ export async function PATCH(
       )
     }
 
-    // Valida detalhamento existe + pertence ao contrato (via tarefa)
+    // Valida detalhamento existe + pertence ao contrato.
+    // Hierarquia: contratos -> grupos_macro -> tarefas -> detalhamentos.
+    // Faz em 3 passos pra evitar joins frágeis no PostgREST.
     const { data: det, error: detErr } = await admin
       .from('detalhamentos')
-      .select('id, codigo, descricao, valor_unitario, tarefa:tarefas!inner(contrato_id)')
+      .select('id, codigo, descricao, valor_unitario, tarefa_id')
       .eq('id', detalhamentoId)
       .single()
     if (detErr || !det) return apiError('Detalhamento não encontrado.', { status: 404 })
-    if ((det as any).tarefa?.contrato_id !== contratoId) {
+
+    const { data: tarefa, error: tarefaErr } = await admin
+      .from('tarefas')
+      .select('id, grupo_macro_id')
+      .eq('id', (det as any).tarefa_id)
+      .single()
+    if (tarefaErr || !tarefa) {
+      return apiError('Tarefa do detalhamento não encontrada.', { status: 400 })
+    }
+
+    const { data: grupo, error: grupoErr } = await admin
+      .from('grupos_macro')
+      .select('id, contrato_id')
+      .eq('id', (tarefa as any).grupo_macro_id)
+      .single()
+    if (grupoErr || !grupo) {
+      return apiError('Grupo macro do detalhamento não encontrado.', { status: 400 })
+    }
+    if ((grupo as any).contrato_id !== contratoId) {
       return apiError('Detalhamento não pertence ao contrato informado.', { status: 400 })
     }
 
