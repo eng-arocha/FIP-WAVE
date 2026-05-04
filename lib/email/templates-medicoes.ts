@@ -21,7 +21,7 @@ const CONTRATADO = {
 // CONTRATADO (FIP) via fat-direto.
 const WAVE_SPE = {
   razaoSocial: 'WAVE INSTALACOES SPE LTDA',
-  cnpj: '99.999.999/0001-99',
+  cnpj: '65.528.046/0001-23',
 }
 const OBRA = {
   prazoMinDias: 20,
