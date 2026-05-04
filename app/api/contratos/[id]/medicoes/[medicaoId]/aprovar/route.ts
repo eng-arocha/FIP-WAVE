@@ -156,6 +156,25 @@ async function dispararEmailLiberacaoMedicao(args: {
     motivo: string
   }> | undefined
 
+  // Resolve emails dos destinatários (valida vínculo com o contrato)
+  const { data: vinculos } = await admin
+    .from('usuarios_contratos')
+    .select('usuario_id, perfis:usuario_id(id, email, nome)')
+    .eq('contrato_id', args.contratoId)
+    .in('usuario_id', args.destinatariosIds)
+
+  const emails: string[] = []
+  for (const v of (vinculos || []) as any[]) {
+    const e = v.perfis?.email
+    if (e) emails.push(e)
+  }
+  if (emails.length === 0) return { ok: false, erro: 'nenhum destinatário válido' }
+
+  const resumo = await calcularResumoFinanceiroObra({
+    contrato_id: args.contratoId,
+    medicao_id: args.medicaoId,
+  })
+
   // FIP material + Wave serviço + itens com ajuste + somatório FIP por
   // grupo macro — calculados direto via lib/db/informacon-data (sem
   // self-fetch HTTP, que falha em prod no Vercel).
@@ -191,6 +210,12 @@ async function dispararEmailLiberacaoMedicao(args: {
           .filter(l => l.fip_faturar > 0)
           .map(l => ({ codigo: l.codigo, valor: l.fip_faturar })),
       )
+
+      // Convergência (A): retenção do email = retenção do informacon
+      // (5% × dados_informakon). Antes divergia em 5% × material_retido.
+      resumo.retencao.valor = informacon.totais.retencao
+      resumo.retencao.base_retencao = informacon.totais.base_retencao
+      resumo.retencao.liquido_a_pagar = waveServicoTotal - informacon.totais.retencao
     }
   } catch (e: any) {
     log.warn('email_dados_informacon_falhou', {
@@ -198,25 +223,6 @@ async function dispararEmailLiberacaoMedicao(args: {
       error: e?.message,
     })
   }
-
-  // Resolve emails dos destinatários (valida vínculo com o contrato)
-  const { data: vinculos } = await admin
-    .from('usuarios_contratos')
-    .select('usuario_id, perfis:usuario_id(id, email, nome)')
-    .eq('contrato_id', args.contratoId)
-    .in('usuario_id', args.destinatariosIds)
-
-  const emails: string[] = []
-  for (const v of (vinculos || []) as any[]) {
-    const e = v.perfis?.email
-    if (e) emails.push(e)
-  }
-  if (emails.length === 0) return { ok: false, erro: 'nenhum destinatário válido' }
-
-  const resumo = await calcularResumoFinanceiroObra({
-    contrato_id: args.contratoId,
-    medicao_id: args.medicaoId,
-  })
 
   const tpl = templateLiberacaoMedicaoFornecedor({
     numero_medicao: (med as any).numero,

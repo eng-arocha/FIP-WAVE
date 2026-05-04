@@ -57,8 +57,7 @@ export async function GET(
     })
 
     // Calcula NFs a emitir (FIP material + Wave serviço) e somatório FIP
-    // por grupo macro a partir das linhas do informacon — chamada direta
-    // (sem self-fetch HTTP, que é frágil em prod no Vercel).
+    // por grupo macro a partir das linhas do informacon — chamada direta.
     let fipMaterial = 0
     let waveServico = 0
     let fipPorGrupoMacro: Array<{ grupo: number; nome: string; valor: number }> = []
@@ -72,6 +71,15 @@ export async function GET(
           .filter(l => l.fip_faturar > 0)
           .map(l => ({ codigo: l.codigo, valor: l.fip_faturar })),
       )
+
+      // Convergência (A): retenção exibida no email vem do informacon-data
+      // (= 5% × dados_informakon = 5% × (wave + mat − retido)) pra ficar
+      // alinhada com a tabela do boletim. Antes o email usava mat+serv
+      // físico do calcularResumoFinanceiroObra, divergindo da tabela em
+      // 5% × material_retido.
+      resumo.retencao.valor = informaconData.totais.retencao
+      resumo.retencao.base_retencao = informaconData.totais.base_retencao
+      resumo.retencao.liquido_a_pagar = waveServico - informaconData.totais.retencao
     }
 
     const tpl = templateLiberacaoMedicaoFornecedor({
