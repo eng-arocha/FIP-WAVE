@@ -222,26 +222,37 @@ export async function calcularInformaconData(
 
   // === TODOS os detalhamentos do contrato (pra incluir virtual rows
   // — itens não medidos ainda — quando o user pedir "mostrar todos").
-  // Isso permite o admin clicar "Ajustar" em qualquer item do contrato,
-  // mesmo nunca medido. ===
-  const { data: todosDetalhamentos, error: detsErr } = await admin
-    .from('detalhamentos')
-    .select(`
-      id, codigo, descricao, unidade, quantidade_contratada,
-      valor_unitario, valor_material_unit, valor_servico_unit,
-      tarefa:tarefas!inner ( contrato_id )
-    `)
-    .eq('tarefa.contrato_id', contratoId)
-  if (detsErr) {
-    // Fallback (sem mat/serv unit em schemas antigos)
-    const fallback = await admin
-      .from('detalhamentos')
-      .select(`
-        id, codigo, descricao, unidade, quantidade_contratada, valor_unitario,
-        tarefa:tarefas!inner ( contrato_id )
-      `)
-      .eq('tarefa.contrato_id', contratoId)
-    if (fallback.error) throw fallback.error
+  // Query em 2 passos: tarefas do contrato → detalhamentos das tarefas.
+  // Mais robusto que tentar join filtrado via PostgREST. ===
+  let todosDetalhamentos: any[] = []
+  {
+    const { data: tarefasRows, error: tarefasErr } = await admin
+      .from('tarefas')
+      .select('id')
+      .eq('contrato_id', contratoId)
+    if (tarefasErr) throw tarefasErr
+    const tarefaIds = (tarefasRows || []).map((t: any) => t.id)
+    if (tarefaIds.length > 0) {
+      const tryFull = await admin
+        .from('detalhamentos')
+        .select(`
+          id, codigo, descricao, unidade, quantidade_contratada,
+          valor_unitario, valor_material_unit, valor_servico_unit
+        `)
+        .in('tarefa_id', tarefaIds)
+      if (!tryFull.error) {
+        todosDetalhamentos = tryFull.data || []
+      } else if (isSchemaMissingError(tryFull.error, ['valor_material_unit', 'valor_servico_unit'])) {
+        const fallback = await admin
+          .from('detalhamentos')
+          .select('id, codigo, descricao, unidade, quantidade_contratada, valor_unitario')
+          .in('tarefa_id', tarefaIds)
+        if (fallback.error) throw fallback.error
+        todosDetalhamentos = fallback.data || []
+      } else {
+        throw tryFull.error
+      }
+    }
   }
 
   // Acumulado de quantidade por detalhamento
