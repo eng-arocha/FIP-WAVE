@@ -183,6 +183,15 @@ async function dispararEmailLiberacaoMedicao(args: {
   let fipMaterialTotal = 0
   let waveServicoTotal = 0
   let fipPorGrupoMacro: Array<{ grupo: number; nome: string; valor: number }> = []
+  let ajustesAdmin: Array<{
+    codigo: string
+    descricao: string
+    quantidade_anterior: number
+    quantidade_nova: number
+    motivo: string
+    ajustado_por_nome: string | null
+    ajustado_em: string
+  }> = []
 
   try {
     const informacon = await calcularInformaconData(admin, args.contratoId, args.medicaoId)
@@ -216,6 +225,23 @@ async function dispararEmailLiberacaoMedicao(args: {
       resumo.retencao.valor = informacon.totais.retencao
       resumo.retencao.base_retencao = informacon.totais.base_retencao
       resumo.retencao.liquido_a_pagar = waveServicoTotal - informacon.totais.retencao
+
+      // 3) Ajustes feitos pelo admin (migration 061) — agrupa por item, pega
+      // o ajuste mais recente de cada item pra mostrar no email
+      for (const l of linhas) {
+        if (l.foi_ajustado_pelo_admin && l.ajustes_admin.length > 0) {
+          const ultimo = l.ajustes_admin[l.ajustes_admin.length - 1]
+          ajustesAdmin.push({
+            codigo: l.codigo,
+            descricao: l.descricao,
+            quantidade_anterior: ultimo.quantidade_anterior,
+            quantidade_nova: ultimo.quantidade_nova,
+            motivo: ultimo.motivo,
+            ajustado_por_nome: ultimo.ajustado_por_nome,
+            ajustado_em: ultimo.ajustado_em,
+          })
+        }
+      }
     }
   } catch (e: any) {
     log.warn('email_dados_informacon_falhou', {
@@ -245,6 +271,7 @@ async function dispararEmailLiberacaoMedicao(args: {
       wave_servico: { valor: waveServicoTotal },
     },
     fip_por_grupo_macro: fipPorGrupoMacro,
+    ajustes_admin: ajustesAdmin.length > 0 ? ajustesAdmin : undefined,
   })
 
   const envio = await sendEmail({

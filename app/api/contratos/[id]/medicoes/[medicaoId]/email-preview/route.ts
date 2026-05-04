@@ -61,6 +61,15 @@ export async function GET(
     let fipMaterial = 0
     let waveServico = 0
     let fipPorGrupoMacro: Array<{ grupo: number; nome: string; valor: number }> = []
+    let ajustesAdmin: Array<{
+      codigo: string
+      descricao: string
+      quantidade_anterior: number
+      quantidade_nova: number
+      motivo: string
+      ajustado_por_nome: string | null
+      ajustado_em: string
+    }> = []
     const informaconData = await calcularInformaconData(admin, contratoId, medicaoId)
     if (informaconData) {
       const linhas = informaconData.linhas
@@ -73,13 +82,25 @@ export async function GET(
       )
 
       // Convergência (A): retenção exibida no email vem do informacon-data
-      // (= 5% × dados_informakon = 5% × (wave + mat − retido)) pra ficar
-      // alinhada com a tabela do boletim. Antes o email usava mat+serv
-      // físico do calcularResumoFinanceiroObra, divergindo da tabela em
-      // 5% × material_retido.
       resumo.retencao.valor = informaconData.totais.retencao
       resumo.retencao.base_retencao = informaconData.totais.base_retencao
       resumo.retencao.liquido_a_pagar = waveServico - informaconData.totais.retencao
+
+      // Ajustes do admin (migration 061) — pega o último ajuste de cada item
+      for (const l of linhas) {
+        if (l.foi_ajustado_pelo_admin && l.ajustes_admin.length > 0) {
+          const ultimo = l.ajustes_admin[l.ajustes_admin.length - 1]
+          ajustesAdmin.push({
+            codigo: l.codigo,
+            descricao: l.descricao,
+            quantidade_anterior: ultimo.quantidade_anterior,
+            quantidade_nova: ultimo.quantidade_nova,
+            motivo: ultimo.motivo,
+            ajustado_por_nome: ultimo.ajustado_por_nome,
+            ajustado_em: ultimo.ajustado_em,
+          })
+        }
+      }
     }
 
     const tpl = templateLiberacaoMedicaoFornecedor({
@@ -102,6 +123,7 @@ export async function GET(
         wave_servico: { valor: waveServico },
       },
       fip_por_grupo_macro: fipPorGrupoMacro,
+      ajustes_admin: ajustesAdmin.length > 0 ? ajustesAdmin : undefined,
     })
 
     const envolvidos = await listarUsuariosAtreladosAoContrato(contratoId)

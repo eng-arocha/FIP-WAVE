@@ -154,6 +154,21 @@ export interface LiberacaoMedicaoPayload {
    * nenhum item tem fip_faturar > 0.
    */
   fip_por_grupo_macro?: Array<{ grupo: number; nome: string; valor: number }>
+
+  /**
+   * Ajustes de quantidade feitos pelo admin durante o fluxo de aprovação
+   * (migration 061). Quando preenchido, renderiza um bloco destacado
+   * listando o que mudou e por quê — solicitante toma ciência via email.
+   */
+  ajustes_admin?: Array<{
+    codigo: string
+    descricao: string
+    quantidade_anterior: number
+    quantidade_nova: number
+    motivo: string
+    ajustado_por_nome: string | null
+    ajustado_em: string
+  }>
 }
 
 // ============================================================
@@ -175,9 +190,11 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
   const fipTotal = p.nfs_a_emitir?.fip_material?.valor || 0
   const waveTotal = p.nfs_a_emitir?.wave_servico?.valor || valorMedicao
   const temFipMaterial = fipTotal > 0
+  const temAjustes = (p.ajustes_admin?.length ?? 0) > 0
+  const sufixoAjustes = temAjustes ? ` (c/ ${p.ajustes_admin!.length} ajuste${p.ajustes_admin!.length > 1 ? 's' : ''} do admin)` : ''
   const subject = temFipMaterial
-    ? `${prefixo}[${tag}] Medição aprovada — emita 2 NFs: FIP Material ${fmt(fipTotal)} + Wave Serviço ${fmt(waveTotal)}`
-    : `${prefixo}[${tag}] Medição aprovada — emita NF Wave Serviço ${fmt(waveTotal)}`
+    ? `${prefixo}[${tag}] Medição aprovada${sufixoAjustes} — emita 2 NFs: FIP Material ${fmt(fipTotal)} + Wave Serviço ${fmt(waveTotal)}`
+    : `${prefixo}[${tag}] Medição aprovada${sufixoAjustes} — emita NF Wave Serviço ${fmt(waveTotal)}`
 
   const itensHtml = p.itens.map(it => `
     <tr>
@@ -467,6 +484,50 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
       </div>
       ` : ''}
 
+      ${(p.ajustes_admin && p.ajustes_admin.length > 0) ? `
+      <!-- AJUSTES DO ADMIN (migration 061) -->
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
+        <div style="border:2px solid #f97316;background:#fff7ed;border-radius:10px;padding:18px;">
+          <h2 style="margin:0 0 6px;font-size:14px;font-weight:700;color:#9a3412;text-transform:uppercase;letter-spacing:0.5px;">
+            ✏️ Ajustes feitos pelo admin nesta medição
+          </h2>
+          <p style="margin:0 0 14px;font-size:13px;line-height:1.6;color:#7c2d12;">
+            Os itens abaixo tiveram a quantidade alterada pelo admin durante a
+            aprovação. As novas quantidades já estão refletidas nos valores
+            desta medição (% medido, Wave, FIP, retenção).
+          </p>
+          <table style="width:100%;border-collapse:collapse;font-size:12px;background:#ffffff;border-radius:6px;overflow:hidden;">
+            <thead>
+              <tr style="background:#fed7aa;">
+                <th style="padding:8px 10px;text-align:left;font-weight:600;color:#7c2d12;border-bottom:1px solid #fdba74;">Item</th>
+                <th style="padding:8px 10px;text-align:left;font-weight:600;color:#7c2d12;border-bottom:1px solid #fdba74;">Descrição</th>
+                <th style="padding:8px 10px;text-align:right;font-weight:600;color:#7c2d12;border-bottom:1px solid #fdba74;">Qtd anterior</th>
+                <th style="padding:8px 10px;text-align:right;font-weight:600;color:#7c2d12;border-bottom:1px solid #fdba74;">Qtd nova</th>
+                <th style="padding:8px 10px;text-align:left;font-weight:600;color:#7c2d12;border-bottom:1px solid #fdba74;">Por</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${p.ajustes_admin.map(a => `
+                <tr>
+                  <td style="padding:8px 10px;border-bottom:1px solid #fed7aa;font-family:ui-monospace,monospace;font-weight:600;color:#0f172a;">${escapeHtml(a.codigo)}</td>
+                  <td style="padding:8px 10px;border-bottom:1px solid #fed7aa;color:#0f172a;">${escapeHtml(a.descricao)}</td>
+                  <td style="padding:8px 10px;border-bottom:1px solid #fed7aa;text-align:right;color:#475569;">${a.quantidade_anterior}</td>
+                  <td style="padding:8px 10px;border-bottom:1px solid #fed7aa;text-align:right;font-weight:700;color:#ea580c;">${a.quantidade_nova}</td>
+                  <td style="padding:8px 10px;border-bottom:1px solid #fed7aa;color:#475569;">${escapeHtml(a.ajustado_por_nome ?? '—')}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          ${p.ajustes_admin.map(a => `
+            <p style="margin:12px 0 0;font-size:12px;color:#7c2d12;line-height:1.6;">
+              <strong>${escapeHtml(a.codigo)}</strong> — Motivo:
+              <em style="color:#0f172a;">"${escapeHtml(a.motivo)}"</em>
+            </p>
+          `).join('')}
+        </div>
+      </div>
+      ` : ''}
+
       <!-- 5. ITENS MEDIDOS -->
       <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
         <h2 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">5. Itens medidos</h2>
@@ -555,6 +616,15 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
         `  TOTAL FIP MATERIAL: ${fmt(fipTotal)}`,
         ``,
       ] : []),
+    ] : []),
+    ...(temAjustes ? [
+      `✏️ AJUSTES FEITOS PELO ADMIN NESTA MEDIÇÃO`,
+      ...p.ajustes_admin!.map(a =>
+        `  ${a.codigo} — ${a.descricao}\n` +
+        `    Qtd: ${a.quantidade_anterior} → ${a.quantidade_nova}  (por ${a.ajustado_por_nome ?? '—'})\n` +
+        `    Motivo: "${a.motivo}"`
+      ),
+      '',
     ] : []),
     `RESUMO DA MEDIÇÃO`,
     `  Material correspondente:    ${fmt(p.resumo.retencao.material_correspondente)}`,

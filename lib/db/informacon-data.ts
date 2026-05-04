@@ -8,6 +8,14 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { isSchemaMissingError } from '@/lib/db/resilient'
 import { getCodigoInformakon } from '@/lib/data/informakon-codigos'
 
+export interface AjusteAdmin {
+  quantidade_anterior: number
+  quantidade_nova: number
+  motivo: string
+  ajustado_em: string
+  ajustado_por_nome: string | null
+}
+
 export interface InformaconLinha {
   medicao_item_id: string
   detalhamento_id: string
@@ -50,6 +58,8 @@ export interface InformaconLinha {
   confirmacao_sem_nf_motivo: string | null
   material_acumulado: number
   servico_acumulado: number
+  ajustes_admin: AjusteAdmin[]
+  foi_ajustado_pelo_admin: boolean
 }
 
 export interface InformaconTotais {
@@ -360,6 +370,8 @@ export async function calcularInformaconData(
         confirmacao_sem_nf_motivo: it.confirmacao_sem_nf_motivo ?? null,
         material_acumulado: qtdAcum * matUnit,
         servico_acumulado: qtdAcum * servUnit,
+        ajustes_admin: [],
+        foi_ajustado_pelo_admin: false,
       }
       return linha
     })
@@ -393,6 +405,45 @@ export async function calcularInformaconData(
     material_acumulado: 0, servico_acumulado: 0,
     itens_com_ajuste: 0,
   })
+
+  // Ajustes do admin (migration 061). Se a tabela não existe, segue sem
+  // ajustes — código resiliente.
+  const ajustesPorItem = new Map<string, AjusteAdmin[]>()
+  if (linhas.length > 0) {
+    const itemIds = linhas.map(l => l.medicao_item_id)
+    const { data: ajustesRaw, error: ajustesErr } = await admin
+      .from('medicao_item_ajustes')
+      .select(`
+        medicao_item_id,
+        quantidade_anterior,
+        quantidade_nova,
+        motivo,
+        ajustado_em,
+        ajustado_por:perfis ( nome )
+      `)
+      .in('medicao_item_id', itemIds)
+      .order('ajustado_em', { ascending: true })
+
+    if (!ajustesErr && ajustesRaw) {
+      for (const a of ajustesRaw as any[]) {
+        const ajuste: AjusteAdmin = {
+          quantidade_anterior: Number(a.quantidade_anterior),
+          quantidade_nova: Number(a.quantidade_nova),
+          motivo: String(a.motivo ?? ''),
+          ajustado_em: String(a.ajustado_em ?? ''),
+          ajustado_por_nome: a.ajustado_por?.nome ?? null,
+        }
+        const arr = ajustesPorItem.get(a.medicao_item_id) ?? []
+        arr.push(ajuste)
+        ajustesPorItem.set(a.medicao_item_id, arr)
+      }
+    }
+  }
+  for (const linha of linhas) {
+    const lista = ajustesPorItem.get(linha.medicao_item_id) ?? []
+    linha.ajustes_admin = lista
+    linha.foi_ajustado_pelo_admin = lista.length > 0
+  }
 
   return {
     medicao: {
