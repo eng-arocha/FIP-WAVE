@@ -17,7 +17,14 @@ export interface AjusteAdmin {
 }
 
 export interface InformaconLinha {
-  medicao_item_id: string
+  /**
+   * ID da row em `medicao_itens`. `null` quando a linha é "virtual" — o
+   * detalhamento existe no contrato mas ainda não foi medido (qty=0).
+   * Nesse caso, ao ajustar, o backend cria o row.
+   */
+  medicao_item_id: string | null
+  /** True quando há row em medicao_itens; false quando é detalhamento puro. */
+  existe_no_banco: boolean
   detalhamento_id: string
   codigo: string
   codigo_informakon: string | null
@@ -213,6 +220,30 @@ export async function calcularInformaconData(
     }
   }
 
+  // === TODOS os detalhamentos do contrato (pra incluir virtual rows
+  // — itens não medidos ainda — quando o user pedir "mostrar todos").
+  // Isso permite o admin clicar "Ajustar" em qualquer item do contrato,
+  // mesmo nunca medido. ===
+  const { data: todosDetalhamentos, error: detsErr } = await admin
+    .from('detalhamentos')
+    .select(`
+      id, codigo, descricao, unidade, quantidade_contratada,
+      valor_unitario, valor_material_unit, valor_servico_unit,
+      tarefa:tarefas!inner ( contrato_id )
+    `)
+    .eq('tarefa.contrato_id', contratoId)
+  if (detsErr) {
+    // Fallback (sem mat/serv unit em schemas antigos)
+    const fallback = await admin
+      .from('detalhamentos')
+      .select(`
+        id, codigo, descricao, unidade, quantidade_contratada, valor_unitario,
+        tarefa:tarefas!inner ( contrato_id )
+      `)
+      .eq('tarefa.contrato_id', contratoId)
+    if (fallback.error) throw fallback.error
+  }
+
   // Acumulado de quantidade por detalhamento
   const { data: medicoesDoContrato } = await admin
     .from('medicoes')
@@ -330,6 +361,7 @@ export async function calcularInformaconData(
 
       const linha: InformaconLinha = {
         medicao_item_id: it.id,
+        existe_no_banco: true,
         detalhamento_id: det.id,
         codigo: det.codigo,
         codigo_informakon: getCodigoInformakon(det.descricao),
@@ -376,7 +408,71 @@ export async function calcularInformaconData(
       return linha
     })
     .filter((x): x is InformaconLinha => x !== null)
-    .sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), 'pt-BR', { numeric: true }))
+
+  // === Virtual rows: detalhamentos do contrato sem medicao_item correspondente.
+  // Aparecem com qty=0 (e zero em todos os derivados), `existe_no_banco=false`
+  // e `medicao_item_id=null`. UI permite "Ajustar" — backend cria o row no
+  // banco quando o admin salva o ajuste. ===
+  const detsComMedicao = new Set(linhas.map(l => l.detalhamento_id))
+  for (const det of (todosDetalhamentos || []) as any[]) {
+    if (detsComMedicao.has(det.id)) continue
+    const qtdContr = Number(det.quantidade_contratada || 0)
+    const matUnit = Number(det.valor_material_unit || 0)
+    const servUnit = Number(det.valor_servico_unit || 0)
+    const valorUnit = Number(det.valor_unitario || (matUnit + servUnit))
+    const valorGlobalItem = qtdContr * valorUnit
+    const valorServicoTotalItem = qtdContr * servUnit
+    const qtdAcum = acumulado[det.id] || 0
+    const linhaVirtual: InformaconLinha = {
+      medicao_item_id: null,
+      existe_no_banco: false,
+      detalhamento_id: det.id,
+      codigo: det.codigo,
+      codigo_informakon: getCodigoInformakon(det.descricao),
+      descricao: det.descricao,
+      unidade: det.unidade,
+      quantidade_contratada: qtdContr,
+      quantidade_medida: 0,
+      quantidade_acumulada: qtdAcum,
+      pct_medido: 0,
+      pct_acumulado: qtdContr > 0 ? (qtdAcum / qtdContr) * 100 : 0,
+      valor_unitario: valorUnit,
+      valor_material_unit: matUnit,
+      valor_servico_unit: servUnit,
+      valor_total_item: valorGlobalItem,
+      valor_material_total_item: qtdContr * matUnit,
+      valor_servico_total_item: valorServicoTotalItem,
+      material_medido: 0,
+      servico_medido: 0,
+      nf_terceiro: 0,
+      saldo_aprovado: Math.max(0, (aprovadoPorDet[det.id] || 0) - (nfAlocadaPorDet[det.id] || 0)),
+      nf_descontavel: 0,
+      gap_material: 0,
+      material_retido: 0,
+      fip_faturar: 0,
+      wave_servico: 0,
+      valor_total_medido: 0,
+      dados_informakon: 0,
+      total_informakon: 0,
+      pct_informakon: 0,
+      alterado_por_retido: false,
+      base_retencao: 0,
+      retencao: 0,
+      pct_serv_med_original: 0,
+      pct_serv_med: 0,
+      ajuste_aplicado: false,
+      confirmacao_sem_nf: false,
+      confirmacao_sem_nf_em: null,
+      confirmacao_sem_nf_motivo: null,
+      material_acumulado: qtdAcum * matUnit,
+      servico_acumulado: qtdAcum * servUnit,
+      ajustes_admin: [],
+      foi_ajustado_pelo_admin: false,
+    }
+    linhas.push(linhaVirtual)
+  }
+
+  linhas.sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), 'pt-BR', { numeric: true }))
 
   const totais: InformaconTotais = linhas.reduce<InformaconTotais>((acc, l) => ({
     material_medido: acc.material_medido + l.material_medido,
@@ -407,10 +503,13 @@ export async function calcularInformaconData(
   })
 
   // Ajustes do admin (migration 061). Se a tabela não existe, segue sem
-  // ajustes — código resiliente.
+  // ajustes — código resiliente. Apenas linhas com medicao_item_id real
+  // (não-virtual) podem ter ajustes.
   const ajustesPorItem = new Map<string, AjusteAdmin[]>()
-  if (linhas.length > 0) {
-    const itemIds = linhas.map(l => l.medicao_item_id)
+  const itemIdsReais = linhas
+    .map(l => l.medicao_item_id)
+    .filter((x): x is string => typeof x === 'string' && x.length > 0)
+  if (itemIdsReais.length > 0) {
     const { data: ajustesRaw, error: ajustesErr } = await admin
       .from('medicao_item_ajustes')
       .select(`
@@ -421,7 +520,7 @@ export async function calcularInformaconData(
         ajustado_em,
         ajustado_por:perfis ( nome )
       `)
-      .in('medicao_item_id', itemIds)
+      .in('medicao_item_id', itemIdsReais)
       .order('ajustado_em', { ascending: true })
 
     if (!ajustesErr && ajustesRaw) {
@@ -440,6 +539,7 @@ export async function calcularInformaconData(
     }
   }
   for (const linha of linhas) {
+    if (!linha.medicao_item_id) continue
     const lista = ajustesPorItem.get(linha.medicao_item_id) ?? []
     linha.ajustes_admin = lista
     linha.foi_ajustado_pelo_admin = lista.length > 0

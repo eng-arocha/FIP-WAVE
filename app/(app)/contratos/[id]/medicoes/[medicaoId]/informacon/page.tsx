@@ -20,7 +20,8 @@ import {
 } from 'lucide-react'
 
 interface Linha {
-  medicao_item_id: string
+  medicao_item_id: string | null
+  existe_no_banco?: boolean
   detalhamento_id: string
   codigo: string
   codigo_informakon: string | null
@@ -382,8 +383,10 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
     setSalvandoAjuste(true)
     setErroAjuste('')
     try {
+      // Usa rota por detalhamento (faz upsert: cria medicao_item se não
+      // existir, atualiza se já existe). Funciona pra item virtual também.
       const res = await fetch(
-        `/api/contratos/${contratoId}/medicoes/${medicaoId}/itens/${item.medicao_item_id}/ajustar`,
+        `/api/contratos/${contratoId}/medicoes/${medicaoId}/detalhamentos/${item.detalhamento_id}/ajustar`,
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
