@@ -312,7 +312,7 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
           <strong>${p.reenvio ? 'reenviada' : 'aprovada'}</strong> pela Gestão.
           ${temFipMaterial
             ? 'Esta medição requer a emissão de <strong>2 Notas Fiscais</strong> em ordem obrigatória — veja o passo-a-passo abaixo.'
-            : 'O fornecedor está autorizado a emitir a Nota Fiscal de serviço pelo <strong>valor integral medido</strong>.'}
+            : 'O fornecedor está autorizado a emitir a Nota Fiscal de serviço pelo <strong>valor LÍQUIDO</strong> (já com a retenção contratual descontada — veja "Resumo desta medição" abaixo).'}
         </p>
       </div>
 
@@ -479,15 +479,22 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
           <tr><td style="padding:6px 0;color:#64748b;">Andamento físico desta medição</td><td style="padding:6px 0;text-align:right;">${pctFmt(p.resumo.retencao.andamento_fisico_pct)} do contrato</td></tr>
         </table>
 
-        <!-- Aviso destacado: nova regra -->
+        <!-- Aviso destacado: como emitir cada NF -->
         <div style="margin-top:14px;background:#fffbeb;border:1px solid #f59e0b;color:#92400e;padding:12px 14px;border-radius:8px;font-size:13px;">
-          <strong>⚠ Regra de emissão das NFs</strong><br>
-          A NF FIP de <strong>material</strong> é emitida pelo <strong>valor integral</strong>
-          (sem retenção, faturamento direto). A NF Wave de <strong>serviço</strong> é
-          emitida pelo <strong>valor LÍQUIDO</strong> — já com a retenção de 5% × (material + serviço)
-          medido descontada (acumulada no livro-razão). Os 5% retidos serão pagos ao
-          <strong>final do contrato</strong> via NF de serviço específica da Wave, conforme
-          cláusulas contratuais.
+          <strong>⚠ Como emitir cada NF</strong>
+          <ul style="margin:8px 0 0;padding-left:20px;line-height:1.6;">
+            ${temFipMaterial
+              ? `<li><strong>NF FIP material:</strong> emitir pelo valor integral (sem retenção).</li>`
+              : ''}
+            <li>
+              <strong>NF Wave serviço:</strong> emitir <strong>já descontando a retenção contratual</strong>,
+              ou seja, pelo valor de <strong>${fmt(p.resumo.retencao.liquido_a_pagar)}</strong>.
+            </li>
+          </ul>
+          <p style="margin:8px 0 0;">
+            A diferença retida (<strong>${fmt(p.resumo.retencao.valor)}</strong>) será paga
+            conforme condições contratuais, mediante emissão de Nota Fiscal de serviço futura específica.
+          </p>
         </div>
       </div>
 
@@ -716,8 +723,11 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
     `  Líquido a pagar:            ${fmt(p.resumo.retencao.liquido_a_pagar)}`,
     `  Andamento físico:           ${pctFmt(p.resumo.retencao.andamento_fisico_pct)} do contrato`,
     '',
-    `⚠ NF FIP material: VALOR INTEGRAL (sem retenção). NF Wave serviço: VALOR LÍQUIDO`,
-    `   (= bruto − débito de retenção do livro-razão). Retido pago ao final do contrato.`,
+    `⚠ COMO EMITIR CADA NF`,
+    `  - NF FIP material: pelo valor integral (sem retenção).`,
+    `  - NF Wave serviço: já descontando a retenção, ou seja, pelo valor de ${fmt(p.resumo.retencao.liquido_a_pagar)}.`,
+    `  A diferença retida (${fmt(p.resumo.retencao.valor)}) será paga conforme condições`,
+    `  contratuais, mediante emissão de NF de serviço futura específica.`,
     '',
     `RESUMO FINANCEIRO DA OBRA (${ehPrimeira ? 'desde início' : periodoLabel})`,
     `  Serviços — esta medição:    ${fmt(p.resumo.servicos.esta_medicao)}`,
