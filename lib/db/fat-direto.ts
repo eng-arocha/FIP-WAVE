@@ -356,18 +356,36 @@ export async function criarSolicitacao(input: {
   return sol
 }
 
+// Constantes dos fornecedores das 2 NFs originadas da aprovação de medição.
+// Sincronizado com lib/email/templates-medicoes.ts.
+const FORNECEDORES_AUTO = {
+  fip_material: {
+    razao_social: 'FIP ENGENHARIA ELETRICA LTDA',
+    cnpj: '26.736.376/0001-52',
+  },
+  wave_servico: {
+    razao_social: 'WAVE INSTALACOES SPE LTDA',
+    cnpj: '65.528.046/0001-23',
+  },
+} as const
+
 /**
- * Cria uma solicitação fat-direto em status `rascunho` automaticamente,
- * a partir dos itens com FIP fat-direto > 0 de uma medição recém-aprovada.
+ * Cria uma solicitação em status `rascunho` automaticamente a partir
+ * dos itens de uma medição recém-aprovada. Funciona pra os 2 tipos:
  *
- * Diferente de `criarSolicitacao`:
- *   - Status nasce `rascunho` (não `aguardando_aprovacao`) — admin completa
- *     fornecedor/numero/observações depois e só aí submete pra aprovação.
- *   - **Sem validações de teto / limite por detalhamento** — a medição
- *     que origina já foi validada pelo admin, e o material já foi
- *     fisicamente medido. Bloquear aqui só atrapalharia.
- *   - Sem geração automática de número (numero_pedido_fip fica NULL,
- *     admin atribui manualmente ao completar o rascunho).
+ *   - `fip_material`: itens com FIP fat-direto > 0 (NF de material da FIP)
+ *   - `wave_servico`: itens com Wave Serviço > 0 (NF de serviço da Wave SPE)
+ *
+ * Em ambos os casos:
+ *   - Fornecedor (razão social + CNPJ) já pré-preenchido pela tabela
+ *     FORNECEDORES_AUTO acima
+ *   - Observação datada com a aprovação:
+ *     "Aprovação da medição MED-XXX em DD/MM/YYYY. <texto adicional opcional>"
+ *   - Status nasce `rascunho` — admin abre, valida, completa numero_pedido_fip
+ *     se aplicável, e submete pra aprovação interna
+ *
+ * Sem validações de teto / limite por detalhamento (a medição que origina
+ * já foi validada).
  *
  * Retorna a solicitação criada. Lança erro se inserir falhar.
  */
@@ -376,19 +394,21 @@ export async function criarSolicitacaoRascunhoDeMedicao(input: {
   solicitante_id: string
   medicao_id: string
   medicao_numero: number
+  data_aprovacao?: string   // ISO; default = NOW()
+  tipo: 'fip_material' | 'wave_servico'
+  observacoes_extra?: string  // ex.: "Valor LÍQUIDO após retenção 5%: R$ X"
   itens: Array<{
     detalhamento_id: string
     descricao: string
-    valor_total: number  // = fip_faturar do item
+    valor_total: number
   }>
 }) {
   const admin = createAdminClient()
 
   if (input.itens.length === 0) {
-    throw new Error('Nenhum item com fip_faturar > 0 — sem rascunho a criar.')
+    throw new Error(`Nenhum item com valor > 0 para ${input.tipo} — sem rascunho a criar.`)
   }
 
-  // Busca tarefa_id de cada detalhamento (campo obrigatório em itens)
   const detIds = input.itens.map(i => i.detalhamento_id)
   const { data: dets, error: detErr } = await admin
     .from('detalhamentos')
@@ -402,11 +422,24 @@ export async function criarSolicitacaoRascunhoDeMedicao(input: {
 
   const valor_total = input.itens.reduce((s, i) => s + i.valor_total, 0)
   const tag = `MED-${String(input.medicao_numero).padStart(3, '0')}`
+  const data = input.data_aprovacao ? new Date(input.data_aprovacao) : new Date()
+  const dataFmt = data.toLocaleDateString('pt-BR')
+  const fornecedor = FORNECEDORES_AUTO[input.tipo]
+
+  const observacoesBase = `Aprovação da medição ${tag} em ${dataFmt}. ` +
+    (input.tipo === 'wave_servico'
+      ? `NF de SERVIÇO emitida pela WAVE INSTALACOES SPE LTDA pelo valor LÍQUIDO (já descontados 5% de retenção contratual). Os 5% retidos serão pagos ao final mediante condições contratuais e emissão de NF de serviço específica.`
+      : `NF de MATERIAL FIP fat-direto. Lançar primeiro no Informakon antes da NF Wave.`)
+  const observacoes = input.observacoes_extra
+    ? `${observacoesBase} ${input.observacoes_extra}`
+    : observacoesBase
 
   const insertPayload: Record<string, unknown> = {
     contrato_id: input.contrato_id,
     solicitante_id: input.solicitante_id,
-    observacoes: `Rascunho gerado automaticamente da aprovação da medição ${tag}. Complete fornecedor/numero/observações antes de submeter.`,
+    observacoes,
+    fornecedor_razao_social: fornecedor.razao_social,
+    fornecedor_cnpj: fornecedor.cnpj,
     valor_total,
     status: 'rascunho',
   }
@@ -423,20 +456,18 @@ export async function criarSolicitacaoRascunhoDeMedicao(input: {
     tarefa_id: tarefaPorDet.get(i.detalhamento_id) ?? null,
     detalhamento_id: i.detalhamento_id,
     descricao: i.descricao,
-    local: 'TORRE',  // default schema; admin ajusta se necessário
+    local: 'TORRE',
     qtde_solicitada: 1,
     valor_unitario: i.valor_total,
   })).filter(it => it.tarefa_id !== null)
 
   if (itensPayload.length === 0) {
-    // Nenhum dos detalhamentos tinha tarefa associada — desfaz o cabeçalho
     await admin.from('solicitacoes_fat_direto').delete().eq('id', sol.id)
     throw new Error('Nenhum dos itens tinha tarefa_id resolvido — rascunho cancelado.')
   }
 
   const { error: itErr } = await admin.from('itens_solicitacao_fat_direto').insert(itensPayload)
   if (itErr) {
-    // Desfaz cabeçalho em caso de falha nos itens
     await admin.from('solicitacoes_fat_direto').delete().eq('id', sol.id)
     throw itErr
   }

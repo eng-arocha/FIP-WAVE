@@ -145,7 +145,14 @@ export interface LiberacaoMedicaoPayload {
    */
   nfs_a_emitir: {
     fip_material: { valor: number }   // soma de FIP Fat-Dir
-    wave_servico: { valor: number }   // soma de Wave (Serv.)
+    wave_servico: {
+      /** Valor LÍQUIDO da NF (= bruto − débito da retenção). É o valor a faturar. */
+      valor: number
+      /** Bruto = soma de wave_servico das linhas. Antes do débito da retenção. */
+      valor_bruto?: number
+      /** Quanto foi descontado nesta NF como pagamento da retenção acumulada. */
+      retencao?: number
+    }
   }
 
   /**
@@ -179,6 +186,21 @@ export interface LiberacaoMedicaoPayload {
   solicitacao_fat_direto_rascunho?: {
     id: string
     url: string
+  }
+
+  /** Idem, mas pra a NF Wave de serviço (valor LÍQUIDO já calculado). */
+  solicitacao_wave_rascunho?: {
+    id: string
+    url: string
+  }
+
+  /** Detalhamento do livro-razão de retenção pra esta medição. */
+  retencao_breakdown?: {
+    saldo_antes: number
+    credito: number
+    debito: number
+    saldo_depois: number
+    wave_bruto: number
   }
 }
 
@@ -335,22 +357,59 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
           ` : ''}
         </div>
 
-        <!-- Passo 2: NF Wave Serviço -->
+        <!-- Passo 2: NF Wave Serviço (LÍQUIDO) -->
         <div style="background:#ffffff;border:2px solid #0f766e;border-radius:8px;padding:14px;">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
             <span style="background:#0f766e;color:#ffffff;font-weight:700;font-size:13px;padding:3px 10px;border-radius:6px;">2º</span>
-            <strong style="font-size:14px;color:#0f172a;">NF Wave — Serviço</strong>
+            <strong style="font-size:14px;color:#0f172a;">NF Wave — Serviço (LÍQUIDA)</strong>
             <span style="font-size:11px;color:#64748b;font-style:italic;">(somente após o Passo 1)</span>
           </div>
           <table style="width:100%;font-size:13px;">
             <tr><td style="padding:3px 0;color:#64748b;width:140px;">Emissora</td><td style="padding:3px 0;font-weight:600;">${escapeHtml(WAVE_SPE.razaoSocial)}</td></tr>
             <tr><td style="padding:3px 0;color:#64748b;">CNPJ</td><td style="padding:3px 0;font-family:ui-monospace,monospace;">${maskCnpj(WAVE_SPE.cnpj)}</td></tr>
-            <tr><td style="padding:3px 0;color:#64748b;">Valor da NF</td><td style="padding:3px 0;font-weight:700;font-size:16px;color:#0f766e;">${fmt(waveTotal)}</td></tr>
+            ${p.retencao_breakdown ? `
+            <tr><td style="padding:3px 0;color:#64748b;">Bruto (serviço medido)</td><td style="padding:3px 0;color:#64748b;">${fmt(p.retencao_breakdown.wave_bruto)}</td></tr>
+            <tr><td style="padding:3px 0;color:#64748b;">Retenção descontada</td><td style="padding:3px 0;color:#b91c1c;">− ${fmt(p.retencao_breakdown.debito)}</td></tr>
+            ` : ''}
+            <tr><td style="padding:3px 0;color:#64748b;font-weight:600;border-top:1px solid #e5e7eb;">Valor LÍQUIDO da NF</td><td style="padding:3px 0;font-weight:700;font-size:16px;color:#0f766e;border-top:1px solid #e5e7eb;">${fmt(waveTotal)}</td></tr>
           </table>
           <p style="margin:8px 0 0;font-size:12px;color:#475569;">
-            Emitir pelo <strong>valor integral</strong>. Retenção será descontada no pagamento.
+            Emitir NF pelo <strong>valor LÍQUIDO acima</strong> (já com retenção descontada).
+            ${p.solicitacao_wave_rascunho ? `Detalhamento e aprovação interna no <a href="${escapeHtml(p.solicitacao_wave_rascunho.url)}" style="color:#0f766e;font-weight:600;">rascunho criado automaticamente</a>.` : ''}
           </p>
         </div>
+
+        ${p.retencao_breakdown ? `
+        <!-- Caixa do livro-razão de retenção -->
+        <div style="background:#fefce8;border:1px dashed #ca8a04;border-radius:8px;padding:12px;margin-top:10px;">
+          <p style="margin:0 0 6px;font-size:12px;font-weight:600;color:#854d0e;">
+            📒 Livro-razão de retenção contratual (5%)
+          </p>
+          <table style="width:100%;font-size:12px;color:#713f12;">
+            <tr>
+              <td style="padding:2px 0;width:50%;">Saldo antes desta medição</td>
+              <td style="padding:2px 0;text-align:right;font-family:ui-monospace,monospace;">${fmt(p.retencao_breakdown.saldo_antes)}</td>
+            </tr>
+            <tr>
+              <td style="padding:2px 0;">Crédito desta medição (5% × mat+serv)</td>
+              <td style="padding:2px 0;text-align:right;font-family:ui-monospace,monospace;color:#15803d;">+ ${fmt(p.retencao_breakdown.credito)}</td>
+            </tr>
+            <tr>
+              <td style="padding:2px 0;">Débito (descontado nesta NF Wave)</td>
+              <td style="padding:2px 0;text-align:right;font-family:ui-monospace,monospace;color:#b91c1c;">− ${fmt(p.retencao_breakdown.debito)}</td>
+            </tr>
+            <tr style="border-top:1px solid #ca8a04;">
+              <td style="padding:4px 0;font-weight:600;">Saldo depois</td>
+              <td style="padding:4px 0;text-align:right;font-weight:700;font-family:ui-monospace,monospace;">${fmt(p.retencao_breakdown.saldo_depois)}</td>
+            </tr>
+          </table>
+          <p style="margin:6px 0 0;font-size:11px;color:#854d0e;">
+            ${p.retencao_breakdown.saldo_depois > 0
+              ? `Saldo remanescente será abatido nas próximas NFs Wave ou pago ao final via NF de retenção.`
+              : `Saldo zerado nesta medição. Próximas medições gerarão novos créditos.`}
+          </p>
+        </div>
+        ` : ''}
       </div>
 
       <!-- 0b. RESUMO MATERIAL POR GRUPO MACRO -->
@@ -420,15 +479,15 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
           <tr><td style="padding:6px 0;color:#64748b;">Andamento físico desta medição</td><td style="padding:6px 0;text-align:right;">${pctFmt(p.resumo.retencao.andamento_fisico_pct)} do contrato</td></tr>
         </table>
 
-        <!-- Aviso destacado -->
+        <!-- Aviso destacado: nova regra -->
         <div style="margin-top:14px;background:#fffbeb;border:1px solid #f59e0b;color:#92400e;padding:12px 14px;border-radius:8px;font-size:13px;">
-          <strong>⚠ Importante — emissão da NF</strong><br>
-          A Nota Fiscal de serviço deve ser emitida pelo <strong>VALOR INTEGRAL</strong>
-          (${fmt(p.resumo.retencao.servico_medido)}). A retenção de
-          <strong>${fmt(p.resumo.retencao.valor)}</strong> (5% sobre material + serviço executados =
-          ${fmt(p.resumo.retencao.base_retencao)}) será descontada pelo WAVE no momento do
-          pagamento, <strong>conforme cláusulas contratuais</strong>. Não emita NF com valor
-          líquido — pode causar divergência fiscal.
+          <strong>⚠ Regra de emissão das NFs</strong><br>
+          A NF FIP de <strong>material</strong> é emitida pelo <strong>valor integral</strong>
+          (sem retenção, faturamento direto). A NF Wave de <strong>serviço</strong> é
+          emitida pelo <strong>valor LÍQUIDO</strong> — já com a retenção de 5% × (material + serviço)
+          medido descontada (acumulada no livro-razão). Os 5% retidos serão pagos ao
+          <strong>final do contrato</strong> via NF de serviço específica da Wave, conforme
+          cláusulas contratuais.
         </div>
       </div>
 
@@ -575,10 +634,11 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
       <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
         <h2 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">6. Condições obrigatórias de recebimento</h2>
         <ul style="margin:0;padding-left:20px;font-size:13px;line-height:1.8;color:#475569;">
-          <li>NF emitida pelo <strong>valor integral medido</strong> (não líquido).</li>
-          <li>Boleto anexado à NF com prazo vigente.</li>
+          <li>NF FIP material: pelo <strong>valor integral</strong> (sem retenção).</li>
+          <li>NF Wave serviço: pelo <strong>valor LÍQUIDO</strong> (já com retenção descontada).</li>
+          <li>Boleto anexado a cada NF com prazo vigente.</li>
           <li>Prazo mínimo de pagamento: <strong>${OBRA.prazoMinDias} dias</strong>.</li>
-          <li>Retenção de garantia descontada no momento do pagamento, conforme cláusulas contratuais.</li>
+          <li>Retenção 5% acumulada — paga ao final via NF de retenção da Wave SPE.</li>
         </ul>
       </div>
 
@@ -656,8 +716,8 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
     `  Líquido a pagar:            ${fmt(p.resumo.retencao.liquido_a_pagar)}`,
     `  Andamento físico:           ${pctFmt(p.resumo.retencao.andamento_fisico_pct)} do contrato`,
     '',
-    `⚠ NF emitida pelo VALOR INTEGRAL do serviço (${fmt(p.resumo.retencao.servico_medido)}).`,
-    `   Retenção 5% sobre material + serviço executados, descontada no pagamento.`,
+    `⚠ NF FIP material: VALOR INTEGRAL (sem retenção). NF Wave serviço: VALOR LÍQUIDO`,
+    `   (= bruto − débito de retenção do livro-razão). Retido pago ao final do contrato.`,
     '',
     `RESUMO FINANCEIRO DA OBRA (${ehPrimeira ? 'desde início' : periodoLabel})`,
     `  Serviços — esta medição:    ${fmt(p.resumo.servicos.esta_medicao)}`,
@@ -685,7 +745,8 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
     `  TOTAL: ${fmt(valorMedicao)}`,
     '',
     `CONDIÇÕES OBRIGATÓRIAS`,
-    `  - NF emitida pelo valor integral`,
+    `  - NF FIP: valor integral (sem retenção)`,
+    `  - NF Wave: valor LÍQUIDO (= bruto − débito da retenção)`,
     `  - Boleto anexado com prazo vigente`,
     `  - Prazo mínimo de pagamento: ${OBRA.prazoMinDias} dias`,
     `  - Retenção descontada no pagamento`,

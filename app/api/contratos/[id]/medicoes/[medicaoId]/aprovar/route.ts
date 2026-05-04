@@ -73,61 +73,167 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       request: req,
     })
 
-    // C — Auto-cria rascunho de solicitação fat-direto pra os itens com
-    // fip_faturar > 0 nesta medição. Best-effort: se falhar, segue o
-    // fluxo normal (admin cria manual depois). O ID da solicitação criada
-    // vai pro response e pro email.
-    let solicitacaoFatDiretoId: string | null = null
-    let solicitacaoFatDiretoValor: number | null = null
+    // C — Auto-cria 2 rascunhos de solicitação na aprovação:
+    //   1) FIP material (fat-direto)  — itens com fip_faturar > 0
+    //   2) Wave serviço                — itens com wave_servico > 0,
+    //      valor_total = wave_servico LÍQUIDO (após desconto da retenção 5%)
+    // Best-effort: se uma falhar, segue mas loga. O ID de cada uma vai pro
+    // response e pro email.
+    let solicitacaoFipId: string | null = null
+    let solicitacaoFipValor: number | null = null
+    let solicitacaoWaveId: string | null = null
+    let solicitacaoWaveValor: number | null = null
+    let valorWaveBruto = 0
+    let valorWaveLiquido = 0
+    let saldoRetencaoAntes = 0
+    let creditoRetencao = 0
+    let debitoRetencao = 0
+    let saldoRetencaoDepois = 0
     try {
       const { calcularInformaconData } = await import('@/lib/db/informacon-data')
       const { criarSolicitacaoRascunhoDeMedicao } = await import('@/lib/db/fat-direto')
+      const { aplicarRetencaoDaAprovacao } = await import('@/lib/db/retencao')
       const informacon = await calcularInformaconData(admin, contratoId, medicaoId)
       if (informacon) {
-        const itensFipFaturar = informacon.linhas
+        const dataAprovacao = new Date().toISOString()
+        const pctRetencao = informacon.medicao.contrato.percentual_retencao || 5
+        valorWaveBruto = informacon.totais.wave_servico
+
+        // === Aplica retenção via livro-razão (migration 062). Crédito do 5%
+        // da medição + débito até o limite do saldo na NF Wave. Best-effort:
+        // se a tabela ainda não existe (migration 062 pendente), cai no
+        // fallback que usa o cálculo legado (5% × dados_informakon).
+        try {
+          const ret = await aplicarRetencaoDaAprovacao(admin, {
+            contrato_id: contratoId,
+            medicao_id: medicaoId,
+            medicao_numero: informacon.medicao.numero,
+            material_medido: informacon.totais.material_medido,
+            servico_medido: informacon.totais.servico_medido,
+            wave_bruto: valorWaveBruto,
+            pct_retencao: pctRetencao,
+            aprovador_id: check.userId,
+          })
+          saldoRetencaoAntes = ret.saldo_antes
+          creditoRetencao = ret.credito_aplicado
+          debitoRetencao = ret.debito_aplicado
+          saldoRetencaoDepois = ret.saldo_depois
+          valorWaveLiquido = ret.wave_liquido
+        } catch (e: any) {
+          const msg = e?.message || ''
+          if (msg.includes('retencao_movimentos') || msg.includes('aplicar_movimento_retencao')) {
+            log.warn('migration_062_pendente_fallback_retencao', {
+              medicao_id: medicaoId,
+              error: msg,
+            })
+            // Fallback legado: NF Wave continua bruta, retenção é só informativa.
+            // Ao rodar a 062, próximas medições começam com saldo zero — pode
+            // gerar uma "calibragem" se houver medições já aprovadas antes.
+            valorWaveLiquido = Math.max(0, valorWaveBruto - informacon.totais.retencao)
+            creditoRetencao = informacon.totais.retencao
+            debitoRetencao = creditoRetencao
+          } else {
+            throw e
+          }
+        }
+
+        // === Rascunho 1 — FIP Material ===
+        const itensFip = informacon.linhas
           .filter(l => l.fip_faturar > 0)
           .map(l => ({
             detalhamento_id: l.detalhamento_id,
             descricao: l.descricao,
             valor_total: l.fip_faturar,
           }))
-        if (itensFipFaturar.length > 0) {
-          const sol = await criarSolicitacaoRascunhoDeMedicao({
-            contrato_id: contratoId,
-            solicitante_id: check.userId,
-            medicao_id: medicaoId,
-            medicao_numero: informacon.medicao.numero,
-            itens: itensFipFaturar,
-          })
-          solicitacaoFatDiretoId = sol.id
-          solicitacaoFatDiretoValor = Number(sol.valor_total ?? 0)
-          await audit({
-            event: 'solicitacao_fat_direto.rascunho_auto_criado_da_medicao',
-            entity_type: 'solicitacao_fat_direto',
-            entity_id: sol.id,
-            actor_id: check.userId,
-            actor_nome: aprovadorNome,
-            actor_email: aprovadorEmail,
-            metadata: {
+        if (itensFip.length > 0) {
+          try {
+            const sol = await criarSolicitacaoRascunhoDeMedicao({
+              contrato_id: contratoId,
+              solicitante_id: check.userId,
               medicao_id: medicaoId,
-              valor_total: solicitacaoFatDiretoValor,
-              itens_count: itensFipFaturar.length,
-            },
-            request: req,
-          })
-          log.info('rascunho_fat_direto_auto_criado', {
-            medicao_id: medicaoId,
-            solicitacao_id: sol.id,
-            valor: solicitacaoFatDiretoValor,
-          })
+              medicao_numero: informacon.medicao.numero,
+              data_aprovacao: dataAprovacao,
+              tipo: 'fip_material',
+              itens: itensFip,
+            })
+            solicitacaoFipId = sol.id
+            solicitacaoFipValor = Number(sol.valor_total ?? 0)
+            await audit({
+              event: 'solicitacao_fat_direto.rascunho_auto_criado_da_medicao',
+              entity_type: 'solicitacao_fat_direto',
+              entity_id: sol.id,
+              actor_id: check.userId,
+              actor_nome: aprovadorNome,
+              actor_email: aprovadorEmail,
+              metadata: { medicao_id: medicaoId, tipo: 'fip_material', valor_total: solicitacaoFipValor },
+              request: req,
+            })
+          } catch (e: any) {
+            log.warn('rascunho_fip_material_falhou', { medicao_id: medicaoId, error: e?.message })
+          }
+        }
+
+        // === Rascunho 2 — Wave Serviço (líquido) ===
+        const itensWave = informacon.linhas
+          .filter(l => l.wave_servico > 0)
+          .map(l => ({
+            detalhamento_id: l.detalhamento_id,
+            descricao: l.descricao,
+            valor_total: l.wave_servico,
+          }))
+        if (itensWave.length > 0) {
+          try {
+            const obsWave =
+              `Saldo de retenção antes desta medição: R$ ${saldoRetencaoAntes.toFixed(2).replace('.', ',')}. ` +
+              `Crédito de retenção desta medição (5% × mat+serv): R$ ${creditoRetencao.toFixed(2).replace('.', ',')}. ` +
+              `Valor BRUTO da NF Wave: R$ ${valorWaveBruto.toFixed(2).replace('.', ',')}. ` +
+              `Desconto de retenção aplicado nesta NF: R$ ${debitoRetencao.toFixed(2).replace('.', ',')}. ` +
+              `Valor LÍQUIDO a emitir: R$ ${valorWaveLiquido.toFixed(2).replace('.', ',')}. ` +
+              `Saldo de retenção remanescente: R$ ${saldoRetencaoDepois.toFixed(2).replace('.', ',')}.`
+            const sol = await criarSolicitacaoRascunhoDeMedicao({
+              contrato_id: contratoId,
+              solicitante_id: check.userId,
+              medicao_id: medicaoId,
+              medicao_numero: informacon.medicao.numero,
+              data_aprovacao: dataAprovacao,
+              tipo: 'wave_servico',
+              observacoes_extra: obsWave,
+              itens: itensWave,
+            })
+            solicitacaoWaveId = sol.id
+            solicitacaoWaveValor = Number(sol.valor_total ?? 0)
+            await audit({
+              event: 'solicitacao_wave_servico.rascunho_auto_criado_da_medicao',
+              entity_type: 'solicitacao_fat_direto',
+              entity_id: sol.id,
+              actor_id: check.userId,
+              actor_nome: aprovadorNome,
+              actor_email: aprovadorEmail,
+              metadata: {
+                medicao_id: medicaoId,
+                tipo: 'wave_servico',
+                valor_bruto: valorWaveBruto,
+                valor_liquido: valorWaveLiquido,
+                retencao_descontada: debitoRetencao,
+                saldo_retencao_apos: saldoRetencaoDepois,
+              },
+              request: req,
+            })
+          } catch (e: any) {
+            log.warn('rascunho_wave_servico_falhou', { medicao_id: medicaoId, error: e?.message })
+          }
         }
       }
     } catch (e: any) {
-      log.warn('rascunho_fat_direto_auto_falhou', {
+      log.warn('rascunhos_auto_falharam', {
         medicao_id: medicaoId,
         error: e?.message,
       })
     }
+    // Mantém o nome antigo `solicitacaoFatDiretoId` pra compat com o resto
+    // do código (usado no template e no response).
+    const solicitacaoFatDiretoId = solicitacaoFipId
+    const solicitacaoFatDiretoValor = solicitacaoFipValor
 
     // Webhook outbound (best-effort, não bloqueia resposta)
     void emitWebhook('medicao.aprovada', {
@@ -159,6 +265,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           aprovadorNome,
           destinatariosIds: destinatarios_ids!,
           solicitacaoFatDiretoId,
+          solicitacaoWaveId,
+          valorWaveLiquido,
+          retencaoBreakdown: {
+            saldo_antes: saldoRetencaoAntes,
+            credito: creditoRetencao,
+            debito: debitoRetencao,
+            saldo_depois: saldoRetencaoDepois,
+            wave_bruto: valorWaveBruto,
+          },
         })
       } catch (e: any) {
         log.warn('email_liberacao_medicao_falhou', { medicaoId, error: e?.message })
@@ -169,9 +284,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({
       ok: true,
       email_liberacao: emailLiberacao,
-      solicitacao_fat_direto: solicitacaoFatDiretoId
-        ? { id: solicitacaoFatDiretoId, valor_total: solicitacaoFatDiretoValor }
-        : null,
+      rascunhos_criados: {
+        fip_material: solicitacaoFipId
+          ? { id: solicitacaoFipId, valor_total: solicitacaoFipValor }
+          : null,
+        wave_servico: solicitacaoWaveId
+          ? {
+              id: solicitacaoWaveId,
+              valor_bruto: solicitacaoWaveValor,
+              valor_liquido: valorWaveLiquido,
+              retencao_descontada: debitoRetencao,
+              saldo_retencao_apos: saldoRetencaoDepois,
+            }
+          : null,
+      },
     })
   } catch (e: any) {
     return apiError(e)
@@ -188,6 +314,15 @@ async function dispararEmailLiberacaoMedicao(args: {
   aprovadorNome: string
   destinatariosIds: string[]
   solicitacaoFatDiretoId?: string | null
+  solicitacaoWaveId?: string | null
+  valorWaveLiquido?: number
+  retencaoBreakdown?: {
+    saldo_antes: number
+    credito: number
+    debito: number
+    saldo_depois: number
+    wave_bruto: number
+  }
 }): Promise<{ ok: boolean; qtd?: number; erro?: string }> {
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const admin = createAdminClient()
@@ -332,14 +467,28 @@ async function dispararEmailLiberacaoMedicao(args: {
     itens_com_confirmacao_sem_nf: itensComConfirmacao,
     nfs_a_emitir: {
       fip_material: { valor: fipMaterialTotal },
-      wave_servico: { valor: waveServicoTotal },
+      // NF Wave: valor LÍQUIDO (= bruto − débito do livro-razão de retenção).
+      // O breakdown completo (saldo antes/depois, crédito, débito) vai pro
+      // bloco de retenção do email.
+      wave_servico: {
+        valor: args.valorWaveLiquido ?? waveServicoTotal,
+        valor_bruto: args.retencaoBreakdown?.wave_bruto ?? waveServicoTotal,
+        retencao: args.retencaoBreakdown?.debito ?? 0,
+      },
     },
+    retencao_breakdown: args.retencaoBreakdown,
     fip_por_grupo_macro: fipPorGrupoMacro,
     ajustes_admin: ajustesAdmin.length > 0 ? ajustesAdmin : undefined,
     solicitacao_fat_direto_rascunho: args.solicitacaoFatDiretoId
       ? {
           id: args.solicitacaoFatDiretoId,
           url: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://fip-wave.vercel.app'}/contratos/${args.contratoId}/fat-direto/solicitacoes/${args.solicitacaoFatDiretoId}`,
+        }
+      : undefined,
+    solicitacao_wave_rascunho: args.solicitacaoWaveId
+      ? {
+          id: args.solicitacaoWaveId,
+          url: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://fip-wave.vercel.app'}/contratos/${args.contratoId}/fat-direto/solicitacoes/${args.solicitacaoWaveId}`,
         }
       : undefined,
   })
