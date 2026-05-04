@@ -366,6 +366,11 @@ function normalize(s: string): string {
     .replace(/^\s*servico de\s+/i, '')
     .replace(/^\s*administracao de\s+/i, '')
     .replace(/(\d+)[°ºo](?=\s|$|\b)/g, '$1')
+    // sinônimos ortográficos: app usa "sobresolo" (1 's'), Informakon "sobressolo" (2 's')
+    .replace(/sobressolo/g, 'sobresolo')
+    // prefixo "instalacoes " redundante (app diz "INSTALAÇÕES EXTINTORES",
+    // Informakon diz só "extintores")
+    .replace(/^\s*instalacoes\s+(extintores?|luminarias?)\b/i, '$1')
     .replace(/\s+/g, ' ')
     .replace(/[.\s]+$/, '')
     .trim()
