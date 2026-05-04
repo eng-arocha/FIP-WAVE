@@ -221,41 +221,55 @@ export async function calcularInformaconData(
   }
 
   // === TODOS os detalhamentos do contrato (pra virtual rows / "mostrar todos").
-  // Query em 2 passos: tarefas → detalhamentos. Defensivo: se falhar, segue
-  // com array vazio (página continua funcional, só perde a feature de virtual
-  // rows até a gente debugar). NÃO joga exceção — página tem que abrir.
+  // Hierarquia: contratos → grupos_macro → tarefas → detalhamentos.
+  // Query em 3 passos: grupos_macro → tarefas → detalhamentos. Defensivo:
+  // se qualquer passo falhar, segue com array vazio (página continua viva).
   let todosDetalhamentos: any[] = []
   try {
-    const { data: tarefasRows, error: tarefasErr } = await admin
-      .from('tarefas')
+    // 1) grupos_macro do contrato
+    const { data: gruposRows, error: gruposErr } = await admin
+      .from('grupos_macro')
       .select('id')
       .eq('contrato_id', contratoId)
-    if (tarefasErr) {
-      console.warn('[informacon] falha ao buscar tarefas do contrato:', tarefasErr.message)
+    if (gruposErr) {
+      console.warn('[informacon] falha ao buscar grupos_macro:', gruposErr.message)
     } else {
-      const tarefaIds = (tarefasRows || []).map((t: any) => t.id).filter(Boolean)
-      if (tarefaIds.length > 0) {
-        const tryFull = await admin
-          .from('detalhamentos')
-          .select(`
-            id, codigo, descricao, unidade, quantidade_contratada,
-            valor_unitario, valor_material_unit, valor_servico_unit
-          `)
-          .in('tarefa_id', tarefaIds)
-        if (!tryFull.error && tryFull.data) {
-          todosDetalhamentos = tryFull.data
-        } else if (tryFull.error && isSchemaMissingError(tryFull.error, ['valor_material_unit', 'valor_servico_unit'])) {
-          const fallback = await admin
-            .from('detalhamentos')
-            .select('id, codigo, descricao, unidade, quantidade_contratada, valor_unitario')
-            .in('tarefa_id', tarefaIds)
-          if (!fallback.error && fallback.data) {
-            todosDetalhamentos = fallback.data
-          } else if (fallback.error) {
-            console.warn('[informacon] fallback de detalhamentos falhou:', fallback.error.message)
+      const grupoIds = (gruposRows || []).map((g: any) => g.id).filter(Boolean)
+      if (grupoIds.length > 0) {
+        // 2) tarefas dos grupos
+        const { data: tarefasRows, error: tarefasErr } = await admin
+          .from('tarefas')
+          .select('id')
+          .in('grupo_macro_id', grupoIds)
+        if (tarefasErr) {
+          console.warn('[informacon] falha ao buscar tarefas:', tarefasErr.message)
+        } else {
+          const tarefaIds = (tarefasRows || []).map((t: any) => t.id).filter(Boolean)
+          if (tarefaIds.length > 0) {
+            // 3) detalhamentos das tarefas
+            const tryFull = await admin
+              .from('detalhamentos')
+              .select(`
+                id, codigo, descricao, unidade, quantidade_contratada,
+                valor_unitario, valor_material_unit, valor_servico_unit
+              `)
+              .in('tarefa_id', tarefaIds)
+            if (!tryFull.error && tryFull.data) {
+              todosDetalhamentos = tryFull.data
+            } else if (tryFull.error && isSchemaMissingError(tryFull.error, ['valor_material_unit', 'valor_servico_unit'])) {
+              const fallback = await admin
+                .from('detalhamentos')
+                .select('id, codigo, descricao, unidade, quantidade_contratada, valor_unitario')
+                .in('tarefa_id', tarefaIds)
+              if (!fallback.error && fallback.data) {
+                todosDetalhamentos = fallback.data
+              } else if (fallback.error) {
+                console.warn('[informacon] fallback detalhamentos falhou:', fallback.error.message)
+              }
+            } else if (tryFull.error) {
+              console.warn('[informacon] falha ao buscar detalhamentos:', tryFull.error.message)
+            }
           }
-        } else if (tryFull.error) {
-          console.warn('[informacon] falha ao buscar detalhamentos do contrato:', tryFull.error.message)
         }
       }
     }
