@@ -23,6 +23,7 @@ interface Linha {
   medicao_item_id: string
   detalhamento_id: string
   codigo: string
+  codigo_informakon: string | null
   descricao: string
   unidade: string
   quantidade_contratada: number
@@ -171,12 +172,14 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
   function copiarParaClipboard() {
     if (!data) return
     const headers = [
-      'Código', 'Descrição', '% Informakon',
+      'Código', 'Item Informakon', 'Descrição', '% Informakon',
       'Mat. Medido', 'NF Terceiro', 'Saldo Aprov.', 'NF Desc.', 'Gap', 'Retido', 'FIP Fat-Dir',
       'Wave (Serv.)', '% Serv. Med.', 'Valor Total Medido', 'Dados Informakon', 'Retenção',
     ]
     const rows = linhasExibidas.map(l => [
-      l.codigo, l.descricao,
+      l.codigo,
+      l.codigo_informakon ?? '',
+      l.descricao,
       pctFmt(l.pct_informakon, 4),
       l.material_medido.toFixed(2).replace('.', ','),
       l.nf_terceiro.toFixed(2).replace('.', ','),
@@ -444,6 +447,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                 linhasExibidas as any[],
                 [
                   { header: 'Código', get: (l: any) => l.codigo },
+                  { header: 'Item Informakon', get: (l: any) => l.codigo_informakon ?? '' },
                   { header: 'Descrição', get: (l: any) => l.descricao },
                   { header: '% Informakon', get: (l: any) => Number(l.pct_informakon) },
                   { header: 'Mat. Medido', get: (l: any) => Number(l.material_medido) },
@@ -620,10 +624,11 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
           style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}
         >
           <div className="overflow-x-auto">
-            <table className="w-full text-xs" style={{ minWidth: 1500, color: 'var(--text-1)', borderCollapse: 'collapse' }}>
+            <table className="w-full text-xs" style={{ minWidth: 1620, color: 'var(--text-1)', borderCollapse: 'collapse' }}>
               <thead style={{ background: 'var(--surface-3)', position: 'sticky', top: 0, zIndex: 10 }}>
                 <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                   <th style={th()}>Item</th>
+                  <th style={{ ...th(), background: 'rgba(16,185,129,0.05)' }}>Item Informakon</th>
                   <th style={{ ...th(), textAlign: 'left' }}>Descrição</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(16,185,129,0.05)' }}>% Informakon</th>
                   <th style={{ ...th(), textAlign: 'right' }}>Mat. Medido</th>
@@ -643,7 +648,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
               <tbody>
                 {linhasExibidas.length === 0 ? (
                   <tr>
-                    <td colSpan={15} style={{ padding: 36, textAlign: 'center', color: 'var(--text-3)' }}>
+                    <td colSpan={16} style={{ padding: 36, textAlign: 'center', color: 'var(--text-3)' }}>
                       <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
                       Nenhum item com quantidade medida nesta medição.
                       {!mostrarTodos && (
@@ -687,6 +692,16 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                           {l.codigo}
                         </span>
                       </td>
+                      <td
+                        style={{
+                          ...td('font-mono font-semibold'),
+                          background: 'rgba(16,185,129,0.06)',
+                          color: l.codigo_informakon ? '#10B981' : 'var(--text-3)',
+                        }}
+                        title={l.codigo_informakon ? `CT/Serv Informakon: ${l.codigo_informakon}` : 'Sem código Informakon vinculado'}
+                      >
+                        {l.codigo_informakon ?? '—'}
+                      </td>
                       <td style={{ ...td('break-words'), textAlign: 'left', maxWidth: 240 }}>{l.descricao}</td>
                       <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(16,185,129,0.06)' }}>{pctFmt(l.pct_informakon, 4)}</td>
                       <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(l.material_medido)}</td>
@@ -717,7 +732,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
               {linhasExibidas.length > 0 && (
                 <tfoot>
                   <tr style={{ background: 'var(--surface-3)', fontWeight: 700, borderTop: '2px solid var(--border)' }}>
-                    <td colSpan={2} style={{ ...td(), textAlign: 'right' }}>TOTAIS</td>
+                    <td colSpan={3} style={{ ...td(), textAlign: 'right' }}>TOTAIS</td>
                     <td style={{ ...td(), background: 'rgba(16,185,129,0.10)' }}></td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.material_medido, 0))}</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.nf_terceiro, 0))}</td>

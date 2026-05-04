@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
 import { isSchemaMissingError } from '@/lib/db/resilient'
+import { getCodigoInformakon } from '@/lib/data/informakon-codigos'
 
 /**
  * GET /api/contratos/[id]/medicoes/[medicaoId]/informacon
@@ -286,6 +287,7 @@ export async function GET(
           medicao_item_id: it.id,
           detalhamento_id: det.id,
           codigo: det.codigo,
+          codigo_informakon: getCodigoInformakon(det.descricao),
           descricao: det.descricao,
           unidade: det.unidade,
           quantidade_contratada: qtdContr,
