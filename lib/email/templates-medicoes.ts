@@ -472,10 +472,10 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
         <h2 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">3. Resumo desta medição</h2>
         <table style="width:100%;font-size:14px;">
           <tr><td style="padding:6px 0;color:#64748b;">Material correspondente medido</td><td style="padding:6px 0;text-align:right;">${fmt(p.resumo.retencao.material_correspondente)}</td></tr>
-          <tr><td style="padding:6px 0;color:#64748b;">Serviço medido (NF a emitir)</td><td style="padding:6px 0;text-align:right;font-weight:700;font-size:16px;color:#0f766e;">${fmt(p.resumo.retencao.servico_medido)}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Serviço executado</td><td style="padding:6px 0;text-align:right;font-weight:700;font-size:16px;color:#0f766e;">${fmt(p.resumo.retencao.servico_medido)}</td></tr>
           <tr><td style="padding:6px 0;color:#64748b;">Base de retenção (mat + serv)</td><td style="padding:6px 0;text-align:right;color:#475569;">${fmt(p.resumo.retencao.base_retencao)}</td></tr>
           <tr><td style="padding:6px 0;color:#64748b;">Retenção contratual (${pctFmt(p.resumo.retencao.percentual_aplicado, 2)} sobre a base)</td><td style="padding:6px 0;text-align:right;color:#b91c1c;font-weight:600;">− ${fmt(p.resumo.retencao.valor)}</td></tr>
-          <tr style="border-top:2px solid #e5e7eb;"><td style="padding:8px 0;color:#0f172a;font-weight:700;">Líquido a pagar (NF − retenção)</td><td style="padding:8px 0;text-align:right;font-weight:700;color:#059669;">${fmt(p.resumo.retencao.liquido_a_pagar)}</td></tr>
+          <tr style="border-top:2px solid #e5e7eb;"><td style="padding:8px 0;color:#0f172a;font-weight:700;">Líquido a pagar (NF a emitir)</td><td style="padding:8px 0;text-align:right;font-weight:700;color:#059669;">${fmt(p.resumo.retencao.liquido_a_pagar)}</td></tr>
           <tr><td style="padding:6px 0;color:#64748b;">Andamento físico desta medição</td><td style="padding:6px 0;text-align:right;">${pctFmt(p.resumo.retencao.andamento_fisico_pct)} do contrato</td></tr>
         </table>
 
@@ -717,7 +717,7 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
     ] : []),
     `RESUMO DA MEDIÇÃO`,
     `  Material correspondente:    ${fmt(p.resumo.retencao.material_correspondente)}`,
-    `  Serviço medido (NF a emitir): ${fmt(p.resumo.retencao.servico_medido)}`,
+    `  Serviço executado:           ${fmt(p.resumo.retencao.servico_medido)}`,
     `  Base de retenção:           ${fmt(p.resumo.retencao.base_retencao)}`,
     `  Retenção (${pctFmt(p.resumo.retencao.percentual_aplicado)}):           − ${fmt(p.resumo.retencao.valor)}`,
     `  Líquido a pagar:            ${fmt(p.resumo.retencao.liquido_a_pagar)}`,
