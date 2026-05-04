@@ -51,6 +51,7 @@ interface Linha {
   dados_informakon: number
   total_informakon: number
   pct_informakon: number
+  alterado_por_retido?: boolean
   base_retencao: number
   retencao: number
   material_acumulado: number
@@ -703,7 +704,17 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                         {l.codigo_informakon ?? '—'}
                       </td>
                       <td style={{ ...td('break-words'), textAlign: 'left', maxWidth: 240 }}>{l.descricao}</td>
-                      <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(16,185,129,0.06)' }}>{pctFmt(l.pct_informakon, 4)}</td>
+                      <td
+                        style={{
+                          ...td('tabular-nums font-semibold'),
+                          textAlign: 'right',
+                          background: 'rgba(16,185,129,0.06)',
+                          color: l.alterado_por_retido ? '#DC2626' : undefined,
+                        }}
+                        title={l.alterado_por_retido ? `Valor alterado por retido (R$ ${l.material_retido.toFixed(2).replace('.', ',')}). Original sem retido seria maior.` : undefined}
+                      >
+                        {pctFmt(l.pct_informakon, 4)}
+                      </td>
                       <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(l.material_medido)}</td>
                       <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.nf_terceiro)}</td>
                       <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.saldo_aprovado)}</td>
@@ -723,7 +734,17 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                         {pctFmt(pctExibido)}
                       </td>
                       <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(l.valor_total_medido)}</td>
-                      <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', background: 'rgba(16,185,129,0.06)', color: '#10B981' }}>{formatCurrency(l.dados_informakon)}</td>
+                      <td
+                        style={{
+                          ...td('tabular-nums font-bold'),
+                          textAlign: 'right',
+                          background: 'rgba(16,185,129,0.06)',
+                          color: l.alterado_por_retido ? '#DC2626' : '#10B981',
+                        }}
+                        title={l.alterado_por_retido ? `Valor alterado por retido (R$ ${l.material_retido.toFixed(2).replace('.', ',')}). Sem retido seria R$ ${(l.dados_informakon + l.material_retido).toFixed(2).replace('.', ',')}.` : undefined}
+                      >
+                        {formatCurrency(l.dados_informakon)}
+                      </td>
                       <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', background: 'rgba(99,102,241,0.06)', color: '#818CF8' }}>{formatCurrency(l.retencao)}</td>
                     </tr>
                   )

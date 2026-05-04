@@ -346,55 +346,141 @@ const ENTRADAS: InformakonEntry[] = [
   { codigo: '1382/334', descricao: 'Serviço de fechamento de passagens verticais em shafts.' },
 ]
 
+// ============================================================
+// Normalização e matching
+// ============================================================
+
+/**
+ * Normaliza um texto pra comparação:
+ * - lowercase, remove acentos (NFD + strip combining marks)
+ * - tira prefixo "Serviço de execução de" / "Serviço de" / "Administração de"
+ * - normaliza ordinais "2°", "2º", "2o" → "2" (e qualquer dígito-ordinal)
+ * - colapsa whitespace
+ * - tira pontuação trailing
+ */
 function normalize(s: string): string {
   return s
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .toLowerCase()
-    // tira o prefixo padrão "Serviço de execução de" (com qtd variável de espaços)
-    .replace(/^\s*serviço de execução de\s*/i, '')
-    // alguns iniciam com "Serviço de fechamento de" / "Administração de"
-    .replace(/^\s*serviço de\s+/i, '')
-    // colapsa whitespace
+    .replace(/^\s*servico de execucao de\s*/i, '')
+    .replace(/^\s*servico de\s+/i, '')
+    .replace(/^\s*administracao de\s+/i, '')
+    .replace(/(\d+)[°ºo](?=\s|$|\b)/g, '$1')
     .replace(/\s+/g, ' ')
-    // remove pontuação trailing
     .replace(/[.\s]+$/, '')
     .trim()
 }
 
-const MAP_BY_DESC: Map<string, string> = new Map()
-for (const e of ENTRADAS) {
-  MAP_BY_DESC.set(normalize(e.descricao), e.codigo)
+/** Fingerprint agressivo: só alfanuméricos. Robusto a whitespace e símbolos. */
+function fingerprint(s: string): string {
+  return normalize(s).replace(/[^a-z0-9]/g, '')
 }
 
-const ENTRADAS_NORM = ENTRADAS.map(e => ({ codigo: e.codigo, norm: normalize(e.descricao) }))
+/** Stem simples: tira 's' final quando token tem >= 4 chars (handles plural PT-BR). */
+function stem(t: string): string {
+  return t.length >= 4 && t.endsWith('s') ? t.slice(0, -1) : t
+}
+
+/** Tokens normalizados (com stemming). Stop-tokens curtos removidos. */
+function tokens(s: string): string[] {
+  return normalize(s)
+    .split(/[^a-z0-9]+/)
+    .filter(t => t.length >= 2)
+    .map(stem)
+}
+
+/** Jaccard de conjuntos de tokens (intersecção / união). */
+function jaccard(a: string[], b: string[]): number {
+  if (a.length === 0 || b.length === 0) return 0
+  const sa = new Set(a)
+  const sb = new Set(b)
+  let inter = 0
+  for (const t of sa) if (sb.has(t)) inter++
+  const union = sa.size + sb.size - inter
+  return union === 0 ? 0 : inter / union
+}
+
+interface IndexedEntry {
+  codigo: string
+  norm: string
+  fp: string
+  toks: string[]
+}
+
+const INDEX: IndexedEntry[] = ENTRADAS.map(e => ({
+  codigo: e.codigo,
+  norm: normalize(e.descricao),
+  fp: fingerprint(e.descricao),
+  toks: tokens(e.descricao),
+}))
+
+const FP_MAP: Map<string, string> = new Map()
+for (const e of INDEX) FP_MAP.set(e.fp, e.codigo)
+
+/**
+ * Overrides manuais (descrição app → código Informakon) para itens onde
+ * a similaridade textual fica abaixo do threshold mas o usuário confirmou
+ * o vínculo. Usa fingerprint pra robustez. Adicione novas entradas aqui
+ * quando o fuzzy matcher não pegar.
+ */
+const OVERRIDES_FP: Map<string, string> = new Map([
+  // 19.1.1 ADMINISTRAÇÃO OBRA ( MÊS ) ↔ 1382/333 Administração de Obras - Engenheiro Instalações
+  [fingerprint('ADMINISTRAÇÃO OBRA ( MÊS )'), '1382/333'],
+])
 
 /**
  * Resolve o código Informakon (CT/Serv 1382/N) a partir da descrição do
- * detalhamento. Tenta match exato normalizado primeiro; se não casar, tenta
- * prefix match (algumas descrições da lista Informakon estão truncadas no
- * meio de uma palavra — ex.: 1382/4 termina em "fechamen").
+ * detalhamento. Em ordem:
+ *   1) match exato por fingerprint (alfanumérico)
+ *   2) prefix match: 1 fingerprint é prefixo do outro, com sobreposição >= 20 chars
+ *   3) similaridade Jaccard de tokens >= 0,7 (escolhe o maior score, com
+ *      tiebreaker pelo maior overlap de prefixo de fingerprint)
  *
  * Retorna `null` quando nenhum match razoável é encontrado.
  */
 export function getCodigoInformakon(descricao: string | null | undefined): string | null {
   if (!descricao) return null
-  const norm = normalize(descricao)
-  if (!norm) return null
+  const fp = fingerprint(descricao)
+  if (!fp) return null
 
-  // 1) match exato
-  const hit = MAP_BY_DESC.get(norm)
-  if (hit) return hit
+  // 0) override manual (caso especial confirmado pelo usuário)
+  const override = OVERRIDES_FP.get(fp)
+  if (override) return override
 
-  // 2) prefix match: norm começa com a versão Informakon (truncada),
-  //    ou Informakon começa com norm. Exige sobreposição mínima de 25
-  //    caracteres pra evitar falso-positivo em descrições curtas.
-  const MIN_OVERLAP = 25
-  for (const e of ENTRADAS_NORM) {
-    const minLen = Math.min(norm.length, e.norm.length)
+  // 1) match exato por fingerprint
+  const exact = FP_MAP.get(fp)
+  if (exact) return exact
+
+  // 2) prefix match (cobre descrições truncadas como 1382/4, 1382/116, 1382/138)
+  const MIN_OVERLAP = 20
+  for (const e of INDEX) {
+    const minLen = Math.min(fp.length, e.fp.length)
     if (minLen < MIN_OVERLAP) continue
-    if (norm.startsWith(e.norm) || e.norm.startsWith(norm)) {
-      return e.codigo
+    if (fp.startsWith(e.fp) || e.fp.startsWith(fp)) return e.codigo
+  }
+
+  // 3) Jaccard de tokens >= 0,7
+  const inputToks = tokens(descricao)
+  if (inputToks.length === 0) return null
+
+  let best: { codigo: string; score: number; fpOverlap: number } | null = null
+  const THRESHOLD = 0.8
+  for (const e of INDEX) {
+    const score = jaccard(inputToks, e.toks)
+    if (score < THRESHOLD) continue
+    // tiebreaker: prefix overlap de fingerprint (mais "estrutural")
+    let fpOverlap = 0
+    const minLen = Math.min(fp.length, e.fp.length)
+    while (fpOverlap < minLen && fp[fpOverlap] === e.fp[fpOverlap]) fpOverlap++
+
+    if (
+      !best ||
+      score > best.score ||
+      (score === best.score && fpOverlap > best.fpOverlap)
+    ) {
+      best = { codigo: e.codigo, score, fpOverlap }
     }
   }
 
-  return null
+  return best?.codigo ?? null
 }

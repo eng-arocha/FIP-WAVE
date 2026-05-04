@@ -267,17 +267,23 @@ export async function GET(
         // Wave (serviço) faturado = pct_ajustado × parcela de serviço
         const waveServico = (pctServMedAjustado / 100) * valorServicoTotalItem
 
-        // === Novas fórmulas (Ações 3 e 4) ===
+        // === Fórmulas finais ===
         // Valor Total Medido = % serv. med. × parcela de serviço do item
         const valorTotalMedido = (pctServMedAjustado / 100) * valorServicoTotalItem
 
-        // Dados Informakon = Valor Total Medido − Valor Retido
-        const dadosInformakon = valorTotalMedido - materialRetido
+        // Dados Informakon = Wave (Serv.) + Mat. Medido − Retido
+        // (= o que efetivamente entra no Informakon: serviço faturado + material
+        // já entregue, descontando o retido que não vai virar NF agora)
+        const dadosInformakon = waveServico + matMedido - materialRetido
 
-        // % Informakon = Dados Informakon ÷ parcela de serviço × 100
-        const pctInformakon = valorServicoTotalItem > 0
-          ? (dadosInformakon / valorServicoTotalItem) * 100
+        // % Informakon = Dados Informakon ÷ valor total do item (mat + serv)
+        const pctInformakon = valorGlobalItem > 0
+          ? (dadosInformakon / valorGlobalItem) * 100
           : 0
+
+        // Flag: linha foi alterada pelo material retido (afeta dados_informakon
+        // e pct_informakon — UI deve destacar em vermelho).
+        const alteradoPorRetido = materialRetido > 0
 
         // Retenção sobre a base já ajustada (= valor total medido).
         const baseRet = valorTotalMedido
@@ -322,6 +328,7 @@ export async function GET(
           // alias mantido pra compat: total_informakon = dados_informakon
           total_informakon: dadosInformakon,
           pct_informakon: pctInformakon,
+          alterado_por_retido: alteradoPorRetido,
           base_retencao: baseRet,
           retencao: retencao5pct,
           // === Novos campos: confirmação sem-NF ===
