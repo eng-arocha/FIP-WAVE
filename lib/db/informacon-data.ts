@@ -220,39 +220,47 @@ export async function calcularInformaconData(
     }
   }
 
-  // === TODOS os detalhamentos do contrato (pra incluir virtual rows
-  // — itens não medidos ainda — quando o user pedir "mostrar todos").
-  // Query em 2 passos: tarefas do contrato → detalhamentos das tarefas.
-  // Mais robusto que tentar join filtrado via PostgREST. ===
+  // === TODOS os detalhamentos do contrato (pra virtual rows / "mostrar todos").
+  // Query em 2 passos: tarefas → detalhamentos. Defensivo: se falhar, segue
+  // com array vazio (página continua funcional, só perde a feature de virtual
+  // rows até a gente debugar). NÃO joga exceção — página tem que abrir.
   let todosDetalhamentos: any[] = []
-  {
+  try {
     const { data: tarefasRows, error: tarefasErr } = await admin
       .from('tarefas')
       .select('id')
       .eq('contrato_id', contratoId)
-    if (tarefasErr) throw tarefasErr
-    const tarefaIds = (tarefasRows || []).map((t: any) => t.id)
-    if (tarefaIds.length > 0) {
-      const tryFull = await admin
-        .from('detalhamentos')
-        .select(`
-          id, codigo, descricao, unidade, quantidade_contratada,
-          valor_unitario, valor_material_unit, valor_servico_unit
-        `)
-        .in('tarefa_id', tarefaIds)
-      if (!tryFull.error) {
-        todosDetalhamentos = tryFull.data || []
-      } else if (isSchemaMissingError(tryFull.error, ['valor_material_unit', 'valor_servico_unit'])) {
-        const fallback = await admin
+    if (tarefasErr) {
+      console.warn('[informacon] falha ao buscar tarefas do contrato:', tarefasErr.message)
+    } else {
+      const tarefaIds = (tarefasRows || []).map((t: any) => t.id).filter(Boolean)
+      if (tarefaIds.length > 0) {
+        const tryFull = await admin
           .from('detalhamentos')
-          .select('id, codigo, descricao, unidade, quantidade_contratada, valor_unitario')
+          .select(`
+            id, codigo, descricao, unidade, quantidade_contratada,
+            valor_unitario, valor_material_unit, valor_servico_unit
+          `)
           .in('tarefa_id', tarefaIds)
-        if (fallback.error) throw fallback.error
-        todosDetalhamentos = fallback.data || []
-      } else {
-        throw tryFull.error
+        if (!tryFull.error && tryFull.data) {
+          todosDetalhamentos = tryFull.data
+        } else if (tryFull.error && isSchemaMissingError(tryFull.error, ['valor_material_unit', 'valor_servico_unit'])) {
+          const fallback = await admin
+            .from('detalhamentos')
+            .select('id, codigo, descricao, unidade, quantidade_contratada, valor_unitario')
+            .in('tarefa_id', tarefaIds)
+          if (!fallback.error && fallback.data) {
+            todosDetalhamentos = fallback.data
+          } else if (fallback.error) {
+            console.warn('[informacon] fallback de detalhamentos falhou:', fallback.error.message)
+          }
+        } else if (tryFull.error) {
+          console.warn('[informacon] falha ao buscar detalhamentos do contrato:', tryFull.error.message)
+        }
       }
     }
+  } catch (e: any) {
+    console.warn('[informacon] erro inesperado ao buscar detalhamentos:', e?.message)
   }
 
   // Acumulado de quantidade por detalhamento
