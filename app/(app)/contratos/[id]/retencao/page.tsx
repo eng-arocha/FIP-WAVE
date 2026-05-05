@@ -50,6 +50,47 @@ export default async function RetencaoPage({ params }: Props) {
     { creditos: 0, debitos: 0 },
   )
 
+  // ── Tabela "Por medição" ──────────────────────────────────────────
+  // Agrupa créditos do livro-razão por medicao_id (origem_tipo='medicao_aprovada')
+  // e enriquece com numero/data/valor da própria medicao.
+  type LinhaMedicao = {
+    medicao_id: string
+    numero: number
+    data_aprovacao: string | null
+    periodo: string | null
+    valor_medido: number
+    retencao: number
+    pct: number
+  }
+  const linhasPorMedicao: LinhaMedicao[] = []
+  const medicoesAprovadas = await admin
+    .from('medicoes')
+    .select('id, numero, periodo_referencia, valor_total, data_aprovacao, status')
+    .eq('contrato_id', contratoId)
+    .eq('status', 'aprovado')
+    .order('numero', { ascending: false })
+  for (const m of (medicoesAprovadas.data || []) as any[]) {
+    // Soma créditos do livro-razão originados nesta medição
+    const creditoLivroRazao = movimentos
+      .filter(mv => mv.origem_tipo === 'medicao_aprovada' && mv.origem_id === m.id && mv.tipo === 'credito')
+      .reduce((s, mv) => s + Number(mv.valor || 0), 0)
+    // Fallback: se não há entrada no livro-razão (medições aprovadas antes da
+    // 062), calcula 5% × valor_total da medição como estimativa informativa.
+    const valorMedido = Number(m.valor_total || 0)
+    const retencao = creditoLivroRazao > 0
+      ? creditoLivroRazao
+      : Math.round(valorMedido * (pctRetencao / 100) * 100) / 100
+    linhasPorMedicao.push({
+      medicao_id: m.id,
+      numero: m.numero,
+      data_aprovacao: m.data_aprovacao,
+      periodo: m.periodo_referencia,
+      valor_medido: valorMedido,
+      retencao,
+      pct: pctRetencao,
+    })
+  }
+
   return (
     <div className="flex-1" style={{ background: 'var(--background)' }}>
       <Topbar
@@ -131,7 +172,80 @@ export default async function RetencaoPage({ params }: Props) {
           </div>
         </div>
 
-        {/* Tabela de movimentos */}
+        {/* Tabela "Por Medição" — quanto cada medição reteu (5% × base) */}
+        <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+          <div className="px-5 py-4 flex items-start justify-between" style={{ borderBottom: '1px solid var(--border)' }}>
+            <div>
+              <h2 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
+                Retenções por Medição ({linhasPorMedicao.length})
+              </h2>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>
+                Cada medição aprovada gera retenção de {pctRetencao}% sobre a base medida (Wave + Material − Material Retido).
+              </p>
+            </div>
+            <Link href="/documentos/retencoes" className="text-xs font-medium hover:underline" style={{ color: '#F59E0B' }}>
+              Relatório completo →
+            </Link>
+          </div>
+          {linhasPorMedicao.length === 0 ? (
+            <div className="p-8 text-center text-xs" style={{ color: 'var(--text-3)' }}>
+              Nenhuma medição aprovada ainda neste contrato.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs" style={{ color: 'var(--text-1)', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: 'var(--surface-3)', color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    <th style={{ padding: 10, textAlign: 'left' }}>Medição</th>
+                    <th style={{ padding: 10, textAlign: 'left' }}>Período</th>
+                    <th style={{ padding: 10, textAlign: 'left' }}>Data aprovação</th>
+                    <th style={{ padding: 10, textAlign: 'right' }}>Valor medido</th>
+                    <th style={{ padding: 10, textAlign: 'right' }}>% Ret.</th>
+                    <th style={{ padding: 10, textAlign: 'right' }}>Retenção</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {linhasPorMedicao.map(l => (
+                    <tr key={l.medicao_id} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: 10 }}>
+                        <Link href={`/contratos/${contratoId}/medicoes/${l.medicao_id}`} className="font-semibold hover:underline" style={{ color: 'var(--text-1)' }}>
+                          MED-{String(l.numero).padStart(3, '0')}
+                        </Link>
+                      </td>
+                      <td style={{ padding: 10, color: 'var(--text-2)' }}>{l.periodo || '—'}</td>
+                      <td style={{ padding: 10, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
+                        {l.data_aprovacao ? formatDatetime(l.data_aprovacao) : '—'}
+                      </td>
+                      <td style={{ padding: 10, textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--text-2)' }}>
+                        {formatCurrency(l.valor_medido)}
+                      </td>
+                      <td style={{ padding: 10, textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--text-3)' }}>
+                        {l.pct.toFixed(2).replace('.', ',')}%
+                      </td>
+                      <td style={{ padding: 10, textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: '#F59E0B' }}>
+                        {formatCurrency(l.retencao)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: 'var(--surface-2)', borderTop: '1px solid var(--border)' }}>
+                    <td colSpan={3} style={{ padding: 10, fontWeight: 700, color: 'var(--text-1)' }}>Total ({linhasPorMedicao.length} medições)</td>
+                    <td style={{ padding: 10, textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: 'var(--text-1)' }}>
+                      {formatCurrency(linhasPorMedicao.reduce((s, l) => s + l.valor_medido, 0))}
+                    </td>
+                    <td />
+                    <td style={{ padding: 10, textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 800, color: '#F59E0B' }}>
+                      {formatCurrency(linhasPorMedicao.reduce((s, l) => s + l.retencao, 0))}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Tabela de movimentos (livro-razão completo) */}
         <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           <div className="px-5 py-4" style={{ borderBottom: '1px solid var(--border)' }}>
             <h2 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
