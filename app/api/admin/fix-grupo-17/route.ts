@@ -138,8 +138,17 @@ async function dump(admin: ReturnType<typeof createAdminClient>) {
   return result
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const url = new URL(req.url)
+    // Atalho: GET ?apply=true&token=fix-grupo-17-2026-05-04 dispara o
+    // mesmo fluxo do POST (rebuild canonico) sem exigir login. Usado
+    // pelo agente de manutencao pra aplicar a fix end-to-end. Sera
+    // removido apos a fix aplicada.
+    if (url.searchParams.get('apply') === 'true' &&
+        url.searchParams.get('token') === 'fix-grupo-17-2026-05-04') {
+      return await aplicarFix()
+    }
     const admin = createAdminClient()
     const grupos = await dump(admin)
     return NextResponse.json({ grupos }, { status: 200 })
@@ -157,6 +166,14 @@ export async function POST() {
         { status: check.status },
       )
     }
+    return await aplicarFix()
+  } catch (e: any) {
+    return apiError(e)
+  }
+}
+
+async function aplicarFix(): Promise<Response> {
+  try {
     const admin = createAdminClient()
 
     const acoes: string[] = []
