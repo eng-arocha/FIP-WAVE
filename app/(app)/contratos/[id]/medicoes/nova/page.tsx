@@ -31,7 +31,9 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
   const [saving, setSaving] = useState(false)
   const [estrutura, setEstrutura] = useState<any[]>([])
   const [loadingEstrutura, setLoadingEstrutura] = useState(true)
-  const [acumulado, setAcumulado] = useState<Record<string, number>>({})
+  // Acumulado de medicoes anteriores. Cada entry tem qtde absoluta + qtde
+  // contratada + pct calculado. Vem do endpoint /medicoes/acumulado.
+  const [acumulado, setAcumulado] = useState<Record<string, { qtde: number; qtde_contratada: number; pct: number }>>({})
 
   const [userNome, setUserNome] = useState('')
   const [userEmail, setUserEmail] = useState('')
@@ -42,8 +44,13 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
   const [anoRef, setAnoRef] = useState(String(now.getFullYear()))
   const [observacoes, setObservacoes] = useState('')
 
-  // % selecionado por detalhamento (representa o acumulado NOVO desejado)
-  const [percentualMedicao, setPercentualMedicao] = useState<Record<string, number>>({})
+  // Quantidade ABSOLUTA acumulada desejada por detalhamento. Inclui o que
+  // ja foi medido em medicoes anteriores + o que esta sendo medido agora.
+  // O delta (= medicao atual) = qtdeMedicao - acumulado.qtde.
+  // Para items com qtde_contratada=1 ainda usamos a granularidade 0/0.25/0.5/0.75/1
+  // (botoes de %). Para qtde > 1 usamos input numerico (inteiros se qtde
+  // contratada eh inteira, decimais caso contrario).
+  const [qtdeMedicao, setQtdeMedicao] = useState<Record<string, number>>({})
 
   // Collapse state para step 2 — começa com todos fechados
   const [expandedGrupos, setExpandedGrupos] = useState<Set<string>>(new Set())
@@ -110,12 +117,13 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
         .then(r => r.json())
         .then(data => {
           setAcumulado(data || {})
-          // Inicializa percentuais com o acumulado (mínimo)
-          setPercentualMedicao(prev => {
+          // Inicializa qtdeMedicao com a qtde acumulada (= minimo permitido)
+          setQtdeMedicao(prev => {
             const init: Record<string, number> = { ...prev }
-            for (const [id, pct] of Object.entries(data || {})) {
-              if (!(id in init) || (init[id] < (pct as number))) {
-                init[id] = pct as number
+            for (const [id, entry] of Object.entries(data || {}) as [string, any][]) {
+              const minQtde = Number(entry?.qtde ?? 0)
+              if (!(id in init) || init[id] < minQtde) {
+                init[id] = minQtde
               }
             }
             return init
@@ -131,22 +139,39 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
     return isNaN(num) || num <= 18
   })
 
-  // currentPct vem do render — sem risco de stale closure
-  function setPercentual(detId: string, p: number, currentPct: number) {
-    const min = acumulado[detId] || 0
-    if (p < min) return // não pode retroagir
+  // Acumulado em qtde absoluta. Helpers convenientes:
+  function getAcumQtde(detId: string): number {
+    return Number(acumulado[detId]?.qtde ?? 0)
+  }
 
-    const hasDelta = currentPct > min
+  // Define qtde absoluta desejada para um item. Aceita qualquer numero >= acumulado.
+  // Items com qtde_contratada=1 ainda recebem valores fracionarios (0.25, 0.5, 0.75, 1).
+  function setQtdeItem(detId: string, qtde: number, qtdeContratada: number) {
+    const min = getAcumQtde(detId)
+    const max = qtdeContratada
+    let v = qtde
+    if (v < min) v = min
+    if (v > max) v = max
+    setQtdeMedicao(prev => ({ ...prev, [detId]: v }))
+  }
 
+  // Click de toggle nos botoes % (item qtde_contratada=1). Comportamento
+  // legado: clicar ACIMA da seleção atual zera, clicar abaixo reduz. Min é o
+  // acumulado anterior.
+  function togglePctUm(detId: string, pctClicado: number, currentQtde: number) {
+    const minQtde = getAcumQtde(detId)
+    const novaQtdeClicada = pctClicado / 100 // qtde_contratada=1 → qtde absoluta = pct/100
+    if (novaQtdeClicada < minQtde) return // nao retroage
+
+    const hasDelta = currentQtde > minQtde
     if (!hasDelta) {
-      // Sem seleção → seleciona até p
-      setPercentualMedicao(prev => ({ ...prev, [detId]: p }))
-    } else if (p > currentPct) {
-      // Clicou ACIMA da seleção atual → limpa tudo (volta ao acumulado)
-      setPercentualMedicao(prev => ({ ...prev, [detId]: min }))
+      setQtdeMedicao(prev => ({ ...prev, [detId]: novaQtdeClicada }))
+    } else if (novaQtdeClicada > currentQtde) {
+      // ACIMA da selecao atual — limpa para min
+      setQtdeMedicao(prev => ({ ...prev, [detId]: minQtde }))
     } else {
-      // Clicou igual ou abaixo → reduz seleção para p
-      setPercentualMedicao(prev => ({ ...prev, [detId]: p }))
+      // Igual ou abaixo — reduz
+      setQtdeMedicao(prev => ({ ...prev, [detId]: novaQtdeClicada }))
     }
   }
 
@@ -155,10 +180,11 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
     for (const grupo of estruturaServico) {
       for (const tarefa of (grupo.tarefas || [])) {
         for (const det of (tarefa.detalhamentos || [])) {
-          const pct = percentualMedicao[det.id] || 0
-          const delta = pct - (acumulado[det.id] || 0)
-          if (delta > 0) {
-            total += (delta / 100) * (det.quantidade_contratada || 0) * (det.valor_unitario || 0)
+          const qtdeAtual = qtdeMedicao[det.id] || 0
+          const acumQtde = getAcumQtde(det.id)
+          const deltaQtde = qtdeAtual - acumQtde
+          if (deltaQtde > 0) {
+            total += deltaQtde * (det.valor_unitario || 0)
           }
         }
       }
@@ -173,12 +199,13 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
       for (const grupo of estruturaServico) {
         for (const tarefa of (grupo.tarefas || [])) {
           for (const det of (tarefa.detalhamentos || [])) {
-            const pct = percentualMedicao[det.id] || 0
-            const delta = pct - (acumulado[det.id] || 0)
-            if (delta > 0) {
+            const qtdeAtual = qtdeMedicao[det.id] || 0
+            const acumQtde = getAcumQtde(det.id)
+            const deltaQtde = qtdeAtual - acumQtde
+            if (deltaQtde > 0) {
               itens.push({
                 detalhamento_id: det.id,
-                quantidade_medida: (delta / 100) * (det.quantidade_contratada || 0),
+                quantidade_medida: deltaQtde,
                 valor_unitario: det.valor_unitario,
               })
             }
@@ -200,7 +227,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
   }
 
   const totalMedicao = calcularValorTotal()
-  const itensFilled = Object.entries(percentualMedicao).some(([id, pct]) => pct > (acumulado[id] || 0))
+  const itensFilled = Object.entries(qtdeMedicao).some(([id, q]) => q > getAcumQtde(id))
 
   return (
     <div className="flex-1">
@@ -331,7 +358,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                 const isOpen = expandedGrupos.has(grupo.id)
                 // Conta itens com delta neste grupo
                 const deltaCount = (grupo.tarefas || []).reduce((acc: number, t: any) =>
-                  acc + (t.detalhamentos || []).filter((d: any) => (percentualMedicao[d.id] || 0) > (acumulado[d.id] || 0)).length, 0)
+                  acc + (t.detalhamentos || []).filter((d: any) => (qtdeMedicao[d.id] || 0) > getAcumQtde(d.id)).length, 0)
 
                 return (
                   <Card key={grupo.id}>
@@ -362,50 +389,104 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                             </p>
                             <div className="space-y-1.5">
                               {(tarefa.detalhamentos || []).map((det: any) => {
-                                const pct = percentualMedicao[det.id] ?? (acumulado[det.id] || 0)
-                                const pctAnt = acumulado[det.id] || 0
-                                const delta = pct - pctAnt
-                                const valorDelta = delta > 0
-                                  ? (delta / 100) * (det.quantidade_contratada || 0) * (det.valor_unitario || 0)
-                                  : 0
+                                const qtdeContratada = Number(det.quantidade_contratada || 0)
+                                const qtdeAtual = qtdeMedicao[det.id] ?? getAcumQtde(det.id)
+                                const qtdeAnt = getAcumQtde(det.id)
+                                const deltaQtde = qtdeAtual - qtdeAnt
+                                const valorDelta = deltaQtde > 0 ? deltaQtde * (det.valor_unitario || 0) : 0
+                                const pctAtual = qtdeContratada > 0 ? (qtdeAtual / qtdeContratada) * 100 : 0
+                                const isCompleto = qtdeContratada > 0 && qtdeAtual >= qtdeContratada
+                                const useUnidades = qtdeContratada > 1
+                                const isInteiro = useUnidades && Number.isInteger(qtdeContratada)
                                 return (
-                                  <div key={det.id} className={`grid grid-cols-12 gap-2 p-2.5 rounded-lg text-xs items-center transition-all ${delta > 0 ? 'bg-amber-500/8 border border-amber-500/30' : pct === 100 ? 'bg-emerald-500/8 border border-emerald-500/20' : 'bg-[var(--surface-1)] border border-transparent'}`}>
+                                  <div key={det.id} className={`grid grid-cols-12 gap-2 p-2.5 rounded-lg text-xs items-center transition-all ${deltaQtde > 0 ? 'bg-amber-500/8 border border-amber-500/30' : isCompleto ? 'bg-emerald-500/8 border border-emerald-500/20' : 'bg-[var(--surface-1)] border border-transparent'}`}>
                                     <div className="col-span-1 text-[var(--text-3)] font-mono text-[10px]">{det.codigo}</div>
-                                    <div className="col-span-3 text-[var(--text-1)] font-medium leading-tight">{det.descricao}</div>
+                                    <div className="col-span-3 text-[var(--text-1)] font-medium leading-tight">
+                                      {det.descricao}
+                                      {useUnidades && (
+                                        <span className="block text-[10px] text-slate-400 mt-0.5">
+                                          contratado: <strong>{isInteiro ? qtdeContratada : qtdeContratada.toFixed(2)}</strong> {det.unidade}
+                                        </span>
+                                      )}
+                                    </div>
                                     <div className="col-span-1 text-center text-[var(--text-3)]">{det.unidade}</div>
                                     <div className="col-span-1 text-center text-[var(--text-3)]">{formatCurrency(det.valor_unitario || 0)}</div>
-                                    {/* % selector */}
-                                    <div className="col-span-4 flex gap-0.5">
-                                      {[0, 25, 50, 75, 100].map(p => {
-                                        const isMin   = p < pctAnt
-                                        const isAccum = p === pctAnt && p > 0
-                                        const isDelta = p > pctAnt && p <= pct && p > 0
-                                        return (
-                                          <button
-                                            key={p}
-                                            type="button"
-                                            disabled={isMin}
-                                            onClick={() => setPercentual(det.id, p, pct)}
-                                            className={`flex-1 py-1.5 rounded text-[11px] font-bold transition-all duration-150 ${
-                                              isMin
-                                                ? 'opacity-20 cursor-not-allowed bg-[var(--surface-3)] text-[var(--text-3)]'
-                                                : isAccum
-                                                ? 'bg-emerald-600 text-white ring-1 ring-emerald-400'
-                                                : isDelta
-                                                ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/40'
-                                                : 'bg-[#1e293b] text-slate-300 hover:bg-[#334155] hover:text-white'
-                                            }`}
-                                          >
-                                            {p}%
-                                          </button>
-                                        )
-                                      })}
+                                    {/* Seletor: % buttons (qtde=1) OR numeric input (qtde>1) */}
+                                    <div className="col-span-4">
+                                      {!useUnidades ? (
+                                        // Item indivisivel — botoes percentuais 0/25/50/75/100
+                                        <div className="flex gap-0.5">
+                                          {[0, 25, 50, 75, 100].map(p => {
+                                            const novaQtdeBotao = p / 100 // qtde_contratada=1 → qtde absoluta=pct/100
+                                            const isMin   = novaQtdeBotao < qtdeAnt
+                                            const isAccum = Math.abs(novaQtdeBotao - qtdeAnt) < 1e-9 && qtdeAnt > 0
+                                            const isDelta = novaQtdeBotao > qtdeAnt && novaQtdeBotao <= qtdeAtual && novaQtdeBotao > 0
+                                            return (
+                                              <button
+                                                key={p}
+                                                type="button"
+                                                disabled={isMin}
+                                                onClick={() => togglePctUm(det.id, p, qtdeAtual)}
+                                                className={`flex-1 py-1.5 rounded text-[11px] font-bold transition-all duration-150 ${
+                                                  isMin
+                                                    ? 'opacity-20 cursor-not-allowed bg-[var(--surface-3)] text-[var(--text-3)]'
+                                                    : isAccum
+                                                    ? 'bg-emerald-600 text-white ring-1 ring-emerald-400'
+                                                    : isDelta
+                                                    ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/40'
+                                                    : 'bg-[#1e293b] text-slate-300 hover:bg-[#334155] hover:text-white'
+                                                }`}
+                                              >
+                                                {p}%
+                                              </button>
+                                            )
+                                          })}
+                                        </div>
+                                      ) : (
+                                        // Item divisivel — input numerico de unidades
+                                        <div className="flex items-center gap-1">
+                                          <input
+                                            type="number"
+                                            inputMode={isInteiro ? 'numeric' : 'decimal'}
+                                            step={isInteiro ? 1 : '0.01'}
+                                            min={qtdeAnt}
+                                            max={qtdeContratada}
+                                            value={qtdeAtual}
+                                            onChange={e => {
+                                              const v = e.target.value
+                                              const num = v === '' ? qtdeAnt : Number(v)
+                                              if (Number.isNaN(num)) return
+                                              setQtdeItem(det.id, num, qtdeContratada)
+                                            }}
+                                            className="flex-1 px-2 py-1.5 rounded text-[11px] font-bold tabular-nums bg-[#1e293b] text-white border border-[#334155] focus:border-amber-400 focus:ring-1 focus:ring-amber-400/40 outline-none"
+                                          />
+                                          <span className="text-[10px] text-slate-400 whitespace-nowrap">
+                                            de {isInteiro ? qtdeContratada : qtdeContratada.toFixed(2)}
+                                          </span>
+                                        </div>
+                                      )}
+                                      {qtdeAnt > 0 && useUnidades && (
+                                        <p className="text-[9px] text-slate-400 mt-0.5">
+                                          mín. (acumulado anterior): <strong>{isInteiro ? Math.round(qtdeAnt) : qtdeAnt.toFixed(2)}</strong> {det.unidade}
+                                        </p>
+                                      )}
                                     </div>
                                     <div className="col-span-2 text-right font-bold">
-                                      {pctAnt > 0 && <span className="text-[10px] text-slate-400 block">ant: {pctAnt}%</span>}
+                                      {qtdeAnt > 0 && (
+                                        <span className="text-[10px] text-slate-400 block">
+                                          ant: {useUnidades
+                                            ? `${isInteiro ? Math.round(qtdeAnt) : qtdeAnt.toFixed(2)} ${det.unidade}`
+                                            : `${Math.round((qtdeAnt / qtdeContratada) * 100)}%`}
+                                        </span>
+                                      )}
                                       {valorDelta > 0
                                         ? <span className="text-blue-400">{formatCurrency(valorDelta)}</span>
                                         : <span className="text-[var(--text-3)] font-normal">—</span>}
+                                      {useUnidades && qtdeAtual > 0 && (
+                                        <span className="text-[9px] text-slate-500 block mt-0.5">
+                                          {pctAtual.toFixed(0)}% acum.
+                                        </span>
+                                      )}
                                     </div>
                                   </div>
                                 )
@@ -502,13 +583,12 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
               for (const grupo of estrutura || []) {
                 for (const tarefa of (grupo as any).tarefas || []) {
                   for (const det of (tarefa as any).detalhamentos || []) {
-                    const pct = percentualMedicao[det.id] ?? 0
-                    const acum = acumulado[det.id] || 0
-                    const delta = pct - acum
-                    if (delta > 0) {
-                      const fator = (delta / 100) * (Number(det.quantidade_contratada) || 0)
-                      totalMaterial += fator * (Number(det.valor_material_unit) || 0)
-                      totalServico  += fator * (Number(det.valor_servico_unit)  || 0)
+                    const qtdeAtual = qtdeMedicao[det.id] ?? 0
+                    const acumQtde = getAcumQtde(det.id)
+                    const deltaQtde = qtdeAtual - acumQtde
+                    if (deltaQtde > 0) {
+                      totalMaterial += deltaQtde * (Number(det.valor_material_unit) || 0)
+                      totalServico  += deltaQtde * (Number(det.valor_servico_unit)  || 0)
                     }
                   }
                 }
