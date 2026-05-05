@@ -178,13 +178,26 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         }
 
         // === Rascunho 2 — Wave Serviço (líquido) ===
-        const itensWave = informacon.linhas
-          .filter(l => l.wave_servico > 0)
-          .map(l => ({
-            detalhamento_id: l.detalhamento_id,
-            descricao: l.descricao,
-            valor_total: l.wave_servico,
-          }))
+        // Os itens devem refletir o valor LIQUIDO da NF (= bruto -
+        // retencao), porque a NF Wave do fornecedor sera emitida pelo
+        // liquido. Rateia o desconto da retencao entre os itens
+        // proporcionalmente ao valor bruto de cada um, ajustando o
+        // residuo no ultimo item pra garantir soma == valorWaveLiquido.
+        const linhasWave = informacon.linhas.filter(l => l.wave_servico > 0)
+        const fatorLiquido = valorWaveBruto > 0 ? valorWaveLiquido / valorWaveBruto : 1
+        const itensWaveTmp = linhasWave.map(l => ({
+          detalhamento_id: l.detalhamento_id,
+          descricao: l.descricao,
+          valor_total: Math.round(l.wave_servico * fatorLiquido * 100) / 100,
+        }))
+        // Ajuste residuo no ultimo item pra fechar no centavo
+        const somaItens = itensWaveTmp.reduce((s, i) => s + i.valor_total, 0)
+        const residuo = Math.round((valorWaveLiquido - somaItens) * 100) / 100
+        if (itensWaveTmp.length > 0 && Math.abs(residuo) > 0) {
+          itensWaveTmp[itensWaveTmp.length - 1].valor_total =
+            Math.round((itensWaveTmp[itensWaveTmp.length - 1].valor_total + residuo) * 100) / 100
+        }
+        const itensWave = itensWaveTmp
         if (itensWave.length > 0) {
           try {
             const obsWave =

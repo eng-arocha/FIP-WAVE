@@ -370,10 +370,15 @@ export default function AprovacoesPage() {
       })
     }
     for (const f of historicoFip) {
+      // Detecta pedidos de SERVIÇO (NF Wave do contrato Wave SPE) auto-criados
+      // pela aprovacao de medicao — assim eles aparecem como "Serviço" na lista
+      // em vez de "Fat. Direto" (que e a categoria reservada pra material).
+      const isServicoWave = /WAVE\s+INSTALACOES\s+SPE/i.test(f.fornecedor_razao_social || '')
+        || /NF de SERVI[ÇC]O emitida pela WAVE/i.test(f.observacoes || '')
       rows.push({
         id: `fip-${f.id}`,
         kind: 'fip',
-        tipo: 'Fat. Direto',
+        tipo: isServicoWave ? 'Serviço' : 'Fat. Direto',
         numero: f.numero_pedido_fip ? `FIP-${String(f.numero_pedido_fip).padStart(4, '0')}` : `#${f.numero}`,
         contrato: f.contrato?.numero ?? '—',
         detalhe: f.fornecedor_razao_social || '—',
