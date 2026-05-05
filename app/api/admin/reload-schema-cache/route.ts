@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic'
  * pelo cache do API.
  */
 
-export async function POST() {
+async function reloadSchema(): Promise<Response> {
   try {
     const admin = createAdminClient()
     const { error } = await admin.rpc('exec_sql', {
@@ -29,4 +29,10 @@ export async function POST() {
   }
 }
 
-export const GET = POST
+export async function GET() {
+  return reloadSchema()
+}
+
+export async function POST() {
+  return reloadSchema()
+}
