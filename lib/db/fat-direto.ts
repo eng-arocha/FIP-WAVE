@@ -397,6 +397,13 @@ export async function criarSolicitacaoRascunhoDeMedicao(input: {
   data_aprovacao?: string   // ISO; default = NOW()
   tipo: 'fip_material' | 'wave_servico'
   observacoes_extra?: string  // ex.: "Valor LÍQUIDO após retenção 5%: R$ X"
+  /**
+   * Quando preenchido, ja cria a solicitacao com status='aprovado',
+   * gravando aprovador_id e data_aprovacao. Use isso quando a aprovacao
+   * da medicao IMPLICA aprovacao automatica destes pedidos (NF FIP
+   * material + NF Wave servico) - o usuario ja consentiu na medicao.
+   */
+  aprovador_id?: string
   itens: Array<{
     detalhamento_id: string
     descricao: string
@@ -434,6 +441,7 @@ export async function criarSolicitacaoRascunhoDeMedicao(input: {
     ? `${observacoesBase} ${input.observacoes_extra}`
     : observacoesBase
 
+  const autoAprovado = Boolean(input.aprovador_id)
   const insertPayload: Record<string, unknown> = {
     contrato_id: input.contrato_id,
     solicitante_id: input.solicitante_id,
@@ -441,7 +449,11 @@ export async function criarSolicitacaoRascunhoDeMedicao(input: {
     fornecedor_razao_social: fornecedor.razao_social,
     fornecedor_cnpj: fornecedor.cnpj,
     valor_total,
-    status: 'rascunho',
+    status: autoAprovado ? 'aprovado' : 'rascunho',
+  }
+  if (autoAprovado) {
+    insertPayload.aprovador_id = input.aprovador_id
+    insertPayload.data_aprovacao = input.data_aprovacao ?? new Date().toISOString()
   }
 
   const { data: sol, error } = await admin

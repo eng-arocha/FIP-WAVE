@@ -155,6 +155,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
               medicao_numero: informacon.medicao.numero,
               data_aprovacao: dataAprovacao,
               tipo: 'fip_material',
+              // Aprovacao da medicao IMPLICA aprovacao deste pedido — ja
+              // cria com status='aprovado'.
+              aprovador_id: check.userId,
               itens: itensFip,
             })
             solicitacaoFipId = sol.id
@@ -199,6 +202,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
               data_aprovacao: dataAprovacao,
               tipo: 'wave_servico',
               observacoes_extra: obsWave,
+              // Aprovacao da medicao IMPLICA aprovacao deste pedido — ja
+              // cria com status='aprovado'.
+              aprovador_id: check.userId,
               itens: itensWave,
             })
             solicitacaoWaveId = sol.id

@@ -113,12 +113,17 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
 
   const totalAprovado = solicitacoes.filter(s => s.status === 'aprovado').reduce((sum, s) => sum + s.valor_total, 0)
   const totalPendente = solicitacoes.filter(s => s.status === 'aguardando_aprovacao').reduce((sum, s) => sum + s.valor_total, 0)
-  // Rascunhos auto-criados pela aprovacao de medicoes (FIP material + Wave servico)
-  // detectados pelas observacoes que mencionam "Aprovacao da medicao MED-".
-  // Mostra banner destacado pra usuario nao perder de vista.
-  const rascunhosAutoMedicao = solicitacoes.filter(s =>
-    s.status === 'rascunho' && /Aprova[çc][aã]o da medi[çc][aã]o MED-/i.test(s.observacoes || ''),
-  )
+  // Pedidos auto-criados pela aprovacao de medicoes (FIP material + Wave
+  // servico) que ainda aguardam emissao da NF do fornecedor. Detectados
+  // por: observacao bate com 'Aprovacao da medicao MED-', status nao
+  // cancelado, e sem nenhuma NF nao-rejeitada lancada. Mostra banner
+  // destacado com link pra cada um.
+  const rascunhosAutoMedicao = solicitacoes.filter(s => {
+    if (!/Aprova[çc][aã]o da medi[çc][aã]o MED-/i.test(s.observacoes || '')) return false
+    if (s.status === 'cancelado' || s.status === 'rejeitado') return false
+    const temNFvalida = (s.notas_fiscais || []).some(n => n.status !== 'rejeitada')
+    return !temNFvalida
+  })
   const totalNFs = solicitacoes.reduce((sum, s) => sum + (s.notas_fiscais?.filter(n => n.status !== 'rejeitada').reduce((a, n) => a + n.valor, 0) || 0), 0)
   const teto = resumo?.valor_material_direto ?? 0
   const saldoDisponivel = teto - totalAprovado
@@ -226,10 +231,10 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="text-sm font-bold mb-1" style={{ color: '#F59E0B' }}>
-                  {rascunhosAutoMedicao.length} pedido{rascunhosAutoMedicao.length > 1 ? 's' : ''} aguardando emissão de NF (gerado{rascunhosAutoMedicao.length > 1 ? 's' : ''} pela aprovação de medição)
+                  {rascunhosAutoMedicao.length} pedido{rascunhosAutoMedicao.length > 1 ? 's' : ''} aguardando emissão da NF do fornecedor
                 </h3>
                 <p className="text-xs mb-3" style={{ color: 'var(--text-2)' }}>
-                  Quando uma medição é aprovada, o sistema cria automaticamente os pedidos da NF FIP (material) e Wave (serviço, líquido após retenção). Revise abaixo, complete os dados de NF emitida e submeta.
+                  Pedidos auto-aprovados pela aprovação de medição. Quando o fornecedor emitir a NF, abra o pedido abaixo e clique em "Lançar NF" pra anexar o documento.
                 </p>
                 <div className="grid sm:grid-cols-2 gap-2">
                   {rascunhosAutoMedicao.map(s => {
