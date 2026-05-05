@@ -209,10 +209,21 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
       return
     }
     setActing(true)
+    // Remove campos opcionais vazios pra nao falhar validacao server-side
+    // (cnpj_emitente='' transformava em string vazia e refine '14 digitos'
+    // falhava; data_recebimento='' falhava no regex YYYY-MM-DD).
+    const payload: Record<string, unknown> = {
+      numero_nf: nfForm.numero_nf,
+      emitente: nfForm.emitente,
+      valor: parseFloat(nfForm.valor),
+      data_emissao: nfForm.data_emissao,
+    }
+    if (nfForm.cnpj_emitente && nfForm.cnpj_emitente.trim()) payload.cnpj_emitente = nfForm.cnpj_emitente
+    if (nfForm.descricao && nfForm.descricao.trim()) payload.descricao = nfForm.descricao
     const res = await fetch(`/api/contratos/${id}/fat-direto/solicitacoes/${solId}/nfs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...nfForm, valor: parseFloat(nfForm.valor) }),
+      body: JSON.stringify(payload),
     })
     if (!res.ok) {
       // 422 com code do 3-way match → mensagem mais explícita

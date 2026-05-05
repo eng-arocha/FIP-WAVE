@@ -100,12 +100,31 @@ export async function POST(
       body = await req.json()
     }
 
+    // Normaliza body: strings vazias em campos opcionais viram undefined
+    // pra nao serem validadas (cnpj_emitente='' falhava no .refine de 14
+    // digitos; datas opcionais '' falhavam no regex YYYY-MM-DD).
+    const optionalStringFields = [
+      'cnpj_emitente', 'data_recebimento', 'data_vencimento',
+      'emitente', 'descricao', 'motivo_divergencia', 'arquivo_url',
+    ]
+    for (const k of optionalStringFields) {
+      if (typeof body[k] === 'string' && body[k].trim() === '') {
+        body[k] = undefined
+      }
+    }
+
     const nfParsed = NfSchema.safeParse(body)
     if (!nfParsed.success) {
       const details = nfParsed.error.issues.map(i => ({
         path: i.path.join('.'), code: i.code, message: i.message,
       }))
-      return NextResponse.json({ error: 'Dados inválidos.', details }, { status: 400 })
+      // Resposta humana: junta as mensagens em uma string `error` legivel
+      // pra UI exibir direto, mantem `details` pra debug.
+      const msg = details.map(d => `${d.path}: ${d.message}`).join(' · ')
+      return NextResponse.json(
+        { error: `Dados inválidos. ${msg}`, details },
+        { status: 400 },
+      )
     }
     const nfBody = nfParsed.data
 
