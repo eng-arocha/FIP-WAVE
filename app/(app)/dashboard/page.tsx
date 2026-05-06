@@ -12,7 +12,7 @@ import {
 } from 'recharts'
 import {
   TrendingUp, FileText, Clock, CheckCircle2, AlertCircle,
-  DollarSign, ArrowRight, Loader2, Receipt
+  DollarSign, ArrowRight, Loader2, Receipt, Package, BarChart3,
 } from 'lucide-react'
 import { formatCurrency, formatPercent, getContratoStatusColor, getMedicaoStatusColor } from '@/lib/utils'
 import { CONTRATO_STATUS_LABELS, MEDICAO_STATUS_LABELS, type MedicaoStatus } from '@/types'
@@ -87,6 +87,11 @@ export default function DashboardPage() {
   const [qtdMedicoesComRetencao, setQtdMedicoesComRetencao] = useState(0)
   const [valorServicos, setValorServicos] = useState(0)
   const [valorMaterialDireto, setValorMaterialDireto] = useState(0)
+  // Split medição (spec 2026-05-06)
+  const [totalServicoMedido, setTotalServicoMedido] = useState(0)
+  const [totalMaterialMedido, setTotalMaterialMedido] = useState(0)
+  const [totalMedicao, setTotalMedicao] = useState(0)
+  const [retencaoPrevistaFinal, setRetencaoPrevistaFinal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [rtConnected, setRtConnected] = useState(false)
   // Nota: a ampliação dos cards usa agora o comportamento global do
@@ -116,6 +121,10 @@ export default function DashboardPage() {
         setValorMaterialDireto(data.valor_material_direto || 0)
         setTotalRetencao(data.total_retencao_acumulada || 0)
         setQtdMedicoesComRetencao(data.qtd_medicoes_com_retencao || 0)
+        setTotalServicoMedido(data.total_servico_medido || 0)
+        setTotalMaterialMedido(data.total_material_medido || 0)
+        setTotalMedicao(data.total_medicao || 0)
+        setRetencaoPrevistaFinal(data.retencao_prevista_final || 0)
       }
       if (hierRes.ok) {
         const data = await hierRes.json()
@@ -279,15 +288,15 @@ export default function DashboardPage() {
       />
 
       {/* ── Sticky KPI bar ──
-          Layout: 4 cards principais na 1ª linha + 2 cards expandidos (Saldo +
-          Retenção) na 2ª linha em telas grandes. Em telas médias 2x3, em
-          mobile 1x6. Saldo e Retenção são "agregados resumo" — merecem mais
-          espaço.
+          2 linhas de 4 cards.
+          Linha 1 — Visão geral financeira: Total Contratado, Saldo, NFs, Sol. Aprovadas
+          Linha 2 — Medição (spec 2026-05-06): Serviço, Fat. Direto, Total, Retenção
        */}
-      <div className="sticky top-14 z-10 px-3 sm:px-6 py-3 border-b" style={{ background: 'var(--background)', borderColor: 'var(--border)' }}>
+      <div className="sticky top-14 z-10 px-3 sm:px-6 py-3 border-b space-y-2 sm:space-y-3" style={{ background: 'var(--background)', borderColor: 'var(--border)' }}>
+        {/* ── Linha 1 — Visão geral financeira ── */}
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
 
-          {/* Card 1 — Total Contratado → Estrutura */}
+          {/* Card — Total Contratado */}
           <Link href={primeiroContratoId ? `/contratos/${primeiroContratoId}/estrutura` : '/contratos'}>
             <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full"
               style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(59,130,246,0.50)' }}
@@ -304,26 +313,26 @@ export default function DashboardPage() {
             </div>
           </Link>
 
-          {/* Card 2 — Medição de Serviço → Relatório medições */}
-          <Link href="/documentos/medicoes-servico">
+          {/* Card — Saldo */}
+          <Link href={primeiroContratoId ? `/contratos/${primeiroContratoId}/estrutura?tab=financeiro` : '/contratos'}>
             <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full"
-              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(16,185,129,0.50)' }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = '#10B981')}
+              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(71,85,105,0.50)' }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = '#475569')}
               onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
               <div className="flex items-start justify-between">
                 <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Medição de Serviço</p>
-                  <p className="text-sm sm:text-xl font-bold truncate" style={{ color: 'var(--green)' }}>{formatCurrency(animatedMedidoServico)}</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Saldo</p>
+                  <p className="text-sm sm:text-xl font-bold truncate" style={{ color: 'var(--text-1)' }}>{formatCurrency(animatedSaldo)}</p>
                   <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
-                    <span className="font-semibold" style={{ color: '#10B981' }}>{formatPercent(pctMedido)}</span> do val. serviços → relatório
+                    <span className="font-semibold" style={{ color: 'var(--text-2)' }}>{formatPercent(pctSaldo)}</span> do contrato → estrutura
                   </p>
                 </div>
-                <TrendingUp className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: 'var(--green)' }} />
+                <DollarSign className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: 'var(--text-2)' }} />
               </div>
             </div>
           </Link>
 
-          {/* Card 3 — NF Lançadas → Faturamento Direto (filtro com NF) */}
+          {/* Card — NF Lançadas */}
           <Link href="/documentos/faturamento-direto?view=com-nf">
             <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full"
               style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(99,102,241,0.50)' }}
@@ -342,7 +351,7 @@ export default function DashboardPage() {
             </div>
           </Link>
 
-          {/* Card 4 — Solicitações Aprovadas → Faturamento Direto (view aprovadas) */}
+          {/* Card — Sol. Aprovadas */}
           <Link href="/documentos/faturamento-direto?view=aprovadas">
             <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full"
               style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(245,158,11,0.50)' }}
@@ -360,64 +369,85 @@ export default function DashboardPage() {
               </div>
             </div>
           </Link>
+        </div>
 
-          {/* Card 5 — Saldo → Estrutura do 1º contrato (aba financeira)
-              Ocupa 2 colunas em telas grandes (linha 2) — destaque pra agregado */}
-          <Link href={primeiroContratoId ? `/contratos/${primeiroContratoId}/estrutura?tab=financeiro` : '/contratos'} className="col-span-2 lg:col-span-2">
+        {/* ── Linha 2 — Medição (spec 2026-05-06) ── */}
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+
+          {/* Card — Medição de Serviço (= MO executada) */}
+          <Link href="/documentos/medicoes-servico">
             <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full"
-              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(71,85,105,0.50)' }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = '#475569')}
+              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(16,185,129,0.50)' }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = '#10B981')}
               onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
-              <div className="flex items-start justify-between mb-1">
-                <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>Saldo</p>
-                <DollarSign className="w-4 h-4 flex-shrink-0 hidden sm:block" style={{ color: 'var(--text-2)' }} />
-              </div>
-              <p className="text-sm sm:text-xl font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(animatedSaldo)}</p>
-              <p className="text-[10px] mb-2" style={{ color: 'var(--text-3)' }}>
-                <span className="font-semibold" style={{ color: 'var(--text-2)' }}>{formatPercent(pctSaldo)}</span> do contrato → ver estrutura
-              </p>
-              <div className="grid grid-cols-3 gap-1 pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
-                <div>
-                  <p className="text-[9px]" style={{ color: 'var(--text-3)' }}>Contrato</p>
-                  <p className="text-[10px] font-semibold truncate" style={{ color: 'var(--text-2)' }}>{formatCurrency(totalContratado)}</p>
+              <div className="flex items-start justify-between">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Medição de Serviço</p>
+                  <p className="text-sm sm:text-xl font-bold truncate" style={{ color: 'var(--green)' }}>{formatCurrency(totalServicoMedido)}</p>
+                  <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
+                    <span className="font-semibold" style={{ color: '#10B981' }}>{valorServicos > 0 ? formatPercent((totalServicoMedido / valorServicos) * 100) : '0,00%'}</span> do valor de serviços
+                  </p>
                 </div>
-                <div>
-                  <p className="text-[9px]" style={{ color: 'var(--text-3)' }}>Serviços</p>
-                  <p className="text-[10px] font-semibold truncate" style={{ color: '#10B981' }}>{formatCurrency(totalMedidoServico)}</p>
-                </div>
-                <div>
-                  <p className="text-[9px]" style={{ color: 'var(--text-3)' }}>NFs</p>
-                  <p className="text-[10px] font-semibold truncate" style={{ color: '#6366F1' }}>{formatCurrency(totalNfsLancadas)}</p>
-                </div>
+                <TrendingUp className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: 'var(--green)' }} />
               </div>
             </div>
           </Link>
 
-          {/* Card 6 — Retenção contratual acumulada (linha 2, span 2) */}
-          <Link href="/documentos/retencoes" className="col-span-2 lg:col-span-2">
+          {/* Card — Fat. Direto Medido (= Material executado, inclui Admin) */}
+          <Link href="/documentos/faturamento-direto?view=aprovadas">
+            <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full"
+              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(6,182,212,0.50)' }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = '#06B6D4')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
+              <div className="flex items-start justify-between">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Fat. Direto Medido</p>
+                  <p className="text-sm sm:text-xl font-bold truncate" style={{ color: '#06B6D4' }}>{formatCurrency(totalMaterialMedido)}</p>
+                  <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
+                    <span className="font-semibold" style={{ color: '#06B6D4' }}>{valorMaterialDireto > 0 ? formatPercent((totalMaterialMedido / valorMaterialDireto) * 100) : '0,00%'}</span> do material direto
+                  </p>
+                </div>
+                <Package className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: '#06B6D4' }} />
+              </div>
+            </div>
+          </Link>
+
+          {/* Card — Medição Total (= mat + serv) */}
+          <Link href="/documentos/medicoes-servico">
+            <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full"
+              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(168,85,247,0.50)' }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = '#A855F7')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
+              <div className="flex items-start justify-between">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Medição Total</p>
+                  <p className="text-sm sm:text-xl font-bold truncate" style={{ color: '#A855F7' }}>{formatCurrency(totalMedicao)}</p>
+                  <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
+                    <span className="font-semibold" style={{ color: '#A855F7' }}>{totalContratado > 0 ? formatPercent((totalMedicao / totalContratado) * 100) : '0,00%'}</span> do contrato (mat + serv)
+                  </p>
+                </div>
+                <BarChart3 className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: '#A855F7' }} />
+              </div>
+            </div>
+          </Link>
+
+          {/* Card — Retenção Contratual (5% × Medição Total) */}
+          <Link href="/documentos/retencoes">
             <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full"
               style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(99,102,241,0.50)' }}
               onMouseEnter={e => (e.currentTarget.style.borderColor = '#6366F1')}
               onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
-              <div className="flex items-start justify-between mb-1">
-                <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>Retenção Contratual</p>
-                <TrendingUp className="w-4 h-4 flex-shrink-0 hidden sm:block" style={{ color: '#818CF8' }} />
-              </div>
-              <p className="text-sm sm:text-xl font-bold" style={{ color: '#818CF8' }}>{formatCurrency(animatedRetencao)}</p>
-              <p className="text-[10px] mb-2" style={{ color: 'var(--text-3)' }}>
-                acumulada em <span className="font-semibold" style={{ color: 'var(--text-2)' }}>{qtdMedicoesComRetencao}</span> medição{qtdMedicoesComRetencao !== 1 ? 'ões' : ''} aprovada{qtdMedicoesComRetencao !== 1 ? 's' : ''} · ver relatório →
-              </p>
-              <div className="grid grid-cols-2 gap-1 pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
-                <div>
-                  <p className="text-[9px]" style={{ color: 'var(--text-3)' }}>Total medido (serviços)</p>
-                  <p className="text-[10px] font-semibold truncate" style={{ color: 'var(--text-2)' }}>{formatCurrency(totalMedidoServico)}</p>
-                </div>
-                <div>
-                  <p className="text-[9px]" style={{ color: 'var(--text-3)' }}>% retido s/ medido</p>
-                  <p className="text-[10px] font-semibold truncate" style={{ color: '#818CF8' }}>
-                    {totalMedidoServico > 0 ? ((totalRetencao / totalMedidoServico) * 100).toFixed(2).replace('.', ',') + '%' : '—'}
+              <div className="flex items-start justify-between">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Retenção Contratual</p>
+                  <p className="text-sm sm:text-xl font-bold truncate" style={{ color: '#818CF8' }}>{formatCurrency(animatedRetencao)}</p>
+                  <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
+                    <span className="font-semibold" style={{ color: '#818CF8' }}>
+                      {retencaoPrevistaFinal > 0 ? formatPercent((totalRetencao / retencaoPrevistaFinal) * 100) : '0,00%'}
+                    </span> de {formatCurrency(retencaoPrevistaFinal)} previsto
                   </p>
                 </div>
+                <TrendingUp className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: '#818CF8' }} />
               </div>
             </div>
           </Link>

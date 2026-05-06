@@ -16,6 +16,7 @@ export async function GET() {
       { data: contratosRaw },
       { data: allNfs },
       retencoesQuery,
+      medicoesAprovadasComItens,
     ] = await Promise.all([
       supabase.from('vw_resumo_contrato').select('*'),
       supabase.from('medicoes')
@@ -29,6 +30,17 @@ export async function GET() {
       admin.from('notas_fiscais_fat_direto').select('valor, status').neq('status', 'rejeitada'),
       // Retenção acumulada (medição 051) — resiliente caso schema cache stale
       admin.from('medicoes').select('valor_retencao_garantia').eq('status', 'aprovado'),
+      // Medições aprovadas + itens + valor_unit mat/serv pra calcular split
+      // 'Medição de Serviço' (= MO) vs 'Fat. Direto Medido' (= material).
+      // Source-of-truth pra os 4 cards de medição do dashboard (spec 2026-05-06).
+      admin.from('medicoes')
+        .select(`id, status, contrato_id,
+          medicao_itens (
+            quantidade_medida,
+            detalhamento:detalhamentos ( valor_material_unit, valor_servico_unit )
+          )
+        `)
+        .eq('status', 'aprovado'),
     ])
 
     // NFs de solicitações aprovadas (para Medição Fat. Direto legado)
@@ -117,6 +129,47 @@ export async function GET() {
       qtdMedicoesComRetencao = meds.size
     }
 
+    // Split medição: serviço (MO) × material — calculado a partir de
+    // medicao_itens × detalhamentos (mat_unit + servico_unit). Não confia em
+    // medicoes.valor_total (que pode ter sido gravado pela fórmula antiga).
+    let totalServicoMedido = 0
+    let totalMaterialMedido = 0
+    const medsAgg = (medicoesAprovadasComItens?.data || []) as any[]
+    for (const m of medsAgg) {
+      for (const it of (m.medicao_itens || []) as any[]) {
+        const qtde = Number(it.quantidade_medida || 0)
+        const matUnit = Number(it.detalhamento?.valor_material_unit || 0)
+        const servUnit = Number(it.detalhamento?.valor_servico_unit || 0)
+        totalMaterialMedido += qtde * matUnit
+        totalServicoMedido  += qtde * servUnit
+      }
+    }
+    const totalMedicao = Math.round((totalMaterialMedido + totalServicoMedido) * 100) / 100
+    totalMaterialMedido = Math.round(totalMaterialMedido * 100) / 100
+    totalServicoMedido  = Math.round(totalServicoMedido  * 100) / 100
+
+    // Atualiza fallback de retenção: se livro-razão zero E temos split de
+    // medição, estima como 5% × totalMedicao (formula nova) em vez de 5% ×
+    // valor_total (formula antiga). Default pct = 5.
+    if (totalRetencao === 0 && totalMedicao > 0) {
+      // pega percentual_retencao do primeiro contrato ativo (assume mesma %
+      // pra simplicidade — multi-contrato com pcts diferentes é raro)
+      const { data: cPct } = await admin
+        .from('contratos')
+        .select('percentual_retencao')
+        .eq('status', 'ativo')
+        .limit(1)
+        .single()
+      const pct = Number((cPct as any)?.percentual_retencao ?? 5)
+      totalRetencao = Math.round(totalMedicao * (pct / 100) * 100) / 100
+      qtdMedicoesComRetencao = qtdMedicoesComRetencao || medsAgg.length
+    }
+
+    // Retenção prevista total da obra = 5% × valor_total contrato (= mat +
+    // serv). NF Wave SPE de retenção emitida no encerramento equivale a 5%
+    // de TUDO que foi medido durante a obra.
+    const retencaoPrevistaFinal = Math.round((valorServicos + valorMaterialDireto) * 0.05 * 100) / 100
+
     return NextResponse.json({
       contratos: contratos || [],
       medicoes_recentes: medicoesPendentes || [],
@@ -128,6 +181,11 @@ export async function GET() {
       valor_material_direto: valorMaterialDireto,
       total_retencao_acumulada: totalRetencao,
       qtd_medicoes_com_retencao: qtdMedicoesComRetencao,
+      // Novos campos pra cards de medição segregados
+      total_servico_medido: totalServicoMedido,
+      total_material_medido: totalMaterialMedido,
+      total_medicao: totalMedicao,
+      retencao_prevista_final: retencaoPrevistaFinal,
     })
   } catch (e: any) {
     return apiError(e)
