@@ -178,6 +178,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const orcErros: string[] = []
     const codigosNovos: string[] = []
     const codigosIgnorados: string[] = []
+    // Conjunto de codigos que aparecem na planilha (level 3) — usado depois
+    // pra detectar "orfaos" = items no banco que NAO estao na planilha
+    const codigosNaPlanilha = new Set<string>()
 
     for (let r = dataStartRow; r < aoa.length; r++) {
       const row = aoa[r] || []
@@ -188,6 +191,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       const codigoLinha = iItem >= 0 ? String(row[iItem] ?? '').trim() : ''
       const descricaoLinha = iDesc >= 0 ? String(row[iDesc] ?? '').trim() : ''
       const localLinha = iLocal >= 0 ? String(row[iLocal] ?? '').trim() : ''
+      if (codigoLinha) codigosNaPlanilha.add(codigoLinha)
 
       let det: any = null
       if (iId >= 0) {
@@ -349,6 +353,40 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       }
     }
 
+    // Detecta orfaos: detalhamentos no banco cujo codigo NAO veio na
+    // planilha. Usuario decide depois (manualmente ou via /api/admin/
+    // limpar-orfaos-orcamento) — upload nao deleta nada.
+    // Verifica tambem se cada orfao tem FK em medicao_itens ou
+    // itens_solicitacao_fat_direto pra rotular como 'safe' ou 'em_uso'.
+    type Orfao = { id: string; codigo: string; descricao: string; em_uso: boolean; refs: string[] }
+    const orfaos: Orfao[] = []
+    if (tipo === 'fisico') {
+      for (const d of (allDets || []) as any[]) {
+        if (codigosNaPlanilha.has(String(d.codigo))) continue
+        // Checa FKs: medicao_itens, itens_solicitacao_fat_direto
+        const refs: string[] = []
+        const { count: cMI } = await admin
+          .from('medicao_itens')
+          .select('id', { count: 'exact', head: true })
+          .eq('detalhamento_id', d.id)
+        if ((cMI ?? 0) > 0) refs.push(`medicao_itens(${cMI})`)
+        const { count: cFD } = await admin
+          .from('itens_solicitacao_fat_direto')
+          .select('id', { count: 'exact', head: true })
+          .eq('detalhamento_id', d.id)
+        if ((cFD ?? 0) > 0) refs.push(`itens_solicitacao_fat_direto(${cFD})`)
+        orfaos.push({
+          id: d.id,
+          codigo: d.codigo,
+          descricao: d.descricao,
+          em_uso: refs.length > 0,
+          refs,
+        })
+      }
+    }
+    const orfaosSafe = orfaos.filter(o => !o.em_uso)
+    const orfaosEmUso = orfaos.filter(o => o.em_uso)
+
     return NextResponse.json({
       tipo_detectado: tipo,
       aba: sheetName,
@@ -360,6 +398,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         erros: orcErros,
         codigos_novos: codigosNovos.slice(0, 20),
         codigos_ignorados: codigosIgnorados.slice(0, 20),
+        orfaos_safe: orfaosSafe.map(o => ({ codigo: o.codigo, descricao: o.descricao, id: o.id })),
+        orfaos_em_uso: orfaosEmUso.map(o => ({ codigo: o.codigo, refs: o.refs })),
+        total_orfaos: orfaos.length,
       },
       cronograma: { tipo, celulas: celulasAplicadas, meses: mesColIdxs.length, limpas: celulasLimpas, reset },
       linhas_nivel3: linhasProcessadas,
