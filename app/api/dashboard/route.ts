@@ -15,7 +15,6 @@ export async function GET() {
       { data: solsAprovadas },
       { data: contratosRaw },
       { data: allNfs },
-      retencoesQuery,
       medicoesAprovadasComItens,
     ] = await Promise.all([
       supabase.from('vw_resumo_contrato').select('*'),
@@ -28,8 +27,6 @@ export async function GET() {
       admin.from('solicitacoes_fat_direto').select('id, valor_total').eq('status', 'aprovado'),
       admin.from('contratos').select('valor_servicos, valor_material_direto').eq('status', 'ativo'),
       admin.from('notas_fiscais_fat_direto').select('valor, status').neq('status', 'rejeitada'),
-      // Retenção acumulada (medição 051) — resiliente caso schema cache stale
-      admin.from('medicoes').select('valor_retencao_garantia').eq('status', 'aprovado'),
       // Medições aprovadas + itens + valor_unit mat/serv pra calcular split
       // 'Medição de Serviço' (= MO) vs 'Fat. Direto Medido' (= material).
       // Source-of-truth pra os 4 cards de medição do dashboard (spec 2026-05-06).
@@ -114,38 +111,6 @@ export async function GET() {
       }
     }
 
-    // Sem livro-razão (062 nao aplicada ou contratos antigos sem movimentos):
-    // fallback que estima retenção via 5% × valor_total das medicoes aprovadas.
-    if (!temLivroRazao) {
-      // Pega contratos ativos com pct_retencao
-      const { data: contratosPct } = await admin
-        .from('contratos')
-        .select('id, percentual_retencao')
-        .eq('status', 'ativo')
-      const pctMap = new Map<string, number>()
-      for (const c of (contratosPct || []) as any[]) {
-        pctMap.set(c.id, Number(c.percentual_retencao ?? 5))
-      }
-      const { data: medsAprov } = await admin
-        .from('medicoes')
-        .select('id, contrato_id, valor_total, valor_retencao_garantia')
-        .eq('status', 'aprovado')
-      let total = 0
-      const meds = new Set<string>()
-      for (const m of (medsAprov || []) as any[]) {
-        const fromCol = Number(m.valor_retencao_garantia || 0)
-        const pct = pctMap.get(m.contrato_id) ?? 5
-        const fromEstim = Math.round(Number(m.valor_total || 0) * (pct / 100) * 100) / 100
-        const v = fromCol > 0 ? fromCol : fromEstim
-        if (v > 0) {
-          total += v
-          meds.add(m.id)
-        }
-      }
-      totalRetencao = total
-      qtdMedicoesComRetencao = meds.size
-    }
-
     // Split medição: serviço (MO) × material — calculado a partir de
     // medicao_itens × detalhamentos (mat_unit + servico_unit). Não confia em
     // medicoes.valor_total (que pode ter sido gravado pela fórmula antiga).
@@ -165,12 +130,11 @@ export async function GET() {
     totalMaterialMedido = Math.round(totalMaterialMedido * 100) / 100
     totalServicoMedido  = Math.round(totalServicoMedido  * 100) / 100
 
-    // Atualiza fallback de retenção: se livro-razão zero E temos split de
-    // medição, estima como 5% × totalMedicao (formula nova) em vez de 5% ×
-    // valor_total (formula antiga). Default pct = 5.
-    if (totalRetencao === 0 && totalMedicao > 0) {
-      // pega percentual_retencao do primeiro contrato ativo (assume mesma %
-      // pra simplicidade — multi-contrato com pcts diferentes é raro)
+    // Sem livro-razão (062 nao aplicada ou RPC ausente): estima retenção
+    // como 5% × totalMedicao (FORMULA NOVA spec 2026-05-06 = mat + serv,
+    // já calculado acima via split). NÃO usa medicoes.valor_total (formula
+    // antiga) que daria número errado pra MED-001 antiga.
+    if (!temLivroRazao && totalMedicao > 0) {
       const { data: cPct } = await admin
         .from('contratos')
         .select('percentual_retencao')
