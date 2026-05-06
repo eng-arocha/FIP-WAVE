@@ -53,17 +53,68 @@ export async function GET() {
     const valorServicos       = (contratosRaw || []).reduce((acc: number, c: any) => acc + (c.valor_servicos || 0), 0)
     const valorMaterialDireto = (contratosRaw || []).reduce((acc: number, c: any) => acc + (c.valor_material_direto || 0), 0)
 
-    // Retenção acumulada (degradação OK se coluna ainda não no schema cache)
+    // Retenção contratual acumulada — fonte primária: livro-razão
+    // (retencao_movimentos, migration 062). Reporta o TOTAL CREDITADO
+    // na história (= 5% × tudo que foi medido até hoje), nao o saldo
+    // atual (que pode estar zerado por compensações nas NFs Wave).
+    // UX: usuário quer ver 'quanto já retive', não 'quanto resta'.
+    // Fallback: coluna legacy valor_retencao_garantia (migration 051) +
+    // estimativa via 5% × valor_total das medicoes aprovadas, se
+    // livro-razão ainda nao tiver entradas.
     let totalRetencao = 0
     let qtdMedicoesComRetencao = 0
-    if (!retencoesQuery.error) {
-      totalRetencao = (retencoesQuery.data || []).reduce(
-        (acc: number, m: any) => acc + Number(m.valor_retencao_garantia || 0),
-        0,
-      )
-      qtdMedicoesComRetencao = (retencoesQuery.data || []).filter(
-        (m: any) => Number(m.valor_retencao_garantia || 0) > 0,
-      ).length
+
+    const { data: movimentos, error: movErr } = await admin
+      .from('retencao_movimentos')
+      .select('contrato_id, tipo, valor, origem_tipo, origem_id')
+
+    let temLivroRazao = false
+    if (!movErr && movimentos && movimentos.length > 0) {
+      temLivroRazao = true
+      const medicoesComCredito = new Set<string>()
+      let totalCreditado = 0
+      for (const mv of movimentos as any[]) {
+        if (mv.tipo === 'credito') {
+          totalCreditado += Number(mv.valor || 0)
+          if (mv.origem_tipo === 'medicao_aprovada' && mv.origem_id) {
+            medicoesComCredito.add(mv.origem_id)
+          }
+        }
+      }
+      totalRetencao = totalCreditado
+      qtdMedicoesComRetencao = medicoesComCredito.size
+    }
+
+    // Sem livro-razão (062 nao aplicada ou contratos antigos sem movimentos):
+    // fallback que estima retenção via 5% × valor_total das medicoes aprovadas.
+    if (!temLivroRazao) {
+      // Pega contratos ativos com pct_retencao
+      const { data: contratosPct } = await admin
+        .from('contratos')
+        .select('id, percentual_retencao')
+        .eq('status', 'ativo')
+      const pctMap = new Map<string, number>()
+      for (const c of (contratosPct || []) as any[]) {
+        pctMap.set(c.id, Number(c.percentual_retencao ?? 5))
+      }
+      const { data: medsAprov } = await admin
+        .from('medicoes')
+        .select('id, contrato_id, valor_total, valor_retencao_garantia')
+        .eq('status', 'aprovado')
+      let total = 0
+      const meds = new Set<string>()
+      for (const m of (medsAprov || []) as any[]) {
+        const fromCol = Number(m.valor_retencao_garantia || 0)
+        const pct = pctMap.get(m.contrato_id) ?? 5
+        const fromEstim = Math.round(Number(m.valor_total || 0) * (pct / 100) * 100) / 100
+        const v = fromCol > 0 ? fromCol : fromEstim
+        if (v > 0) {
+          total += v
+          meds.add(m.id)
+        }
+      }
+      totalRetencao = total
+      qtdMedicoesComRetencao = meds.size
     }
 
     return NextResponse.json({

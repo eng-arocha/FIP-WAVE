@@ -108,8 +108,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             contrato_id: contratoId,
             medicao_id: medicaoId,
             medicao_numero: informacon.medicao.numero,
-            // Usa a MESMA base que aparece no card "Estimativa de retenção
-            // contratual" da página da medição — exclui material retido.
+            // Base de retenção (spec 2026-05-06) = TUDO executado fisicamente
+            // nesta medição = mat_medido + serv_medido. Inclui itens fat-direto
+            // comerciais (item 19 Admin). 5% incidem sobre essa base inteira.
             base_retencao: informacon.totais.base_retencao,
             wave_bruto: valorWaveBruto,
             pct_retencao: pctRetencao,
@@ -425,7 +426,7 @@ async function dispararEmailLiberacaoMedicao(args: {
           descricao: String(l.descricao ?? '—'),
           pct_original: Number(l.pct_serv_med_original ?? 0),
           pct_ajustado: Number(l.pct_serv_med ?? 0),
-          valor_retido_absorvido: Number(l.material_retido ?? 0),
+          valor_retido_absorvido: Number(l.faturamento_direto_em_aberto ?? 0),
           motivo: String(l.confirmacao_sem_nf_motivo ?? ''),
         }))
       }
@@ -440,7 +441,7 @@ async function dispararEmailLiberacaoMedicao(args: {
       )
 
       // Convergência (A): retenção do email = retenção do informacon
-      // (5% × dados_informakon). Antes divergia em 5% × material_retido.
+      // (5% × base_retencao). Spec 2026-05-06: base = mat_medido + serv_medido
       resumo.retencao.valor = informacon.totais.retencao
       resumo.retencao.base_retencao = informacon.totais.base_retencao
       resumo.retencao.liquido_a_pagar = waveServicoTotal - informacon.totais.retencao

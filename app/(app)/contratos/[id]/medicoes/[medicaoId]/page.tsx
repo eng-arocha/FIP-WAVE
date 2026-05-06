@@ -149,7 +149,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
      * pendente de chegar — vira "Saldo Ped. Aprovados (NF Pendentes)".
      * = min(gap_material, saldo_aprovado_disponivel)
      */
-    material_retido: number
+    faturamento_direto_em_aberto: number
     /**
      * Material da medição que NÃO tem nem NF lançada nem pedido aprovado —
      * a FIP precisa criar uma NF nova. Card "FIP (MATERIAL)" do boletim.
@@ -202,7 +202,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
         material_medido: Number(data.totais?.material_medido || 0),
         servico_medido:  Number(data.totais?.servico_medido  || 0),
         nf_descontavel:  Number(data.totais?.nf_descontavel  || 0),
-        material_retido: Number(data.totais?.material_retido || 0),
+        faturamento_direto_em_aberto: Number(data.totais?.faturamento_direto_em_aberto || 0),
         fip_faturar:     Number(data.totais?.fip_faturar     || 0),
         base_retencao:   Number(data.totais?.base_retencao   || 0),
         retencao:        Number(data.totais?.retencao        || 0),
@@ -1076,7 +1076,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                               const tot = Number(medicao.valor_total || 0)
                               if (mat === 0 && serv === 0 && tot > 0) serv = tot
                               const nfFipMaterial      = totaisInformacon?.nf_descontavel ?? 0
-                              const saldoPedAprovados  = totaisInformacon?.material_retido ?? 0
+                              const saldoPedAprovados  = totaisInformacon?.faturamento_direto_em_aberto ?? 0
                               const fipACriar          = totaisInformacon?.fip_faturar    ?? 0
                               // 7 colunas: label ocupa 6, valor na última.
                               return (
@@ -1157,7 +1157,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                         const tot = Number(medicao.valor_total || 0)
                         if (mat === 0 && serv === 0 && tot > 0) serv = tot
                         const nfFipMaterial      = totaisInformacon?.nf_descontavel ?? 0
-                        const saldoPedAprovados  = totaisInformacon?.material_retido ?? 0
+                        const saldoPedAprovados  = totaisInformacon?.faturamento_direto_em_aberto ?? 0
                         const fipACriar          = totaisInformacon?.fip_faturar    ?? 0
                         return (
                           <>

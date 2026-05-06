@@ -102,8 +102,28 @@ export async function createMedicao(input: {
     .single()
   const numero = (last?.numero || 0) + 1
 
-  // Calcular valor total
-  const valor_total = input.itens.reduce((acc, i) => acc + i.quantidade_medida * i.valor_unitario, 0)
+  // Calcular valor total (= base de retenção, spec 2026-05-06)
+  // Servidor é autoritativo: busca mat_unit + servico_unit do banco e
+  // ignora o valor_unitario passado pelo cliente (que pode ser apenas o
+  // componente serviço, dependendo da versão da UI). valor_total agora
+  // representa TUDO executado fisicamente nesta medição: mat + serv.
+  const detIds = input.itens.map(i => i.detalhamento_id)
+  const { data: dets } = await supabase
+    .from('detalhamentos')
+    .select('id, valor_material_unit, valor_servico_unit')
+    .in('id', detIds)
+  const unitMap = new Map<string, { mat: number; serv: number }>()
+  for (const d of (dets || []) as any[]) {
+    unitMap.set(d.id, {
+      mat: Number(d.valor_material_unit ?? 0),
+      serv: Number(d.valor_servico_unit ?? 0),
+    })
+  }
+  const valor_total = input.itens.reduce((acc, i) => {
+    const u = unitMap.get(i.detalhamento_id)
+    const totalUnit = u ? (u.mat + u.serv) : i.valor_unitario
+    return acc + i.quantidade_medida * totalUnit
+  }, 0)
 
   // Criar medição
   const { data: medicao, error } = await supabase
@@ -124,16 +144,22 @@ export async function createMedicao(input: {
     .single()
   if (error) throw error
 
-  // Criar itens
+  // Criar itens — valor_unitario gravado = mat + serv (spec 2026-05-06)
+  // pra que valor_medido = qtde × (mat+serv) reflita TUDO o que foi
+  // executado, e o livro-razão de retenção use a base correta.
   if (input.itens.length > 0) {
     const { error: itensError } = await supabase
       .from('medicao_itens')
-      .insert(input.itens.map(i => ({
-        medicao_id: medicao.id,
-        detalhamento_id: i.detalhamento_id,
-        quantidade_medida: i.quantidade_medida,
-        valor_unitario: i.valor_unitario,
-      })))
+      .insert(input.itens.map(i => {
+        const u = unitMap.get(i.detalhamento_id)
+        const totalUnit = u ? (u.mat + u.serv) : i.valor_unitario
+        return {
+          medicao_id: medicao.id,
+          detalhamento_id: i.detalhamento_id,
+          quantidade_medida: i.quantidade_medida,
+          valor_unitario: totalUnit,
+        }
+      }))
     if (itensError) throw itensError
   }
 

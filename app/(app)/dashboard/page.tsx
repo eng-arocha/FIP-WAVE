@@ -304,7 +304,7 @@ export default function DashboardPage() {
             </div>
           </Link>
 
-          {/* Card 2 — Medição Física → Relatório medições */}
+          {/* Card 2 — Medição de Serviço → Relatório medições */}
           <Link href="/documentos/medicoes-servico">
             <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full"
               style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(16,185,129,0.50)' }}
@@ -312,7 +312,7 @@ export default function DashboardPage() {
               onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
               <div className="flex items-start justify-between">
                 <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Medição Física</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Medição de Serviço</p>
                   <p className="text-sm sm:text-xl font-bold truncate" style={{ color: 'var(--green)' }}>{formatCurrency(animatedMedidoServico)}</p>
                   <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
                     <span className="font-semibold" style={{ color: '#10B981' }}>{formatPercent(pctMedido)}</span> do val. serviços → relatório
@@ -485,7 +485,11 @@ export default function DashboardPage() {
                   />
                   <Tooltip
                     contentStyle={chartTooltipStyle}
-                    formatter={(v) => v !== null ? `${v}%` : 'N/D'}
+                    formatter={(v) => {
+                      if (v === null || v === undefined) return 'N/D'
+                      const n = typeof v === 'number' ? v : Number(v)
+                      return Number.isFinite(n) ? `${n.toFixed(2).replace('.', ',')}%` : 'N/D'
+                    }}
                   />
                   <Legend
                     iconSize={10}

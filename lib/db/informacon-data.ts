@@ -47,7 +47,7 @@ export interface InformaconLinha {
   saldo_aprovado: number
   nf_descontavel: number
   gap_material: number
-  material_retido: number
+  faturamento_direto_em_aberto: number
   fip_faturar: number
   wave_servico: number
   valor_total_medido: number
@@ -76,7 +76,7 @@ export interface InformaconTotais {
   saldo_aprovado: number
   nf_descontavel: number
   gap_material: number
-  material_retido: number
+  faturamento_direto_em_aberto: number
   fip_faturar: number
   wave_servico: number
   valor_total_medido: number
@@ -364,8 +364,8 @@ export async function calcularInformaconData(
 
       const nfDescontavel  = Math.min(matMedido, nfTerceiroItem)
       const gapMaterial    = Math.max(0, matMedido - nfDescontavel)
-      const materialRetido = Math.min(gapMaterial, saldoAprovDisponivel)
-      const fipFaturar     = Math.max(0, gapMaterial - materialRetido)
+      const faturamentoDiretoEmAberto = Math.min(gapMaterial, saldoAprovDisponivel)
+      const fipFaturar     = Math.max(0, gapMaterial - faturamentoDiretoEmAberto)
 
       const valorGlobalItem = qtdContr * valorUnit
       const valorServicoTotalItem = qtdContr * servUnit
@@ -373,23 +373,24 @@ export async function calcularInformaconData(
       const pctServMed = qtdContr > 0 ? (qtdMed / qtdContr) * 100 : 0
 
       const confirmacaoSemNf = Boolean(it.confirmacao_sem_nf)
-      const ajusteAplicado = confirmacaoSemNf && materialRetido > 0
+      const ajusteAplicado = confirmacaoSemNf && faturamentoDiretoEmAberto > 0
 
       const pctServMedAjustado = ajusteAplicado && valorServicoTotalItem > 0
-        ? Math.max(0, pctServMed - (materialRetido / valorServicoTotalItem) * 100)
+        ? Math.max(0, pctServMed - (faturamentoDiretoEmAberto / valorServicoTotalItem) * 100)
         : pctServMed
 
       const waveServico = (pctServMedAjustado / 100) * valorServicoTotalItem
       const valorTotalMedido = (pctServMedAjustado / 100) * valorServicoTotalItem
-      const dadosInformakon = waveServico + matMedido - materialRetido
+      // dados_informakon (manter como métrica exibida no boletim) =
+      // o que aparece no Informakon = wave + mat - fat-direto em aberto
+      const dadosInformakon = waveServico + matMedido - faturamentoDiretoEmAberto
       const pctInformakon = valorGlobalItem > 0 ? (dadosInformakon / valorGlobalItem) * 100 : 0
-      const alteradoPorRetido = materialRetido > 0
-      // Retenção sobre o que está efetivamente sendo faturado nesta medição
-      // (mat NF descontável + FIP fat-direto + serviço Wave) = dados_informakon.
-      // Captura corretamente itens 100% material (ex.: grupo 19 Administração)
-      // que não geram NF de serviço — antes da correção a retenção desses
-      // itens dava zero porque a base era só wave_servico.
-      const baseRet = dadosInformakon
+      const alteradoPorRetido = faturamentoDiretoEmAberto > 0
+      // Base de retenção: SOMA do que foi executado fisicamente nesta medição
+      // = mat_medido + serv_medido. Não subtrai 'fat-direto em aberto' porque
+      // todo material executado já está sob nossa posse e deve reter 5% pra
+      // garantia financeira. (spec 2026-05-06)
+      const baseRet = matMedido + waveServico
       const retencao5pct = baseRet * (pctRetencao / 100)
 
       const linha: InformaconLinha = {
@@ -417,7 +418,7 @@ export async function calcularInformaconData(
         saldo_aprovado: saldoAprovDisponivel,
         nf_descontavel: nfDescontavel,
         gap_material: gapMaterial,
-        material_retido: materialRetido,
+        faturamento_direto_em_aberto: faturamentoDiretoEmAberto,
         fip_faturar: fipFaturar,
         wave_servico: waveServico,
         valor_total_medido: valorTotalMedido,
@@ -481,7 +482,7 @@ export async function calcularInformaconData(
       saldo_aprovado: Math.max(0, (aprovadoPorDet[det.id] || 0) - (nfAlocadaPorDet[det.id] || 0)),
       nf_descontavel: 0,
       gap_material: 0,
-      material_retido: 0,
+      faturamento_direto_em_aberto: 0,
       fip_faturar: 0,
       wave_servico: 0,
       valor_total_medido: 0,
@@ -514,7 +515,7 @@ export async function calcularInformaconData(
     saldo_aprovado:  acc.saldo_aprovado  + l.saldo_aprovado,
     nf_descontavel:  acc.nf_descontavel  + l.nf_descontavel,
     gap_material:    acc.gap_material    + l.gap_material,
-    material_retido: acc.material_retido + l.material_retido,
+    faturamento_direto_em_aberto: acc.faturamento_direto_em_aberto + l.faturamento_direto_em_aberto,
     fip_faturar:     acc.fip_faturar     + l.fip_faturar,
     wave_servico:    acc.wave_servico    + l.wave_servico,
     valor_total_medido: acc.valor_total_medido + l.valor_total_medido,
@@ -528,7 +529,7 @@ export async function calcularInformaconData(
   }), {
     material_medido: 0, servico_medido: 0,
     nf_terceiro: 0, saldo_aprovado: 0, nf_descontavel: 0, gap_material: 0,
-    material_retido: 0, fip_faturar: 0, wave_servico: 0,
+    faturamento_direto_em_aberto: 0, fip_faturar: 0, wave_servico: 0,
     valor_total_medido: 0, dados_informakon: 0, total_informakon: 0,
     base_retencao: 0, retencao: 0,
     material_acumulado: 0, servico_acumulado: 0,

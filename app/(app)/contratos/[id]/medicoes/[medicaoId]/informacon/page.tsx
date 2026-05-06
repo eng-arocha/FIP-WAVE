@@ -45,7 +45,7 @@ interface Linha {
   saldo_aprovado: number
   nf_descontavel: number
   gap_material: number
-  material_retido: number
+  faturamento_direto_em_aberto: number
   fip_faturar: number
   wave_servico: number
   valor_total_medido: number
@@ -94,7 +94,7 @@ interface Resp {
     saldo_aprovado: number
     nf_descontavel: number
     gap_material: number
-    material_retido: number
+    faturamento_direto_em_aberto: number
     fip_faturar: number
     wave_servico: number
     valor_total_medido: number
@@ -204,7 +204,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
       l.saldo_aprovado.toFixed(2).replace('.', ','),
       l.nf_descontavel.toFixed(2).replace('.', ','),
       l.gap_material.toFixed(2).replace('.', ','),
-      l.material_retido.toFixed(2).replace('.', ','),
+      l.faturamento_direto_em_aberto.toFixed(2).replace('.', ','),
       l.fip_faturar.toFixed(2).replace('.', ','),
       l.wave_servico.toFixed(2).replace('.', ','),
       pctFmt(pctServMedExibido(l)),
@@ -528,7 +528,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   { header: 'Saldo Aprov.', get: (l: any) => Number(l.saldo_aprovado) },
                   { header: 'NF Desc.', get: (l: any) => Number(l.nf_descontavel) },
                   { header: 'Gap', get: (l: any) => Number(l.gap_material) },
-                  { header: 'Retido', get: (l: any) => Number(l.material_retido) },
+                  { header: 'Retido', get: (l: any) => Number(l.faturamento_direto_em_aberto) },
                   { header: 'FIP Fat-Dir', get: (l: any) => Number(l.fip_faturar) },
                   { header: 'Wave (Serv.)', get: (l: any) => Number(l.wave_servico) },
                   { header: '% Serv. Med.', get: (l: any) => Number(pctServMedExibido(l)) },
@@ -664,7 +664,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
           <Card label="Wave (Serviço)" value={formatCurrency(data.totais.wave_servico)} accent="#0F766E" hint="NF Wave a emitir" />
           <Card label="FIP (Material)" value={formatCurrency(data.totais.fip_faturar)} accent="#3B82F6" hint="Fat-direto FIP a criar" />
           <Card label="NF terceiro descontada" value={formatCurrency(data.totais.nf_descontavel)} accent="var(--text-2)" hint="Já lançadas no item" />
-          <Card label="Material retido" value={formatCurrency(data.totais.material_retido)} accent="#F59E0B" hint="Aguarda NF terceiro" />
+          <Card label="Fat. Direto em aberto" value={formatCurrency(data.totais.faturamento_direto_em_aberto)} accent="#F59E0B" hint="Pedido FIP fat-direto aprovado, NF a emitir" />
           <Card label="Dados Informakon" value={formatCurrency(data.totais.dados_informakon)} accent="#10B981" hint={`Wave + NF Desc. (sem FIP) · Retenção ${pctFmt(data.medicao.contrato.percentual_retencao)} sobre Valor Total Medido: ${formatCurrency(data.totais.retencao)}`} />
         </div>
 
@@ -803,7 +803,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                           background: 'rgba(16,185,129,0.06)',
                           color: l.alterado_por_retido ? '#DC2626' : undefined,
                         }}
-                        title={l.alterado_por_retido ? `Valor alterado por retido (R$ ${l.material_retido.toFixed(2).replace('.', ',')}). Original sem retido seria maior.` : undefined}
+                        title={l.alterado_por_retido ? `Valor alterado por retido (R$ ${l.faturamento_direto_em_aberto.toFixed(2).replace('.', ',')}). Original sem retido seria maior.` : undefined}
                       >
                         {pctFmt(l.pct_informakon, 4)}
                       </td>
@@ -812,7 +812,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                       <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.saldo_aprovado)}</td>
                       <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.nf_descontavel)}</td>
                       <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(245,158,11,0.04)', color: 'var(--text-3)' }}>{formatCurrency(l.gap_material)}</td>
-                      <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(245,158,11,0.04)', color: l.material_retido > 0 ? '#F59E0B' : 'var(--text-3)' }}>{formatCurrency(l.material_retido)}</td>
+                      <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(245,158,11,0.04)', color: l.faturamento_direto_em_aberto > 0 ? '#F59E0B' : 'var(--text-3)' }}>{formatCurrency(l.faturamento_direto_em_aberto)}</td>
                       <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(59,130,246,0.04)', color: l.fip_faturar > 0 ? '#3B82F6' : 'var(--text-3)' }}>{formatCurrency(l.fip_faturar)}</td>
                       <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(15,118,110,0.04)', color: '#0F766E' }}>{formatCurrency(l.wave_servico)}</td>
                       <td
@@ -845,7 +845,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                           background: 'rgba(16,185,129,0.06)',
                           color: l.alterado_por_retido ? '#DC2626' : '#10B981',
                         }}
-                        title={l.alterado_por_retido ? `Valor alterado por retido (R$ ${l.material_retido.toFixed(2).replace('.', ',')}). Sem retido seria R$ ${(l.dados_informakon + l.material_retido).toFixed(2).replace('.', ',')}.` : undefined}
+                        title={l.alterado_por_retido ? `Valor alterado por retido (R$ ${l.faturamento_direto_em_aberto.toFixed(2).replace('.', ',')}). Sem retido seria R$ ${(l.dados_informakon + l.faturamento_direto_em_aberto).toFixed(2).replace('.', ',')}.` : undefined}
                       >
                         {formatCurrency(l.dados_informakon)}
                       </td>
@@ -864,7 +864,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.saldo_aprovado, 0))}</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.nf_descontavel, 0))}</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(245,158,11,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.gap_material, 0))}</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(245,158,11,0.06)', color: '#F59E0B' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.material_retido, 0))}</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(245,158,11,0.06)', color: '#F59E0B' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.faturamento_direto_em_aberto, 0))}</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(59,130,246,0.06)', color: '#3B82F6' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.fip_faturar, 0))}</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)', color: '#0F766E' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.wave_servico, 0))}</td>
                     <td style={{ ...td(), background: 'rgba(15,118,110,0.06)' }}></td>

@@ -123,11 +123,11 @@ export async function aplicarRetencaoDaAprovacao(
     medicao_numero: number
     /**
      * Base de retenção da medição. Use `informacon.totais.base_retencao`
-     * (= wave_servico + material_medido − material_retido = dados_informakon),
-     * que exclui o material retido (saldo de pedido aprovado com NF terceiro
-     * pendente) — material retido NÃO gera pagamento nesta medição, então
-     * NÃO retém também. Garante alinhamento com o card "Estimativa de
-     * retenção contratual" exibido na medição.
+     * (= mat_medido + serv_medido — todo material e serviço executado
+     * fisicamente nesta medição, spec 2026-05-06). Inclui itens fat-direto
+     * comerciais (item 19 Admin Obra) que entram na base mesmo emitindo NF
+     * por canal FIP material/terceiro. A retenção desses 5% é debitada da
+     * NF Wave Serviço (única que abate retenção).
      */
     base_retencao: number
     wave_bruto: number
