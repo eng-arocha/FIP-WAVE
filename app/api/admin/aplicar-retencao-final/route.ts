@@ -120,26 +120,22 @@ async function executar(): Promise<Response> {
       passos.push({ passo: 'notify_pgrst', ok: false, erro: e?.message })
     }
 
-    // 4. Verifica se já existe ajuste +R$ 58,69 pra MED-001 (idempotente)
-    const { data: jaTem } = await admin
-      .from('retencao_movimentos')
-      .select('id, valor, descricao, origem_tipo')
-      .eq('contrato_id', CONTRATO_ID)
-      .eq('origem_id', MEDICAO_ID)
-      .eq('origem_tipo', 'ajuste_manual')
-      .eq('tipo', 'credito')
-    let ajusteJaAplicado = false
-    if (jaTem && jaTem.length > 0) {
-      for (const mv of jaTem as any[]) {
-        if (Math.abs(Number(mv.valor) - VALOR_AJUSTE) < 0.01) {
-          ajusteJaAplicado = true
-          break
-        }
-      }
+    // 4. Idempotência via RPC (bypassa schema cache stale do PostgREST):
+    // pega saldo atual; se já está ≥ 58,69 acima do esperado da MED-001
+    // antiga (R$ 0 — porque débito cancelou crédito), provavelmente já foi
+    // aplicado. Caso contrário aplica.
+    let saldoAntes = -1
+    try {
+      const { data: sd } = await admin.rpc('retencao_saldo_contrato', { p_contrato_id: CONTRATO_ID }).single()
+      saldoAntes = Number(sd ?? -1)
+    } catch (e: any) {
+      passos.push({ passo: 'pre_check_saldo', erro: e?.message })
     }
 
-    let ajusteResult: any = { ja_aplicado: true }
-    if (!ajusteJaAplicado) {
+    let ajusteResult: any
+    if (saldoAntes >= VALOR_AJUSTE - 0.01) {
+      ajusteResult = { ja_aplicado: true, saldo_atual: saldoAntes }
+    } else {
       const { data: ajData, error: ajErr } = await admin.rpc('aplicar_movimento_retencao', {
         p_contrato_id: CONTRATO_ID,
         p_tipo: 'credito',
@@ -150,9 +146,9 @@ async function executar(): Promise<Response> {
         p_criado_por: null,
       })
       if (ajErr) {
-        ajusteResult = { ok: false, erro: ajErr.message }
+        ajusteResult = { ok: false, erro: ajErr.message, code: (ajErr as any).code }
       } else {
-        ajusteResult = { ok: true, dado: ajData }
+        ajusteResult = { ok: true, dado: ajData, saldo_antes: saldoAntes }
       }
     }
     passos.push({ passo: 'ajuste_58.69', resultado: ajusteResult })
