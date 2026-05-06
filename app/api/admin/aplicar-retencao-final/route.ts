@@ -78,9 +78,14 @@ const CONTRATO_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
 const MEDICAO_ID = 'd0b1048a-cc83-4e09-8edd-c4e6d1030312'
 const VALOR_AJUSTE = 58.69
 
-async function exec(admin: ReturnType<typeof createAdminClient>, sql: string, label: string) {
-  const { error } = await admin.rpc('exec_sql', { p_sql: sql })
-  if (error) throw new Error(`${label}: ${error.message}`)
+async function tryExec(admin: ReturnType<typeof createAdminClient>, sql: string): Promise<{ ok: boolean; erro?: string }> {
+  try {
+    const { error } = await admin.rpc('exec_sql', { p_sql: sql })
+    if (error) return { ok: false, erro: error.message }
+    return { ok: true }
+  } catch (e: any) {
+    return { ok: false, erro: e?.message ?? String(e) }
+  }
 }
 
 export async function POST() {
@@ -96,29 +101,20 @@ async function executar(): Promise<Response> {
     const admin = createAdminClient()
 
     // 1. Aplica RPCs (idempotente — CREATE OR REPLACE)
-    await exec(admin, SQL_RPC_DASHBOARD_SUMMARY, 'CREATE retencao_dashboard_summary')
-    passos.push({ passo: 'rpc_dashboard_summary', ok: true })
+    passos.push({ passo: 'rpc_dashboard_summary', ...(await tryExec(admin, SQL_RPC_DASHBOARD_SUMMARY)) })
+    passos.push({ passo: 'rpc_saldo_contrato', ...(await tryExec(admin, SQL_RPC_SALDO_CONTRATO)) })
 
-    await exec(admin, SQL_RPC_SALDO_CONTRATO, 'CREATE retencao_saldo_contrato')
-    passos.push({ passo: 'rpc_saldo_contrato', ok: true })
-
-    // 2. Grants (idempotente)
-    for (const [idx, s] of [SQL_GRANTS_DASHBOARD, SQL_GRANTS_DASHBOARD_2, SQL_GRANTS_DASHBOARD_3, SQL_GRANTS_DASHBOARD_4, SQL_GRANTS_SALDO, SQL_GRANTS_SALDO_2].entries()) {
-      try {
-        await exec(admin, s, `grant ${idx}`)
-      } catch (e: any) {
-        passos.push({ passo: `grant_${idx}`, ok: false, erro: e?.message })
-      }
+    // 2. Grants/Revokes (idempotente)
+    const grants = [
+      SQL_GRANTS_DASHBOARD, SQL_GRANTS_DASHBOARD_2, SQL_GRANTS_DASHBOARD_3,
+      SQL_GRANTS_DASHBOARD_4, SQL_GRANTS_SALDO, SQL_GRANTS_SALDO_2,
+    ]
+    for (const [idx, s] of grants.entries()) {
+      passos.push({ passo: `grant_${idx}`, ...(await tryExec(admin, s)) })
     }
-    passos.push({ passo: 'grants', ok: true })
 
     // 3. NOTIFY pgrst reload schema
-    try {
-      await exec(admin, SQL_NOTIFY_RELOAD, 'NOTIFY pgrst')
-      passos.push({ passo: 'notify_pgrst', ok: true })
-    } catch (e: any) {
-      passos.push({ passo: 'notify_pgrst', ok: false, erro: e?.message })
-    }
+    passos.push({ passo: 'notify_pgrst', ...(await tryExec(admin, SQL_NOTIFY_RELOAD)) })
 
     // 4. Idempotência via RPC (bypassa schema cache stale do PostgREST):
     // pega saldo atual; se já está ≥ 58,69 acima do esperado da MED-001
