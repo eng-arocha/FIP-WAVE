@@ -75,26 +75,43 @@ export async function GET() {
     // livro-razão ainda nao tiver entradas.
     let totalRetencao = 0
     let qtdMedicoesComRetencao = 0
-
-    const { data: movimentos, error: movErr } = await admin
-      .from('retencao_movimentos')
-      .select('contrato_id, tipo, valor, origem_tipo, origem_id')
-
     let temLivroRazao = false
-    if (!movErr && movimentos && movimentos.length > 0) {
-      temLivroRazao = true
-      const medicoesComCredito = new Set<string>()
-      let totalCreditado = 0
-      for (const mv of movimentos as any[]) {
-        if (mv.tipo === 'credito') {
-          totalCreditado += Number(mv.valor || 0)
-          if (mv.origem_tipo === 'medicao_aprovada' && mv.origem_id) {
-            medicoesComCredito.add(mv.origem_id)
+
+    // Tenta RPC pública (migration 064) que bypassa schema cache stale do
+    // PostgREST. Fallback: query via PostgREST normal (que pode falhar se
+    // o schema cache não tiver visto retencao_movimentos ainda).
+    try {
+      const { data: rpc, error: rpcErr } = await admin
+        .rpc('retencao_dashboard_summary')
+        .single()
+      if (!rpcErr && rpc) {
+        const payload = rpc as any
+        totalRetencao = Number(payload.total_creditos || 0)
+        qtdMedicoesComRetencao = Number(payload.qtd_medicoes_com_credito || 0)
+        temLivroRazao = totalRetencao > 0 || qtdMedicoesComRetencao > 0
+      }
+    } catch {/* segue pro fallback */}
+
+    if (!temLivroRazao) {
+      const { data: movimentos, error: movErr } = await admin
+        .from('retencao_movimentos')
+        .select('contrato_id, tipo, valor, origem_tipo, origem_id')
+
+      if (!movErr && movimentos && movimentos.length > 0) {
+        temLivroRazao = true
+        const medicoesComCredito = new Set<string>()
+        let totalCreditado = 0
+        for (const mv of movimentos as any[]) {
+          if (mv.tipo === 'credito') {
+            totalCreditado += Number(mv.valor || 0)
+            if (mv.origem_tipo === 'medicao_aprovada' && mv.origem_id) {
+              medicoesComCredito.add(mv.origem_id)
+            }
           }
         }
+        totalRetencao = totalCreditado
+        qtdMedicoesComRetencao = medicoesComCredito.size
       }
-      totalRetencao = totalCreditado
-      qtdMedicoesComRetencao = medicoesComCredito.size
     }
 
     // Sem livro-razão (062 nao aplicada ou contratos antigos sem movimentos):

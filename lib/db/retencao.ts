@@ -76,6 +76,17 @@ export async function getSaldoRetencao(
   admin: SupabaseClient,
   contratoId: string,
 ): Promise<number> {
+  // Primeiro tenta via RPC (migration 064) — bypassa schema cache stale
+  // do PostgREST. Fallback: query direta via PostgREST.
+  try {
+    const { data, error } = await admin
+      .rpc('retencao_saldo_contrato', { p_contrato_id: contratoId })
+      .single()
+    if (!error && data !== null && data !== undefined) {
+      return Math.max(0, Number(data))
+    }
+  } catch {/* cai pro fallback */}
+
   const { data, error } = await admin
     .from('retencao_movimentos')
     .select('tipo, valor')
