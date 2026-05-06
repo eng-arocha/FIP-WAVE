@@ -101,6 +101,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const iMat   = findCol('PR. UNIT MATERIAL', 'PR.UNIT MATERIAL', 'PR UNIT MATERIAL', 'VALOR_MATERIAL_UNIT')
     const iMo    = findCol('PR. UNIT M.O.', 'PR.UNIT M.O.', 'PR UNIT M.O.', 'PR UNIT MO', 'PR. UNIT MO', 'VALOR_SERVICO_UNIT')
     const iId    = findCol('DETALHAMENTO_ID')
+    const iDesc  = findCol('ATIVIDADE INSTALAÇÕES GLOBAL', 'ATIVIDADE INSTALACOES GLOBAL', 'ATIVIDADE', 'DESCRICAO', 'DESCRIÇÃO', 'DESCRIPTION')
+    const iLocal = findCol('LOCAL')
+    const iDisc  = findCol('DISCIPLINA', 'DISCIPLINE')
 
     if (iNivel < 0) return NextResponse.json({ error: 'coluna NÍVEL ausente' }, { status: 400 })
     if (iItem < 0 && iId < 0) return NextResponse.json({ error: 'coluna ITEM (código) ou detalhamento_id necessária' }, { status: 400 })
@@ -137,22 +140,44 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     const admin = createAdminClient()
+    // Carrega detalhamentos com tarefa_id pra achar a tarefa pai quando
+    // criar items novos. Tambem carrega tarefas e grupos macro do
+    // contrato pra resolver onde inserir um codigo novo (ex: 17.2.5
+    // → tarefa 17.2 que esta no grupo macro 17).
     const { data: allDets, error: loadErr } = await admin
       .from('detalhamentos')
       .select(`
-        id, codigo, quantidade_contratada, valor_material_unit, valor_servico_unit,
-        tarefa:tarefas!inner(grupo_macro:grupos_macro!inner(contrato_id))
+        id, codigo, descricao, unidade, quantidade_contratada,
+        valor_material_unit, valor_servico_unit, ordem, tarefa_id,
+        tarefa:tarefas!inner(id, codigo, grupo_macro:grupos_macro!inner(id, codigo, contrato_id))
       `)
       .eq('tarefa.grupo_macro.contrato_id', contratoId)
     if (loadErr) throw loadErr
 
+    // Tarefas e grupos macro tambem (pra resolver pais ao criar novos
+    // detalhamentos / criar tarefas novas)
+    const { data: allTarefas } = await admin
+      .from('tarefas')
+      .select('id, codigo, nome, grupo_macro_id, grupo_macro:grupos_macro!inner(id, codigo, contrato_id)')
+      .eq('grupo_macro.contrato_id', contratoId)
+    const { data: allGrupos } = await admin
+      .from('grupos_macro')
+      .select('id, codigo, nome, tipo_medicao')
+      .eq('contrato_id', contratoId)
+
     const byId     = new Map((allDets || []).map((d: any) => [d.id, d]))
     const byCodigo = new Map((allDets || []).map((d: any) => [String(d.codigo), d]))
+    const tarefaByCod = new Map((allTarefas || []).map((t: any) => [String(t.codigo), t]))
+    const grupoByCod = new Map((allGrupos || []).map((g: any) => [String(g.codigo), g]))
 
     const pctUpdates: { detalhamento_id: string; mes: string; pct_planejado: number }[] = []
     let orcAtualizados = 0, orcFalhas = 0
+    let orcCriados = 0
+    let tarefasCriadas = 0
     let linhasProcessadas = 0, linhasIgnoradas = 0
     const orcErros: string[] = []
+    const codigosNovos: string[] = []
+    const codigosIgnorados: string[] = []
 
     for (let r = dataStartRow; r < aoa.length; r++) {
       const row = aoa[r] || []
@@ -160,31 +185,126 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       if (nivel !== 3) continue
       linhasProcessadas++
 
+      const codigoLinha = iItem >= 0 ? String(row[iItem] ?? '').trim() : ''
+      const descricaoLinha = iDesc >= 0 ? String(row[iDesc] ?? '').trim() : ''
+      const localLinha = iLocal >= 0 ? String(row[iLocal] ?? '').trim() : ''
+
       let det: any = null
       if (iId >= 0) {
         const raw = String(row[iId] ?? '').trim()
         if (raw && /^[0-9a-f-]{36}$/i.test(raw)) det = byId.get(raw)
       }
-      if (!det && iItem >= 0) {
-        const codigo = String(row[iItem] ?? '').trim()
-        if (codigo) det = byCodigo.get(codigo)
-      }
-      if (!det) { linhasIgnoradas++; continue }
+      if (!det && codigoLinha) det = byCodigo.get(codigoLinha)
 
-      // Orçamento — SOMENTE upload de Físico atualiza preços/qtdes.
-      // Fat Direto é à prova de erro: só aplica curva %, nunca mexe em orçamento.
-      const patch: any = {}
-      if (tipo === 'fisico') {
-        if (iQtd >= 0) { const v = toNumberBR(row[iQtd]); if (v !== undefined) patch.quantidade_contratada = v }
-        if (iMat >= 0) { const v = toNumberBR(row[iMat]); if (v !== undefined) patch.valor_material_unit = v }
-        if (iMo  >= 0) { const v = toNumberBR(row[iMo]);  if (v !== undefined) patch.valor_servico_unit  = v }
-      }
-      if (Object.keys(patch).length > 0) {
-        // valor_unitario e valor_total são colunas GERADAS no banco — não aceitam write.
-        // Só enviamos os campos-fonte (qtde, valor_material_unit, valor_servico_unit).
-        const { error: upErr } = await admin.from('detalhamentos').update(patch).eq('id', det.id)
-        if (upErr) { orcFalhas++; if (orcErros.length < 3) orcErros.push(`${det.codigo}: ${upErr.message} | patch=${JSON.stringify(patch)}`) }
-        else orcAtualizados++
+      if (!det) {
+        // Codigo NOVO — tenta criar detalhamento. So pra tipo='fisico'
+        // (planilha de orçamento; faturamento direto NAO cria estrutura).
+        if (tipo !== 'fisico' || !codigoLinha) {
+          linhasIgnoradas++
+          if (codigoLinha) codigosIgnorados.push(codigoLinha)
+          continue
+        }
+        // Resolve tarefa pai pelo prefixo do codigo (ex: '15.2.3' → tarefa '15.2')
+        const partesCod = codigoLinha.split('.')
+        if (partesCod.length < 3) {
+          linhasIgnoradas++
+          codigosIgnorados.push(`${codigoLinha} (codigo nivel 3 deve ter 3 partes)`)
+          continue
+        }
+        const codigoTarefa = `${partesCod[0]}.${partesCod[1]}`
+        const codigoGrupo = partesCod[0]
+        let tarefaPai: any = tarefaByCod.get(codigoTarefa)
+        // Se a tarefa pai nao existe, tenta criar (precisa do grupo macro)
+        if (!tarefaPai) {
+          const grupoPai = grupoByCod.get(codigoGrupo)
+          if (!grupoPai) {
+            linhasIgnoradas++
+            codigosIgnorados.push(`${codigoLinha} (grupo macro ${codigoGrupo} nao existe)`)
+            continue
+          }
+          // Cria tarefa nova no grupo, com nome inicial = descricao da
+          // primeira linha (sera atualizado se vierem mais linhas dessa
+          // tarefa). Ordem = quantidade de tarefas + 1.
+          const ordemNova = (allTarefas || []).filter((t: any) => t.grupo_macro_id === grupoPai.id).length + 1
+          const { data: novaTarefa, error: errTar } = await admin
+            .from('tarefas')
+            .insert({
+              grupo_macro_id: grupoPai.id,
+              codigo: codigoTarefa,
+              nome: descricaoLinha || codigoTarefa,
+              unidade: 'UN',
+              quantidade_contratada: 1,
+              valor_unitario: 0,
+              valor_total: 0,
+              ordem: ordemNova,
+            })
+            .select('id, codigo, grupo_macro_id')
+            .single()
+          if (errTar) {
+            linhasIgnoradas++
+            orcErros.push(`falha ao criar tarefa ${codigoTarefa}: ${errTar.message}`)
+            continue
+          }
+          tarefaPai = novaTarefa
+          tarefaByCod.set(codigoTarefa, novaTarefa)
+          tarefasCriadas++
+        }
+
+        // Cria detalhamento novo. valor_total e GENERATED no schema entao
+        // nao envia. Ordem = posicao do codigo (parte 3).
+        const ordem = parseInt(partesCod[2] || '0', 10) || 0
+        const insertPayload: any = {
+          tarefa_id: tarefaPai.id,
+          codigo: codigoLinha,
+          descricao: descricaoLinha || codigoLinha,
+          unidade: 'UN',
+          quantidade_contratada: iQtd >= 0 ? (toNumberBR(row[iQtd]) ?? 1) : 1,
+          ordem,
+        }
+        if (iMat >= 0) insertPayload.valor_material_unit = toNumberBR(row[iMat]) ?? 0
+        if (iMo >= 0)  insertPayload.valor_servico_unit  = toNumberBR(row[iMo])  ?? 0
+        // valor_unitario tambem e GENERATED (= mat + mo)? Verificar schema.
+        // Se nao for, calcular aqui:
+        const matUni = insertPayload.valor_material_unit ?? 0
+        const moUni  = insertPayload.valor_servico_unit  ?? 0
+        insertPayload.valor_unitario = matUni + moUni
+
+        const { data: novoDet, error: errDet } = await admin
+          .from('detalhamentos')
+          .insert(insertPayload)
+          .select('id, codigo, tarefa_id')
+          .single()
+        if (errDet) {
+          orcFalhas++
+          if (orcErros.length < 5) orcErros.push(`falha ao criar ${codigoLinha}: ${errDet.message}`)
+          continue
+        }
+        det = novoDet
+        byCodigo.set(codigoLinha, novoDet)
+        orcCriados++
+        codigosNovos.push(codigoLinha)
+      } else {
+        // Codigo EXISTE — atualiza campos
+        const patch: any = {}
+        if (tipo === 'fisico') {
+          if (iQtd >= 0) { const v = toNumberBR(row[iQtd]); if (v !== undefined) patch.quantidade_contratada = v }
+          if (iMat >= 0) { const v = toNumberBR(row[iMat]); if (v !== undefined) patch.valor_material_unit = v }
+          if (iMo  >= 0) { const v = toNumberBR(row[iMo]);  if (v !== undefined) patch.valor_servico_unit  = v }
+          // descricao e local atualizam se vieram nao-vazias na linha
+          if (descricaoLinha && descricaoLinha !== det.descricao) patch.descricao = descricaoLinha
+          // Se houver coluna 'unidade' diferente, idealmente atualizaria — pulado por agora
+          // valor_unitario = mat + mo (se ambos vierem)
+          if (patch.valor_material_unit !== undefined || patch.valor_servico_unit !== undefined) {
+            const matUni = patch.valor_material_unit ?? det.valor_material_unit ?? 0
+            const moUni  = patch.valor_servico_unit  ?? det.valor_servico_unit  ?? 0
+            patch.valor_unitario = matUni + moUni
+          }
+        }
+        if (Object.keys(patch).length > 0) {
+          const { error: upErr } = await admin.from('detalhamentos').update(patch).eq('id', det.id)
+          if (upErr) { orcFalhas++; if (orcErros.length < 5) orcErros.push(`${det.codigo}: ${upErr.message}`) }
+          else orcAtualizados++
+        }
       }
 
       // Percentuais
@@ -232,7 +352,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({
       tipo_detectado: tipo,
       aba: sheetName,
-      orcamento: { atualizados: orcAtualizados, falhas: orcFalhas, erros: orcErros },
+      orcamento: {
+        atualizados: orcAtualizados,
+        criados: orcCriados,
+        tarefas_criadas: tarefasCriadas,
+        falhas: orcFalhas,
+        erros: orcErros,
+        codigos_novos: codigosNovos.slice(0, 20),
+        codigos_ignorados: codigosIgnorados.slice(0, 20),
+      },
       cronograma: { tipo, celulas: celulasAplicadas, meses: mesColIdxs.length, limpas: celulasLimpas, reset },
       linhas_nivel3: linhasProcessadas,
       linhas_ignoradas: linhasIgnoradas,
