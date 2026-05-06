@@ -20,7 +20,7 @@ export const maxDuration = 60
 // ── Migration 062 ────────────────────────────────────────
 const SQL_062_TABELA = `
 CREATE TABLE IF NOT EXISTS retencao_movimentos (
-  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   contrato_id     UUID NOT NULL REFERENCES contratos(id) ON DELETE CASCADE,
   tipo            TEXT NOT NULL CHECK (tipo IN ('credito', 'debito', 'reversao_credito', 'reversao_debito')),
   origem_tipo     TEXT NOT NULL CHECK (origem_tipo IN ('medicao_aprovada', 'nf_wave_emitida', 'ajuste_manual', 'pagamento_final', 'desfazer_aprovacao')),
