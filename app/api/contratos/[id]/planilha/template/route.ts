@@ -140,9 +140,22 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       ;(pctByDet[p.detalhamento_id] ||= {})[m] = Number(p.pct_planejado || 0)
     }
 
-    // Meses do contrato
+    // Meses do contrato. Se data_inicio/data_fim estão NULL, falha cedo
+    // com erro claro — sem isso a planilha sai sem nenhuma coluna de mês
+    // (= imprestável pra editar curva planejada).
+    if (!contrato?.data_inicio || !contrato?.data_fim) {
+      return new Response(JSON.stringify({
+        error: 'Contrato sem data_inicio e/ou data_fim. Edite os dados contratuais antes de baixar a planilha — sem essas datas o cronograma não tem colunas de mês para preencher.',
+        contrato_id: id,
+        data_inicio: contrato?.data_inicio ?? null,
+        data_fim: contrato?.data_fim ?? null,
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+      })
+    }
     const meses: string[] = []
-    if (contrato?.data_inicio && contrato?.data_fim) {
+    {
       const start = new Date(contrato.data_inicio)
       const end = new Date(contrato.data_fim)
       const cur = new Date(start.getFullYear(), start.getMonth(), 1)
