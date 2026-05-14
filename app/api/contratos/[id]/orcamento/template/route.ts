@@ -34,7 +34,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const admin = createAdminClient()
 
     const [{ data: contrato }, { data: grupos }, { data: tarefas }, { data: dets }] = await Promise.all([
-      admin.from('contratos').select('numero_contrato').eq('id', id).single(),
+      admin.from('contratos').select('numero').eq('id', id).single(),
       admin.from('grupos_macro').select('id, codigo, nome').eq('contrato_id', id),
       admin.from('tarefas').select('id, grupo_macro_id, codigo, nome'),
       admin.from('detalhamentos').select('id, tarefa_id, codigo, descricao, unidade, local, quantidade_contratada, valor_material_unit, valor_servico_unit'),
@@ -158,7 +158,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       [],
       ['Após salvar o xlsx, volte para o app → Estrutura → "Subir orçamento".'],
       [],
-      ['Contrato: ' + (contrato?.numero_contrato ?? id)],
+      ['Contrato: ' + (contrato?.numero ?? id)],
       ['Gerado em: ' + new Date().toISOString()],
     ]
     const wsInst = XLSX.utils.aoa_to_sheet(inst)
@@ -167,7 +167,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     const buf: Buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
     const body = new Uint8Array(buf)
-    const filename = `orcamento-${contrato?.numero_contrato ?? id}.xlsx`
+    const filename = `orcamento-${contrato?.numero ?? id}.xlsx`
     return new Response(body, {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

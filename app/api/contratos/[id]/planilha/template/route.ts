@@ -100,7 +100,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const admin = createAdminClient()
 
     const [{ data: contrato }, { data: grupos }, { data: tarefas }, { data: dets }] = await Promise.all([
-      admin.from('contratos').select('numero_contrato, data_inicio, data_fim').eq('id', id).single(),
+      admin.from('contratos').select('numero, data_inicio, data_fim').eq('id', id).single(),
       admin.from('grupos_macro').select('id, codigo, nome, disciplina').eq('contrato_id', id),
       admin.from('tarefas').select('id, grupo_macro_id, codigo, nome, local, disciplina'),
       admin.from('detalhamentos').select('id, tarefa_id, codigo, descricao, unidade, local, disciplina, quantidade_contratada, valor_material_unit, valor_servico_unit'),
@@ -436,7 +436,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const buf: Buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', cellStyles: true })
     const body = new Uint8Array(buf)
     const prefix = tipo === 'fisico' ? 'Cronograma Fisico Financeiro' : 'Cronograma Faturamento Direto'
-    const filename = `${prefix} - ${contrato?.numero_contrato ?? id}.xlsx`
+    const filename = `${prefix} - ${contrato?.numero ?? id}.xlsx`
     return new Response(body, {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
