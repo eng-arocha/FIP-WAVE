@@ -16,8 +16,20 @@ export const dynamic = 'force-dynamic'
  * Sem isso a planilha física saía com 0 colunas de mês porque o gerador
  * usa essa janela pra montar Apr-26, Mai-26, … Out-27.
  */
-async function executar(): Promise<Response> {
+async function executar(req: Request): Promise<Response> {
   try {
+    // Aceita 2 formas de auth:
+    //  1. Sessão Supabase válida (proxy.ts já garantiu cookie) — caminho UI
+    //  2. Header Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY> — caminho curl
+    // Quando o middleware deixa passar via allowlist, validamos o token aqui.
+    const auth = req.headers.get('authorization') ?? ''
+    const token = auth.replace(/^Bearer\s+/i, '')
+    const expected = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
+    const hasBearer = token.length > 0
+    if (hasBearer && token !== expected) {
+      return NextResponse.json({ error: 'Não autorizado (Bearer inválido)' }, { status: 403 })
+    }
+
     const admin = createAdminClient()
     const CONTRATO_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
     const DATA_INICIO = '2026-04-01'
@@ -61,5 +73,5 @@ async function executar(): Promise<Response> {
   }
 }
 
-export async function GET() { return executar() }
-export async function POST() { return executar() }
+export async function GET(req: Request) { return executar(req) }
+export async function POST(req: Request) { return executar(req) }
