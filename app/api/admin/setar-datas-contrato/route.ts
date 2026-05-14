@@ -25,7 +25,7 @@ async function executar(): Promise<Response> {
 
     const { data: antes, error: errAntes } = await admin
       .from('contratos')
-      .select('id, numero_contrato, data_inicio, data_fim')
+      .select('id, numero, data_inicio, data_fim')
       .eq('id', CONTRATO_ID)
       .single()
     if (errAntes) throw errAntes
@@ -38,7 +38,7 @@ async function executar(): Promise<Response> {
 
     const { data: depois } = await admin
       .from('contratos')
-      .select('id, numero_contrato, data_inicio, data_fim')
+      .select('id, numero, data_inicio, data_fim')
       .eq('id', CONTRATO_ID)
       .single()
 

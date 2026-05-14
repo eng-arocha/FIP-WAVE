@@ -21,7 +21,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const admin = createAdminClient()
 
     const [{ data: contrato }, { data: grupos }, { data: tarefas }, { data: dets }] = await Promise.all([
-      admin.from('contratos').select('numero_contrato, data_inicio, data_fim').eq('id', id).single(),
+      admin.from('contratos').select('numero, data_inicio, data_fim').eq('id', id).single(),
       admin.from('grupos_macro').select('id, codigo, nome, ordem').eq('contrato_id', id).order('ordem'),
       admin.from('tarefas').select('id, grupo_macro_id, codigo, nome, ordem').order('ordem'),
       admin.from('detalhamentos').select('id, tarefa_id, codigo, descricao, quantidade_contratada, valor_material_unit, valor_servico_unit, ordem').order('ordem'),
@@ -152,7 +152,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       ['6. Após preencher, volte para o app e use o botão "Subir planilha" na matriz correspondente.'],
       ['7. A soma de cada linha (Σ%) deve idealmente fechar em 100%. O app alerta quando ≠ 100.'],
       [],
-      ['Contrato: ' + (contrato?.numero_contrato ?? id)],
+      ['Contrato: ' + (contrato?.numero ?? id)],
       ['Tipo: ' + (tipo === 'fisico' ? 'Físico (MDO)' : 'Fat. Direto (Material)')],
       ['Gerado em: ' + new Date().toISOString()],
     ]
@@ -162,7 +162,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     const buf: Buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
     const body = new Uint8Array(buf)
-    const filename = `cronograma-${tipo}-${contrato?.numero_contrato ?? id}.xlsx`
+    const filename = `cronograma-${tipo}-${contrato?.numero ?? id}.xlsx`
     return new Response(body, {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
