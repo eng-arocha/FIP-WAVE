@@ -42,8 +42,7 @@ export async function proxy(request: NextRequest) {
   // /api/admin/migrations/status é GET somente-leitura (metadata de schema).
   const isAdminBearerEndpoint =
     request.nextUrl.pathname === '/api/admin/migrate' ||
-    request.nextUrl.pathname === '/api/admin/migrations/status' ||
-    request.nextUrl.pathname === '/api/admin/setar-datas-contrato'
+    request.nextUrl.pathname === '/api/admin/migrations/status'
 
   if (!user && !isLoginPage && !isAdminBearerEndpoint) {
     const url = request.nextUrl.clone()
