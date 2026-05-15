@@ -46,10 +46,33 @@ interface Solicitacao {
     id: string
     numero_nf: string
     emitente: string
+    cnpj_emitente?: string | null
     valor: number
     data_emissao: string
+    data_recebimento?: string | null
+    data_vencimento?: string | null
+    descricao?: string | null
     status: string
+    motivo_rejeicao?: string | null
+    arquivo_url?: string | null
+    lancado_em?: string | null
   }>
+}
+
+// ── Badges de status da NF (workflow de aprovação — migration 065) ──────────
+const NF_STATUS_BADGE: Record<string, { label: string; color: string; bg: string }> = {
+  aguardando_aprovacao: { label: 'Aguardando aprovação', color: '#F59E0B', bg: 'rgba(245,158,11,0.14)' },
+  aprovada:             { label: 'Aprovada',             color: '#10B981', bg: 'rgba(16,185,129,0.14)' },
+  em_correcao:          { label: 'Em correção',          color: '#EF4444', bg: 'rgba(239,68,68,0.14)' },
+  cancelada:            { label: 'Cancelada',            color: '#64748B', bg: 'rgba(100,116,139,0.14)' },
+  // Legados (pré-065) — exibidos só se a migration ainda não rodou.
+  validada:             { label: 'Aprovada',             color: '#10B981', bg: 'rgba(16,185,129,0.14)' },
+  pendente:             { label: 'Aguardando aprovação', color: '#F59E0B', bg: 'rgba(245,158,11,0.14)' },
+  rejeitada:            { label: 'Cancelada',            color: '#64748B', bg: 'rgba(100,116,139,0.14)' },
+}
+
+function nfStatusBadge(status: string) {
+  return NF_STATUS_BADGE[status] ?? { label: status, color: '#64748B', bg: 'rgba(100,116,139,0.14)' }
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -87,6 +110,13 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
   const [motivo, setMotivo] = useState('')
   const [nfForm, setNfForm] = useState({ numero_nf: '', emitente: '', cnpj_emitente: '', valor: '', data_emissao: '', descricao: '' })
   const [erro, setErro] = useState('')
+  // Correção de NF em em_correcao — id da NF sendo corrigida + formulário pré-preenchido.
+  const [corrigindoNfId, setCorrigindoNfId] = useState<string | null>(null)
+  const [corrForm, setCorrForm] = useState({
+    numero_nf: '', emitente: '', cnpj_emitente: '', valor: '',
+    data_emissao: '', data_recebimento: '', data_vencimento: '', descricao: '',
+  })
+  const [corrErro, setCorrErro] = useState('')
   // Dialog de aprovação: pergunta se quer aprovar (com ou sem notificação)
   const [showApprovalDialog, setShowApprovalDialog] = useState(false)
   const [showEncerrarModal, setShowEncerrarModal] = useState(false)
@@ -245,6 +275,62 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
     setActing(false)
   }
 
+  /** Abre o formulário de correção pré-preenchido com os dados da NF rejeitada. */
+  function abrirCorrecao(nf: NonNullable<Solicitacao['notas_fiscais']>[number]) {
+    setCorrErro('')
+    setCorrigindoNfId(nf.id)
+    setCorrForm({
+      numero_nf: nf.numero_nf ?? '',
+      emitente: nf.emitente ?? '',
+      cnpj_emitente: nf.cnpj_emitente ?? '',
+      valor: nf.valor != null ? String(nf.valor) : '',
+      data_emissao: (nf.data_emissao ?? '').slice(0, 10),
+      data_recebimento: (nf.data_recebimento ?? '').slice(0, 10),
+      data_vencimento: (nf.data_vencimento ?? '').slice(0, 10),
+      descricao: nf.descricao ?? '',
+    })
+  }
+
+  /** Reenvia a NF corrigida via PATCH — volta para aguardando_aprovacao. */
+  async function reenviarNf(nfId: string) {
+    setCorrErro('')
+    if (!corrForm.numero_nf || !corrForm.valor || !corrForm.data_emissao) {
+      setCorrErro('Preencha os campos obrigatórios: Número NF, Valor e Data Emissão.')
+      return
+    }
+    setActing(true)
+    const payload: Record<string, unknown> = {
+      numero_nf: corrForm.numero_nf,
+      valor: parseFloat(corrForm.valor),
+      data_emissao: corrForm.data_emissao,
+    }
+    if (corrForm.emitente.trim())         payload.emitente = corrForm.emitente.trim()
+    if (corrForm.cnpj_emitente.trim())    payload.cnpj_emitente = corrForm.cnpj_emitente.trim()
+    if (corrForm.data_recebimento.trim()) payload.data_recebimento = corrForm.data_recebimento
+    if (corrForm.data_vencimento.trim())  payload.data_vencimento = corrForm.data_vencimento
+    if (corrForm.descricao.trim())        payload.descricao = corrForm.descricao.trim()
+    try {
+      const res = await fetch(
+        `/api/contratos/${id}/fat-direto/solicitacoes/${solId}/nfs/${nfId}`,
+        { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) },
+      )
+      if (!res.ok) {
+        // 422 do 3-way match → mostra o code + mensagem (saldo, duplicata, CNPJ...).
+        const body = await res.json().catch(() => ({}))
+        const prefix = body.code ? `[${body.code}] ` : ''
+        setCorrErro(prefix + (body.error || 'Erro ao reenviar a NF.'))
+        return
+      }
+      setCorrigindoNfId(null)
+      await load()
+      await carregarSaldo()
+    } catch (e: any) {
+      setCorrErro(e?.message || 'Erro ao reenviar a NF.')
+    } finally {
+      setActing(false)
+    }
+  }
+
   /**
    * Cancela o pedido (status → 'cancelado'). Diferente de Excluir: não apaga
    * o registro, só marca como cancelado. Pode ser reaberto depois ("Enviar
@@ -324,7 +410,10 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
   )
 
   const statusColor = STATUS_COLORS[sol.status] ?? '#475569'
-  const totalNF = (sol.notas_fiscais || []).reduce((s, n) => s + n.valor, 0)
+  // Total recebido = NFs que reservam saldo (exclui cancelada / rejeitada legada).
+  const totalNF = (sol.notas_fiscais || [])
+    .filter(n => n.status !== 'rejeitada' && n.status !== 'cancelada')
+    .reduce((s, n) => s + n.valor, 0)
 
   return (
     <div className="flex flex-col min-h-screen bg-[var(--background)]">
@@ -786,20 +875,128 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
               </div>
             ) : (
               <div className="divide-y divide-[var(--border)] -mx-5 px-0">
-                {(sol.notas_fiscais || []).map(nf => (
-                  <div key={nf.id} className="px-5 py-3 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>NF {nf.numero_nf}</p>
-                      <p className="text-xs text-[var(--text-3)]">{nf.emitente} · {formatDate(nf.data_emissao)}</p>
+                {(sol.notas_fiscais || []).map(nf => {
+                  const badge = nfStatusBadge(nf.status)
+                  const emCorrecao = nf.status === 'em_correcao'
+                  const corrigindo = corrigindoNfId === nf.id
+                  return (
+                    <div key={nf.id} className="px-5 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>NF {nf.numero_nf}</p>
+                          <p className="text-xs text-[var(--text-3)] truncate">
+                            {nf.emitente || '—'} · {formatDate(nf.data_emissao)}
+                          </p>
+                          {nf.arquivo_url && (
+                            <a
+                              href={nf.arquivo_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-400 hover:text-blue-300 inline-flex items-center gap-1 mt-0.5"
+                            >
+                              <FileText className="w-3 h-3" /> Ver arquivo
+                            </a>
+                          )}
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-sm font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(nf.valor)}</p>
+                          <span
+                            className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full inline-block mt-0.5"
+                            style={{ background: badge.bg, color: badge.color }}
+                          >
+                            {badge.label}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* NF rejeitada — motivo + ação de correção */}
+                      {emCorrecao && (
+                        <div className="mt-2">
+                          {nf.motivo_rejeicao && (
+                            <div
+                              className="rounded-lg px-3 py-2 text-xs"
+                              style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.30)', color: '#FCA5A5' }}
+                            >
+                              <span className="font-bold uppercase tracking-wide">Motivo da rejeição: </span>
+                              {nf.motivo_rejeicao}
+                            </div>
+                          )}
+                          {!corrigindo && (
+                            <Button
+                              onClick={() => abrirCorrecao(nf)}
+                              size="sm"
+                              variant="ghost"
+                              className="mt-2 gap-1 text-amber-400 hover:text-amber-300"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" /> Corrigir e reenviar
+                            </Button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Formulário de correção pré-preenchido */}
+                      {corrigindo && (
+                        <div
+                          className="mt-3 p-4 rounded-xl space-y-3"
+                          style={{ background: 'var(--background)', border: '1px solid var(--border)' }}
+                        >
+                          <p className="text-xs text-[var(--text-3)] font-semibold uppercase tracking-wide">
+                            Corrigir NF {nf.numero_nf}
+                          </p>
+                          <div className="grid grid-cols-2 gap-3">
+                            {([
+                              { label: 'Número NF', key: 'numero_nf', type: 'text' },
+                              { label: 'Emitente', key: 'emitente', type: 'text' },
+                              { label: 'CNPJ Emitente', key: 'cnpj_emitente', type: 'text' },
+                              { label: 'Valor (R$)', key: 'valor', type: 'number' },
+                              { label: 'Data Emissão', key: 'data_emissao', type: 'date' },
+                              { label: 'Data Recebimento', key: 'data_recebimento', type: 'date' },
+                              { label: 'Data Vencimento', key: 'data_vencimento', type: 'date' },
+                              { label: 'Descrição', key: 'descricao', type: 'text' },
+                            ] as const).map(f => (
+                              <div key={f.key}>
+                                <label className="block text-xs text-[var(--text-3)] mb-1">{f.label}</label>
+                                <input
+                                  type={f.type}
+                                  value={(corrForm as any)[f.key]}
+                                  onChange={e => setCorrForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                                  className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                                  style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                          {corrErro && (
+                            <div
+                              className="p-2.5 rounded-lg text-xs"
+                              style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.30)', color: '#FCA5A5' }}
+                            >
+                              {corrErro}
+                            </div>
+                          )}
+                          <div className="flex gap-2 pt-1">
+                            <Button
+                              onClick={() => reenviarNf(nf.id)}
+                              disabled={acting}
+                              size="sm"
+                              className="bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40"
+                            >
+                              {acting ? 'Reenviando...' : 'Reenviar para aprovação'}
+                            </Button>
+                            <Button
+                              onClick={() => { setCorrigindoNfId(null); setCorrErro('') }}
+                              size="sm"
+                              variant="ghost"
+                              className="text-[var(--text-3)]"
+                            >
+                              Cancelar
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(nf.valor)}</p>
-                      <span className="text-xs" style={{ color: nf.status === 'validada' ? '#10B981' : '#F59E0B' }}>
-                        {nf.status === 'validada' ? 'Validada' : 'Pendente'}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </CardContent>
@@ -892,7 +1089,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
         numeroPedidoFip={(sol as any)?.numero_pedido_fip ?? sol.numero}
         valorTotalPedido={Number(sol.valor_total || 0)}
         totalNfsRecebidas={(sol.notas_fiscais || [])
-          .filter(nf => nf.status !== 'rejeitada')
+          .filter(nf => nf.status !== 'rejeitada' && nf.status !== 'cancelada')
           .reduce((s, nf) => s + Number(nf.valor || 0), 0)}
         itens={(sol.itens || []).map(it => ({
           id: it.id,
