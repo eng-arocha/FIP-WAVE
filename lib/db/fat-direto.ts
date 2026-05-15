@@ -45,6 +45,7 @@ export async function getSolicitacao(id: string) {
   // Campos extras (contato/pedido/anexos/encerramento): se schema cache do
   // PostgREST ainda não os conhece, cai pro select base em vez de quebrar.
   // Itens ganham valor_devolvido pra UI exibir saldo livre por item.
+  // NFs ganham os campos do workflow de aprovação (migration 065) + datas/arquivo.
   const extraSelect = `
       id, numero, status, data_solicitacao, data_aprovacao,
       observacoes, motivo_rejeicao, valor_total, contrato_id, created_at,
@@ -60,7 +61,9 @@ export async function getSolicitacao(id: string) {
         tarefa:tarefa_id(id, codigo, nome, grupo_macro_id)
       ),
       notas_fiscais:notas_fiscais_fat_direto!solicitacao_id(
-        id, numero_nf, emitente, cnpj_emitente, valor, data_emissao, descricao, status, validado_em
+        id, numero_nf, emitente, cnpj_emitente, valor, data_emissao,
+        data_recebimento, data_vencimento, descricao, status, validado_em,
+        arquivo_url, motivo_rejeicao, lancado_em
       )
     `
 
@@ -496,6 +499,20 @@ export async function listarSolicitacoesAprovadas() {
       contrato_id,
       contrato:contrato_id(id, numero, descricao),
       solicitante:perfis!solicitante_id(nome),
+      notas_fiscais:notas_fiscais_fat_direto!solicitacao_id(
+        id, numero_nf, emitente, cnpj_emitente, valor, data_emissao,
+        data_recebimento, data_vencimento, status, arquivo_url,
+        motivo_rejeicao, lancado_em, lancado_por:perfis!lancado_por_id(nome)
+      ),
+      itens:itens_solicitacao_fat_direto(id)
+    `
+  // Fallback se a migration 065 / colunas de NF ainda não estão no schema cache.
+  const baseSelectLegado = `
+      id, numero, status, data_solicitacao, data_aprovacao, valor_total,
+      fornecedor_razao_social, fornecedor_cnpj,
+      contrato_id,
+      contrato:contrato_id(id, numero, descricao),
+      solicitante:perfis!solicitante_id(nome),
       notas_fiscais:notas_fiscais_fat_direto!solicitacao_id(id, numero_nf, valor, status),
       itens:itens_solicitacao_fat_direto(id)
     `
@@ -511,10 +528,13 @@ export async function listarSolicitacoesAprovadas() {
       .order('data_solicitacao', { ascending: false }),
     fallback: () => admin
       .from('solicitacoes_fat_direto')
-      .select(baseSelect)
+      .select(baseSelectLegado)
       .in('status', ['aprovado', 'aguardando_aprovacao'])
       .order('data_solicitacao', { ascending: false }),
-    missingColumns: ['observacoes', 'numero_pedido_fip'],
+    missingColumns: [
+      'observacoes', 'numero_pedido_fip',
+      'arquivo_url', 'motivo_rejeicao', 'lancado_em', 'lancado_por_id',
+    ],
     context: 'listarSolicitacoesAprovadas',
   })
   if (error) throw error
