@@ -344,9 +344,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       }
     }
 
-    if (pctUpdates.length) {
-      for (let i = 0; i < pctUpdates.length; i += 1000) {
-        const slice = pctUpdates.slice(i, i + 1000)
+    // Dedupe (detalhamento_id, mes) — a planilha pode trazer o mesmo
+    // detalhamento em 2+ linhas (ex.: codigo repetido, ou detalhamento_id
+    // que resolve no mesmo det de outra linha). Sem dedupe o upsert do
+    // Postgres quebra com "ON CONFLICT DO UPDATE command cannot affect row
+    // a second time". Ultima ocorrencia vence.
+    const pctDedup = Array.from(
+      new Map(pctUpdates.map(u => [`${u.detalhamento_id}|${u.mes}`, u])).values()
+    )
+    const celulasDuplicadas = pctUpdates.length - pctDedup.length
+
+    if (pctDedup.length) {
+      for (let i = 0; i < pctDedup.length; i += 1000) {
+        const slice = pctDedup.slice(i, i + 1000)
         const { error } = await admin.from(tableTipo).upsert(slice, { onConflict: 'detalhamento_id,mes' })
         if (error) throw error
         celulasAplicadas += slice.length
@@ -402,7 +412,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         orfaos_em_uso: orfaosEmUso.map(o => ({ codigo: o.codigo, refs: o.refs })),
         total_orfaos: orfaos.length,
       },
-      cronograma: { tipo, celulas: celulasAplicadas, meses: mesColIdxs.length, limpas: celulasLimpas, reset },
+      cronograma: { tipo, celulas: celulasAplicadas, meses: mesColIdxs.length, limpas: celulasLimpas, duplicadas: celulasDuplicadas, reset },
       linhas_nivel3: linhasProcessadas,
       linhas_ignoradas: linhasIgnoradas,
     })
