@@ -6,6 +6,7 @@ import {
   listarSolicitacoesPendentes,
 } from '@/lib/db/encerramento-saldo'
 import { apiError } from '@/lib/api/error-response'
+import { nfReservaSaldo } from '@/lib/db/nf-status'
 import { parseBody, uuid } from '@/lib/api/schema'
 import { sendEmail } from '@/lib/email/send'
 import { templateSolicitacaoEncerramentoSaldo } from '@/lib/email/templates-fat-direto'
@@ -110,7 +111,7 @@ export async function POST(
           .single()
 
         const totalNfs = ((pedido as any)?.nfs ?? [])
-          .filter((nf: any) => nf.status !== 'rejeitada')
+          .filter((nf: any) => nfReservaSaldo(nf.status))
           .reduce((s: number, nf: any) => s + Number(nf.valor || 0), 0)
 
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://fip-wave.vercel.app'

@@ -36,13 +36,13 @@ export function podeTransicionar(de: NfStatus, para: NfStatus): boolean {
 /**
  * True se uma NF nesse status consome (reserva) saldo do pedido — ou seja,
  * entra no somatório do 3-way match. Só `cancelada` (e o legado `rejeitada`)
- * não reservam.
+ * não reservam. Aceita null/undefined (retorna false).
  */
-export function nfReservaSaldo(status: string): boolean {
+export function nfReservaSaldo(status: string | null | undefined): boolean {
   return status === 'aguardando_aprovacao' || status === 'em_correcao' || status === 'aprovada'
 }
 
 /** True se a NF está pendente de decisão do contratante (não aprovada nem cancelada). */
-export function nfPendente(status: string): boolean {
+export function nfPendente(status: string | null | undefined): boolean {
   return status === 'aguardando_aprovacao' || status === 'em_correcao'
 }

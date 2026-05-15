@@ -1324,7 +1324,7 @@ export async function detectarPedidosAtrasados(input: {
 
   const nfsPorSol: Record<string, number> = {}
   for (const nf of (nfsRaw || []) as any[]) {
-    if (nf.status === 'rejeitada') continue
+    if (!nfReservaSaldo(nf.status)) continue
     nfsPorSol[nf.solicitacao_id] = (nfsPorSol[nf.solicitacao_id] || 0) + Number(nf.valor || 0)
   }
 

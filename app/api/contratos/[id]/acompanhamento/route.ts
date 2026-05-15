@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
+import { nfReservaSaldo } from '@/lib/db/nf-status'
 
 /**
  * GET /api/contratos/[id]/acompanhamento
@@ -103,7 +104,7 @@ export async function GET(
     // Map solicitation → NF total
     const nfBySol: Record<string, number> = {}
     ;(nfs || []).forEach((nf: any) => {
-      if (nf.status !== 'rejeitada') {
+      if (nfReservaSaldo(nf.status)) {
         nfBySol[nf.solicitacao_id] = (nfBySol[nf.solicitacao_id] || 0) + (nf.valor || 0)
       }
     })

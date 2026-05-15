@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { nfReservaSaldo } from '@/lib/db/nf-status'
 import { encerrarSolicitacao } from './fat-direto'
 
 /**
@@ -48,7 +49,7 @@ export async function criarSolicitacaoEncerramento(input: CriarSolicitacaoInput)
   }
 
   const totalNfsAtivas = (((pedido as any).nfs ?? []) as any[])
-    .filter(nf => nf.status !== 'rejeitada')
+    .filter(nf => nfReservaSaldo(nf.status))
     .reduce((s, nf) => s + Number(nf.valor || 0), 0)
   const saldoNoMomento = Number((pedido as any).valor_total) - totalNfsAtivas
 

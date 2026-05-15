@@ -1,5 +1,6 @@
 // lib/db/origem.ts
 import { createAdminClient } from '@/lib/supabase/admin'
+import { nfReservaSaldo } from '@/lib/db/nf-status'
 import { descendantDetalhamentoIds, type WbsNode } from './wbs-utils'
 import type {
   OrigemItem,
@@ -60,7 +61,7 @@ export async function listOrigemRealizadoMaterial(
     const nfs = (sol.nfs ?? []) as Array<{ id: string; numero_nf: string; data_emissao: string; valor: number; status: string }>
 
     for (const nf of nfs) {
-      if (nf.status === 'rejeitada') continue
+      if (!nfReservaSaldo(nf.status)) continue
       const valorAlocado = allocateNfToScope(itens, alvosDetIds, Number(nf.valor) || 0)
       if (valorAlocado <= 0) continue
       out.push({
@@ -172,7 +173,7 @@ export async function listOrigemSaldoMaterial(
 
     const totalSol = itens.reduce((s, it) => s + (Number(it.valor_total) || 0), 0)
     const totalNfs = (sol.nfs ?? [])
-      .filter((n: { status: string }) => n.status !== 'rejeitada')
+      .filter((n: { status: string }) => nfReservaSaldo(n.status))
       .reduce((s: number, n: { valor: number }) => s + (Number(n.valor) || 0), 0)
     const emNfEscopo = totalSol > 0 ? totalNfs * (aprovadoEscopo / totalSol) : 0
     const saldo = Math.max(0, aprovadoEscopo - emNfEscopo)
