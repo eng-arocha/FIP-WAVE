@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Topbar } from '@/components/layout/topbar'
 import { Badge } from '@/components/ui/badge'
@@ -14,7 +15,7 @@ import {
 import {
   CheckCircle2, XCircle, Clock, AlertCircle,
   FileText, Building2, Calendar, ArrowRight, Package, Undo2, Loader2,
-  ChevronUp, ChevronDown, ChevronsUpDown, RotateCcw,
+  ChevronUp, ChevronDown, ChevronsUpDown, RotateCcw, Mail,
 } from 'lucide-react'
 import { formatCurrency, formatDate, getMedicaoStatusColor } from '@/lib/utils'
 import { MEDICAO_STATUS_LABELS, MedicaoStatus } from '@/types'
@@ -22,6 +23,7 @@ import { usePermissoes } from '@/lib/context/permissoes-context'
 import { MaximizableCard } from '@/components/ui/maximizable-card'
 import { FiltroSaldoItem } from '@/components/aprovacoes/filtro-saldo-item'
 import { useTableLayout, type ColumnDef } from '@/lib/hooks/use-table-layout'
+import { EmailEnvolvidosModal } from '@/components/fat-direto/email-envolvidos-modal'
 
 interface PendenteFip {
   id: string
@@ -88,6 +90,7 @@ interface HistoricoFip {
 }
 
 export default function AprovacoesPage() {
+  const router = useRouter()
   const { temPermissao, perfilAtual } = usePermissoes()
   const podeAprovarMedicoes = perfilAtual === 'admin' || temPermissao('medicoes', 'aprovar')
   const podeAprovarFip      = perfilAtual === 'admin' || temPermissao('aprovacoes', 'aprovar')
@@ -121,6 +124,12 @@ export default function AprovacoesPage() {
   const [saving, setSaving] = useState(false)
   const [quickAprovando, setQuickAprovando] = useState<string | null>(null)
   const [rtConnected, setRtConnected] = useState(false)
+
+  // Fat-direto: dialog que pergunta como aprovar (com ou sem notificação por email)
+  const [modalAprovarFip, setModalAprovarFip] = useState<PendenteFip | null>(null)
+  // Modal de notificação aos envolvidos (checkbox + preview do email)
+  const [emailModalFip, setEmailModalFip] = useState<PendenteFip | null>(null)
+  const [emailFipSucesso, setEmailFipSucesso] = useState('')
 
   useEffect(() => {
     async function loadAprovacoes() {
@@ -208,7 +217,11 @@ export default function AprovacoesPage() {
     }
   }
 
-  async function aprovarFip(sol: PendenteFip) {
+  /**
+   * Aprova um pedido fat-direto SEM notificação por email.
+   * @returns true se a aprovação foi bem-sucedida
+   */
+  async function aprovarFip(sol: PendenteFip): Promise<boolean> {
     setAprovandoFip(sol.id)
     try {
       const res = await fetch(`/api/contratos/${sol.contrato_id}/fat-direto/solicitacoes/${sol.id}/aprovar`, {
@@ -216,10 +229,29 @@ export default function AprovacoesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ acao: 'aprovado' }),
       })
-      if (res.ok) setPendentesFip(prev => prev.filter(s => s.id !== sol.id))
+      if (res.ok) {
+        setPendentesFip(prev => prev.filter(s => s.id !== sol.id))
+        return true
+      }
+      return false
     } finally {
       setAprovandoFip(null)
     }
+  }
+
+  /** "Só aprovar" — aprova e fecha o dialog, sem mandar email. */
+  async function aprovarFipSemEmail(sol: PendenteFip) {
+    await aprovarFip(sol)
+    setModalAprovarFip(null)
+  }
+
+  /** "Aprovar e notificar" — aprova primeiro, depois abre o modal de envio de email. */
+  async function aprovarFipComEmail(sol: PendenteFip) {
+    const ok = await aprovarFip(sol)
+    setModalAprovarFip(null)
+    // Só abre o modal de notificação se a aprovação passou — o modal usa
+    // /aprovar com destinatarios_ids; o pedido já está aprovado nesse ponto.
+    if (ok) setEmailModalFip(sol)
   }
 
   async function rejeitarFip(sol: PendenteFip) {
@@ -389,7 +421,8 @@ export default function AprovacoesPage() {
         observacoes: f.observacoes || '',
         status: f.status,
         statusLabel: f.status === 'aprovado' ? 'Aprovada' : f.status === 'rejeitado' ? 'Rejeitada' : 'Cancelada',
-        linkHref: f.contrato ? `/contratos/${f.contrato.id}/fat-direto` : '#',
+        // Duplo-clique abre a página de detalhe do pedido fat-direto.
+        linkHref: f.contrato ? `/contratos/${f.contrato.id}/fat-direto/${f.id}` : '#',
         raw: f,
       })
     }
@@ -482,6 +515,16 @@ export default function AprovacoesPage() {
     aprovador:   { values: valoresHistUnicos.aprovador,   selected: hfAprovador,   onChange: setHfAprovador },
     data:        { values: valoresHistUnicos.dataAprov,   selected: hfDataAprov,   onChange: setHfDataAprov },
     status:      { values: valoresHistUnicos.status,      selected: hfStatus,      onChange: setHfStatus },
+  }
+
+  /**
+   * Duplo-clique numa linha do histórico → abre a página de detalhe do pedido.
+   * Fat. Direto e Serviço (ambos kind='fip') → /contratos/[id]/fat-direto/[solId]
+   * Medição (kind='medicao') → /contratos/[id]/medicoes/[medicaoId]
+   */
+  function abrirPedido(row: HistRow) {
+    if (!row.linkHref || row.linkHref === '#') return
+    router.push(row.linkHref)
   }
 
   async function desaprovarDoHistorico(row: HistRow) {
@@ -888,7 +931,7 @@ export default function AprovacoesPage() {
                         ) : rejeitandoFip !== sol.id ? (
                           <>
                             <button
-                              onClick={() => aprovarFip(sol)}
+                              onClick={() => setModalAprovarFip(sol)}
                               disabled={aprovandoFip === sol.id}
                               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-70"
                               style={{ background: 'linear-gradient(90deg, #059669, #10B981)', color: '#fff', boxShadow: '0 0 12px rgba(16,185,129,0.25)' }}
@@ -1062,9 +1105,12 @@ export default function AprovacoesPage() {
                             borderBottom: '1px solid var(--border)',
                             alignItems: 'stretch',
                             minWidth: 'max-content',
+                            cursor: row.linkHref && row.linkHref !== '#' ? 'pointer' : 'default',
                           }}
                           onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-3)' }}
                           onMouseLeave={e => { e.currentTarget.style.background = idx % 2 === 0 ? 'var(--surface-1)' : 'var(--surface-2)' }}
+                          onDoubleClick={() => abrirPedido(row)}
+                          title="Duplo-clique para abrir o pedido"
                         >
                           {/* Tipo */}
                           <div className="flex items-center px-3 py-2.5" style={{ borderRight: '1px solid var(--border)' }}>
@@ -1078,9 +1124,19 @@ export default function AprovacoesPage() {
                               {row.tipo}
                             </span>
                           </div>
-                          {/* Número */}
-                          <div className="flex items-center px-3 py-2.5 text-xs font-bold font-mono break-all" style={{ color: 'var(--accent)', borderRight: '1px solid var(--border)' }}>
-                            {row.numero}
+                          {/* Número — duplo-clique abre o pedido */}
+                          <div className="flex items-center px-3 py-2.5 text-xs font-bold font-mono break-all" style={{ borderRight: '1px solid var(--border)' }}>
+                            {row.linkHref && row.linkHref !== '#' ? (
+                              <span
+                                className="hover:underline"
+                                style={{ color: 'var(--accent)' }}
+                                title="Duplo-clique para abrir o pedido"
+                              >
+                                {row.numero}
+                              </span>
+                            ) : (
+                              <span style={{ color: 'var(--accent)' }}>{row.numero}</span>
+                            )}
                           </div>
                           {/* Contrato */}
                           <div className="flex items-center px-3 py-2.5 text-xs break-words" style={{ color: 'var(--text-2)', borderRight: '1px solid var(--border)' }}>
@@ -1276,6 +1332,88 @@ export default function AprovacoesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog Aprovar Fat. Direto — escolhe aprovar com ou sem notificação por email */}
+      <Dialog open={!!modalAprovarFip} onOpenChange={() => { if (!aprovandoFip) setModalAprovarFip(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2" style={{ color: 'var(--green)' }}>
+              <CheckCircle2 className="w-5 h-5" />
+              Aprovar {modalAprovarFip ? `FIP-${String(modalAprovarFip.numero).padStart(4, '0')}` : 'Solicitação'}
+            </DialogTitle>
+            <DialogDescription>
+              {modalAprovarFip && (
+                <>
+                  <strong>{modalAprovarFip.contrato.numero}</strong>
+                  {modalAprovarFip.fornecedor_razao_social && <> · {modalAprovarFip.fornecedor_razao_social}</>}
+                  {' · '}<strong>{formatCurrency(modalAprovarFip.valor_total)}</strong>
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2 space-y-3 text-sm" style={{ color: 'var(--text-2)' }}>
+            <p>Escolha como quer aprovar:</p>
+            <div
+              className="text-xs p-3 rounded-lg"
+              style={{ background: 'var(--background)', border: '1px solid var(--border)', color: 'var(--text-3)' }}
+            >
+              <strong style={{ color: 'var(--text-2)' }}>Aprovar e notificar envolvidos:</strong> abre uma tela
+              pra selecionar quais usuários atrelados à obra recebem o email, com preview do conteúdo antes de enviar.
+              <br /><br />
+              <strong style={{ color: 'var(--text-2)' }}>Só aprovar:</strong> marca como aprovado sem enviar email.
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalAprovarFip(null)} disabled={!!aprovandoFip}>
+              Cancelar
+            </Button>
+            <Button
+              variant="ghost"
+              className="gap-2 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+              onClick={() => modalAprovarFip && aprovarFipSemEmail(modalAprovarFip)}
+              disabled={!!aprovandoFip}
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              {aprovandoFip ? 'Aprovando...' : 'Só aprovar'}
+            </Button>
+            <Button
+              variant="success"
+              className="gap-2"
+              onClick={() => modalAprovarFip && aprovarFipComEmail(modalAprovarFip)}
+              disabled={!!aprovandoFip}
+            >
+              <Mail className="w-4 h-4" />
+              Aprovar e notificar envolvidos
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de notificação aos envolvidos — checkbox + preview + enviar */}
+      {emailModalFip && (
+        <EmailEnvolvidosModal
+          open={!!emailModalFip}
+          onClose={() => setEmailModalFip(null)}
+          contratoId={emailModalFip.contrato_id}
+          solicitacaoId={emailModalFip.id}
+          reenvio={false}
+          modo="aprovar"
+          onSent={qtd => {
+            setEmailFipSucesso(`Notificação enviada para ${qtd} envolvido${qtd > 1 ? 's' : ''}.`)
+            window.setTimeout(() => setEmailFipSucesso(''), 6000)
+          }}
+        />
+      )}
+
+      {/* Toast de sucesso do envio de email (fat-direto) */}
+      {emailFipSucesso && (
+        <div
+          className="fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl text-sm font-medium shadow-lg"
+          style={{ background: 'rgba(16,185,129,0.95)', color: '#fff' }}
+        >
+          {emailFipSucesso}
+        </div>
+      )}
     </div>
   )
 }

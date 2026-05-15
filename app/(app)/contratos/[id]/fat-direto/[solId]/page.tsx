@@ -80,6 +80,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
   const isAdmin = perfilAtual === 'admin'
   const [sol, setSol] = useState<Solicitacao | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmCancelar, setConfirmCancelar] = useState(false)
   const [loading, setLoading] = useState(true)
   const [acting, setActing] = useState(false)
   const [showNFForm, setShowNFForm] = useState(false)
@@ -244,6 +245,17 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
     setActing(false)
   }
 
+  /**
+   * Cancela o pedido (status → 'cancelado'). Diferente de Excluir: não apaga
+   * o registro, só marca como cancelado. Pode ser reaberto depois ("Enviar
+   * para análise"). Exige confirmação explícita em dois cliques.
+   */
+  async function cancelarPedido() {
+    if (!confirmCancelar) { setConfirmCancelar(true); return }
+    setConfirmCancelar(false)
+    await acao('cancelado')
+  }
+
   async function deletar() {
     if (!confirmDelete) { setConfirmDelete(true); return }
     setActing(true)
@@ -403,6 +415,20 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                       <FileText className="w-4 h-4" /> Editar
                     </Button>
                   </Link>
+                  {isAdmin && (
+                    <Button
+                      onClick={cancelarPedido}
+                      disabled={acting}
+                      variant="ghost"
+                      className={confirmCancelar
+                        ? 'gap-2 bg-amber-600 hover:bg-amber-700 text-white'
+                        : 'gap-2 border border-amber-500/30 text-amber-400 hover:bg-amber-500/10'}
+                      title="Marca o pedido como cancelado (não apaga — pode ser reaberto depois)."
+                    >
+                      <Ban className="w-4 h-4" />
+                      {confirmCancelar ? 'Confirmar Cancelamento' : 'Cancelar pedido'}
+                    </Button>
+                  )}
                   {isAdmin && (
                     <Button
                       onClick={deletar}
@@ -566,6 +592,20 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                     title="Encerra o pedido e devolve o saldo (não recebido em NF) aos itens originais. Irreversível."
                   >
                     <RotateCcw className="w-4 h-4" /> Encerrar e devolver saldo
+                  </Button>
+                )}
+                {sol.status !== 'cancelado' && sol.status !== 'encerrado' && (
+                  <Button
+                    onClick={cancelarPedido}
+                    disabled={acting}
+                    variant="ghost"
+                    className={confirmCancelar
+                      ? 'gap-2 bg-amber-600 hover:bg-amber-700 text-white'
+                      : 'gap-2 border border-amber-500/30 text-amber-400 hover:bg-amber-500/10'}
+                    title="Marca o pedido como cancelado (não apaga — pode ser reaberto depois)."
+                  >
+                    <Ban className="w-4 h-4" />
+                    {confirmCancelar ? 'Confirmar Cancelamento' : 'Cancelar pedido'}
                   </Button>
                 )}
                 <Button
