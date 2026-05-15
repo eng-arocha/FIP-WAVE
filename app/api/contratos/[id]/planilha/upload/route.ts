@@ -198,6 +198,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         const raw = String(row[iId] ?? '').trim()
         if (raw && /^[0-9a-f-]{36}$/i.test(raw)) det = byId.get(raw)
       }
+      // Se o detalhamento_id resolveu pra um det cujo codigo NAO bate com
+      // o ITEM da linha, a coluna detalhamento_id da planilha esta errada
+      // (ex.: copiada da linha irma — 3.1.3 carregando o id de 3.1.1).
+      // Descarta o match por id e casa por codigo, que e a fonte confiavel.
+      if (det && codigoLinha && String(det.codigo) !== codigoLinha) det = null
       if (!det && codigoLinha) det = byCodigo.get(codigoLinha)
 
       if (!det) {
