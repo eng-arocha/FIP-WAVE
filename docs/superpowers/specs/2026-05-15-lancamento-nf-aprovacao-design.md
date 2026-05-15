@@ -92,19 +92,23 @@ atual em que o contratante lança diretamente.
 
 ## Modelo de dados
 
-Uma migration SQL idempotente (Regra 1 do projeto) sobre `notas_fiscais_fat_direto`:
+Uma migration SQL idempotente (Regra 1 do projeto) sobre `notas_fiscais_fat_direto`,
+nesta ordem:
 
-- Estende o CHECK de `status` para incluir `aguardando_aprovacao`, `aprovada`,
-  `em_correcao`, `cancelada` (mantém os valores legados durante a transição).
-- Novas colunas:
-  - `lancado_por_id UUID REFERENCES perfis(id)` — quem lançou.
-  - `lancado_em TIMESTAMPTZ` — quando.
-  - `motivo_rejeicao TEXT` — motivo da última rejeição (sobrescrito a cada ciclo;
-    o histórico completo fica na auditoria).
-- Reaproveita `validado_por_id` / `validado_em` como aprovador / data de aprovação.
-- Migração de dados: NFs existentes em `pendente` ou `validada` passam para
-  `aprovada` (foram lançadas pelo contratante, são confiáveis); `rejeitada`
-  mantém-se (ou migra para `cancelada`).
+1. **Novas colunas:**
+   - `lancado_por_id UUID REFERENCES perfis(id)` — quem lançou.
+   - `lancado_em TIMESTAMPTZ` — quando.
+   - `motivo_rejeicao TEXT` — motivo da última rejeição (sobrescrito a cada ciclo;
+     o histórico completo fica na auditoria).
+   - Reaproveita `validado_por_id` / `validado_em` como aprovador / data de aprovação.
+2. **Migração dos dados existentes** (antes de apertar o CHECK):
+   - `pendente` e `validada` → `aprovada` (foram lançadas pelo contratante, são
+     confiáveis).
+   - `rejeitada` → `cancelada` (no novo modelo a rejeição é a volta `em_correcao`;
+     uma NF legada `rejeitada` é uma NF morta = `cancelada`).
+3. **Substitui o CHECK de `status`** para permitir exatamente os quatro estados
+   novos: `aguardando_aprovacao`, `aprovada`, `em_correcao`, `cancelada`. Nenhum
+   valor legado permanece após o passo 2, então o CHECK não precisa mantê-los.
 
 Histórico dos ciclos: usar o helper `audit()` já existente, com eventos
 `nf.lancada`, `nf.aprovada`, `nf.rejeitada`, `nf.reenviada`. Sem tabela nova.
