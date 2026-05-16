@@ -29,6 +29,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { nfReservaSaldo } from '@/lib/db/nf-status'
 import type {
   DashboardItem,
   DashboardNivel,
@@ -221,9 +222,9 @@ export async function getDashboardData(
       )
     }
 
-    // NFs que contam: tudo exceto 'rejeitada'
+    // NFs que contam: tudo exceto cancelada (NF pendente/aprovada conta).
     const totalNfsSol = (sol.nfs || [])
-      .filter(nf => nf.status !== 'rejeitada')
+      .filter(nf => nfReservaSaldo(nf.status))
       .reduce((s, nf) => s + Number(nf.valor || 0), 0)
 
     if (totalSol > 0 && totalNfsSol > 0) {

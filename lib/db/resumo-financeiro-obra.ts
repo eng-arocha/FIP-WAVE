@@ -164,7 +164,7 @@ export async function calcularResumoFinanceiroObra(args: CalcArgs): Promise<Resu
       .from('notas_fiscais_fat_direto')
       .select('id, valor, status, created_at')
       .in('solicitacao_id', solIds)
-      .neq('status', 'rejeitada')
+      .neq('status', 'cancelada')
     nfsDoContrato = (nfsAtivas || []).map((n: any) => ({
       valor: Number(n.valor || 0),
       created_at: n.created_at ?? null,

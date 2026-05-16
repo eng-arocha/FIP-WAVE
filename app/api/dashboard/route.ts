@@ -26,7 +26,7 @@ export async function GET() {
       supabase.from('vw_medicao_grupo').select('*'),
       admin.from('solicitacoes_fat_direto').select('id, valor_total').eq('status', 'aprovado'),
       admin.from('contratos').select('valor_servicos, valor_material_direto').eq('status', 'ativo'),
-      admin.from('notas_fiscais_fat_direto').select('valor, status').neq('status', 'rejeitada'),
+      admin.from('notas_fiscais_fat_direto').select('valor, status').neq('status', 'cancelada'),
       // Medições aprovadas + itens + valor_unit mat/serv pra calcular split
       // 'Medição de Serviço' (= MO) vs 'Fat. Direto Medido' (= material).
       // Source-of-truth pra os 4 cards de medição do dashboard (spec 2026-05-06).
@@ -48,7 +48,7 @@ export async function GET() {
         .from('notas_fiscais_fat_direto')
         .select('valor, status')
         .in('solicitacao_id', solIds)
-        .neq('status', 'rejeitada')
+        .neq('status', 'cancelada')
       totalNfFatDireto = (nfsAprov || []).reduce((acc: number, nf: any) => acc + (nf.valor || 0), 0)
     }
 

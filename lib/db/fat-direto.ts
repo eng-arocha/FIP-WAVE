@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isSchemaMissingError, withSchemaFallback } from '@/lib/db/resilient'
 import { log } from '@/lib/log'
+import { nfReservaSaldo, nfPendente, statusInicialNf } from '@/lib/db/nf-status'
 
 export async function listarSolicitacoes(contratoId: string) {
   const admin = createAdminClient()
@@ -44,6 +45,7 @@ export async function getSolicitacao(id: string) {
   // Campos extras (contato/pedido/anexos/encerramento): se schema cache do
   // PostgREST ainda não os conhece, cai pro select base em vez de quebrar.
   // Itens ganham valor_devolvido pra UI exibir saldo livre por item.
+  // NFs ganham os campos do workflow de aprovação (migration 065) + datas/arquivo.
   const extraSelect = `
       id, numero, status, data_solicitacao, data_aprovacao,
       observacoes, motivo_rejeicao, valor_total, contrato_id, created_at,
@@ -59,7 +61,9 @@ export async function getSolicitacao(id: string) {
         tarefa:tarefa_id(id, codigo, nome, grupo_macro_id)
       ),
       notas_fiscais:notas_fiscais_fat_direto!solicitacao_id(
-        id, numero_nf, emitente, cnpj_emitente, valor, data_emissao, descricao, status, validado_em
+        id, numero_nf, emitente, cnpj_emitente, valor, data_emissao,
+        data_recebimento, data_vencimento, descricao, status, validado_em,
+        arquivo_url, motivo_rejeicao, lancado_em
       )
     `
 
@@ -495,6 +499,20 @@ export async function listarSolicitacoesAprovadas() {
       contrato_id,
       contrato:contrato_id(id, numero, descricao),
       solicitante:perfis!solicitante_id(nome),
+      notas_fiscais:notas_fiscais_fat_direto!solicitacao_id(
+        id, numero_nf, emitente, cnpj_emitente, valor, data_emissao,
+        data_recebimento, data_vencimento, status, arquivo_url,
+        motivo_rejeicao, lancado_em, lancado_por:perfis!lancado_por_id(nome)
+      ),
+      itens:itens_solicitacao_fat_direto(id)
+    `
+  // Fallback se a migration 065 / colunas de NF ainda não estão no schema cache.
+  const baseSelectLegado = `
+      id, numero, status, data_solicitacao, data_aprovacao, valor_total,
+      fornecedor_razao_social, fornecedor_cnpj,
+      contrato_id,
+      contrato:contrato_id(id, numero, descricao),
+      solicitante:perfis!solicitante_id(nome),
       notas_fiscais:notas_fiscais_fat_direto!solicitacao_id(id, numero_nf, valor, status),
       itens:itens_solicitacao_fat_direto(id)
     `
@@ -510,10 +528,13 @@ export async function listarSolicitacoesAprovadas() {
       .order('data_solicitacao', { ascending: false }),
     fallback: () => admin
       .from('solicitacoes_fat_direto')
-      .select(baseSelect)
+      .select(baseSelectLegado)
       .in('status', ['aprovado', 'aguardando_aprovacao'])
       .order('data_solicitacao', { ascending: false }),
-    missingColumns: ['observacoes', 'numero_pedido_fip'],
+    missingColumns: [
+      'observacoes', 'numero_pedido_fip',
+      'arquivo_url', 'motivo_rejeicao', 'lancado_em', 'lancado_por_id',
+    ],
     context: 'listarSolicitacoesAprovadas',
   })
   if (error) throw error
@@ -729,7 +750,10 @@ export async function validarNotaFiscal3Way(input: {
     .select('id, numero_nf, cnpj_emitente, valor, status')
     .eq('solicitacao_id', input.solicitacao_id)
 
-  const ativas = (nfsAtivas || []).filter((n: any) => n.status !== 'rejeitada')
+  // NF "ativa" = reserva saldo do pedido (aguardando_aprovacao, em_correcao,
+  // aprovada). cancelada/rejeitada-legada não contam. Inclui as pendentes
+  // pra que a contratada não lance duas NFs que estouram o mesmo pedido.
+  const ativas = (nfsAtivas || []).filter((n: any) => nfReservaSaldo(n.status))
 
   // Duplicata (mesmo numero_nf + cnpj_emitente na mesma solicitação)
   const dup = ativas.find((n: any) =>
@@ -826,6 +850,10 @@ export async function criarNotaFiscal(input: {
   override_excede_saldo?: boolean
   /** Justificativa obrigatória quando override_excede_saldo=true. */
   motivo_divergencia?: string
+  /** Perfil que lançou a NF (contratada ou contratante). */
+  lancado_por_id?: string
+  /** True se o lançador tem permissão de aprovar → NF nasce aprovada. */
+  lancador_pode_aprovar?: boolean
 }) {
   // 3-way match antes de gravar — lança NFMatchError em caso de violação
   const match = await validarNotaFiscal3Way({
@@ -841,13 +869,26 @@ export async function criarNotaFiscal(input: {
 
   // Remove campos que não são colunas da tabela
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { override_data_anterior, override_excede_saldo, motivo_divergencia, ...rest } = input
+  const {
+    override_data_anterior, override_excede_saldo, motivo_divergencia,
+    lancado_por_id, lancador_pode_aprovar, ...rest
+  } = input
+
+  // Status inicial do workflow: quem tem permissão de aprovar lança direto
+  // como aprovada (auto-aprovação); senão a NF nasce aguardando aprovação.
+  const statusInicial = statusInicialNf(!!lancador_pode_aprovar)
+  const agora = new Date().toISOString()
 
   // Anexa metadados de divergência calculados pelo match (se aplicável).
   // Persistência dos flags resiliente: se a migration 053 ainda não rodou,
   // tenta com flags; se falhar por coluna ausente, refaz sem.
   const insertPayloadComFlags: Record<string, any> = {
     ...rest,
+    status: statusInicial,
+    lancado_por_id: lancado_por_id ?? null,
+    lancado_em: agora,
+    validado_por_id: statusInicial === 'aprovada' ? (lancado_por_id ?? null) : null,
+    validado_em: statusInicial === 'aprovada' ? agora : null,
     divergencia_valor: match.divergencia_valor,
     divergencia_excedente: match.divergencia_valor ? match.divergencia_excedente : null,
     override_excede_saldo: !!input.override_excede_saldo,
@@ -867,11 +908,12 @@ export async function criarNotaFiscal(input: {
       const isMissing = isSchemaMissingError(r.error, [
         'divergencia_valor', 'divergencia_excedente',
         'override_excede_saldo', 'motivo_divergencia',
+        'lancado_por_id', 'lancado_em',
       ])
       if (!isMissing) throw r.error
       const r2 = await admin
         .from('notas_fiscais_fat_direto')
-        .insert(rest)
+        .insert({ ...rest, status: statusInicial })
         .select()
         .single()
       if (r2.error) throw r2.error
@@ -1302,7 +1344,7 @@ export async function detectarPedidosAtrasados(input: {
 
   const nfsPorSol: Record<string, number> = {}
   for (const nf of (nfsRaw || []) as any[]) {
-    if (nf.status === 'rejeitada') continue
+    if (!nfReservaSaldo(nf.status)) continue
     nfsPorSol[nf.solicitacao_id] = (nfsPorSol[nf.solicitacao_id] || 0) + Number(nf.valor || 0)
   }
 
@@ -1555,12 +1597,12 @@ export async function encerrarSolicitacao(input: EncerrarSolicitacaoInput) {
     )
   }
 
-  const nfsAtivas = (nfs || []).filter((n: any) => n.status !== 'rejeitada')
-  const nfsPendentes = nfsAtivas.filter((n: any) => n.status === 'pendente')
+  const nfsAtivas = (nfs || []).filter((n: any) => nfReservaSaldo(n.status))
+  const nfsPendentes = nfsAtivas.filter((n: any) => nfPendente(n.status))
   if (nfsPendentes.length > 0) {
     throw new EncerramentoError(
       'NF_PENDENTE_BLOQUEIA',
-      `Existe(m) ${nfsPendentes.length} NF(s) pendente(s) de validação. Valide ou rejeite antes de encerrar o pedido.`,
+      `Existe(m) ${nfsPendentes.length} NF(s) aguardando aprovação. Aprove ou cancele antes de encerrar o pedido.`,
       { qtd_pendentes: nfsPendentes.length },
     )
   }

@@ -60,6 +60,8 @@ export function Sidebar({
   const [cadastroOpen, setCadastroOpen] = useState(false)
   const [contratoOpen, setContratoOpen] = useState(true)
   const [docsOpen, setDocsOpen] = useState(false)
+  // Contador de NFs aguardando aprovação (badge do item "NF Fat. Direto").
+  const [nfAguardandoCount, setNfAguardandoCount] = useState(0)
 
   // Detect if inside a specific contract (extract UUID from pathname)
   const contratoMatch = pathname.match(/^\/contratos\/([a-f0-9-]{36})/)
@@ -82,11 +84,22 @@ export function Sidebar({
     }
   }, [pathname])
 
+  // Busca a contagem de NFs aguardando aprovação para o badge da sidebar.
+  // Re-busca a cada navegação para refletir aprovações/rejeições recentes.
+  useEffect(() => {
+    let cancelado = false
+    fetch('/api/nf-fat-direto/aguardando-count')
+      .then(r => r.ok ? r.json() : { count: 0 })
+      .then(d => { if (!cancelado) setNfAguardandoCount(Number(d?.count) || 0) })
+      .catch(() => { /* badge é cosmético */ })
+    return () => { cancelado = true }
+  }, [pathname])
+
   const mainItems = [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, modulo: 'dashboard' },
     { label: 'Contratos', href: '/contratos', icon: FileText, modulo: 'contratos' },
     { label: 'Aprovações', href: '/aprovacoes', icon: CheckSquare, modulo: 'aprovacoes', badge: true },
-    { label: 'NF Fat. Direto', href: '/nf-fat-direto', icon: Receipt, modulo: 'contratos' },
+    { label: 'NF Fat. Direto', href: '/nf-fat-direto', icon: Receipt, modulo: 'contratos', count: nfAguardandoCount },
   ].filter(item => temPermissao(item.modulo, 'visualizar'))
 
   const cadastroItems = [
@@ -173,6 +186,22 @@ export function Sidebar({
 
         {'badge' in item && item.badge && showText && (
           <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
+        )}
+
+        {/* Contador numérico (ex.: NFs aguardando aprovação) */}
+        {'count' in item && typeof item.count === 'number' && item.count > 0 && showText && (
+          <span
+            className="flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center text-white"
+            style={{ background: '#F59E0B' }}
+          >
+            {item.count > 99 ? '99+' : item.count}
+          </span>
+        )}
+        {'count' in item && typeof item.count === 'number' && item.count > 0 && !showText && (
+          <span
+            className="absolute top-1 right-1 w-2 h-2 rounded-full"
+            style={{ background: '#F59E0B' }}
+          />
         )}
 
         {isActive && showText && (
@@ -399,6 +428,16 @@ export function Sidebar({
                   className="absolute top-1 right-[22%] w-2 h-2 rounded-full"
                   style={{ background: '#0071E3', boxShadow: '0 0 0 1.5px white' }}
                 />
+              )}
+
+              {/* Count badge — NFs aguardando aprovação */}
+              {'count' in item && typeof item.count === 'number' && item.count > 0 && (
+                <span
+                  className="absolute top-0.5 right-[20%] min-w-[16px] h-4 px-1 rounded-full text-[9px] font-bold flex items-center justify-center text-white"
+                  style={{ background: '#F59E0B', boxShadow: '0 0 0 1.5px white' }}
+                >
+                  {item.count > 99 ? '99+' : item.count}
+                </span>
               )}
             </Link>
           )

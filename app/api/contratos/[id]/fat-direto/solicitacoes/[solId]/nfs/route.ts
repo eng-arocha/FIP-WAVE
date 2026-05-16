@@ -8,6 +8,10 @@ import { validateUpload } from '@/lib/api/upload-validation'
 import { optimizeUpload } from '@/lib/server/optimize-upload'
 import { getSupabaseUrl } from '@/lib/supabase/env'
 import { log } from '@/lib/log'
+import { assertPermissao } from '@/lib/api/auth'
+import { getPermissoesEfetivas } from '@/lib/db/permissoes'
+import { sendEmail } from '@/lib/email/send'
+import { templateNfAguardandoAprovacao } from '@/lib/email/templates-nf-workflow'
 
 const BUCKET = 'faturamento-direto'
 
@@ -74,6 +78,18 @@ export async function POST(
 ) {
   try {
     const { solId } = await params
+
+    // Lançar NF exige permissão. A contratada tem 'nf_fat_direto:lancar'.
+    const auth = await assertPermissao('nf_fat_direto', 'lancar')
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
+
+    // Lançador que também tem permissão de aprovar → NF nasce aprovada.
+    let lancadorPodeAprovar = auth.isAdmin
+    if (!lancadorPodeAprovar) {
+      const { permissoes } = await getPermissoesEfetivas(auth.userId)
+      lancadorPodeAprovar = permissoes.some(p => p.modulo === 'nf_fat_direto' && p.acao === 'aprovar')
+    }
+
     const admin = createAdminClient()
     const ct = req.headers.get('content-type') || ''
 
@@ -204,7 +220,40 @@ export async function POST(
       override_data_anterior: nfBody.override_data_anterior,
       override_excede_saldo: nfBody.override_excede_saldo,
       motivo_divergencia: nfBody.motivo_divergencia,
+      lancado_por_id: auth.userId,
+      lancador_pode_aprovar: lancadorPodeAprovar,
     })
+
+    // NF pendente → notifica os aprovadores (admins). Falha de e-mail não
+    // derruba o lançamento — sendEmail já loga internamente.
+    if ((nf as any)?.status === 'aguardando_aprovacao') {
+      try {
+        const { data: sol } = await admin
+          .from('solicitacoes_fat_direto')
+          .select('numero, numero_pedido_fip')
+          .eq('id', solId)
+          .single()
+        const { data: aprovadores } = await admin
+          .from('perfis')
+          .select('email')
+          .eq('perfil', 'admin')
+          .eq('ativo', true)
+        const emails = (aprovadores || []).map((a: any) => a.email).filter(Boolean)
+        if (emails.length > 0) {
+          const pedidoCodigo = (sol as any)?.numero_pedido_fip || (sol as any)?.numero || solId
+          const tpl = templateNfAguardandoAprovacao({
+            numero_nf: nfBody.numero_nf,
+            pedido_codigo: String(pedidoCodigo),
+            valor: nfBody.valor,
+            lancado_por: auth.userEmail ?? 'Contratada',
+          })
+          await sendEmail({ to: emails, subject: tpl.subject, html: tpl.html, tipo: 'nova_medicao' })
+        }
+      } catch (mailErr) {
+        log.warn('nf_email_aguardando_falhou', { solId, erro: String(mailErr) })
+      }
+    }
+
     return NextResponse.json(nf, { status: 201 })
   } catch (e: any) {
     // Violação de regra de negócio do 3-way match → 422 com detalhe estruturado

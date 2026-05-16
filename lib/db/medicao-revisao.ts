@@ -77,7 +77,7 @@ export async function desfazerAprovacaoMedicao(input: DesfazerAprovacaoInput) {
         .select('id, created_at, numero_nf, status')
         .in('solicitacao_id', ids)
         .gt('created_at', dataAprovacao)
-        .neq('status', 'rejeitada')
+        .neq('status', 'cancelada')
 
       if ((nfsPosteriores ?? []).length > 0) {
         throw new DesfazerAprovacaoError(

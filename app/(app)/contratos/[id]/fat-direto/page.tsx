@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { nfReservaSaldo } from '@/lib/db/nf-status'
 import { Plus, ArrowLeft, FileText, CheckCircle, Clock, XCircle, Package, ClipboardList, Timer, BadgeCheck, Receipt, Undo2, ChevronDown, X, BarChart2, ArrowUpDown, ArrowUp, ArrowDown, AlertCircle } from 'lucide-react'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 
@@ -121,7 +122,7 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
   const rascunhosAutoMedicao = solicitacoes.filter(s => {
     if (!/Aprova[çc][aã]o da medi[çc][aã]o MED-/i.test(s.observacoes || '')) return false
     if (s.status === 'cancelado' || s.status === 'rejeitado') return false
-    const temNFvalida = (s.notas_fiscais || []).some(n => n.status !== 'rejeitada')
+    const temNFvalida = (s.notas_fiscais || []).some(n => nfReservaSaldo(n.status))
     return !temNFvalida
   })
   const totalNFs = solicitacoes.reduce((sum, s) => sum + (s.notas_fiscais?.filter(n => n.status !== 'rejeitada').reduce((a, n) => a + n.valor, 0) || 0), 0)
@@ -447,7 +448,7 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
                   <div className="divide-y divide-[var(--border)]">
                     {reportRows.map(sol => {
                       const cfg = STATUS_CONFIG[sol.status] ?? STATUS_CONFIG.rascunho
-                      const nfTotal = (sol.notas_fiscais || []).filter(n => n.status !== 'rejeitada').reduce((s, n) => s + n.valor, 0)
+                      const nfTotal = (sol.notas_fiscais || []).filter(n => nfReservaSaldo(n.status)).reduce((s, n) => s + n.valor, 0)
                       return (
                         <Link key={sol.id} href={`/contratos/${id}/fat-direto/${sol.id}`} className="block">
                           <div className="grid grid-cols-[2fr_1fr_2fr_1fr_1.5fr_1.2fr] gap-3 px-5 py-3 items-center hover:bg-[var(--surface-2)] transition-colors text-sm">
@@ -547,7 +548,7 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
                 <div className="divide-y divide-[var(--border)]">
                   {sortedSolicitacoes.map(sol => {
                     const cfg = STATUS_CONFIG[sol.status] ?? STATUS_CONFIG.rascunho
-                    const nfTotal = (sol.notas_fiscais || []).filter(n => n.status !== 'rejeitada').reduce((s, n) => s + n.valor, 0)
+                    const nfTotal = (sol.notas_fiscais || []).filter(n => nfReservaSaldo(n.status)).reduce((s, n) => s + n.valor, 0)
                     return (
                       <Link key={sol.id} href={`/contratos/${id}/fat-direto/${sol.id}`} className="block">
                         <div className="px-5 py-4 hover:bg-[var(--surface-2)] transition-colors flex items-center justify-between">
