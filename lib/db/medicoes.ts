@@ -87,7 +87,13 @@ export async function createMedicao(input: {
   solicitante_nome: string
   solicitante_email: string
   observacoes?: string
-  itens: { detalhamento_id: string; quantidade_medida: number; valor_unitario: number }[]
+  itens: {
+    detalhamento_id: string
+    quantidade_medida: number
+    valor_unitario: number
+    /** Breakdown por pavto (so PAV TIPO; cf. migration 066). */
+    pavimentos_pct?: Record<string, number> | null
+  }[]
   notas_fiscais?: { numero_nf: string; emitente: string; cnpj_emitente?: string; valor: number; data_emissao: string }[]
 }) {
   const supabase = await createClient()
@@ -148,18 +154,34 @@ export async function createMedicao(input: {
   // pra que valor_medido = qtde × (mat+serv) reflita TUDO o que foi
   // executado, e o livro-razão de retenção use a base correta.
   if (input.itens.length > 0) {
-    const { error: itensError } = await supabase
+    const buildRow = (i: typeof input.itens[number], incluirPavto: boolean) => {
+      const u = unitMap.get(i.detalhamento_id)
+      const totalUnit = u ? (u.mat + u.serv) : i.valor_unitario
+      const row: Record<string, unknown> = {
+        medicao_id: medicao.id,
+        detalhamento_id: i.detalhamento_id,
+        quantidade_medida: i.quantidade_medida,
+        valor_unitario: totalUnit,
+      }
+      // pavimentos_pct so existe apos migration 066; se a coluna nao
+      // existir ainda, o insert eh refeito sem ela.
+      if (incluirPavto && i.pavimentos_pct && Object.keys(i.pavimentos_pct).length > 0) {
+        row.pavimentos_pct = i.pavimentos_pct
+      }
+      return row
+    }
+    let { error: itensError } = await supabase
       .from('medicao_itens')
-      .insert(input.itens.map(i => {
-        const u = unitMap.get(i.detalhamento_id)
-        const totalUnit = u ? (u.mat + u.serv) : i.valor_unitario
-        return {
-          medicao_id: medicao.id,
-          detalhamento_id: i.detalhamento_id,
-          quantidade_medida: i.quantidade_medida,
-          valor_unitario: totalUnit,
-        }
-      }))
+      .insert(input.itens.map(i => buildRow(i, true)))
+    if (itensError && (
+      (itensError as any).code === 'PGRST204' ||
+      String((itensError as any).message || '').includes('pavimentos_pct')
+    )) {
+      const retry = await supabase
+        .from('medicao_itens')
+        .insert(input.itens.map(i => buildRow(i, false)))
+      itensError = retry.error
+    }
     if (itensError) throw itensError
   }
 

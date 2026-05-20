@@ -8,6 +8,10 @@ const Item = z.object({
   detalhamento_id: uuid(),
   quantidade_medida: z.number().nonnegative().finite(),
   valor_unitario: z.number().nonnegative().finite(),
+  // Breakdown por pavimento (so para itens PAV TIPO; cf. migration 066).
+  // Chave = numero do pavto, valor = pct acumulado (0/25/50/75/100) ao fim
+  // desta medicao. Opcional: omitido para itens nao-pavimento-tipo.
+  pavimentos_pct: z.record(z.string(), z.number().min(0).max(100)).nullable().optional(),
 })
 
 const Nf = z.object({
