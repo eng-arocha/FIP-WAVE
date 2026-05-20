@@ -1,6 +1,32 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
+/**
+ * Comparador de codigo hierarquico ("10.1.12") por valor NUMERICO de cada
+ * segmento — evita o problema de sort alfabetico onde "10.1.12" < "10.1.2"
+ * e "10.3" < "10.1". Segmentos nao-numericos caem em fallback string.
+ */
+function compareCodigo(a: string | null | undefined, b: string | null | undefined): number {
+  const sa = String(a ?? '')
+  const sb = String(b ?? '')
+  const partsA = sa.split('.')
+  const partsB = sb.split('.')
+  const len = Math.max(partsA.length, partsB.length)
+  for (let i = 0; i < len; i++) {
+    const a_i = partsA[i] ?? ''
+    const b_i = partsB[i] ?? ''
+    const na = Number(a_i)
+    const nb = Number(b_i)
+    if (Number.isFinite(na) && Number.isFinite(nb)) {
+      if (na !== nb) return na - nb
+    } else {
+      const cmp = a_i.localeCompare(b_i)
+      if (cmp !== 0) return cmp
+    }
+  }
+  return 0
+}
+
 export async function getGruposMacro(contratoId: string) {
   const supabase = await createClient()
   const admin = createAdminClient()
@@ -21,11 +47,26 @@ export async function getGruposMacro(contratoId: string) {
 
   const saldoMap = Object.fromEntries((saldos || []).map(s => [s.grupo_id, s]))
 
-  return (data || []).map(g => ({
-    ...g,
-    valor_medido: saldoMap[g.id]?.valor_medido ?? 0,
-    saldo: saldoMap[g.id]?.saldo ?? g.valor_contratado,
-  }))
+  // Supabase nao garante ordem dos nested resources via .order() na tabela
+  // pai; sort natural por codigo aqui pra cobrir o caso em que 'ordem' nao
+  // esta populado/consistente nas tarefas e detalhamentos.
+  return (data || [])
+    .slice()
+    .sort((g1: any, g2: any) => compareCodigo(g1.codigo, g2.codigo))
+    .map((g: any) => ({
+      ...g,
+      tarefas: (g.tarefas || [])
+        .slice()
+        .sort((t1: any, t2: any) => compareCodigo(t1.codigo, t2.codigo))
+        .map((t: any) => ({
+          ...t,
+          detalhamentos: (t.detalhamentos || [])
+            .slice()
+            .sort((d1: any, d2: any) => compareCodigo(d1.codigo, d2.codigo)),
+        })),
+      valor_medido: saldoMap[g.id]?.valor_medido ?? 0,
+      saldo: saldoMap[g.id]?.saldo ?? g.valor_contratado,
+    }))
 }
 
 export async function getGruposMacroComSaldo(contratoId: string) {
