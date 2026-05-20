@@ -11,6 +11,7 @@ import { ArrowLeft, Upload, Trash2, Plus, AlertCircle, Info, Loader2, User, Chev
 import { formatCurrency } from '@/lib/utils'
 import { TipoAnexo } from '@/types'
 import { createClient } from '@/lib/supabase/client'
+import { detectarPavRange, listarPavimentos, somarPavimentos, normalizarPct, PAV_PCTS, type PavRange } from '@/lib/pavimentos'
 
 const MESES = [
   { v: '01', l: 'Janeiro' }, { v: '02', l: 'Fevereiro' }, { v: '03', l: 'Março' },
@@ -33,7 +34,13 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
   const [loadingEstrutura, setLoadingEstrutura] = useState(true)
   // Acumulado de medicoes anteriores. Cada entry tem qtde absoluta + qtde
   // contratada + pct calculado. Vem do endpoint /medicoes/acumulado.
-  const [acumulado, setAcumulado] = useState<Record<string, { qtde: number; qtde_contratada: number; pct: number }>>({})
+  // pavimentos_pct: MAX por pavto entre medicoes aprovadas (so PAV TIPO).
+  const [acumulado, setAcumulado] = useState<Record<string, {
+    qtde: number
+    qtde_contratada: number
+    pct: number
+    pavimentos_pct?: Record<string, number> | null
+  }>>({})
 
   const [userNome, setUserNome] = useState('')
   const [userEmail, setUserEmail] = useState('')
@@ -51,6 +58,23 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
   // (botoes de %). Para qtde > 1 usamos input numerico (inteiros se qtde
   // contratada eh inteira, decimais caso contrario).
   const [qtdeMedicao, setQtdeMedicao] = useState<Record<string, number>>({})
+
+  // Breakdown por pavto para itens PAV TIPO (cf. lib/pavimentos.ts + migration 066).
+  // Estrutura: { [detId]: { [numPavto]: pct } } onde pct ∈ {0,25,50,75,100} e
+  // representa o pct ACUMULADO desse pavto ao fim DESTA medicao (nao o delta).
+  // qtdeMedicao[detId] eh derivado: somarPavimentos(pavPctMap[detId]).
+  const [pavPctMap, setPavPctMap] = useState<Record<string, Record<string, number>>>({})
+
+  // Grade de pavtos colapsada por padrao (recomendado pelo usuario).
+  const [expandedPavGrid, setExpandedPavGrid] = useState<Set<string>>(new Set())
+  function togglePavGrid(detId: string) {
+    setExpandedPavGrid(prev => {
+      const next = new Set(prev)
+      if (next.has(detId)) next.delete(detId)
+      else next.add(detId)
+      return next
+    })
+  }
 
   // Collapse state para step 2 — começa com todos fechados
   const [expandedGrupos, setExpandedGrupos] = useState<Set<string>>(new Set())
@@ -128,6 +152,18 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
             }
             return init
           })
+          // Seed do breakdown por pavto = MAX por pavto vindo de medicoes
+          // aprovadas. Cada pavto so pode crescer dali pra frente.
+          setPavPctMap(prev => {
+            const init = { ...prev }
+            for (const [id, entry] of Object.entries(data || {}) as [string, any][]) {
+              const pavto = entry?.pavimentos_pct
+              if (pavto && typeof pavto === 'object') {
+                init[id] = { ...(init[id] || {}), ...pavto }
+              }
+            }
+            return init
+          })
         })
     }
   }, [step, contratoId])
@@ -175,6 +211,63 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
     }
   }
 
+  // ============================================================
+  // Helpers de medicao por pavimento (itens "PAV TIPO ( X AO Y PAV )")
+  // ============================================================
+
+  /**
+   * Pct anterior acumulado de um pavto especifico (vindo de medicoes
+   * aprovadas). Funciona como "minimo" — o pavto so pode subir dai.
+   */
+  function getPavPctAnterior(detId: string, pavto: number): number {
+    const ant = acumulado[detId]?.pavimentos_pct
+    if (!ant) return 0
+    const v = Number(ant[String(pavto)])
+    return Number.isFinite(v) ? v : 0
+  }
+
+  /** Pct atual (acumulado ao fim desta medicao) de um pavto. */
+  function getPavPctAtual(detId: string, pavto: number): number {
+    const v = Number(pavPctMap[detId]?.[String(pavto)])
+    if (Number.isFinite(v) && v > 0) return v
+    return getPavPctAnterior(detId, pavto)
+  }
+
+  /**
+   * Atualiza o pct de um pavto. Regras:
+   *  - Clamp em {0,25,50,75,100}
+   *  - Nao retroage: pct atual >= pct anterior do mesmo pavto
+   *  - Apos atualizar, recalcula qtdeMedicao[detId] = soma(pcts)/100
+   */
+  function setPavPct(detId: string, pavto: number, pctRaw: number) {
+    const pct = normalizarPct(pctRaw)
+    const anterior = getPavPctAnterior(detId, pavto)
+    const efetivo = pct < anterior ? anterior : pct
+
+    setPavPctMap(prev => {
+      const next = { ...prev, [detId]: { ...(prev[detId] || {}), [String(pavto)]: efetivo } }
+      // qtdeMedicao deriva da soma — atualiza em batch pra evitar dessincronia.
+      const novaQtde = somarPavimentos(next[detId])
+      setQtdeMedicao(prevQ => ({ ...prevQ, [detId]: novaQtde }))
+      return next
+    })
+  }
+
+  /**
+   * Click no botao de pct. Se o pavto JA esta nesse pct e ele eh maior que
+   * o anterior, "destoggle" (volta pro anterior). Caso contrario, seta.
+   */
+  function togglePavPct(detId: string, pavto: number, pctClicado: number) {
+    const anterior = getPavPctAnterior(detId, pavto)
+    const atual = getPavPctAtual(detId, pavto)
+    if (pctClicado < anterior) return // nao retroage
+    if (pctClicado === atual && atual > anterior) {
+      setPavPct(detId, pavto, anterior)
+    } else {
+      setPavPct(detId, pavto, pctClicado)
+    }
+  }
+
   function calcularValorTotal() {
     let total = 0
     for (const grupo of estruturaServico) {
@@ -203,10 +296,15 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
             const acumQtde = getAcumQtde(det.id)
             const deltaQtde = qtdeAtual - acumQtde
             if (deltaQtde > 0) {
+              // Para itens PAV TIPO, anexa o breakdown acumulado por pavto.
+              // O backend grava em medicao_itens.pavimentos_pct (migration 066).
+              const pavRange = detectarPavRange(det.descricao, Number(det.quantidade_contratada || 0))
+              const pavto = pavRange ? pavPctMap[det.id] : null
               itens.push({
                 detalhamento_id: det.id,
                 quantidade_medida: deltaQtde,
                 valor_unitario: det.valor_unitario,
+                ...(pavto && Object.keys(pavto).length > 0 ? { pavimentos_pct: pavto } : {}),
               })
             }
           }
@@ -390,7 +488,12 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                             <div className="space-y-1.5">
                               {(tarefa.detalhamentos || []).map((det: any) => {
                                 const qtdeContratada = Number(det.quantidade_contratada || 0)
-                                const qtdeAtual = qtdeMedicao[det.id] ?? getAcumQtde(det.id)
+                                const pavRange = detectarPavRange(det.descricao, qtdeContratada)
+                                // Para itens PAV TIPO, qtdeMedicao deriva da soma do
+                                // breakdown por pavto. Para os outros, eh o input do usuario.
+                                const qtdeAtual = pavRange
+                                  ? somarPavimentos(pavPctMap[det.id])
+                                  : (qtdeMedicao[det.id] ?? getAcumQtde(det.id))
                                 const qtdeAnt = getAcumQtde(det.id)
                                 const deltaQtde = qtdeAtual - qtdeAnt
                                 const valorDelta = deltaQtde > 0 ? deltaQtde * (det.valor_unitario || 0) : 0
@@ -398,8 +501,10 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                 const isCompleto = qtdeContratada > 0 && qtdeAtual >= qtdeContratada
                                 const useUnidades = qtdeContratada > 1
                                 const isInteiro = useUnidades && Number.isInteger(qtdeContratada)
+                                const isPavGridOpen = expandedPavGrid.has(det.id)
                                 return (
-                                  <div key={det.id} className={`grid grid-cols-12 gap-2 p-2.5 rounded-lg text-xs items-center transition-all ${deltaQtde > 0 ? 'bg-amber-500/8 border border-amber-500/30' : isCompleto ? 'bg-emerald-500/8 border border-emerald-500/20' : 'bg-[var(--surface-1)] border border-transparent'}`}>
+                                  <div key={det.id}>
+                                  <div className={`grid grid-cols-12 gap-2 p-2.5 rounded-lg text-xs items-center transition-all ${deltaQtde > 0 ? 'bg-amber-500/8 border border-amber-500/30' : isCompleto ? 'bg-emerald-500/8 border border-emerald-500/20' : 'bg-[var(--surface-1)] border border-transparent'}`}>
                                     <div className="col-span-1 text-[var(--text-3)] font-mono text-[10px]">{det.codigo}</div>
                                     <div className="col-span-3 text-[var(--text-1)] font-medium leading-tight">
                                       {det.descricao}
@@ -411,9 +516,33 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                     </div>
                                     <div className="col-span-1 text-center text-[var(--text-3)]">{det.unidade}</div>
                                     <div className="col-span-1 text-center text-[var(--text-3)]">{formatCurrency(det.valor_unitario || 0)}</div>
-                                    {/* Seletor: % buttons (qtde=1) OR numeric input (qtde>1) */}
+                                    {/* Seletor: PAV TIPO (grade) | % buttons (qtde=1) | input numerico (qtde>1) */}
                                     <div className="col-span-4">
-                                      {!useUnidades ? (
+                                      {pavRange ? (
+                                        // PAV TIPO: resumo + botao expandir grade (cf. migration 066)
+                                        <div>
+                                          <button
+                                            type="button"
+                                            onClick={() => togglePavGrid(det.id)}
+                                            className="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded text-[11px] font-bold bg-[#1e293b] text-slate-200 hover:bg-[#334155] hover:text-white transition-colors"
+                                          >
+                                            <span className="flex items-center gap-1.5">
+                                              {isPavGridOpen
+                                                ? <ChevronUp className="w-3 h-3" />
+                                                : <ChevronDown className="w-3 h-3" />}
+                                              Medir por pavto ({pavRange.primeiro}º ao {pavRange.ultimo}º)
+                                            </span>
+                                            <span className="tabular-nums text-slate-300">
+                                              {qtdeAtual.toFixed(2).replace(/\.?0+$/, '')} / {pavRange.count}
+                                            </span>
+                                          </button>
+                                          {qtdeAnt > 0 && (
+                                            <p className="text-[9px] text-slate-400 mt-0.5">
+                                              mín. (acumulado anterior): <strong>{qtdeAnt.toFixed(2).replace(/\.?0+$/, '')}</strong> {det.unidade}
+                                            </p>
+                                          )}
+                                        </div>
+                                      ) : !useUnidades ? (
                                         // Item indivisivel — botoes percentuais 0/25/50/75/100
                                         <div className="flex gap-0.5">
                                           {[0, 25, 50, 75, 100].map(p => {
@@ -488,6 +617,56 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                         </span>
                                       )}
                                     </div>
+                                  </div>
+                                  {/* Grade expandida de pavtos: 6 colunas, cada celula com botoes 0/25/50/75/100 */}
+                                  {pavRange && isPavGridOpen && (
+                                    <div className="mt-1.5 ml-6 p-3 rounded-lg bg-[var(--surface-1)] border border-[var(--border)]">
+                                      <p className="text-[10px] text-slate-400 mb-2">
+                                        Selecione o pct acumulado de cada pavto. Cada pavto vale {(1).toFixed(0)} {det.unidade} (100% = 1 {det.unidade}).
+                                      </p>
+                                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
+                                        {listarPavimentos(pavRange).map(pavto => {
+                                          const pctAnt = getPavPctAnterior(det.id, pavto)
+                                          const pctAtu = getPavPctAtual(det.id, pavto)
+                                          const isDeltaPav = pctAtu > pctAnt
+                                          return (
+                                            <div key={pavto} className={`p-1.5 rounded-md border ${isDeltaPav ? 'border-amber-500/40 bg-amber-500/5' : pctAtu >= 100 ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-[var(--border)] bg-[var(--surface-2)]'}`}>
+                                              <div className="flex items-center justify-between mb-1">
+                                                <span className="text-[10px] font-mono text-slate-400">{pavto}º pav</span>
+                                                <span className={`text-[10px] font-bold tabular-nums ${isDeltaPav ? 'text-amber-300' : pctAtu >= 100 ? 'text-emerald-300' : 'text-slate-500'}`}>{pctAtu}%</span>
+                                              </div>
+                                              <div className="flex gap-0.5">
+                                                {PAV_PCTS.map(p => {
+                                                  const isMin = p < pctAnt
+                                                  const isAccum = p === pctAnt && pctAnt > 0
+                                                  const isAtual = p === pctAtu && p > pctAnt
+                                                  return (
+                                                    <button
+                                                      key={p}
+                                                      type="button"
+                                                      disabled={isMin}
+                                                      onClick={() => togglePavPct(det.id, pavto, p)}
+                                                      className={`flex-1 py-1 rounded text-[9px] font-bold transition-all ${
+                                                        isMin
+                                                          ? 'opacity-20 cursor-not-allowed bg-[var(--surface-3)] text-[var(--text-3)]'
+                                                          : isAccum
+                                                          ? 'bg-emerald-600 text-white'
+                                                          : isAtual
+                                                          ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/40'
+                                                          : 'bg-[#1e293b] text-slate-300 hover:bg-[#334155] hover:text-white'
+                                                      }`}
+                                                    >
+                                                      {p}
+                                                    </button>
+                                                  )
+                                                })}
+                                              </div>
+                                            </div>
+                                          )
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
                                   </div>
                                 )
                               })}

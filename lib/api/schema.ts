@@ -114,9 +114,12 @@ export const cpf = () =>
     .transform(v => v.replace(/\D/g, ''))
     .refine(v => v.length === 11, 'CPF deve ter 11 dígitos.')
 
-/** Email com normalização lowercase. */
+/** Email com normalização lowercase. Trim acontece ANTES da validação
+ *  pra aceitar espaços acidentais sem rejeitar o input. */
 export const email = () =>
-  z.string().email('Email inválido.').transform(v => v.trim().toLowerCase())
+  z.string()
+    .transform(v => v.trim().toLowerCase())
+    .pipe(z.string().email('Email inválido.'))
 
 /** Valor monetário em reais, não-negativo, duas casas. */
 export const valorMonetario = (opts: { min?: number; max?: number } = {}) =>
