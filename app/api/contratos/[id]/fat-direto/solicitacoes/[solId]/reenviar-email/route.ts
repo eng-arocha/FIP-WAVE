@@ -5,7 +5,7 @@ import { apiError } from '@/lib/api/error-response'
 import { parseBody } from '@/lib/api/schema'
 import { audit } from '@/lib/api/audit'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { dispararEmailAutorizacao } from '../aprovar/route'
+import { dispararEmailAutorizacao, dispararEmailRejeicao } from '../aprovar/route'
 
 const Body = z.object({
   destinatarios_ids: z.array(z.string().uuid()).min(1, 'Selecione ao menos 1 envolvido.'),
@@ -14,8 +14,12 @@ const Body = z.object({
 /**
  * POST /api/contratos/[id]/fat-direto/solicitacoes/[solId]/reenviar-email
  *
- * Reenvia notificação interna de autorização pros envolvidos selecionados.
- * Só funciona com solicitações em status 'aprovado'.
+ * Reenvia notificação interna pros envolvidos selecionados. Despacha pro
+ * template correto baseado no status atual da solicitacao:
+ *   - 'aprovado'  → template de autorizacao (badge [REENVIO])
+ *   - 'rejeitado' → template de rejeicao (badge [REENVIO])
+ *
+ * Outros status sao rejeitados.
  */
 export async function POST(
   req: Request,
@@ -34,7 +38,7 @@ export async function POST(
     const admin = createAdminClient()
     const { data: sol } = await admin
       .from('solicitacoes_fat_direto')
-      .select('id, status, contrato_id')
+      .select('id, status, contrato_id, motivo_rejeicao')
       .eq('id', solId)
       .single()
 
@@ -42,20 +46,30 @@ export async function POST(
     if ((sol as any).contrato_id !== contratoId) {
       return NextResponse.json({ error: 'Solicitação não pertence a este contrato.' }, { status: 400 })
     }
-    if ((sol as any).status !== 'aprovado') {
-      return NextResponse.json({ error: 'Só dá pra reenviar notificação de solicitações aprovadas.' }, { status: 400 })
+    const status = (sol as any).status
+    if (status !== 'aprovado' && status !== 'rejeitado') {
+      return NextResponse.json({ error: 'Só dá pra reenviar notificação de solicitações aprovadas ou rejeitadas.' }, { status: 400 })
     }
 
-    const resultado = await dispararEmailAutorizacao({
-      contratoId,
-      solId,
-      aprovadorId: check.userId,
-      destinatariosIds: destinatarios_ids,
-      reenvio: true,
-    })
+    const resultado = status === 'aprovado'
+      ? await dispararEmailAutorizacao({
+          contratoId,
+          solId,
+          aprovadorId: check.userId,
+          destinatariosIds: destinatarios_ids,
+          reenvio: true,
+        })
+      : await dispararEmailRejeicao({
+          contratoId,
+          solId,
+          rejeitadorId: check.userId,
+          destinatariosIds: destinatarios_ids,
+          motivoRejeicao: (sol as any).motivo_rejeicao || '',
+          reenvio: true,
+        })
 
     await audit({
-      event: 'solicitacao.email_reenviado',
+      event: status === 'aprovado' ? 'solicitacao.email_reenviado' : 'solicitacao.email_rejeicao_reenviado',
       entity_type: 'solicitacao_fat_direto',
       entity_id: solId,
       actor_id: check.userId,

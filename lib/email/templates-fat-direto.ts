@@ -899,3 +899,231 @@ export function templateEncerramentoSaldoRejeitado(
 
   return { subject, html, text }
 }
+
+// ============================================================
+// Template de REJEIÇÃO da solicitação fat-direto
+// ============================================================
+
+export interface SolicitacaoRejeitadaPayload {
+  numero_fip: number | string
+  fornecedor_razao_social?: string | null
+  fornecedor_cnpj?: string | null
+  fornecedor_contato?: string | null
+  valor_total: number
+  itens: Array<{ descricao: string; qtde?: number; valor_total: number }>
+  observacoes?: string | null
+  /** Motivo da rejeição (gravado em motivo_rejeicao). */
+  motivo_rejeicao?: string | null
+  /** Nome do aprovador que rejeitou. */
+  rejeitador_nome?: string | null
+  /** Usado em reenvios — aparece como badge "Reenvio" no topo */
+  reenvio?: boolean
+}
+
+/**
+ * Email de notificação de REJEIÇÃO de solicitação de faturamento direto.
+ * Mesma estrutura visual do email de aprovação (consistencia visual), mas:
+ *   - Header vermelho em vez de azul
+ *   - Destaque do motivo de rejeição
+ *   - Sem secao "Emitir NF para" (NF nao deve ser emitida)
+ *   - Sem "Condicoes obrigatorias"
+ *   - Mensagem final: corrigir + reenviar para analise
+ */
+export function templateSolicitacaoRejeitadaFornecedor(p: SolicitacaoRejeitadaPayload): {
+  subject: string
+  html: string
+  text: string
+} {
+  const fip = `FIP-${String(p.numero_fip).padStart(4, '0')}`
+  const prefixo = p.reenvio ? '[REENVIO] ' : ''
+  const subject = `${prefixo}[${fip}] Solicitação de Faturamento Direto REJEITADA — Obra WAVE`
+
+  const itensHtml = p.itens.map(it => `
+    <tr>
+      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;">${escapeHtml(it.descricao)}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${it.qtde ?? ''}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600;">${fmt(Number(it.valor_total || 0))}</td>
+    </tr>
+  `).join('')
+
+  const reenvioBadge = p.reenvio ? `
+    <div style="background:#fef3c7;border:1px solid #f59e0b;color:#92400e;padding:10px 16px;border-radius:8px;margin-bottom:16px;font-size:13px;">
+      <strong>Reenvio</strong> — este e-mail é um reenvio de uma notificação de rejeição emitida anteriormente.
+    </div>
+  ` : ''
+
+  const motivo = (p.motivo_rejeicao || '').trim() || '(motivo não informado)'
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>${subject}</title>
+</head>
+<body style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;color:#0f172a;">
+  <div style="max-width:680px;margin:0 auto;padding:24px;">
+
+    ${reenvioBadge}
+
+    <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+
+      <!-- Header (vermelho — rejeição) -->
+      <div style="background:#991b1b;color:#ffffff;padding:24px;">
+        <h1 style="margin:0;font-size:20px;">Solicitação de Faturamento Direto — REJEITADA</h1>
+        <p style="margin:6px 0 0;font-size:13px;opacity:0.9;">${fip} · Obra WAVE</p>
+      </div>
+
+      <!-- Aviso principal -->
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;background:#fef2f2;">
+        <p style="margin:0 0 8px;font-size:15px;font-weight:700;color:#991b1b;">
+          A solicitação ${fip} foi REJEITADA pela Gestão WAVE.
+        </p>
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#475569;">
+          Esta solicitação <strong>não foi autorizada</strong>. <strong>${escapeHtml(p.fornecedor_razao_social || 'O fornecedor')}</strong> <strong>não deve emitir Nota Fiscal</strong>
+          referente a este pedido. Caso receba qualquer NF deste pedido, ela será recusada no momento da entrega.
+        </p>
+      </div>
+
+      <!-- MOTIVO DA REJEIÇÃO (destaque) -->
+      <div style="padding:24px;border-left:4px solid #dc2626;border-bottom:1px solid #e2e8f0;">
+        <h2 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#991b1b;">Motivo da rejeição</h2>
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#1f2937;white-space:pre-wrap;font-weight:500;">${escapeHtml(motivo)}</p>
+      </div>
+
+      <!-- 1. CONTRATANTE -->
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
+        <h2 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">1. Contratante</h2>
+        <table style="width:100%;font-size:14px;">
+          <tr><td style="padding:4px 0;color:#64748b;width:160px;">Razão Social</td><td style="padding:4px 0;font-weight:600;">${escapeHtml(CONTRATANTE.razaoSocial)}</td></tr>
+          <tr><td style="padding:4px 0;color:#64748b;">CNPJ</td><td style="padding:4px 0;font-weight:600;font-family:ui-monospace,monospace;">${maskCnpj(CONTRATANTE.cnpj)}</td></tr>
+        </table>
+      </div>
+
+      <!-- 2. CONTRATADO -->
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
+        <h2 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">2. Contratado (executor da obra)</h2>
+        <table style="width:100%;font-size:14px;">
+          <tr><td style="padding:4px 0;color:#64748b;width:160px;">Razão Social</td><td style="padding:4px 0;font-weight:600;">${escapeHtml(CONTRATADO.razaoSocial)}</td></tr>
+          <tr><td style="padding:4px 0;color:#64748b;">CNPJ</td><td style="padding:4px 0;font-weight:600;font-family:ui-monospace,monospace;">${maskCnpj(CONTRATADO.cnpj)}</td></tr>
+        </table>
+      </div>
+
+      <!-- 3. FORNECEDOR -->
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
+        <h2 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">3. Fornecedor da solicitação rejeitada</h2>
+        <table style="width:100%;font-size:14px;">
+          <tr><td style="padding:4px 0;color:#64748b;width:160px;">Razão Social</td><td style="padding:4px 0;font-weight:600;">${escapeHtml(p.fornecedor_razao_social || '—')}</td></tr>
+          <tr><td style="padding:4px 0;color:#64748b;">CNPJ</td><td style="padding:4px 0;font-weight:600;font-family:ui-monospace,monospace;">${maskCnpj(p.fornecedor_cnpj)}</td></tr>
+          ${p.fornecedor_contato ? `<tr><td style="padding:4px 0;color:#64748b;vertical-align:top;">Contato</td><td style="padding:4px 0;">${escapeHtml(p.fornecedor_contato)}</td></tr>` : ''}
+        </table>
+      </div>
+
+      <!-- 4. Itens da solicitação rejeitada -->
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
+        <h2 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">4. Itens da solicitação rejeitada</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="background:#f1f5f9;">
+              <th style="padding:8px 12px;text-align:left;color:#475569;font-weight:600;">Descrição</th>
+              <th style="padding:8px 12px;text-align:right;color:#475569;font-weight:600;">Qtde</th>
+              <th style="padding:8px 12px;text-align:right;color:#475569;font-weight:600;">Valor</th>
+            </tr>
+          </thead>
+          <tbody>${itensHtml}</tbody>
+          <tfoot>
+            <tr style="background:#fef2f2;">
+              <td colspan="2" style="padding:12px;text-align:right;font-weight:700;color:#991b1b;">VALOR REJEITADO</td>
+              <td style="padding:12px;text-align:right;font-weight:700;color:#991b1b;font-size:15px;">${fmt(p.valor_total)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- 5. Próximos passos -->
+      <div style="padding:24px;background:#eff6ff;border-bottom:1px solid #e2e8f0;">
+        <h2 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#1e3a8a;">5. Próximos passos</h2>
+        <ul style="margin:0;padding-left:20px;font-size:14px;line-height:1.8;color:#1f2937;">
+          <li>Se quiser <strong>corrigir e reenviar para análise</strong>, acesse o sistema, edite a solicitação e clique em "Enviar para análise".</li>
+          <li>Se a rejeição foi definitiva, <strong>não emita NF</strong> referente a este pedido.</li>
+          <li>Dúvidas sobre o motivo da rejeição: responda este e-mail.</li>
+        </ul>
+      </div>
+
+      <!-- 6. Responsáveis -->
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
+        <h2 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">6. Responsáveis</h2>
+        <table style="width:100%;font-size:14px;">
+          <tr>
+            <td style="padding:4px 0;color:#64748b;width:220px;">${escapeHtml(OBRA.gestorCargo)} (rejeitou a solicitação)</td>
+            <td style="padding:4px 0;font-weight:600;">${escapeHtml(p.rejeitador_nome || OBRA.gestorNome)}</td>
+          </tr>
+          <tr>
+            <td style="padding:4px 0;color:#64748b;vertical-align:top;">Contato local</td>
+            <td style="padding:4px 0;">
+              <strong>${escapeHtml(OBRA.contatoLocalNome)}</strong><br>
+              <span style="font-family:ui-monospace,monospace;">${escapeHtml(OBRA.contatoLocalTel)}</span>
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      ${p.observacoes ? `
+      <!-- 7. Observações originais do pedido -->
+      <div style="padding:24px;border-bottom:1px solid #e2e8f0;">
+        <h2 style="margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">7. Observações originais do pedido</h2>
+        <p style="margin:0;font-size:13px;line-height:1.6;color:#475569;white-space:pre-wrap;">${escapeHtml(p.observacoes)}</p>
+      </div>` : ''}
+
+      <!-- Rodapé -->
+      <div style="padding:20px 24px;background:#f8fafc;font-size:12px;color:#64748b;line-height:1.6;">
+        <p style="margin:0 0 4px;">Este é um e-mail automático de notificação interna da <strong>Obra WAVE</strong>.</p>
+        <p style="margin:0;">Dúvidas? Responda este e-mail — sua mensagem vai pra gestão.</p>
+      </div>
+
+    </div>
+
+  </div>
+</body>
+</html>`
+
+  const text = [
+    `${fip} — SOLICITAÇÃO DE FATURAMENTO DIRETO REJEITADA — OBRA WAVE`,
+    p.reenvio ? '*** REENVIO ***' : '',
+    '',
+    `A solicitação ${fip} foi REJEITADA pela Gestão WAVE.`,
+    `O fornecedor ${p.fornecedor_razao_social || ''} NÃO deve emitir NF referente a este pedido.`,
+    '',
+    `MOTIVO DA REJEIÇÃO:`,
+    `   ${motivo}`,
+    '',
+    `1. CONTRATANTE`,
+    `   ${CONTRATANTE.razaoSocial} — CNPJ: ${maskCnpj(CONTRATANTE.cnpj)}`,
+    '',
+    `2. CONTRATADO (executor)`,
+    `   ${CONTRATADO.razaoSocial} — CNPJ: ${maskCnpj(CONTRATADO.cnpj)}`,
+    '',
+    `3. FORNECEDOR DA SOLICITAÇÃO REJEITADA`,
+    `   ${p.fornecedor_razao_social || '—'}`,
+    `   CNPJ: ${maskCnpj(p.fornecedor_cnpj)}`,
+    p.fornecedor_contato ? `   Contato: ${p.fornecedor_contato}` : '',
+    '',
+    `4. ITENS DA SOLICITAÇÃO REJEITADA`,
+    ...p.itens.map(it => `   - ${it.descricao}${it.qtde ? ` (qtde ${it.qtde})` : ''} — ${fmt(Number(it.valor_total || 0))}`),
+    `   VALOR REJEITADO: ${fmt(p.valor_total)}`,
+    '',
+    `5. PRÓXIMOS PASSOS`,
+    `   - Corrigir e reenviar para análise: acesse o sistema, edite e clique em "Enviar para análise".`,
+    `   - Se a rejeição foi definitiva, NÃO emita NF deste pedido.`,
+    `   - Dúvidas: responda este e-mail.`,
+    '',
+    `6. RESPONSÁVEIS`,
+    `   ${OBRA.gestorCargo} (rejeitou): ${p.rejeitador_nome || OBRA.gestorNome}`,
+    `   Contato local: ${OBRA.contatoLocalNome} — ${OBRA.contatoLocalTel}`,
+    '',
+    p.observacoes ? `7. OBSERVAÇÕES ORIGINAIS\n   ${p.observacoes}` : '',
+    '',
+    `— Gestão WAVE`,
+  ].filter(Boolean).join('\n')
+
+  return { subject, html, text }
+}

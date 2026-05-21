@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { assertPermissao } from '@/lib/api/auth'
 import { apiError } from '@/lib/api/error-response'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { templateSolicitacaoAprovadaFornecedor } from '@/lib/email/templates-fat-direto'
+import { templateSolicitacaoAprovadaFornecedor, templateSolicitacaoRejeitadaFornecedor } from '@/lib/email/templates-fat-direto'
 import { listarUsuariosAtreladosAoContrato } from '@/lib/db/usuarios-contrato'
 
 /**
@@ -32,11 +32,12 @@ export async function GET(
 
     const admin = createAdminClient()
 
-    // Solicitação com itens
+    // Solicitação com itens. Status determina qual template usar.
     const { data: sol } = await admin
       .from('solicitacoes_fat_direto')
       .select(`
-        numero_pedido_fip, numero, valor_total, observacoes,
+        numero_pedido_fip, numero, status, valor_total, observacoes,
+        motivo_rejeicao,
         fornecedor_razao_social, fornecedor_cnpj, fornecedor_contato,
         aprovador_id,
         itens:itens_solicitacao_fat_direto (
@@ -48,27 +49,42 @@ export async function GET(
 
     if (!sol) return NextResponse.json({ error: 'Solicitação não encontrada' }, { status: 404 })
 
-    // Nome do aprovador (se houver) — senão usa o próprio autenticado
+    // Nome do aprovador/rejeitador (se houver) — senão usa o próprio autenticado
     const aprovadorId = (sol as any).aprovador_id || check.userId
     const { data: perfilAprov } = await admin
       .from('perfis').select('nome').eq('id', aprovadorId).single()
 
-    // Renderiza o template
-    const tpl = templateSolicitacaoAprovadaFornecedor({
-      numero_fip: (sol as any).numero_pedido_fip ?? (sol as any).numero,
-      fornecedor_razao_social: (sol as any).fornecedor_razao_social,
-      fornecedor_cnpj: (sol as any).fornecedor_cnpj,
-      fornecedor_contato: (sol as any).fornecedor_contato,
-      valor_total: Number((sol as any).valor_total || 0),
-      itens: ((sol as any).itens || []).map((it: any) => ({
-        descricao: it.descricao,
-        qtde: it.qtde_solicitada,
-        valor_total: it.valor_total,
-      })),
-      observacoes: (sol as any).observacoes,
-      aprovador_nome: (perfilAprov as any)?.nome ?? null,
-      reenvio,
-    })
+    const itensPayload = ((sol as any).itens || []).map((it: any) => ({
+      descricao: it.descricao,
+      qtde: it.qtde_solicitada,
+      valor_total: it.valor_total,
+    }))
+
+    const status = (sol as any).status
+    const tpl = status === 'rejeitado'
+      ? templateSolicitacaoRejeitadaFornecedor({
+          numero_fip: (sol as any).numero_pedido_fip ?? (sol as any).numero,
+          fornecedor_razao_social: (sol as any).fornecedor_razao_social,
+          fornecedor_cnpj: (sol as any).fornecedor_cnpj,
+          fornecedor_contato: (sol as any).fornecedor_contato,
+          valor_total: Number((sol as any).valor_total || 0),
+          itens: itensPayload,
+          observacoes: (sol as any).observacoes,
+          motivo_rejeicao: (sol as any).motivo_rejeicao,
+          rejeitador_nome: (perfilAprov as any)?.nome ?? null,
+          reenvio,
+        })
+      : templateSolicitacaoAprovadaFornecedor({
+          numero_fip: (sol as any).numero_pedido_fip ?? (sol as any).numero,
+          fornecedor_razao_social: (sol as any).fornecedor_razao_social,
+          fornecedor_cnpj: (sol as any).fornecedor_cnpj,
+          fornecedor_contato: (sol as any).fornecedor_contato,
+          valor_total: Number((sol as any).valor_total || 0),
+          itens: itensPayload,
+          observacoes: (sol as any).observacoes,
+          aprovador_nome: (perfilAprov as any)?.nome ?? null,
+          reenvio,
+        })
 
     // Lista de envolvidos (usuários atrelados ao contrato)
     const envolvidos = await listarUsuariosAtreladosAoContrato(contratoId)
