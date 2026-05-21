@@ -26,17 +26,21 @@ export async function GET(req: Request) {
     ])
 
     const admin = createAdminClient()
+    // ORDER BY updated_at (sempre preenchido na transicao de status).
+    // ANTES era ORDER BY data_aprovacao, mas rejeitados ficam com
+    // data_aprovacao NULL e eram empurrados pro fim do resultset —
+    // com limit=50 eles caiam fora da pagina.
     const { data: fipHistorico } = await admin
       .from('solicitacoes_fat_direto')
       .select(`
-        id, numero, status, data_solicitacao, data_aprovacao, valor_total,
+        id, numero, status, data_solicitacao, data_aprovacao, updated_at, valor_total,
         fornecedor_razao_social, numero_pedido_fip, motivo_rejeicao, observacoes,
         contrato:contratos(id, numero, descricao),
         solicitante:perfis!solicitante_id(id, nome, email),
         aprovador:perfis!aprovador_id(id, nome, email)
       `)
       .in('status', ['aprovado', 'rejeitado', 'cancelado'])
-      .order('data_aprovacao', { ascending: false, nullsFirst: false })
+      .order('updated_at', { ascending: false, nullsFirst: false })
       .limit(limit)
 
     return NextResponse.json({
