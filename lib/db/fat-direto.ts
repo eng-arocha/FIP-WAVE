@@ -578,6 +578,12 @@ export async function atualizarStatusSolicitacao(
     updates.desaprovado_por = null
     updates.motivo_desaprovacao = null
   }
+  if (status === 'rejeitado') {
+    // Registra QUEM rejeitou (decisor) — sem isso a tabela de aprovacoes
+    // mostra '—' na coluna Aprovador e nao da pra rastrear o autor da
+    // rejeicao. Reusa aprovador_id (semantica = decisor da solicitacao).
+    if (aprovador_id) updates.aprovador_id = aprovador_id
+  }
   if (status === 'aguardando_aprovacao') {
     updates.aprovador_id = null
     updates.data_aprovacao = null

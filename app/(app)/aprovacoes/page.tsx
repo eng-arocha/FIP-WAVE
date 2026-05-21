@@ -80,6 +80,9 @@ interface HistoricoFip {
   status: string
   data_solicitacao: string
   data_aprovacao: string | null
+  /** Sempre populado na transicao de status — usado como fallback de data
+   *  quando data_aprovacao eh null (rejeitado/cancelado). */
+  updated_at?: string | null
   valor_total: number
   fornecedor_razao_social: string
   motivo_rejeicao: string | null
@@ -416,7 +419,9 @@ export default function AprovacoesPage() {
         detalhe: f.fornecedor_razao_social || '—',
         solicitante: nomeExibido(f.solicitante),
         aprovador: nomeExibido(f.aprovador),
-        data: f.data_aprovacao || '',
+        // Rejeitados nao tem data_aprovacao — fallback pra updated_at
+        // (sempre preenchido na transicao de status).
+        data: f.data_aprovacao || f.updated_at || '',
         valor: f.valor_total || 0,
         observacoes: f.observacoes || '',
         status: f.status,
