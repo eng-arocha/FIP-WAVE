@@ -555,6 +555,34 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
           </Card>
         )}
 
+        {/* Notificar envolvidos (pedido rejeitado) — simetrico ao card de aprovado */}
+        {sol.status === 'rejeitado' && (
+          <Card style={{ background: 'var(--surface-1)', border: '1px solid rgba(239,68,68,0.25)' }}>
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm text-red-400 font-semibold mb-1">Notificar envolvidos da rejeição</p>
+                  <p className="text-xs text-[var(--text-3)]">
+                    Envia a notificação de rejeição por email pros envolvidos selecionados (usuários atrelados à obra).
+                    O email destaca o motivo da rejeição e orienta os próximos passos. Você escolhe quem recebe e visualiza o preview antes de enviar.
+                  </p>
+                  {emailSucesso && (
+                    <p className="text-xs text-emerald-400 mt-2">{emailSucesso}</p>
+                  )}
+                </div>
+                <Button
+                  onClick={() => { setEmailModalMode('reenviar'); setShowEmailModal(true) }}
+                  variant="ghost"
+                  className="gap-2 border border-red-500/30 text-red-400 hover:bg-red-500/10 whitespace-nowrap"
+                >
+                  <Send className="w-4 h-4" />
+                  Enviar notificação de rejeição
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Enviar pra análise (rascunho / rejeitado / cancelado) */}
         {(sol.status === 'rascunho' || sol.status === 'rejeitado' || sol.status === 'cancelado') && (
           <Card style={{ background: 'var(--surface-1)', border: '1px solid rgba(245,158,11,0.30)' }}>

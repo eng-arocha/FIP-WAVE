@@ -7,7 +7,7 @@ import { parseBody } from '@/lib/api/schema'
 import { audit } from '@/lib/api/audit'
 import { emitWebhook } from '@/lib/api/webhooks'
 import { sendEmail } from '@/lib/email/send'
-import { templateSolicitacaoAprovadaFornecedor } from '@/lib/email/templates-fat-direto'
+import { templateSolicitacaoAprovadaFornecedor, templateSolicitacaoRejeitadaFornecedor } from '@/lib/email/templates-fat-direto'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 const Body = z.object({
@@ -79,6 +79,33 @@ export async function POST(
         } catch (e) {
           // eslint-disable-next-line no-console
           console.error('Falha ao disparar notificação pós-aprovação:', e)
+        }
+      }
+
+      // Ao REJEITAR + destinatarios_ids informados: dispara email de rejeição.
+      // Simetrico ao fluxo de aprovacao — permite notificar envolvidos no mesmo POST.
+      if (acao === 'rejeitado' && destinatarios_ids && destinatarios_ids.length > 0) {
+        try {
+          const emailResultado = await dispararEmailRejeicao({
+            contratoId,
+            solId,
+            rejeitadorId: check.userId,
+            destinatariosIds: destinatarios_ids,
+            motivoRejeicao: motivo_rejeicao || '',
+            reenvio: false,
+          })
+          await audit({
+            event: 'solicitacao.email_rejeicao_enviado',
+            entity_type: 'solicitacao_fat_direto',
+            entity_id: solId,
+            actor_id: check.userId,
+            actor_email: check.userEmail ?? null,
+            metadata: emailResultado,
+            request: req,
+          })
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.error('Falha ao disparar notificação de rejeição:', e)
         }
       }
 
@@ -175,6 +202,87 @@ export async function dispararEmailAutorizacao(args: {
 
   if (!envioResult.success) {
     return { ok: false, destinos: emails, qtd: emails.length, erro: envioResult.error || 'Falha ao enviar (Resend rejeitou).' }
+  }
+  return { ok: true, destinos: emails, qtd: emails.length }
+}
+
+/**
+ * Dispara notificação interna (email) de REJEIÇÃO pros envolvidos.
+ * Simetrico a `dispararEmailAutorizacao` mas usa o template de rejeição.
+ *
+ * destinatariosIds: array de IDs de `perfis` (usuarios_contratos do contrato).
+ */
+export async function dispararEmailRejeicao(args: {
+  contratoId: string
+  solId: string
+  rejeitadorId: string
+  destinatariosIds: string[]
+  motivoRejeicao: string
+  reenvio: boolean
+}): Promise<{ ok: boolean; destinos?: string[]; qtd?: number; erro?: string }> {
+  const { contratoId, solId, rejeitadorId, destinatariosIds, motivoRejeicao, reenvio } = args
+  const admin = createAdminClient()
+
+  const { data: sol } = await admin
+    .from('solicitacoes_fat_direto')
+    .select(`
+      numero_pedido_fip, numero, valor_total, observacoes,
+      motivo_rejeicao,
+      fornecedor_razao_social, fornecedor_cnpj, fornecedor_contato,
+      itens:itens_solicitacao_fat_direto (
+        descricao, qtde_solicitada, valor_total
+      )
+    `)
+    .eq('id', solId)
+    .single()
+
+  if (!sol) return { ok: false, erro: 'solicitação não encontrada' }
+
+  const { data: vinculos } = await admin
+    .from('usuarios_contratos')
+    .select('usuario_id, perfis:usuario_id(id, email, nome)')
+    .eq('contrato_id', contratoId)
+    .in('usuario_id', destinatariosIds)
+
+  const emails: string[] = []
+  for (const v of (vinculos || []) as any[]) {
+    const e = v.perfis?.email
+    if (e) emails.push(e)
+  }
+  if (emails.length === 0) return { ok: false, erro: 'nenhum destinatário válido (ver usuarios_contratos)' }
+
+  const perfilRejeit = await admin
+    .from('perfis').select('nome').eq('id', rejeitadorId).single()
+
+  // Prefere o motivo passado no POST (mais fresco); fallback pro gravado em BD.
+  const motivo = (motivoRejeicao || '').trim() || ((sol as any).motivo_rejeicao || '')
+
+  const tpl = templateSolicitacaoRejeitadaFornecedor({
+    numero_fip: (sol as any).numero_pedido_fip ?? (sol as any).numero,
+    fornecedor_razao_social: (sol as any).fornecedor_razao_social,
+    fornecedor_cnpj: (sol as any).fornecedor_cnpj,
+    fornecedor_contato: (sol as any).fornecedor_contato,
+    valor_total: Number((sol as any).valor_total || 0),
+    itens: ((sol as any).itens || []).map((it: any) => ({
+      descricao: it.descricao,
+      qtde: it.qtde_solicitada,
+      valor_total: it.valor_total,
+    })),
+    observacoes: (sol as any).observacoes,
+    motivo_rejeicao: motivo,
+    rejeitador_nome: (perfilRejeit.data as any)?.nome ?? null,
+    reenvio,
+  })
+
+  const envioResult = await sendEmail({
+    to: emails,
+    subject: tpl.subject,
+    html: tpl.html,
+    tipo: 'rejeitado',
+  })
+
+  if (!envioResult.success) {
+    return { ok: false, destinos: emails, qtd: emails.length, erro: envioResult.error || 'Falha ao enviar.' }
   }
   return { ok: true, destinos: emails, qtd: emails.length }
 }
