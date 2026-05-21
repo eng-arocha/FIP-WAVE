@@ -7,7 +7,7 @@ import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { ArrowLeft, CheckCircle, XCircle, FileText, Plus, Package, Trash2, Mail, Send, PlayCircle, RotateCcw, Ban } from 'lucide-react'
+import { ArrowLeft, CheckCircle, XCircle, FileText, Plus, Package, Trash2, Mail, Send, PlayCircle, RotateCcw, Ban, Paperclip, ExternalLink, Eye } from 'lucide-react'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 import { EmailEnvolvidosModal } from '@/components/fat-direto/email-envolvidos-modal'
 import { EncerrarPedidoModal } from '@/components/fat-direto/encerrar-pedido-modal'
@@ -30,6 +30,11 @@ interface Solicitacao {
   fornecedor_razao_social?: string
   fornecedor_cnpj?: string
   fornecedor_contato?: string
+  /** Anexos do pedido (PDF, imagens). Migration 016. */
+  pedido_anexos?: Array<{ nome: string; url: string; tamanho?: number; tipo?: string }>
+  /** Campos legados pre-016 — fallback quando pedido_anexos esta vazio. */
+  pedido_pdf_url?: string | null
+  pedido_pdf_nome?: string | null
   solicitante?: { nome: string; email: string }
   aprovador?: { nome: string; email: string }
   itens?: Array<{
@@ -119,6 +124,9 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
   const [corrErro, setCorrErro] = useState('')
   // Dialog de aprovação: pergunta se quer aprovar (com ou sem notificação)
   const [showApprovalDialog, setShowApprovalDialog] = useState(false)
+  // Indice do anexo expandido pra preview inline (-1 = todos colapsados).
+  // Permite o aprovador ver o PDF antes de aprovar sem sair da pagina.
+  const [anexoExpandidoIdx, setAnexoExpandidoIdx] = useState<number>(-1)
   const [showEncerrarModal, setShowEncerrarModal] = useState(false)
   // Lista de envolvidos do contrato pra modal de encerramento (notificação por email)
   const [envolvidosContrato, setEnvolvidosContrato] = useState<Array<{ id: string; nome: string | null; email: string }>>([])
@@ -476,6 +484,118 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
             {erro}
           </div>
         )}
+
+        {/* ── Anexos do Pedido (PDF/imagens) ── */}
+        {/* Visivel em qualquer status — o aprovador precisa ver o anexo
+            ANTES de aprovar; quem ja aprovou/rejeitou tambem pode reconsultar. */}
+        {(() => {
+          const anexos = sol.pedido_anexos && sol.pedido_anexos.length > 0
+            ? sol.pedido_anexos
+            : (sol.pedido_pdf_url
+                ? [{ nome: sol.pedido_pdf_nome || 'pedido.pdf', url: sol.pedido_pdf_url, tipo: 'application/pdf' }]
+                : [])
+          if (anexos.length === 0) {
+            // Mostra um aviso explicito quando AGUARDANDO APROVACAO sem anexo —
+            // ajuda o aprovador a notar a ausencia antes de aprovar no escuro.
+            if (sol.status !== 'aguardando_aprovacao') return null
+            return (
+              <Card style={{ background: 'var(--surface-1)', border: '1px dashed rgba(245,158,11,0.40)' }}>
+                <CardContent className="pt-4 pb-4 flex items-start gap-3">
+                  <Paperclip className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm text-amber-400 font-semibold mb-0.5">Sem anexo no pedido</p>
+                    <p className="text-xs text-[var(--text-3)]">
+                      O solicitante não anexou nenhum PDF/imagem (cotação, proposta, pedido).
+                      Considere pedir o anexo antes de aprovar.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          }
+          return (
+            <Card style={{ background: 'var(--surface-1)', border: '1px solid rgba(59,130,246,0.25)' }}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2" style={{ color: 'var(--text-1)' }}>
+                  <Paperclip className="w-4 h-4 text-blue-400" />
+                  Anexos do Pedido ({anexos.length})
+                  {sol.status === 'aguardando_aprovacao' && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider"
+                          style={{ background: 'rgba(245,158,11,0.18)', color: '#F59E0B' }}>
+                      Revise antes de aprovar
+                    </span>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {anexos.map((a, idx) => {
+                  const isPdf = (a.tipo || '').includes('pdf') || /\.pdf$/i.test(a.nome || '')
+                  const isImg = (a.tipo || '').startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(a.nome || '')
+                  const expandido = anexoExpandidoIdx === idx
+                  return (
+                    <div key={`${a.url}-${idx}`} className="rounded-lg overflow-hidden" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                      <div className="flex items-center gap-3 px-3 py-2.5">
+                        <div
+                          className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                          style={{ background: isPdf ? 'rgba(239,68,68,0.12)' : 'rgba(59,130,246,0.12)' }}
+                        >
+                          <FileText className="w-3.5 h-3.5" strokeWidth={1.5} style={{ color: isPdf ? '#EF4444' : '#3B82F6' }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium truncate" style={{ color: 'var(--text-1)' }}>{a.nome}</p>
+                          {!!a.tamanho && (
+                            <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
+                              {(a.tamanho / 1024).toFixed(1)} KB
+                            </p>
+                          )}
+                        </div>
+                        {(isPdf || isImg) && (
+                          <button
+                            type="button"
+                            onClick={() => setAnexoExpandidoIdx(expandido ? -1 : idx)}
+                            className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold bg-blue-500/10 text-blue-400 hover:bg-blue-500/20"
+                            title="Preview inline"
+                          >
+                            <Eye className="w-3 h-3" />
+                            {expandido ? 'Fechar preview' : 'Ver aqui'}
+                          </button>
+                        )}
+                        <a
+                          href={a.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold bg-slate-700/40 text-slate-200 hover:bg-slate-700/60"
+                          title="Abrir em nova aba"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          Abrir
+                        </a>
+                      </div>
+                      {expandido && (
+                        <div className="border-t" style={{ borderColor: 'var(--border)' }}>
+                          {isPdf ? (
+                            <iframe
+                              src={a.url}
+                              title={a.nome}
+                              className="w-full bg-white"
+                              style={{ height: 600 }}
+                            />
+                          ) : isImg ? (
+                            <img
+                              src={a.url}
+                              alt={a.nome}
+                              className="w-full max-h-[600px] object-contain bg-black/40"
+                            />
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </CardContent>
+            </Card>
+          )
+        })()}
 
         {/* Approval actions */}
         {sol.status === 'aguardando_aprovacao' && (
