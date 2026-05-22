@@ -11,6 +11,7 @@ import {
   ArrowLeft, Plus, Package, Save, AlertTriangle,
   Building2, X, Hash, Upload, FileText, TrendingUp, Paperclip, CheckCircle2, Search,
 } from 'lucide-react'
+import { uploadAnexosPedido } from '@/lib/fat-direto-upload'
 
 // ── Máscaras ───────────────────────────────────────────────────────────────
 function maskCnpj(v: string): string {
@@ -396,14 +397,21 @@ export default function NovaSolicitacaoPage({ params }: { params: Promise<{ id: 
       }
       if (!res.ok) { setErro(data.error || 'Erro ao salvar'); setSaving(false); return }
 
-      // Upload dos anexos (múltiplos arquivos)
+      // Upload dos anexos DIRETO ao Storage (signed URL — bypassa o limite
+      // de body do Vercel). Se falhar, NAO redireciona em silencio: a
+      // solicitacao ja foi criada, entao avisa e leva pra tela de edicao
+      // pra reanexar.
       if (anexos.length > 0) {
-        const fd = new FormData()
-        anexos.forEach(f => fd.append('files', f))
-        fd.append('solicitacao_id', data.id)
-        fd.append('tipo', 'pedido')
-        fd.append('numero_pedido_fip', numeroPedidoFip)
-        await fetch('/api/fat-direto/upload', { method: 'POST', body: fd })
+        try {
+          await uploadAnexosPedido(data.id, anexos)
+        } catch (upErr: any) {
+          setErro(
+            `A solicitação FIP foi criada, mas o upload dos anexos falhou: ${upErr?.message || 'erro desconhecido'}. ` +
+            `Abra a solicitação e use "Editar" para anexar os arquivos novamente.`,
+          )
+          setSaving(false)
+          return
+        }
       }
 
       router.push(`/contratos/${id}/fat-direto/${data.id}`)

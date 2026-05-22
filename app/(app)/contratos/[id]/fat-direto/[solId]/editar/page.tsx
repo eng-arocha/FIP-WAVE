@@ -12,6 +12,7 @@ import {
   Building2, X, Hash, TrendingUp, CheckCircle2, Search,
   Paperclip, Upload, FileText,
 } from 'lucide-react'
+import { uploadAnexosPedido } from '@/lib/fat-direto-upload'
 
 interface Anexo { nome: string; url: string; tamanho: number; tipo: string }
 
@@ -373,17 +374,13 @@ export default function EditarSolicitacaoPage({ params }: { params: Promise<{ id
       }
       if (!res.ok) { setErro(data.error || 'Erro ao salvar'); setSaving(false); return }
 
-      // Upload de anexos novos (append à lista existente no backend)
+      // Upload de anexos novos DIRETO ao Storage (signed URL — bypassa o
+      // limite de body do Vercel). Faz merge com os existentes no backend.
       if (anexosNovos.length > 0) {
-        const fd = new FormData()
-        anexosNovos.forEach(f => fd.append('files', f))
-        fd.append('solicitacao_id', solId)
-        fd.append('tipo', 'pedido')
-        fd.append('numero_pedido_fip', numeroPedidoFip)
-        const upRes = await fetch('/api/fat-direto/upload', { method: 'POST', body: fd })
-        if (!upRes.ok) {
-          const upData = await upRes.json().catch(() => ({}))
-          setErro(upData.error || 'Erro ao enviar anexos')
+        try {
+          await uploadAnexosPedido(solId, anexosNovos)
+        } catch (upErr: any) {
+          setErro(`Os dados foram salvos, mas o upload dos anexos falhou: ${upErr?.message || 'erro desconhecido'}. Tente anexar novamente.`)
           setSaving(false)
           return
         }
