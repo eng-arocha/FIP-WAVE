@@ -160,9 +160,12 @@ export interface PedidoFipDuplicadoInfo {
 }
 
 /**
- * Verifica se já existe outra solicitação ativa (não soft-deleted) com o mesmo
- * numero_pedido_fip. Use ANTES do insert/update para devolver 409 amigável em
- * vez de deixar o índice único estourar 23505.
+ * Verifica se já existe outra solicitação ATIVA (não soft-deleted, não
+ * rejeitada) com o mesmo numero_pedido_fip. Use ANTES do insert/update
+ * para devolver 409 amigável em vez de deixar o índice único estourar 23505.
+ *
+ * Solicitações REJEITADAS são ignoradas de propósito (migration 067): o
+ * número pode ser reinserido, e a linha rejeitada fica como auditoria.
  *
  * Retorna null se livre, ou as informações do pedido conflitante.
  */
@@ -176,6 +179,7 @@ export async function checkPedidoFipDuplicado(
     .select('id, numero, status, contrato_id, deletado_em')
     .eq('numero_pedido_fip', numeroPedidoFip)
     .is('deletado_em', null)
+    .neq('status', 'rejeitado')
     .limit(1)
 
   if (excludeSolId) query = query.neq('id', excludeSolId)
@@ -188,6 +192,7 @@ export async function checkPedidoFipDuplicado(
         .from('solicitacoes_fat_direto')
         .select('id, numero, status, contrato_id')
         .eq('numero_pedido_fip', numeroPedidoFip)
+        .neq('status', 'rejeitado')
         .limit(1)
       if (excludeSolId) q2 = q2.neq('id', excludeSolId)
       const { data: d2, error: e2 } = await q2
