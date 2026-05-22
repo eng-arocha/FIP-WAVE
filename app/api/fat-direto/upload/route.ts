@@ -3,12 +3,80 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
 import { validateUpload } from '@/lib/api/upload-validation'
 import { optimizeUpload } from '@/lib/server/optimize-upload'
+import { getSupabaseUrl } from '@/lib/supabase/env'
 import { log } from '@/lib/log'
 
 const BUCKET = 'faturamento-direto'
 
+/** Valida que a URL aponta pro nosso bucket (defesa contra URL forjada). */
+function isUrlNoNossoBucket(url: string): boolean {
+  const supabaseUrl = getSupabaseUrl().replace(/\/+$/, '')
+  if (!supabaseUrl) return false
+  return url.startsWith(`${supabaseUrl}/storage/v1/object/public/${BUCKET}/`)
+}
+
+/**
+ * Registra anexos JA enviados ao Storage (via signed URL) na coluna
+ * pedido_anexos. Usado pelo fluxo de upload direto, que bypassa o limite
+ * de ~4.5MB do body do Vercel. Faz merge com os anexos existentes.
+ */
+async function registrarAnexosJson(body: any) {
+  const solicitacaoId = body?.solicitacao_id
+  const tipo = body?.tipo || 'pedido'
+  const anexos = Array.isArray(body?.anexos) ? body.anexos : []
+
+  if (!solicitacaoId) return NextResponse.json({ error: 'solicitacao_id obrigatório' }, { status: 400 })
+  if (tipo !== 'pedido') return NextResponse.json({ error: 'tipo inválido para registro JSON' }, { status: 400 })
+  if (anexos.length === 0) return NextResponse.json({ error: 'Nenhum anexo informado' }, { status: 400 })
+
+  // Sanitiza + valida cada anexo (url tem que ser do nosso bucket)
+  const limpos: { nome: string; url: string; tamanho: number; tipo: string }[] = []
+  for (const a of anexos) {
+    if (!a?.url || typeof a.url !== 'string' || !isUrlNoNossoBucket(a.url)) {
+      return NextResponse.json(
+        { error: 'URL de anexo inválida (deve apontar pro Storage do FIP).', code: 'URL_INVALIDA' },
+        { status: 400 },
+      )
+    }
+    limpos.push({
+      nome: String(a.nome || 'arquivo'),
+      url: a.url,
+      tamanho: Number(a.tamanho) || 0,
+      tipo: String(a.tipo || 'application/octet-stream'),
+    })
+  }
+
+  const admin = createAdminClient()
+  const { data: current } = await admin
+    .from('solicitacoes_fat_direto')
+    .select('pedido_anexos')
+    .eq('id', solicitacaoId)
+    .single()
+
+  const existing = ((current as any)?.pedido_anexos ?? []) as typeof limpos
+  const merged = [...existing, ...limpos]
+
+  const { error: dbError } = await admin
+    .from('solicitacoes_fat_direto')
+    .update({
+      pedido_anexos: merged,
+      pedido_pdf_url: merged[0]?.url ?? null,
+      pedido_pdf_nome: merged[0]?.nome ?? null,
+    })
+    .eq('id', solicitacaoId)
+  if (dbError) throw dbError
+
+  return NextResponse.json({ ok: true, uploaded: limpos, total: merged.length })
+}
+
 export async function POST(req: Request) {
   try {
+    // Branch JSON: cliente ja subiu o arquivo via signed URL e so registra.
+    const ct = req.headers.get('content-type') || ''
+    if (ct.includes('application/json')) {
+      return await registrarAnexosJson(await req.json())
+    }
+
     const formData = await req.formData()
     const solicitacaoId = formData.get('solicitacao_id') as string
     const tipo = (formData.get('tipo') as string) || 'pedido'
