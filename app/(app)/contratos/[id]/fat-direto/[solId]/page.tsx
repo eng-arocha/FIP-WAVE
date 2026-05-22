@@ -7,7 +7,7 @@ import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { ArrowLeft, CheckCircle, XCircle, FileText, Plus, Package, Trash2, Mail, Send, PlayCircle, RotateCcw, Ban, Paperclip, ExternalLink, Eye } from 'lucide-react'
+import { ArrowLeft, CheckCircle, XCircle, FileText, Plus, Package, Trash2, Mail, Send, PlayCircle, RotateCcw, Ban, Paperclip, ExternalLink, Eye, Upload } from 'lucide-react'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 import { EmailEnvolvidosModal } from '@/components/fat-direto/email-envolvidos-modal'
 import { EncerrarPedidoModal } from '@/components/fat-direto/encerrar-pedido-modal'
@@ -114,6 +114,8 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
   const [showNFForm, setShowNFForm] = useState(false)
   const [motivo, setMotivo] = useState('')
   const [nfForm, setNfForm] = useState({ numero_nf: '', emitente: '', cnpj_emitente: '', valor: '', data_emissao: '', descricao: '' })
+  // Arquivo (PDF/imagem/XML) da NF a ser enviado junto no lancamento.
+  const [nfArquivo, setNfArquivo] = useState<File | null>(null)
   const [erro, setErro] = useState('')
   // Correção de NF em em_correcao — id da NF sendo corrigida + formulário pré-preenchido.
   const [corrigindoNfId, setCorrigindoNfId] = useState<string | null>(null)
@@ -248,22 +250,39 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
       return
     }
     setActing(true)
-    // Remove campos opcionais vazios pra nao falhar validacao server-side
-    // (cnpj_emitente='' transformava em string vazia e refine '14 digitos'
-    // falhava; data_recebimento='' falhava no regex YYYY-MM-DD).
-    const payload: Record<string, unknown> = {
-      numero_nf: nfForm.numero_nf,
-      emitente: nfForm.emitente,
-      valor: parseFloat(nfForm.valor),
-      data_emissao: nfForm.data_emissao,
+    // Quando ha arquivo, envia multipart/form-data (o endpoint /nfs aceita
+    // o campo 'arquivo'); senao, JSON. Campos opcionais vazios sao omitidos
+    // pra nao falhar validacao server-side (cnpj_emitente='' falhava no
+    // refine de 14 digitos; datas '' falhavam no regex YYYY-MM-DD).
+    let res: Response
+    if (nfArquivo) {
+      const fd = new FormData()
+      fd.append('numero_nf', nfForm.numero_nf)
+      fd.append('emitente', nfForm.emitente)
+      fd.append('valor', String(parseFloat(nfForm.valor)))
+      fd.append('data_emissao', nfForm.data_emissao)
+      if (nfForm.cnpj_emitente && nfForm.cnpj_emitente.trim()) fd.append('cnpj_emitente', nfForm.cnpj_emitente)
+      if (nfForm.descricao && nfForm.descricao.trim()) fd.append('descricao', nfForm.descricao)
+      fd.append('arquivo', nfArquivo)
+      res = await fetch(`/api/contratos/${id}/fat-direto/solicitacoes/${solId}/nfs`, {
+        method: 'POST',
+        body: fd,
+      })
+    } else {
+      const payload: Record<string, unknown> = {
+        numero_nf: nfForm.numero_nf,
+        emitente: nfForm.emitente,
+        valor: parseFloat(nfForm.valor),
+        data_emissao: nfForm.data_emissao,
+      }
+      if (nfForm.cnpj_emitente && nfForm.cnpj_emitente.trim()) payload.cnpj_emitente = nfForm.cnpj_emitente
+      if (nfForm.descricao && nfForm.descricao.trim()) payload.descricao = nfForm.descricao
+      res = await fetch(`/api/contratos/${id}/fat-direto/solicitacoes/${solId}/nfs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
     }
-    if (nfForm.cnpj_emitente && nfForm.cnpj_emitente.trim()) payload.cnpj_emitente = nfForm.cnpj_emitente
-    if (nfForm.descricao && nfForm.descricao.trim()) payload.descricao = nfForm.descricao
-    const res = await fetch(`/api/contratos/${id}/fat-direto/solicitacoes/${solId}/nfs`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
     if (!res.ok) {
       // 422 com code do 3-way match → mensagem mais explícita
       try {
@@ -277,6 +296,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
       return
     }
     setNfForm({ numero_nf: '', emitente: '', cnpj_emitente: '', valor: '', data_emissao: '', descricao: '' })
+    setNfArquivo(null)
     setShowNFForm(false)
     await load()
     await carregarSaldo()
@@ -1000,6 +1020,57 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                     </div>
                   ))}
                 </div>
+                {/* Upload do arquivo da NF (PDF/imagem/XML) */}
+                <div>
+                  <label className="block text-xs text-[var(--text-3)] mb-1">
+                    Arquivo da NF <span className="opacity-60">(PDF, imagem ou XML)</span>
+                  </label>
+                  {nfArquivo ? (
+                    <div className="flex items-center gap-3 rounded-xl px-3 py-2.5"
+                         style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                           style={{ background: 'rgba(239,68,68,0.12)' }}>
+                        <FileText className="w-3.5 h-3.5" strokeWidth={1.5} style={{ color: '#EF4444' }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate" style={{ color: 'var(--text-1)' }}>{nfArquivo.name}</p>
+                        <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>{(nfArquivo.size / 1024).toFixed(1)} KB</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setNfArquivo(null)}
+                        className="p-1 rounded text-[var(--text-3)] hover:text-red-400 hover:bg-red-500/10"
+                        title="Remover arquivo"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label
+                      className="flex flex-col items-center gap-1.5 rounded-xl px-4 py-4 cursor-pointer transition-colors text-center"
+                      style={{ background: 'var(--surface-1)', border: '1.5px dashed var(--border)' }}
+                    >
+                      <Upload className="w-4 h-4" strokeWidth={1.5} style={{ color: 'var(--text-3)' }} />
+                      <span className="text-xs font-medium" style={{ color: 'var(--text-2)' }}>
+                        Clique para anexar o arquivo da NF
+                      </span>
+                      <span className="text-[10px]" style={{ color: 'var(--text-3)' }}>
+                        PDF, JPG, PNG ou XML — máx. 50 MB
+                      </span>
+                      <input
+                        type="file"
+                        accept="application/pdf,image/jpeg,image/png,image/webp,application/xml,text/xml"
+                        className="hidden"
+                        onChange={e => {
+                          const f = e.target.files?.[0]
+                          if (f) setNfArquivo(f)
+                          e.target.value = ''
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+
                 <div className="flex gap-2 pt-1">
                   <Button
                     onClick={registrarNF}
@@ -1009,7 +1080,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                   >
                     Registrar NF
                   </Button>
-                  <Button onClick={() => setShowNFForm(false)} size="sm" variant="ghost" className="text-[var(--text-3)]">
+                  <Button onClick={() => { setShowNFForm(false); setNfArquivo(null) }} size="sm" variant="ghost" className="text-[var(--text-3)]">
                     Cancelar
                   </Button>
                 </div>
