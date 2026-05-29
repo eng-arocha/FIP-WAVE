@@ -14,7 +14,7 @@ import {
   ArrowLeft, Plus, FileText, Loader2, Pencil,
   ChevronRight, ChevronDown, Layers, Filter, Package, TrendingUp,
   DollarSign, Wallet, ClipboardList, Search, X, Maximize2,
-  Download, Upload,
+  Download, Upload, Ban,
 } from 'lucide-react'
 import { DashboardTree } from '@/components/contratos/visao-geral'
 import { EditarContratoModal } from '@/components/contratos/editar-contrato-modal'
@@ -122,6 +122,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   const [medicoes, setMedicoes] = useState<Medicao[]>([])
   const [aditivos, setAditivos] = useState<Aditivo[]>([])
   const [fullscreenChart, setFullscreenChart] = useState<'bar' | null>(null)
+  const [qtdEncerramentos, setQtdEncerramentos] = useState(0)
 
   // === Filtros do dashboard sincronizados com a URL ===
   // Querystring: ?grupo=<id>&tarefa=<id>&det=<id>&modo=total|material|servico&sort=...
@@ -246,6 +247,23 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
       }
     }
     loadAditivos()
+  }, [id])
+
+  // Solicitações de encerramento de saldo pendentes (Fornecedor → Aprovador).
+  // Usado pra mostrar o badge no botão "Encerramentos" do cabeçalho.
+  useEffect(() => {
+    async function loadEncerramentos() {
+      try {
+        const res = await fetch(`/api/contratos/${id}/encerramento-saldo`, { cache: 'no-store' })
+        if (!res.ok) return
+        const data = await res.json()
+        const list = Array.isArray(data) ? data : (data?.items ?? data?.data ?? [])
+        setQtdEncerramentos(Array.isArray(list) ? list.length : 0)
+      } catch {
+        // silencioso — badge só não aparece
+      }
+    }
+    loadEncerramentos()
   }, [id])
 
   // Bloco de métricas financeiras (linha horizontal, ocupando a largura cheia)
@@ -537,6 +555,21 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
               <Button variant="ghost" size="sm" className="px-2 sm:px-3 gap-1 font-semibold hover:brightness-110" style={{ background: '#0f766e', color: '#ccfbf1' }}>
                 <span className="hidden sm:inline">Fat. Direto</span>
                 <span className="sm:hidden text-xs">Fat.</span>
+              </Button>
+            </Link>
+            <Link href={`/contratos/${id}/encerramentos`}>
+              <Button variant="ghost" size="sm" className="relative px-2 sm:px-3 gap-1 font-semibold hover:brightness-110" style={{ background: '#9a3412', color: '#ffedd5' }}>
+                <Ban className="w-4 h-4" strokeWidth={1.5} />
+                <span className="hidden sm:inline">Encerramentos</span>
+                <span className="sm:hidden text-xs">Encerr.</span>
+                {qtdEncerramentos > 0 && (
+                  <span
+                    className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[10px] font-bold animate-pulse"
+                    style={{ background: '#f59e0b', color: '#1c1917' }}
+                  >
+                    {qtdEncerramentos}
+                  </span>
+                )}
               </Button>
             </Link>
             <Link href={`/contratos/${id}/medicoes/nova`}>
