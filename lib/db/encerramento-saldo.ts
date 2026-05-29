@@ -187,7 +187,23 @@ export async function listarSolicitacoesPendentes(contratoId: string) {
     .eq('status', 'pendente')
     .order('solicitado_em', { ascending: false })
   if (error) throw error
-  return (data ?? []).filter(
-    (s: any) => s.solicitacao_fat_direto?.contrato_id === contratoId,
-  )
+  // Normaliza pro shape que a UI (encerramentos/page.tsx) consome — sem isso
+  // a tela mostra saldo R$ 0,00, motivo "—" e o pedido como UUID.
+  return (data ?? [])
+    .filter((s: any) => s.solicitacao_fat_direto?.contrato_id === contratoId)
+    .map((s: any) => {
+      const ped = s.solicitacao_fat_direto ?? {}
+      return {
+        ...s,
+        contrato_id: ped.contrato_id ?? contratoId,
+        saldo: Number(s.saldo_no_momento ?? 0),
+        motivo: s.motivo_solicitacao ?? '',
+        pedido_numero: ped.numero_pedido_fip ?? ped.numero ?? null,
+        pedido_descricao: ped.fornecedor_razao_social ?? null,
+        data_solicitacao: s.solicitado_em ?? s.created_at ?? null,
+        solicitante: s.solicitado_por
+          ? { nome: s.solicitado_por.nome, email: s.solicitado_por.email }
+          : null,
+      }
+    })
 }
