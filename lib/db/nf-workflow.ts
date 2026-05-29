@@ -32,16 +32,18 @@ export async function aprovarNotaFiscal(nfId: string, ator: AtorAudit): Promise<
       `NF no status "${nf.status}" não pode ser aprovada.`, { status: nf.status })
   }
 
-  // Revalida o match ignorando a própria NF no somatório de saldo:
-  // validarNotaFiscal3Way soma todas as ativas; como esta NF já está
-  // gravada (ativa), passamos valor 0 e checamos o saldo restante.
+  // Revalida o match excluindo a própria NF do conjunto de ativas: ela já
+  // está gravada (e reserva saldo), então sem exclusão entraria no somatório
+  // e dispararia DUPLICATA contra si mesma. Com exclude_nf_id passamos o
+  // valor real e validamos contra as DEMAIS NFs do pedido.
   await validarNotaFiscal3Way({
     solicitacao_id: nf.solicitacao_id,
     numero_nf: nf.numero_nf,
     cnpj_emitente: nf.cnpj_emitente ?? undefined,
-    valor: 0,
+    valor: Number(nf.valor ?? 0),
     data_emissao: nf.data_emissao,
     override_data_anterior: true, // data já foi validada no lançamento
+    exclude_nf_id: nfId,
   })
 
   const agora = new Date().toISOString()

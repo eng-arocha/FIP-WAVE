@@ -699,6 +699,12 @@ export async function validarNotaFiscal3Way(input: {
    */
   override_excede_saldo?: boolean
   motivo_divergencia?: string
+  /**
+   * NF a ignorar no somatório de saldo e na checagem de duplicata. Use ao
+   * REVALIDAR uma NF já gravada (ex.: na aprovação): sem isso ela entra no
+   * conjunto de ativas e dispara DUPLICATA contra si mesma.
+   */
+  exclude_nf_id?: string
 }): Promise<{
   saldo_antes: number
   saldo_depois: number
@@ -764,7 +770,11 @@ export async function validarNotaFiscal3Way(input: {
   // NF "ativa" = reserva saldo do pedido (aguardando_aprovacao, em_correcao,
   // aprovada). cancelada/rejeitada-legada não contam. Inclui as pendentes
   // pra que a contratada não lance duas NFs que estouram o mesmo pedido.
-  const ativas = (nfsAtivas || []).filter((n: any) => nfReservaSaldo(n.status))
+  // Ao revalidar uma NF já gravada (aprovação), excluí-la evita que ela
+  // conte no saldo e dispare DUPLICATA contra si mesma.
+  const ativas = (nfsAtivas || [])
+    .filter((n: any) => nfReservaSaldo(n.status))
+    .filter((n: any) => !input.exclude_nf_id || n.id !== input.exclude_nf_id)
 
   // Duplicata (mesmo numero_nf + cnpj_emitente na mesma solicitação)
   const dup = ativas.find((n: any) =>
