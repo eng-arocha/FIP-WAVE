@@ -1173,7 +1173,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   </Label>
                   <input
                     type="number"
-                    step="0.001"
+                    step="0.0001"
                     min="0"
                     value={novaQuantidade}
                     onChange={e => setNovaQuantidade(e.target.value)}

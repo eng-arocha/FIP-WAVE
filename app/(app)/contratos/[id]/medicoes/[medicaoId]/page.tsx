@@ -488,6 +488,11 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                       // material lançada NEM pedido fat-direto aprovado — a FIP
                       // precisa emitir NF nova. Card "FIP (MATERIAL)" do boletim.
                       const fipACriar = totaisInformacon?.fip_faturar ?? 0
+                      // Líquido a pagar = serviço medido − retenção (NF a ser emitida descontada)
+                      const pctRet = totaisInformacon?.pct_retencao ?? Number(medicao.contrato?.percentual_retencao ?? 5)
+                      const baseRet = totaisInformacon?.base_retencao ?? (materialMed + servicoMed)
+                      const retencaoHeader = totaisInformacon?.retencao ?? (baseRet * pctRet / 100)
+                      const liquidoHeader = servicoMed - retencaoHeader
                       return (
                         <div className="space-y-1.5">
                           {/* 2 destaques lado a lado: FIP a CRIAR (material) + Wave a emitir (serviço) */}
@@ -498,7 +503,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                             </div>
                             <div className="flex flex-col">
                               <span className="text-[10px] text-[var(--text-3)] uppercase font-semibold tracking-wide">Serviço (NF a emitir)</span>
-                              <span className="text-2xl font-bold leading-tight" style={{ color: '#0F766E' }}>{formatCurrency(servicoMed)}</span>
+                              <span className="text-2xl font-bold leading-tight" style={{ color: '#0F766E' }}>{formatCurrency(liquidoHeader)}</span>
                             </div>
                           </div>
                           <div className="flex items-baseline gap-3 text-xs flex-wrap" style={{ color: 'var(--text-3)' }}>
@@ -664,7 +669,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                     </div>
                     <div className="mt-3 pt-3 border-t text-[11px]" style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}>
                       <strong style={{ color: 'var(--text-2)' }}>Andamento físico:</strong> {andamento.toFixed(2).replace('.', ',')}% do contrato.
-                      <strong style={{ color: 'var(--text-2)', marginLeft: 8 }}>NF a emitir (serviço):</strong> {formatCurrency(servicoMedido)}.
+                      <strong style={{ color: 'var(--text-2)', marginLeft: 8 }}>NF a emitir (serviço):</strong> {formatCurrency(liquidoNF)}.
                       Material será faturado direto pelos pedidos FIP. {aviso}
                     </div>
                   </CardContent>
