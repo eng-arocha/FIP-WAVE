@@ -55,7 +55,16 @@ LEFT JOIN medicao_itens mi ON mi.detalhamento_id = d.id
 LEFT JOIN medicoes med ON med.id = mi.medicao_id
 GROUP BY gm.id;
 
--- 7) Expande colunas de auditoria de ajuste
-ALTER TABLE medicao_item_ajustes
-  ALTER COLUMN quantidade_anterior TYPE NUMERIC(15,4),
-  ALTER COLUMN quantidade_nova     TYPE NUMERIC(15,4);
+-- 7) Expande colunas de auditoria de ajuste (só se a tabela já existe — migration 061)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_name = 'medicao_item_ajustes'
+  ) THEN
+    ALTER TABLE medicao_item_ajustes
+      ALTER COLUMN quantidade_anterior TYPE NUMERIC(15,4),
+      ALTER COLUMN quantidade_nova     TYPE NUMERIC(15,4);
+  END IF;
+END $$;
