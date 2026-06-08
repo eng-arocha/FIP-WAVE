@@ -157,6 +157,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
   const [novaQuantidade, setNovaQuantidade] = useState('')
   const [novaPct, setNovaPct] = useState('')
   const [novaReais, setNovaReais] = useState('')
+  const [novaInformakon, setNovaInformakon] = useState('')
   const [motivoAjuste, setMotivoAjuste] = useState('')
   const [salvandoAjuste, setSalvandoAjuste] = useState(false)
   const [erroAjuste, setErroAjuste] = useState('')
@@ -363,33 +364,43 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
     const qty      = item.quantidade_medida
     const qtdContr = item.quantidade_contratada
     const servUnit = item.valor_servico_unit
+    const matUnit  = item.valor_material_unit
+    const totalUnit = servUnit + matUnit
     setNovaQuantidade(String(qty))
     setNovaPct(qtdContr > 0 ? ((qty / qtdContr) * 100).toFixed(4) : '')
     setNovaReais(servUnit > 0 ? (qty * servUnit).toFixed(2) : '')
+    // Informakon = qty*(mat+serv) - faturamento_direto_em_aberto
+    setNovaInformakon(totalUnit > 0 ? item.dados_informakon.toFixed(2) : '')
     setMotivoAjuste('')
     setErroAjuste('')
     setModalAjustar({ item })
+  }
+
+  function syncFromQty(num: number, item: Linha) {
+    const qtdContr  = item.quantidade_contratada
+    const servUnit  = item.valor_servico_unit
+    const matUnit   = item.valor_material_unit
+    const totalUnit = servUnit + matUnit
+    const fatDir    = item.faturamento_direto_em_aberto
+    if (qtdContr > 0) setNovaPct(((num / qtdContr) * 100).toFixed(4))
+    if (servUnit > 0) setNovaReais((num * servUnit).toFixed(2))
+    if (totalUnit > 0) setNovaInformakon((num * totalUnit - fatDir).toFixed(2))
   }
 
   function handleQtdChange(val: string) {
     setNovaQuantidade(val)
     const num = parseFloat(val.replace(',', '.'))
     if (isNaN(num) || !modalAjustar) return
-    const qtdContr = modalAjustar.item.quantidade_contratada
-    const servUnit = modalAjustar.item.valor_servico_unit
-    if (qtdContr > 0) setNovaPct(((num / qtdContr) * 100).toFixed(4))
-    if (servUnit > 0) setNovaReais((num * servUnit).toFixed(2))
+    syncFromQty(num, modalAjustar.item)
   }
 
   function handlePctChange(val: string) {
     setNovaPct(val)
     const pct = parseFloat(val.replace(',', '.'))
     if (isNaN(pct) || !modalAjustar) return
-    const qtdContr = modalAjustar.item.quantidade_contratada
-    const servUnit = modalAjustar.item.valor_servico_unit
-    const qty = (pct / 100) * qtdContr
+    const qty = (pct / 100) * modalAjustar.item.quantidade_contratada
     setNovaQuantidade(qty.toFixed(4))
-    if (servUnit > 0) setNovaReais((qty * servUnit).toFixed(2))
+    syncFromQty(qty, modalAjustar.item)
   }
 
   function handleReaisChange(val: string) {
@@ -397,11 +408,27 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
     const reais = parseFloat(val.replace(',', '.'))
     if (isNaN(reais) || !modalAjustar) return
     const servUnit = modalAjustar.item.valor_servico_unit
-    const qtdContr = modalAjustar.item.quantidade_contratada
     if (servUnit <= 0) return
     const qty = reais / servUnit
     setNovaQuantidade(qty.toFixed(4))
+    syncFromQty(qty, modalAjustar.item)
+  }
+
+  function handleInformakonChange(val: string) {
+    setNovaInformakon(val)
+    const informakon = parseFloat(val.replace(',', '.'))
+    if (isNaN(informakon) || !modalAjustar) return
+    const servUnit  = modalAjustar.item.valor_servico_unit
+    const matUnit   = modalAjustar.item.valor_material_unit
+    const qtdContr  = modalAjustar.item.quantidade_contratada
+    const fatDir    = modalAjustar.item.faturamento_direto_em_aberto
+    const totalUnit = servUnit + matUnit
+    if (totalUnit <= 0) return
+    // Inverso: qty = (informakon + fatDir) / totalUnit
+    const qty = (informakon + fatDir) / totalUnit
+    setNovaQuantidade(qty.toFixed(4))
     if (qtdContr > 0) setNovaPct(((qty / qtdContr) * 100).toFixed(4))
+    if (servUnit > 0) setNovaReais((qty * servUnit).toFixed(2))
   }
 
   async function salvarAjuste() {
@@ -442,6 +469,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
       setNovaQuantidade('')
       setNovaPct('')
       setNovaReais('')
+      setNovaInformakon('')
       setMotivoAjuste('')
       await carregar()
     } catch (e: any) {
@@ -1172,7 +1200,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
       {/* Modal Ajustar Quantidade (admin durante aprovação) — migration 061 */}
       <Dialog
         open={!!modalAjustar}
-        onOpenChange={(open) => { if (!open && !salvandoAjuste) { setModalAjustar(null); setNovaPct(''); setNovaReais(''); setErroAjuste('') } }}
+        onOpenChange={(open) => { if (!open && !salvandoAjuste) { setModalAjustar(null); setNovaPct(''); setNovaReais(''); setNovaInformakon(''); setErroAjuste('') } }}
       >
         <DialogContent>
           {modalAjustar && (
@@ -1192,7 +1220,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
               </DialogHeader>
               <div className="py-3 space-y-3">
                 {/* Valores atuais */}
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-4 gap-2">
                   <div className="space-y-1">
                     <Label className="text-[10px] text-[var(--text-3)] font-medium uppercase tracking-wider">
                       Qtd atual
@@ -1220,13 +1248,21 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                         .toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                     </div>
                   </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-[var(--text-3)] font-medium uppercase tracking-wider">
+                      R$ Informakon atual
+                    </Label>
+                    <div className="px-2 py-1.5 rounded-lg font-mono text-xs" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-2)' }}>
+                      {modalAjustar.item.dados_informakon.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </div>
+                  </div>
                 </div>
                 {/* Novos valores — sincronizados */}
                 <div className="p-3 rounded-lg space-y-2" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
                   <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>
                     Novo valor — edite qualquer campo, os outros calculam automaticamente
                   </p>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
                       <Label className="text-[10px] font-medium uppercase tracking-wider" style={{ color: '#F97316' }}>
                         Quantidade
@@ -1270,6 +1306,19 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                         value={novaReais}
                         onChange={e => handleReaisChange(e.target.value)}
                         disabled={modalAjustar.item.valor_servico_unit <= 0}
+                        className="w-full bg-[var(--surface-1)] border border-orange-500/40 text-[var(--text-1)] rounded-lg px-2 py-1.5 outline-none font-mono text-sm disabled:opacity-40"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px] font-medium uppercase tracking-wider" style={{ color: '#F97316' }}>
+                        R$ Informakon
+                      </Label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={novaInformakon}
+                        onChange={e => handleInformakonChange(e.target.value)}
+                        disabled={(modalAjustar.item.valor_servico_unit + modalAjustar.item.valor_material_unit) <= 0}
                         className="w-full bg-[var(--surface-1)] border border-orange-500/40 text-[var(--text-1)] rounded-lg px-2 py-1.5 outline-none font-mono text-sm disabled:opacity-40"
                       />
                     </div>
