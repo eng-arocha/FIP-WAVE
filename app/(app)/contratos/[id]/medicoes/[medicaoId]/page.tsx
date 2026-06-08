@@ -608,8 +608,11 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
               const baseRetencao = totaisInformacon?.base_retencao
                 ?? (materialCorrespondente + servicoMedido)
               const retencaoServer = totaisInformacon?.retencao
+              // valor_retencao_garantia tem DEFAULT 0 no banco — se ficou 0
+              // por schema-fallback na aprovação, usa retencaoServer (informacon)
+              // que recalcula a partir das quantidades medidas.
               const retencao = aprovado
-                ? Number(medicao.valor_retencao_garantia ?? retencaoServer ?? (baseRetencao * pctRetencao / 100))
+                ? Number(medicao.valor_retencao_garantia || retencaoServer || (baseRetencao * pctRetencao / 100))
                 : (retencaoServer ?? baseRetencao * pctRetencao / 100)
               const liquidoNF = servicoMedido - retencao
               const andamento = valorContrato > 0 ? (baseRetencao / valorContrato) * 100 : 0
