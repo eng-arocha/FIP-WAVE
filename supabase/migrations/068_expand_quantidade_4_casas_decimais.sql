@@ -4,27 +4,40 @@
 -- Contexto: o sistema usava 3 casas decimais, mas alguns itens precisam de
 -- precisão de 4 casas (ex.: 0,1522 que era truncado para 0,152 no banco).
 --
--- Dependências:
---   - valor_medido é GENERATED ALWAYS AS (quantidade_medida * valor_unitario)
---   - vw_medicao_grupo depende de valor_medido
--- Solução: dropar a view, dropar a coluna gerada, alterar o tipo, recriar ambos.
+-- Árvore de dependências de quantidade_medida:
+--   quantidade_medida
+--   ├── valor_medido  (GENERATED: quantidade_medida * valor_unitario)
+--   │   └── vw_medicao_grupo (VIEW usa valor_medido)
+--   └── valor_efetivo (GENERATED: quantidade_medida * valor_unitario - valor_glosa)
+--
+-- Ordem: drop view → drop geradas → alter tipo → recriar geradas → recriar view
 
--- 1) Remove view dependente
+-- 1) Remove view que depende de valor_medido
 DROP VIEW IF EXISTS vw_medicao_grupo;
 
--- 2) Remove a coluna gerada que depende de quantidade_medida
-ALTER TABLE medicao_itens DROP COLUMN IF EXISTS valor_medido;
+-- 2) Remove colunas geradas que dependem de quantidade_medida
+ALTER TABLE medicao_itens
+  DROP COLUMN IF EXISTS valor_efetivo,
+  DROP COLUMN IF EXISTS valor_medido;
 
 -- 3) Expande quantidade_medida para 4 casas decimais
 ALTER TABLE medicao_itens
   ALTER COLUMN quantidade_medida TYPE NUMERIC(15,4);
 
--- 4) Recria a coluna gerada (resultado financeiro permanece com 2 casas)
+-- 4) Recria valor_medido (resultado financeiro permanece com 2 casas)
 ALTER TABLE medicao_itens
   ADD COLUMN valor_medido NUMERIC(15,2)
     GENERATED ALWAYS AS (quantidade_medida * valor_unitario) STORED;
 
--- 5) Recria a view
+-- 5) Recria valor_efetivo (glosa — migration 030)
+ALTER TABLE medicao_itens
+  ADD COLUMN valor_efetivo NUMERIC(15,2)
+    GENERATED ALWAYS AS (
+      (COALESCE(quantidade_medida, 0) * COALESCE(valor_unitario, 0))
+      - COALESCE(valor_glosa, 0)
+    ) STORED;
+
+-- 6) Recria vw_medicao_grupo
 CREATE VIEW vw_medicao_grupo AS
 SELECT
   gm.id AS grupo_id,
@@ -42,7 +55,7 @@ LEFT JOIN medicao_itens mi ON mi.detalhamento_id = d.id
 LEFT JOIN medicoes med ON med.id = mi.medicao_id
 GROUP BY gm.id;
 
--- 6) Expande colunas de auditoria de ajuste
+-- 7) Expande colunas de auditoria de ajuste
 ALTER TABLE medicao_item_ajustes
   ALTER COLUMN quantidade_anterior TYPE NUMERIC(15,4),
   ALTER COLUMN quantidade_nova     TYPE NUMERIC(15,4);
