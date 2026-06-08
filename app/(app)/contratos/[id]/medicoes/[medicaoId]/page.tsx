@@ -1086,6 +1086,9 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                               const nfFipMaterial      = totaisInformacon?.nf_descontavel ?? 0
                               const saldoPedAprovados  = totaisInformacon?.faturamento_direto_em_aberto ?? 0
                               const fipACriar          = totaisInformacon?.fip_faturar    ?? 0
+                              const pctRet = totaisInformacon?.pct_retencao ?? Number(medicao.contrato?.percentual_retencao ?? 5)
+                              const retTfoot = totaisInformacon?.retencao ?? ((mat + serv) * pctRet / 100)
+                              const liquidoTfoot = serv - retTfoot
                               // 7 colunas: label ocupa 6, valor na última.
                               return (
                                 <>
@@ -1108,10 +1111,20 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                   </tr>
                                   {/* === SERVIÇO === */}
                                   <tr>
-                                    <td colSpan={6} className="pt-2 text-sm font-bold text-right pr-4 text-teal-700/90 dark:text-teal-400">
-                                      Serviço medido <span className="text-[10px] font-bold ml-1 px-1 py-0.5 rounded" style={{ background: 'rgba(15,118,110,0.15)' }}>NF a emitir</span>
+                                    <td colSpan={6} className="pt-2 text-sm font-bold text-right pr-4" style={{ color: '#0F766E' }}>
+                                      Serviço medido <span className="text-[10px] font-medium opacity-75">(100%)</span>
                                     </td>
                                     <td className="pt-2 text-right font-bold text-sm tabular-nums" style={{ color: '#0F766E' }}>{formatCurrency(serv)}</td>
+                                  </tr>
+                                  <tr>
+                                    <td colSpan={6} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ Retenção contratual <span className="text-[10px] font-medium opacity-75">({pctRet.toFixed(0)}%)</span></td>
+                                    <td className="text-right text-sm font-semibold tabular-nums" style={{ color: '#818CF8' }}>− {formatCurrency(retTfoot)}</td>
+                                  </tr>
+                                  <tr>
+                                    <td colSpan={6} className="text-sm font-bold text-right pr-4" style={{ color: '#10B981' }}>
+                                      ↳ NF a emitir <span className="text-[10px] font-bold ml-1 px-1 py-0.5 rounded" style={{ background: 'rgba(16,185,129,0.15)' }}>líquido</span>
+                                    </td>
+                                    <td className="text-right font-bold text-sm tabular-nums" style={{ color: '#10B981' }}>{formatCurrency(liquidoTfoot)}</td>
                                   </tr>
                                   {/* === TOTAL === */}
                                   <tr className="border-t border-[var(--border)]">
@@ -1167,6 +1180,9 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                         const nfFipMaterial      = totaisInformacon?.nf_descontavel ?? 0
                         const saldoPedAprovados  = totaisInformacon?.faturamento_direto_em_aberto ?? 0
                         const fipACriar          = totaisInformacon?.fip_faturar    ?? 0
+                        const pctRet = totaisInformacon?.pct_retencao ?? Number(medicao.contrato?.percentual_retencao ?? 5)
+                        const retTfoot = totaisInformacon?.retencao ?? ((mat + serv) * pctRet / 100)
+                        const liquidoTfoot = serv - retTfoot
                         return (
                           <>
                             <tr className="border-t-2 border-[var(--border-hover)]">
@@ -1191,10 +1207,22 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                             </tr>
                             <tr>
                               <td colSpan={3} />
-                              <td colSpan={2} className="pt-2 text-sm font-bold text-right pr-4 text-teal-700/90 dark:text-teal-400">
-                                Serviço medido <span className="text-[10px] font-bold ml-1 px-1 py-0.5 rounded" style={{ background: 'rgba(15,118,110,0.15)' }}>NF a emitir</span>
+                              <td colSpan={2} className="pt-2 text-sm font-bold text-right pr-4" style={{ color: '#0F766E' }}>
+                                Serviço medido <span className="text-[10px] font-medium opacity-75">(100%)</span>
                               </td>
                               <td className="pt-2 text-right font-bold text-sm tabular-nums" style={{ color: '#0F766E' }}>{formatCurrency(serv)}</td>
+                            </tr>
+                            <tr>
+                              <td colSpan={3} />
+                              <td colSpan={2} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ Retenção contratual <span className="text-[10px] font-medium opacity-75">({pctRet.toFixed(0)}%)</span></td>
+                              <td className="text-right text-sm font-semibold tabular-nums" style={{ color: '#818CF8' }}>− {formatCurrency(retTfoot)}</td>
+                            </tr>
+                            <tr>
+                              <td colSpan={3} />
+                              <td colSpan={2} className="text-sm font-bold text-right pr-4" style={{ color: '#10B981' }}>
+                                ↳ NF a emitir <span className="text-[10px] font-bold ml-1 px-1 py-0.5 rounded" style={{ background: 'rgba(16,185,129,0.15)' }}>líquido</span>
+                              </td>
+                              <td className="text-right font-bold text-sm tabular-nums" style={{ color: '#10B981' }}>{formatCurrency(liquidoTfoot)}</td>
                             </tr>
                             <tr className="border-t border-[var(--border)]">
                               <td colSpan={3} />
