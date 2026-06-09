@@ -365,31 +365,96 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
   // Formata quantidade sem zeros desnecessários, até 6 casas decimais (limite do BD)
   const fmtQty = (n: number) => parseFloat(n.toFixed(6)).toString()
 
+  // Replica exatamente a fórmula do servidor para dados_informakon dado um qty alvo.
+  // Usa nf_terceiro e saldo_aprovado (campos estáticos do item) para derivar o
+  // faturamento_direto_em_aberto correto — ao contrário de item.faturamento_direto_em_aberto
+  // que é calculado para o qty atual e fica obsoleto quando qty muda.
+  function computeInformakon(qty: number, item: Linha): number {
+    const servUnit           = item.valor_servico_unit
+    const matUnit            = item.valor_material_unit
+    const qtdContr           = item.quantidade_contratada
+    const nfTerceiro         = item.nf_terceiro
+    const saldoAprov         = item.saldo_aprovado
+    const valorServTotal     = qtdContr * servUnit
+
+    const matMedido          = qty * matUnit
+    const nfDescontavel      = Math.min(matMedido, nfTerceiro)
+    const gapMaterial        = Math.max(0, matMedido - nfDescontavel)
+    const fatDir             = Math.min(gapMaterial, saldoAprov)
+
+    const pctServMed         = qtdContr > 0 ? (qty / qtdContr) * 100 : 0
+    const ajusteAplicado     = item.confirmacao_sem_nf && fatDir > 0
+    const pctAdj             = ajusteAplicado && valorServTotal > 0
+      ? Math.max(0, pctServMed - (fatDir / valorServTotal) * 100)
+      : pctServMed
+    const waveServico        = (pctAdj / 100) * valorServTotal
+    return waveServico + matMedido - fatDir
+  }
+
+  // Inverte dados_informakon → qty usando análise de casos baseada nos
+  // parâmetros estáticos do item (não no fatDir estale do qty atual).
+  // Casos derivados da fórmula do servidor:
+  //   B (NF cobre tudo, fatDir=0):         informakon = qty * totalUnit
+  //   E (NF parcial, fatDir cresce c/qty): informakon = qty * servUnit + nfTerceiro
+  //   D (saldoAprov limitante, fatDir fixo): informakon = qty * totalUnit − saldoAprov
+  function invertInformakon(target: number, item: Linha): number {
+    const servUnit   = item.valor_servico_unit
+    const matUnit    = item.valor_material_unit
+    const nfTerceiro = item.nf_terceiro
+    const saldoAprov = item.saldo_aprovado
+    const totalUnit  = servUnit + matUnit
+
+    if (servUnit <= 0) return 0
+    // Sem material: informakon = qty * servUnit
+    if (matUnit === 0) return target / servUnit
+
+    if (!item.confirmacao_sem_nf) {
+      // Caso B: NF cobre todo mat → fatDir=0, informakon = qty * totalUnit
+      const qtyB = target / totalUnit
+      if (qtyB * matUnit <= nfTerceiro) return qtyB
+
+      // Caso E: NF parcial → fatDir = qty*matUnit − nfTerceiro, informakon = qty*servUnit + nfTerceiro
+      const qtyE = (target - nfTerceiro) / servUnit
+      if (qtyE >= 0 && qtyE * matUnit <= nfTerceiro + saldoAprov) return qtyE
+
+      // Caso D: saldoAprov é limitante (fatDir fixo) → informakon = qty*totalUnit − saldoAprov
+      return (target + saldoAprov) / totalUnit
+    } else {
+      // sem_nf ativo: waveServico reduz pelo fatDir → informakon = qty*totalUnit − 2*fatDir
+      // Sub-caso B (fatDir=0): ajusteAplicado=false, mesma fórmula do Caso B normal
+      const qtyB = target / totalUnit
+      if (qtyB * matUnit <= nfTerceiro) return qtyB
+
+      // Sub-caso E com sem_nf: informakon = qty*(servUnit−matUnit) + 2*nfTerceiro
+      if (servUnit !== matUnit) {
+        const qtyE = (target - 2 * nfTerceiro) / (servUnit - matUnit)
+        if (qtyE >= 0 && qtyE * matUnit <= nfTerceiro + saldoAprov) return qtyE
+      }
+
+      // Sub-caso D com sem_nf: informakon = qty*totalUnit − 2*saldoAprov
+      return (target + 2 * saldoAprov) / totalUnit
+    }
+  }
+
   function abrirModalAjustar(item: Linha) {
     const qty      = item.quantidade_medida
     const qtdContr = item.quantidade_contratada
     const servUnit = item.valor_servico_unit
-    const matUnit  = item.valor_material_unit
-    const totalUnit = servUnit + matUnit
     setNovaQuantidade(String(qty))
     setNovaPct(qtdContr > 0 ? fmtPct((qty / qtdContr) * 100) : '')
     setNovaReais(servUnit > 0 ? (qty * servUnit).toFixed(2) : '')
-    // Informakon = qty*(mat+serv) - faturamento_direto_em_aberto
-    setNovaInformakon(totalUnit > 0 ? item.dados_informakon.toFixed(2) : '')
+    setNovaInformakon(item.dados_informakon.toFixed(2))
     setMotivoAjuste('')
     setErroAjuste('')
     setModalAjustar({ item })
   }
 
   function syncFromQty(num: number, item: Linha) {
-    const qtdContr  = item.quantidade_contratada
-    const servUnit  = item.valor_servico_unit
-    const matUnit   = item.valor_material_unit
-    const totalUnit = servUnit + matUnit
-    const fatDir    = item.faturamento_direto_em_aberto
+    const qtdContr = item.quantidade_contratada
+    const servUnit = item.valor_servico_unit
     if (qtdContr > 0) setNovaPct(fmtPct((num / qtdContr) * 100))
     if (servUnit > 0) setNovaReais((num * servUnit).toFixed(2))
-    if (totalUnit > 0) setNovaInformakon((num * totalUnit - fatDir).toFixed(2))
+    setNovaInformakon(computeInformakon(num, item).toFixed(2))
   }
 
   function handleQtdChange(val: string) {
@@ -423,17 +488,12 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
     setNovaInformakon(val)
     const informakon = parseFloat(val.replace(',', '.'))
     if (isNaN(informakon) || !modalAjustar) return
-    const servUnit  = modalAjustar.item.valor_servico_unit
-    const matUnit   = modalAjustar.item.valor_material_unit
-    const qtdContr  = modalAjustar.item.quantidade_contratada
-    const fatDir    = modalAjustar.item.faturamento_direto_em_aberto
-    const totalUnit = servUnit + matUnit
-    if (totalUnit <= 0) return
-    // Inverso: qty = (informakon + fatDir) / totalUnit
-    const qty = (informakon + fatDir) / totalUnit
+    const item = modalAjustar.item
+    if (item.valor_servico_unit <= 0) return
+    const qty = invertInformakon(informakon, item)
     setNovaQuantidade(fmtQty(qty))
-    if (qtdContr > 0) setNovaPct(fmtPct((qty / qtdContr) * 100))
-    if (servUnit > 0) setNovaReais((qty * servUnit).toFixed(2))
+    if (item.quantidade_contratada > 0) setNovaPct(fmtPct((qty / item.quantidade_contratada) * 100))
+    if (item.valor_servico_unit > 0) setNovaReais((qty * item.valor_servico_unit).toFixed(2))
   }
 
   async function salvarAjuste() {
