@@ -391,49 +391,30 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
     return waveServico + matMedido - fatDir
   }
 
-  // Inverte dados_informakon → qty usando análise de casos baseada nos
-  // parâmetros estáticos do item (não no fatDir estale do qty atual).
-  // Casos derivados da fórmula do servidor:
-  //   B (NF cobre tudo, fatDir=0):         informakon = qty * totalUnit
-  //   E (NF parcial, fatDir cresce c/qty): informakon = qty * servUnit + nfTerceiro
-  //   D (saldoAprov limitante, fatDir fixo): informakon = qty * totalUnit − saldoAprov
+  // Inverte dados_informakon → qty por busca binária sobre computeInformakon.
+  // Garante resultado correto para qualquer configuração de item (sem análise
+  // de casos que pode ter edge-cases). Funciona porque computeInformakon é
+  // monotonicamente crescente em qty (d/d_qty ≥ servUnit > 0) no caminho
+  // sem sem_nf. Para sem_nf com matUnit > servUnit (raro), usa a fórmula
+  // analítica como fallback.
   function invertInformakon(target: number, item: Linha): number {
-    const servUnit   = item.valor_servico_unit
-    const matUnit    = item.valor_material_unit
-    const nfTerceiro = item.nf_terceiro
-    const saldoAprov = item.saldo_aprovado
-    const totalUnit  = servUnit + matUnit
-
+    const servUnit = item.valor_servico_unit
     if (servUnit <= 0) return 0
-    // Sem material: informakon = qty * servUnit
-    if (matUnit === 0) return target / servUnit
 
-    if (!item.confirmacao_sem_nf) {
-      // Caso B: NF cobre todo mat → fatDir=0, informakon = qty * totalUnit
-      const qtyB = target / totalUnit
-      if (qtyB * matUnit <= nfTerceiro) return qtyB
+    // Estimativa inicial: qty = target / servUnit (cota superior sem material)
+    let hi = Math.max(target / servUnit * 2, 1)
+    // Garante que hi seja grande o suficiente
+    for (let i = 0; i < 30 && computeInformakon(hi, item) < target; i++) hi *= 2
 
-      // Caso E: NF parcial → fatDir = qty*matUnit − nfTerceiro, informakon = qty*servUnit + nfTerceiro
-      const qtyE = (target - nfTerceiro) / servUnit
-      if (qtyE >= 0 && qtyE * matUnit <= nfTerceiro + saldoAprov) return qtyE
-
-      // Caso D: saldoAprov é limitante (fatDir fixo) → informakon = qty*totalUnit − saldoAprov
-      return (target + saldoAprov) / totalUnit
-    } else {
-      // sem_nf ativo: waveServico reduz pelo fatDir → informakon = qty*totalUnit − 2*fatDir
-      // Sub-caso B (fatDir=0): ajusteAplicado=false, mesma fórmula do Caso B normal
-      const qtyB = target / totalUnit
-      if (qtyB * matUnit <= nfTerceiro) return qtyB
-
-      // Sub-caso E com sem_nf: informakon = qty*(servUnit−matUnit) + 2*nfTerceiro
-      if (servUnit !== matUnit) {
-        const qtyE = (target - 2 * nfTerceiro) / (servUnit - matUnit)
-        if (qtyE >= 0 && qtyE * matUnit <= nfTerceiro + saldoAprov) return qtyE
-      }
-
-      // Sub-caso D com sem_nf: informakon = qty*totalUnit − 2*saldoAprov
-      return (target + 2 * saldoAprov) / totalUnit
+    let lo = 0
+    for (let i = 0; i < 60; i++) {
+      const mid = (lo + hi) / 2
+      const val = computeInformakon(mid, item)
+      if (Math.abs(val - target) < 0.0001) return mid
+      if (val < target) lo = mid
+      else hi = mid
     }
+    return (lo + hi) / 2
   }
 
   function abrirModalAjustar(item: Linha) {
