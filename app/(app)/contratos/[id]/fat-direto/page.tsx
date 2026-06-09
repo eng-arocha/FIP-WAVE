@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { nfReservaSaldo } from '@/lib/db/nf-status'
-import { Plus, ArrowLeft, FileText, CheckCircle, Clock, XCircle, Package, ClipboardList, Timer, BadgeCheck, Receipt, Undo2, ChevronDown, X, BarChart2, ArrowUpDown, ArrowUp, ArrowDown, AlertCircle } from 'lucide-react'
+import { Plus, ArrowLeft, FileText, CheckCircle, Clock, XCircle, Package, ClipboardList, Timer, BadgeCheck, Receipt, Undo2, ChevronDown, X, BarChart2, ArrowUpDown, ArrowUp, ArrowDown, AlertCircle, Upload } from 'lucide-react'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 
 interface Solicitacao {
@@ -207,11 +207,20 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
               <p className="text-xs sm:text-sm text-[var(--text-3)] hidden sm:block">Controle de autorização de compras de material</p>
             </div>
           </div>
-          <Link href={`/contratos/${id}/fat-direto/nova`}>
-            <Button className="gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm px-3 sm:px-4">
-              <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Nova Solicitação</span><span className="sm:hidden">Nova</span>
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <Link href={`/contratos/${id}/fat-direto/bulk-upload`}>
+                <Button variant="ghost" size="sm" className="gap-1.5 text-xs px-2 sm:px-3" style={{ color: 'var(--text-3)', border: '1px solid var(--border)' }}>
+                  <Upload className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Upload em Lote</span>
+                </Button>
+              </Link>
+            )}
+            <Link href={`/contratos/${id}/fat-direto/nova`}>
+              <Button className="gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm px-3 sm:px-4">
+                <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Nova Solicitação</span><span className="sm:hidden">Nova</span>
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {/* Alerta de rascunhos auto-criados pela aprovacao de medicao */}
