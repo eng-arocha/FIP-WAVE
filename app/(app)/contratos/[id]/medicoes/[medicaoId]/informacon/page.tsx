@@ -360,6 +360,9 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
   // ============================================================
   // Ajustar quantidade (admin durante aprovação) — migration 061
   // ============================================================
+  // Formata % sem zeros à direita desnecessários, até 8 casas decimais
+  const fmtPct = (n: number) => parseFloat(n.toFixed(8)).toString()
+
   function abrirModalAjustar(item: Linha) {
     const qty      = item.quantidade_medida
     const qtdContr = item.quantidade_contratada
@@ -367,7 +370,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
     const matUnit  = item.valor_material_unit
     const totalUnit = servUnit + matUnit
     setNovaQuantidade(String(qty))
-    setNovaPct(qtdContr > 0 ? ((qty / qtdContr) * 100).toFixed(4) : '')
+    setNovaPct(qtdContr > 0 ? fmtPct((qty / qtdContr) * 100) : '')
     setNovaReais(servUnit > 0 ? (qty * servUnit).toFixed(2) : '')
     // Informakon = qty*(mat+serv) - faturamento_direto_em_aberto
     setNovaInformakon(totalUnit > 0 ? item.dados_informakon.toFixed(2) : '')
@@ -382,7 +385,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
     const matUnit   = item.valor_material_unit
     const totalUnit = servUnit + matUnit
     const fatDir    = item.faturamento_direto_em_aberto
-    if (qtdContr > 0) setNovaPct(((num / qtdContr) * 100).toFixed(4))
+    if (qtdContr > 0) setNovaPct(fmtPct((num / qtdContr) * 100))
     if (servUnit > 0) setNovaReais((num * servUnit).toFixed(2))
     if (totalUnit > 0) setNovaInformakon((num * totalUnit - fatDir).toFixed(2))
   }
@@ -427,7 +430,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
     // Inverso: qty = (informakon + fatDir) / totalUnit
     const qty = (informakon + fatDir) / totalUnit
     setNovaQuantidade(qty.toFixed(4))
-    if (qtdContr > 0) setNovaPct(((qty / qtdContr) * 100).toFixed(4))
+    if (qtdContr > 0) setNovaPct(fmtPct((qty / qtdContr) * 100))
     if (servUnit > 0) setNovaReais((qty * servUnit).toFixed(2))
   }
 
@@ -1269,7 +1272,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                       </Label>
                       <input
                         type="number"
-                        step="0.0001"
+                        step="any"
                         min="0"
                         value={novaQuantidade}
                         onChange={e => handleQtdChange(e.target.value)}
@@ -1284,7 +1287,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                       <div className="relative">
                         <input
                           type="number"
-                          step="0.0001"
+                          step="any"
                           min="0"
                           max="100"
                           value={novaPct}
@@ -1301,7 +1304,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                       </Label>
                       <input
                         type="number"
-                        step="0.01"
+                        step="any"
                         min="0"
                         value={novaReais}
                         onChange={e => handleReaisChange(e.target.value)}
@@ -1315,7 +1318,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                       </Label>
                       <input
                         type="number"
-                        step="0.01"
+                        step="any"
                         value={novaInformakon}
                         onChange={e => handleInformakonChange(e.target.value)}
                         disabled={(modalAjustar.item.valor_servico_unit + modalAjustar.item.valor_material_unit) <= 0}
