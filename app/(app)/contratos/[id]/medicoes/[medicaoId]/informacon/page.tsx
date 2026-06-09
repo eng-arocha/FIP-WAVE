@@ -362,6 +362,8 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
   // ============================================================
   // Formata % sem zeros à direita desnecessários, até 8 casas decimais
   const fmtPct = (n: number) => parseFloat(n.toFixed(8)).toString()
+  // Formata quantidade sem zeros desnecessários, até 6 casas decimais (limite do BD)
+  const fmtQty = (n: number) => parseFloat(n.toFixed(6)).toString()
 
   function abrirModalAjustar(item: Linha) {
     const qty      = item.quantidade_medida
@@ -402,7 +404,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
     const pct = parseFloat(val.replace(',', '.'))
     if (isNaN(pct) || !modalAjustar) return
     const qty = (pct / 100) * modalAjustar.item.quantidade_contratada
-    setNovaQuantidade(qty.toFixed(4))
+    setNovaQuantidade(fmtQty(qty))
     syncFromQty(qty, modalAjustar.item)
   }
 
@@ -413,7 +415,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
     const servUnit = modalAjustar.item.valor_servico_unit
     if (servUnit <= 0) return
     const qty = reais / servUnit
-    setNovaQuantidade(qty.toFixed(4))
+    setNovaQuantidade(fmtQty(qty))
     syncFromQty(qty, modalAjustar.item)
   }
 
@@ -429,7 +431,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
     if (totalUnit <= 0) return
     // Inverso: qty = (informakon + fatDir) / totalUnit
     const qty = (informakon + fatDir) / totalUnit
-    setNovaQuantidade(qty.toFixed(4))
+    setNovaQuantidade(fmtQty(qty))
     if (qtdContr > 0) setNovaPct(fmtPct((qty / qtdContr) * 100))
     if (servUnit > 0) setNovaReais((qty * servUnit).toFixed(2))
   }
@@ -1303,9 +1305,8 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                         R$ Wave
                       </Label>
                       <input
-                        type="number"
-                        step="any"
-                        min="0"
+                        type="text"
+                        inputMode="decimal"
                         value={novaReais}
                         onChange={e => handleReaisChange(e.target.value)}
                         disabled={modalAjustar.item.valor_servico_unit <= 0}
@@ -1317,8 +1318,8 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                         R$ Informakon
                       </Label>
                       <input
-                        type="number"
-                        step="any"
+                        type="text"
+                        inputMode="decimal"
                         value={novaInformakon}
                         onChange={e => handleInformakonChange(e.target.value)}
                         disabled={(modalAjustar.item.valor_servico_unit + modalAjustar.item.valor_material_unit) <= 0}
