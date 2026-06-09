@@ -1,14 +1,15 @@
 'use client'
 
-import { use, useState, useEffect } from 'react'
+import { use, useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { ArrowLeft, CheckCircle, XCircle, FileText, Plus, Package, Trash2, Mail, Send, PlayCircle, RotateCcw, Ban, Paperclip, ExternalLink, Eye, Upload } from 'lucide-react'
+import { ArrowLeft, CheckCircle, XCircle, FileText, Plus, Package, Trash2, Mail, Send, PlayCircle, RotateCcw, Ban, Paperclip, ExternalLink, Eye, Upload, X } from 'lucide-react'
 import { usePermissoes } from '@/lib/context/permissoes-context'
+import { uploadAnexosPedido } from '@/lib/fat-direto-upload'
 import { EmailEnvolvidosModal } from '@/components/fat-direto/email-envolvidos-modal'
 import { EncerrarPedidoModal } from '@/components/fat-direto/encerrar-pedido-modal'
 import {
@@ -142,6 +143,13 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
   const [enviandoEncerramento, setEnviandoEncerramento] = useState(false)
   const [erroEncerramento, setErroEncerramento] = useState('')
   const [encerramentoSucesso, setEncerramentoSucesso] = useState('')
+  // Upload direto de anexos do pedido (sem ir para a página de edição)
+  const [uploadAnexos, setUploadAnexos] = useState<File[]>([])
+  const [uploadingAnexos, setUploadingAnexos] = useState(false)
+  const [uploadAnexoErro, setUploadAnexoErro] = useState('')
+  const [uploadAnexoSucesso, setUploadAnexoSucesso] = useState('')
+  const uploadAnexoRef = useRef<HTMLInputElement>(null)
+
   // P2.9/P2.1: saldo do pedido pra alertar >95% e bloquear envio a esgotado
   const [saldo, setSaldo] = useState<{
     pedido_valor: number
@@ -219,6 +227,24 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
       }))
     }
   }, [showNFForm, saldo])
+
+  async function fazerUploadAnexos() {
+    if (uploadAnexos.length === 0) return
+    setUploadingAnexos(true)
+    setUploadAnexoErro('')
+    setUploadAnexoSucesso('')
+    try {
+      await uploadAnexosPedido(solId, uploadAnexos)
+      setUploadAnexos([])
+      setUploadAnexoSucesso(`${uploadAnexos.length} arquivo${uploadAnexos.length > 1 ? 's' : ''} adicionado${uploadAnexos.length > 1 ? 's' : ''} com sucesso.`)
+      await load()
+      window.setTimeout(() => setUploadAnexoSucesso(''), 4000)
+    } catch (e: any) {
+      setUploadAnexoErro(e?.message || 'Falha no upload dos anexos.')
+    } finally {
+      setUploadingAnexos(false)
+    }
+  }
 
   async function acao(
     a: 'aprovado' | 'rejeitado' | 'cancelado' | 'aguardando_aprovacao',
@@ -514,20 +540,96 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
             : (sol.pedido_pdf_url
                 ? [{ nome: sol.pedido_pdf_nome || 'pedido.pdf', url: sol.pedido_pdf_url, tipo: 'application/pdf' }]
                 : [])
+          // Bloco de upload inline (admin/qualquer status)
+          const uploadZone = isAdmin ? (
+            <div className="mt-3 space-y-2">
+              <input
+                ref={uploadAnexoRef}
+                type="file"
+                accept="application/pdf,image/jpeg,image/png,image/webp"
+                multiple
+                className="hidden"
+                onChange={e => {
+                  const files = Array.from(e.target.files ?? [])
+                  if (files.length > 0) setUploadAnexos(prev => [...prev, ...files])
+                  if (uploadAnexoRef.current) uploadAnexoRef.current.value = ''
+                }}
+              />
+              {uploadAnexos.length === 0 ? (
+                <div
+                  className="flex items-center gap-2 rounded-lg px-3 py-2 cursor-pointer transition-all"
+                  style={{ background: 'var(--surface-3)', border: '1px dashed var(--border)' }}
+                  onClick={() => uploadAnexoRef.current?.click()}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)' }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)' }}
+                  onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--accent)' }}
+                  onDragLeave={e => { e.currentTarget.style.borderColor = 'var(--border)' }}
+                  onDrop={e => {
+                    e.preventDefault()
+                    e.currentTarget.style.borderColor = 'var(--border)'
+                    const dropped = Array.from(e.dataTransfer.files)
+                    if (dropped.length > 0) setUploadAnexos(prev => [...prev, ...dropped])
+                  }}
+                >
+                  <Upload className="w-3.5 h-3.5 flex-shrink-0" strokeWidth={1.5} style={{ color: 'var(--text-3)' }} />
+                  <span className="text-xs" style={{ color: 'var(--text-3)' }}>Clique ou arraste para adicionar anexos</span>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {uploadAnexos.map((f, i) => (
+                    <div key={`new-${f.name}-${i}`} className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.25)' }}>
+                      <FileText className="w-3.5 h-3.5 flex-shrink-0" strokeWidth={1.5} style={{ color: '#818CF8' }} />
+                      <span className="flex-1 text-xs truncate" style={{ color: 'var(--text-1)' }}>{f.name}</span>
+                      <span className="text-[10px]" style={{ color: 'var(--text-3)' }}>{(f.size / 1024).toFixed(0)} KB</span>
+                      <button onClick={() => setUploadAnexos(prev => prev.filter((_, idx) => idx !== i))} style={{ color: 'var(--text-3)' }}>
+                        <X className="w-3 h-3" strokeWidth={2} />
+                      </button>
+                    </div>
+                  ))}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      onClick={fazerUploadAnexos}
+                      disabled={uploadingAnexos}
+                      className="gap-1.5 text-xs text-white"
+                      style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-glow))' }}
+                    >
+                      {uploadingAnexos ? (
+                        <><svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg>Enviando...</>
+                      ) : (
+                        <><Upload className="w-3 h-3" />Enviar {uploadAnexos.length} arquivo{uploadAnexos.length > 1 ? 's' : ''}</>
+                      )}
+                    </Button>
+                    <button
+                      onClick={() => { setUploadAnexos([]); uploadAnexoRef.current?.click() }}
+                      className="text-xs px-2 py-1"
+                      style={{ color: 'var(--text-3)' }}
+                    >+ mais</button>
+                    <button onClick={() => setUploadAnexos([])} className="text-xs px-2 py-1" style={{ color: 'var(--text-3)' }}>Limpar</button>
+                  </div>
+                </div>
+              )}
+              {uploadAnexoErro && <p className="text-xs" style={{ color: 'var(--red)' }}>{uploadAnexoErro}</p>}
+              {uploadAnexoSucesso && <p className="text-xs font-semibold" style={{ color: 'var(--green)' }}>{uploadAnexoSucesso}</p>}
+            </div>
+          ) : null
+
           if (anexos.length === 0) {
-            // Mostra um aviso explicito quando AGUARDANDO APROVACAO sem anexo —
-            // ajuda o aprovador a notar a ausencia antes de aprovar no escuro.
-            if (sol.status !== 'aguardando_aprovacao') return null
+            // Sem anexos: mostra aviso + zona de upload direta para admin
             return (
-              <Card style={{ background: 'var(--surface-1)', border: '1px dashed rgba(245,158,11,0.40)' }}>
-                <CardContent className="pt-4 pb-4 flex items-start gap-3">
-                  <Paperclip className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <p className="text-sm text-amber-400 font-semibold mb-0.5">Sem anexo no pedido</p>
-                    <p className="text-xs text-[var(--text-3)]">
-                      O solicitante não anexou nenhum PDF/imagem (cotação, proposta, pedido).
-                      Considere pedir o anexo antes de aprovar.
-                    </p>
+              <Card style={{ background: 'var(--surface-1)', border: `1px dashed ${isAdmin ? 'rgba(99,102,241,0.40)' : 'rgba(245,158,11,0.40)'}` }}>
+                <CardContent className="pt-4 pb-4">
+                  <div className="flex items-start gap-3">
+                    <Paperclip className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: isAdmin ? '#818CF8' : '#FBBF24' }} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold mb-0.5" style={{ color: isAdmin ? '#818CF8' : '#FBBF24' }}>Sem anexo no pedido</p>
+                      <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+                        {isAdmin
+                          ? 'Adicione o pedido FIP, proposta ou cotação diretamente aqui:'
+                          : 'O solicitante não anexou nenhum PDF/imagem. Considere pedir o anexo antes de aprovar.'}
+                      </p>
+                      {uploadZone}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -612,6 +714,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                     </div>
                   )
                 })}
+                {uploadZone}
               </CardContent>
             </Card>
           )
