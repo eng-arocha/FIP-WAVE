@@ -285,6 +285,9 @@ function PedidosFatDiretoContent() {
 
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
+  // Erro da API — exibido em banner. Antes o erro era engolido e a página
+  // mostrava "Nenhum pedido encontrado", impossível de diagnosticar.
+  const [erroApi, setErroApi] = useState('')
 
   // Filtros simples (busca NF e intervalo de datas).
   // Default: SEM filtro de data — mostra TODOS os registros. O período só
@@ -311,15 +314,28 @@ function PedidosFatDiretoContent() {
 
   async function carregar() {
     setLoading(true)
+    setErroApi('')
     const params = new URLSearchParams()
     if (view) params.set('view', view)
     if (dataInicio) params.set('data_inicio', dataInicio)
     if (dataFim) params.set('data_fim', dataFim)
     if (nfBusca) params.set('nf_numero', nfBusca)
 
-    const res = await fetch(`/api/fat-direto/documentos?${params}`)
-    if (res.ok) setPedidos(await res.json())
-    setLoading(false)
+    try {
+      const res = await fetch(`/api/fat-direto/documentos?${params}`)
+      if (res.ok) {
+        setPedidos(await res.json())
+      } else {
+        const d = await res.json().catch(() => ({} as any))
+        setErroApi(d?.error || `Erro ${res.status} ao carregar pedidos`)
+        setPedidos([])
+      }
+    } catch (e: any) {
+      setErroApi(e?.message || 'Falha de rede ao carregar pedidos')
+      setPedidos([])
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -507,6 +523,20 @@ function PedidosFatDiretoContent() {
             </Button>
           </div>
         </div>
+
+        {/* Banner de erro da API — sem ele a página parecia "vazia" sem explicação */}
+        {erroApi && (
+          <div
+            className="rounded-xl px-4 py-3 text-sm flex items-start gap-2"
+            style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.35)', color: '#EF4444' }}
+          >
+            <X className="w-4 h-4 mt-0.5 flex-shrink-0" strokeWidth={2} />
+            <div>
+              <p className="font-semibold">Erro ao carregar os pedidos</p>
+              <p className="text-xs mt-0.5 opacity-90">{erroApi}</p>
+            </div>
+          </div>
+        )}
 
         {/* Filtros globais (data + busca NF). Os filtros por coluna estão no cabeçalho da tabela. */}
         <MaximizableCard title="Filtros rápidos" className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>

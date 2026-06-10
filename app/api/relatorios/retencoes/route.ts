@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
+import { withSchemaFallback } from '@/lib/db/resilient'
 
 /**
  * GET /api/relatorios/retencoes
@@ -23,22 +24,41 @@ export async function GET(req: Request) {
 
     const admin = createAdminClient()
 
-    let query = admin
-      .from('medicoes')
-      .select(`
+    // RESILIÊNCIA: andamento_fisico_pct / valor_material_correspondente /
+    // valor_retencao_garantia / percentual_retencao vêm das migrations
+    // 038/051/052. Se alguma está pendente no Supabase, cai num select sem
+    // elas — o mapeamento abaixo já trata os campos ausentes com defaults
+    // (retenção estimada = % default × valor medido) em vez de 500 + página vazia.
+    const montarQuery = (select: string) => {
+      let q = admin
+        .from('medicoes')
+        .select(select)
+        .eq('status', 'aprovado')
+        .order('data_aprovacao', { ascending: false })
+      if (contratoId) q = q.eq('contrato_id', contratoId)
+      if (dataDe)     q = q.gte('data_aprovacao', dataDe)
+      if (dataAte)    q = q.lte('data_aprovacao', dataAte + 'T23:59:59.999Z')
+      return q
+    }
+
+    const { data, error } = await withSchemaFallback({
+      primary: () => montarQuery(`
         id, numero, periodo_referencia, data_aprovacao, valor_total,
         andamento_fisico_pct, valor_material_correspondente, valor_retencao_garantia,
         contrato:contratos(id, numero, descricao, valor_total, valor_servicos, percentual_retencao),
         aprovacoes:aprovacoes(aprovador_nome, acao)
-      `)
-      .eq('status', 'aprovado')
-      .order('data_aprovacao', { ascending: false })
-
-    if (contratoId) query = query.eq('contrato_id', contratoId)
-    if (dataDe)     query = query.gte('data_aprovacao', dataDe)
-    if (dataAte)    query = query.lte('data_aprovacao', dataAte + 'T23:59:59.999Z')
-
-    const { data, error } = await query
+      `),
+      fallback: () => montarQuery(`
+        id, numero, periodo_referencia, data_aprovacao, valor_total,
+        contrato:contratos(id, numero, descricao, valor_total),
+        aprovacoes:aprovacoes(aprovador_nome, acao)
+      `),
+      missingColumns: [
+        'andamento_fisico_pct', 'valor_material_correspondente',
+        'valor_retencao_garantia', 'percentual_retencao', 'valor_servicos',
+      ],
+      context: 'relatorioRetencoes',
+    })
     if (error) throw error
 
     const linhas = (data || [])
