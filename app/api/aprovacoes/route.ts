@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { getMedicoesPendentes, getMedicoesHistorico } from '@/lib/db/medicoes'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
+import { isSchemaMissingError } from '@/lib/db/resilient'
+import { log } from '@/lib/log'
 
 /**
  * GET /api/aprovacoes
@@ -32,18 +34,38 @@ export async function GET(req: Request) {
     // ANTES era ORDER BY data_aprovacao, mas rejeitados ficam com
     // data_aprovacao NULL e eram empurrados pro fim do resultset —
     // com limit=50 eles caiam fora da pagina.
-    const { data: fipHistorico } = await admin
+    //
+    // RESILIÊNCIA: numero_pedido_fip (migration 039) e os embeds de perfis
+    // podem não existir no schema de produção. Antes o erro era IGNORADO
+    // (destructuring sem checar error) e o histórico FIP vinha vazio sem
+    // nenhuma pista. Agora: fallback sem essas colunas + log do erro.
+    const fipQuery = (select: string) => admin
       .from('solicitacoes_fat_direto')
-      .select(`
+      .select(select)
+      .in('status', ['aprovado', 'rejeitado', 'cancelado'])
+      .order('updated_at', { ascending: false, nullsFirst: false })
+      .limit(limit)
+
+    let { data: fipHistorico, error: fipErr } = await fipQuery(`
         id, numero, status, data_solicitacao, data_aprovacao, updated_at, valor_total,
         fornecedor_razao_social, numero_pedido_fip, motivo_rejeicao, observacoes,
         contrato:contratos(id, numero, descricao),
         solicitante:perfis!solicitante_id(id, nome, email),
         aprovador:perfis!aprovador_id(id, nome, email)
       `)
-      .in('status', ['aprovado', 'rejeitado', 'cancelado'])
-      .order('updated_at', { ascending: false, nullsFirst: false })
-      .limit(limit)
+    if (fipErr && isSchemaMissingError(fipErr, ['numero_pedido_fip', 'perfis', 'solicitante', 'aprovador'])) {
+      log.warn('aprovacoes_historico_fip_fallback', { originalError: fipErr?.message })
+      ;({ data: fipHistorico, error: fipErr } = await fipQuery(`
+        id, numero, status, data_solicitacao, data_aprovacao, updated_at, valor_total,
+        fornecedor_razao_social, motivo_rejeicao, observacoes,
+        contrato:contratos(id, numero, descricao)
+      `))
+    }
+    if (fipErr) {
+      // Não derruba a resposta inteira — medições continuam funcionando —
+      // mas registra o erro pra diagnóstico em vez de engolir.
+      log.error('aprovacoes_historico_fip_erro', { error: fipErr?.message })
+    }
 
     return NextResponse.json({
       pendentes,

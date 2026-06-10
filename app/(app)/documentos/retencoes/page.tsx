@@ -61,6 +61,8 @@ function pctFmt(v: number, casas = 2): string {
 export default function RelatorioRetencoesPage() {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<RespostaRelatorio | null>(null)
+  // Erro da API — exibido em banner em vez de página vazia sem explicação
+  const [erroApi, setErroApi] = useState('')
   const [filtroContratoId, setFiltroContratoId] = useState<string>('')
   const [dataDe, setDataDe] = useState<string>('')
   const [dataAte, setDataAte] = useState<string>('')
@@ -73,13 +75,20 @@ export default function RelatorioRetencoesPage() {
 
   function carregar() {
     setLoading(true)
+    setErroApi('')
     const qs = new URLSearchParams()
     if (filtroContratoId) qs.set('contrato_id', filtroContratoId)
     if (dataDe) qs.set('de', dataDe)
     if (dataAte) qs.set('ate', dataAte)
     fetch(`/api/relatorios/retencoes${qs.toString() ? '?' + qs.toString() : ''}`)
-      .then(r => r.ok ? r.json() : null)
+      .then(async r => {
+        if (r.ok) return r.json()
+        const d = await r.json().catch(() => ({} as any))
+        setErroApi(d?.error || `Erro ${r.status} ao carregar o relatório`)
+        return null
+      })
       .then(d => { if (d) setData(d) })
+      .catch((e: any) => setErroApi(e?.message || 'Falha de rede ao carregar o relatório'))
       .finally(() => setLoading(false))
   }
 
@@ -176,6 +185,17 @@ export default function RelatorioRetencoesPage() {
       <Topbar title="Retenção Contratual" subtitle="Relatório consolidado de retenções de medições aprovadas" />
 
       <div className="p-4 sm:p-6 space-y-5">
+        {/* Banner de erro da API */}
+        {erroApi && (
+          <div
+            className="rounded-xl px-4 py-3 text-sm"
+            style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.35)', color: '#EF4444' }}
+          >
+            <p className="font-semibold">Erro ao carregar o relatório de retenções</p>
+            <p className="text-xs mt-0.5 opacity-90">{erroApi}</p>
+          </div>
+        )}
+
         {/* Cards de resumo */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="rounded-2xl p-4" style={{ background: 'var(--surface-1)', border: '1px solid rgba(99,102,241,0.30)' }}>
