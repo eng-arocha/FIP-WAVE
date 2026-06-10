@@ -38,7 +38,7 @@ export async function getMedicoesHistorico() {
     `)
     .in('status', ['aprovado', 'rejeitado', 'cancelado'])
     .order('updated_at', { ascending: false })
-    .limit(50)
+    .limit(1000)
   if (error) throw error
   return data || []
 }

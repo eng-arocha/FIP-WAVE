@@ -287,14 +287,13 @@ function PedidosFatDiretoContent() {
   const [loading, setLoading] = useState(true)
 
   // Filtros simples (busca NF e intervalo de datas).
-  // Para views vindas do Dashboard (aprovadas/com-nf): default 01/01/2026 → hoje.
+  // Default: SEM filtro de data — mostra TODOS os registros. O período só
+  // é aplicado quando o usuário preenche início/fim.
   // Filtro é aplicado no CLIENT (a partir de data_aprovacao || data_solicitacao
   // || created_at) — endpoint retorna tudo aprovado, evita o problema de
   // registros sem data_aprovacao caírem fora do range.
-  const hojeISO = new Date().toISOString().slice(0, 10)
-  const temDefaultData = view === 'aprovadas' || view === 'com-nf'
-  const [dataInicio, setDataInicio] = useState(temDefaultData ? '2026-01-01' : '')
-  const [dataFim, setDataFim]       = useState(temDefaultData ? hojeISO      : '')
+  const [dataInicio, setDataInicio] = useState('')
+  const [dataFim, setDataFim]       = useState('')
   const [nfBusca, setNfBusca] = useState('')
 
   // Filtros tipo Excel — um Set<string> por coluna (vazio = tudo selecionado)
