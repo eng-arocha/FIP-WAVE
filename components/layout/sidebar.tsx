@@ -98,7 +98,7 @@ export function Sidebar({
   const mainItems = [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, modulo: 'dashboard' },
     { label: 'Contratos', href: '/contratos', icon: FileText, modulo: 'contratos' },
-    { label: 'Aprovações', href: '/aprovacoes', icon: CheckSquare, modulo: 'aprovacoes', badge: true },
+    { label: 'Aprovações', href: '/aprovacoes', icon: CheckSquare, modulo: 'aprovacoes' },
     { label: 'NF Fat. Direto', href: '/nf-fat-direto', icon: Receipt, modulo: 'contratos', count: nfAguardandoCount },
   ].filter(item => temPermissao(item.modulo, 'visualizar'))
 
@@ -183,10 +183,6 @@ export function Sidebar({
         >
           {item.label}
         </span>
-
-        {'badge' in item && item.badge && showText && (
-          <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
-        )}
 
         {/* Contador numérico (ex.: NFs aguardando aprovação) */}
         {'count' in item && typeof item.count === 'number' && item.count > 0 && showText && (
@@ -421,14 +417,6 @@ export function Sidebar({
                   : item.label === 'Aprovações' ? 'Aprovações'
                   : item.label}
               </span>
-
-              {/* Pending badge */}
-              {'badge' in item && item.badge && !isActive && (
-                <span
-                  className="absolute top-1 right-[22%] w-2 h-2 rounded-full"
-                  style={{ background: '#0071E3', boxShadow: '0 0 0 1.5px white' }}
-                />
-              )}
 
               {/* Count badge — NFs aguardando aprovação */}
               {'count' in item && typeof item.count === 'number' && item.count > 0 && (

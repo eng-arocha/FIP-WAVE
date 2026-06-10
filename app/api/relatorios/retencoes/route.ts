@@ -42,14 +42,21 @@ export async function GET(req: Request) {
     if (error) throw error
 
     const linhas = (data || [])
-      .filter((m: any) => Number(m.valor_retencao_garantia || 0) > 0)
       .map((m: any) => {
         // Aprovador: pega 1ª aprovação registrada (acao='aprovado')
         const ap = (m.aprovacoes || []).find((a: any) => a.acao === 'aprovado')
         const valorTotalMedido = Number(m.valor_total || 0)             // mat + serv
         const matCorrespondente = Number(m.valor_material_correspondente || 0)
         const servicoMedido = Math.max(0, valorTotalMedido - matCorrespondente)
-        const retencao = Number(m.valor_retencao_garantia || 0)
+        // Fonte primária: coluna valor_retencao_garantia (migration 051).
+        // Fallback: pct do contrato × valor medido — medições aprovadas
+        // antes da migration ficam com a coluna NULL e sumiam do relatório
+        // (mesma estimativa usada pelo card do dashboard).
+        const pctContrato = Number(m.contrato?.percentual_retencao ?? 5)
+        const retencaoColuna = Number(m.valor_retencao_garantia || 0)
+        const retencao = retencaoColuna > 0
+          ? retencaoColuna
+          : Math.round(valorTotalMedido * (pctContrato / 100) * 100) / 100
         return {
           medicao_id: m.id,
           numero: m.numero,
@@ -72,6 +79,7 @@ export async function GET(req: Request) {
           aprovador_nome: ap?.aprovador_nome ?? null,
         }
       })
+      .filter((l: any) => l.valor_retencao > 0)
 
     // Agrupa por contrato pra cards de resumo
     const porContrato = new Map<string, {
