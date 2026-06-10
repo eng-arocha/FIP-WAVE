@@ -31,6 +31,12 @@ import { log } from '@/lib/log'
 // solicitacoes_fat_direto tem DUAS colunas apontando para perfis
 // (solicitante_id e aprovador_id). Sem o !<fk> o PostgREST retorna
 // erro "embedding disambiguation", deixando a página vazia.
+//
+// notas_fiscais join: NFs criadas via fluxo de contratos (criarNotaFiscal)
+// são gravadas em notas_fiscais_fat_direto mas NÃO atualizam os campos
+// legacy nf_numero/nf_pdf_url/status_documento em solicitacoes_fat_direto.
+// Fazemos o join aqui e derivamos esses campos na normalização da resposta,
+// cobrindo tanto registros antigos quanto novos.
 const SELECT_COMPLETO = `
   id, numero, status, data_solicitacao, data_aprovacao, valor_total,
   fornecedor_razao_social, fornecedor_cnpj, numero_pedido_fip,
@@ -40,7 +46,8 @@ const SELECT_COMPLETO = `
   solicitante_id, aprovador_id,
   contrato:contratos(id, numero, descricao),
   solicitante:perfis!solicitante_id(id, nome, email),
-  aprovador:perfis!aprovador_id(id, nome, email)
+  aprovador:perfis!aprovador_id(id, nome, email),
+  notas_fiscais:notas_fiscais_fat_direto!solicitacao_id(id, numero_nf, arquivo_url, status, data_emissao)
 `
 
 // Sem as colunas de documentos (migrations 013/025/039 pendentes)
@@ -90,14 +97,24 @@ export async function GET(req: Request) {
       let query = admin
         .from('solicitacoes_fat_direto')
         .select(select)
-        .eq('status', 'aprovado')
         .order('data_solicitacao', { ascending: false })
 
-      // View do dashboard: "com-nf" só mostra pedidos que já têm NF anexada.
-      // "aprovadas" = todos os aprovados (comportamento padrão do endpoint).
-      if (view === 'com-nf' && temDocCols) {
-        query = query.in('status_documento', ['nf_recebida', 'pago'])
+      // Views aprovadas/com-nf incluem pedidos encerrados (status='encerrado')
+      // além dos aprovados — pedidos encerrados já foram pagos/resolvidos e
+      // fazem parte do histórico de NFs. View padrão só mostra ativos.
+      if (view === 'aprovadas' || view === 'com-nf') {
+        query = query.in('status', ['aprovado', 'encerrado'])
+      } else {
+        query = query.eq('status', 'aprovado')
       }
+
+      // NOTA: o filtro status_documento para view='com-nf' é aplicado em
+      // código (após normalização), não em SQL. Motivo: NFs criadas via
+      // criarNotaFiscal() ficam em notas_fiscais_fat_direto e não atualizam
+      // o campo legacy status_documento — a normalização abaixo deriva o
+      // valor correto do join. Filtrar em SQL antes dessa derivação excluiria
+      // registros válidos.
+
       if (!usaDataAprov) {
         if (dataInicio) query = query.gte('data_solicitacao', dataInicio)
         if (dataFim) query = query.lte('data_solicitacao', dataFim + 'T23:59:59')
@@ -110,12 +127,15 @@ export async function GET(req: Request) {
       return query
     }
 
+    let temDocCols = true
     let { data, error } = await montarQuery(SELECT_COMPLETO, true)
 
     if (error && isSchemaMissingError(error, [
       'status_documento', 'pedido_pdf_url', 'pedido_pdf_nome',
       'nf_numero', 'nf_data', 'nf_pdf_url', 'numero_pedido_fip', 'deletado_em',
+      'notas_fiscais_fat_direto',
     ])) {
+      temDocCols = false
       log.warn('fat_direto_documentos_fallback_sem_docs', { originalError: error?.message })
       ;({ data, error } = await montarQuery(SELECT_SEM_DOCS, false))
     }
@@ -129,21 +149,55 @@ export async function GET(req: Request) {
 
     // Filtra soft-deleted no código (não falha se a coluna ainda não existe)
     // e normaliza defaults pros campos que os selects degradados não trazem.
+    // Para cada pedido, deriva status_documento e campos NF a partir do join
+    // notas_fiscais_fat_direto — cobre NFs criadas via criarNotaFiscal() que
+    // não atualizam os campos legacy da solicitação.
     const ativos = ((data ?? []) as any[])
       .filter((d: any) => !d.deletado_em)
-      .map((d: any) => ({
-        numero_pedido_fip: null,
-        pedido_pdf_url: null,
-        pedido_pdf_nome: null,
-        nf_numero: null,
-        nf_data: null,
-        nf_pdf_url: null,
-        status_documento: 'pendente_nf',
-        solicitante: null,
-        aprovador: null,
-        ...d,
-      }))
-    return NextResponse.json(ativos)
+      .map((d: any) => {
+        const rec: any = {
+          numero_pedido_fip: null,
+          pedido_pdf_url: null,
+          pedido_pdf_nome: null,
+          nf_numero: null,
+          nf_data: null,
+          nf_pdf_url: null,
+          status_documento: 'pendente_nf',
+          solicitante: null,
+          aprovador: null,
+          ...d,
+        }
+
+        // Deriva status_documento e campos NF a partir do join.
+        // NFs ativas = aprovadas ou aguardando_aprovacao (reservam saldo).
+        const nfsJoin: any[] = Array.isArray(rec.notas_fiscais) ? rec.notas_fiscais : []
+        const nfsAtivas = nfsJoin.filter(
+          (n: any) => n.status === 'aprovada' || n.status === 'aguardando_aprovacao',
+        )
+        if (nfsAtivas.length > 0) {
+          if (rec.status_documento === 'pendente_nf') {
+            rec.status_documento = 'nf_recebida'
+          }
+          if (!rec.nf_numero) {
+            const nf = nfsAtivas.find((n: any) => n.status === 'aprovada') ?? nfsAtivas[0]
+            rec.nf_numero = nf.numero_nf ?? null
+            rec.nf_data   = nf.data_emissao ?? null
+            if (!rec.nf_pdf_url && nf.arquivo_url) rec.nf_pdf_url = nf.arquivo_url
+          }
+        }
+
+        delete rec.notas_fiscais
+        return rec
+      })
+
+    // Filtro view=com-nf aplicado em código (após derivação do status_documento).
+    // Se estamos no fallback sem doc cols não filtramos — melhor mostrar tudo
+    // do que deixar a página vazia.
+    const resultado = (view === 'com-nf' && temDocCols)
+      ? ativos.filter((d: any) => d.status_documento === 'nf_recebida' || d.status_documento === 'pago')
+      : ativos
+
+    return NextResponse.json(resultado)
   } catch (e: any) {
     return apiError(e)
   }

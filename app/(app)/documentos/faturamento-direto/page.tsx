@@ -13,6 +13,7 @@ import {
   FileText, Search, Filter, Download, Clock, CheckCircle2, Banknote,
   X, Upload, RefreshCw, FolderOpen, Receipt,
   Paperclip, FileCheck, Trash2, Loader2, Undo2,
+  ChevronsUpDown, ChevronUp, ChevronDown,
 } from 'lucide-react'
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
@@ -245,7 +246,7 @@ const VIEW_CONFIG: Record<string, { title: string; subtitle: string; icon: any; 
   },
   'aprovadas': {
     title: 'Solicitações Aprovadas — Faturamento Direto',
-    subtitle: 'Todos os pedidos aprovados, com ou sem NF',
+    subtitle: 'Todos os pedidos aprovados e encerrados, com ou sem NF',
     icon: CheckCircle2,
     gradient: 'linear-gradient(135deg, #F59E0B, #EAB308)',
   },
@@ -305,6 +306,26 @@ function PedidosFatDiretoContent() {
   const [filtroSolicitante, setFiltroSolicitante] = useState<Set<string>>(new Set())
   const [filtroAprovador,   setFiltroAprovador]   = useState<Set<string>>(new Set())
   const [filtroStatus,      setFiltroStatus]      = useState<Set<string>>(new Set())
+
+  // Ordenação de colunas
+  const [sortKey, setSortKey] = useState<string>('data_solicitacao')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
+  function toggleSort(key: string) {
+    if (sortKey === key) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortKey(key)
+      setSortDir('desc')
+    }
+  }
+
+  function SortIcon({ colKey }: { colKey: string }) {
+    if (sortKey !== colKey) return <ChevronsUpDown className="w-3 h-3 opacity-40" strokeWidth={1.5} />
+    return sortDir === 'asc'
+      ? <ChevronUp className="w-3 h-3" strokeWidth={2} style={{ color: 'var(--accent)' }} />
+      : <ChevronDown className="w-3 h-3" strokeWidth={2} style={{ color: 'var(--accent)' }} />
+  }
 
   // Modais
   const [pdfModal, setPdfModal] = useState<{ url: string; nome: string } | null>(null)
@@ -452,23 +473,18 @@ function PedidosFatDiretoContent() {
 
   // Lista final aplicando os filtros estilo Excel no client
   const pedidosFiltrados = useMemo(() => {
-    // Filtro de data no client (apenas pra views aprovadas/com-nf — endpoint
-    // já filtra a view padrão). Usa coalesce data_aprovacao || data_solicitacao ||
-    // created_at — se uma das datas faltar, cai pra próxima. Garante que
-    // pedidos sem data_aprovacao não sumam do range.
     const dataInicioISO = dataInicio ? new Date(dataInicio + 'T00:00:00').getTime() : -Infinity
     const dataFimISO    = dataFim    ? new Date(dataFim    + 'T23:59:59.999').getTime() : Infinity
 
-    return pedidos.filter(p => {
-      const pedidoStr      = p.numero_pedido_fip ? `FIP-${String(p.numero_pedido_fip).padStart(4,'0')}` : `#${p.numero}`
-      const statusStr      = STATUS_DOC[p.status_documento]?.label ?? p.status_documento
-      if (!passaFiltro(filtroPedido,      pedidoStr))                         return false
-      if (!passaFiltro(filtroFornecedor,  p.fornecedor_razao_social || '—'))  return false
-      if (!passaFiltro(filtroSolicitante, nomeExibicao(p.solicitante)))       return false
-      if (!passaFiltro(filtroAprovador,   nomeExibicao(p.aprovador)))         return false
-      if (!passaFiltro(filtroStatus,      statusStr))                         return false
+    const filtered = pedidos.filter(p => {
+      const pedidoStr = p.numero_pedido_fip ? `FIP-${String(p.numero_pedido_fip).padStart(4,'0')}` : `#${p.numero}`
+      const statusStr = STATUS_DOC[p.status_documento]?.label ?? p.status_documento
+      if (!passaFiltro(filtroPedido,      pedidoStr))                        return false
+      if (!passaFiltro(filtroFornecedor,  p.fornecedor_razao_social || '—')) return false
+      if (!passaFiltro(filtroSolicitante, nomeExibicao(p.solicitante)))      return false
+      if (!passaFiltro(filtroAprovador,   nomeExibicao(p.aprovador)))        return false
+      if (!passaFiltro(filtroStatus,      statusStr))                        return false
 
-      // Filtro de data — só pra views aprovadas/com-nf (resto já filtra no server)
       if (view === 'aprovadas' || view === 'com-nf') {
         const refStr = p.data_aprovacao || p.data_solicitacao || p.created_at
         if (refStr) {
@@ -478,11 +494,50 @@ function PedidosFatDiretoContent() {
             if (refTs > dataFimISO) return false
           }
         }
-        // Se nenhuma data conhecida, NÃO esconde — deixa aparecer
       }
       return true
     })
-  }, [pedidos, view, dataInicio, dataFim, filtroPedido, filtroFornecedor, filtroSolicitante, filtroAprovador, filtroStatus])
+
+    // Ordenação
+    filtered.sort((a, b) => {
+      let va: any
+      let vb: any
+      switch (sortKey) {
+        case 'pedido':
+          va = a.numero_pedido_fip ?? a.numero
+          vb = b.numero_pedido_fip ?? b.numero
+          break
+        case 'fornecedor':
+          va = (a.fornecedor_razao_social ?? '').toLowerCase()
+          vb = (b.fornecedor_razao_social ?? '').toLowerCase()
+          break
+        case 'solicitante':
+          va = nomeExibicao(a.solicitante).toLowerCase()
+          vb = nomeExibicao(b.solicitante).toLowerCase()
+          break
+        case 'data_aprovacao':
+          va = a.data_aprovacao ?? a.data_solicitacao ?? ''
+          vb = b.data_aprovacao ?? b.data_solicitacao ?? ''
+          break
+        case 'valor_total':
+          va = a.valor_total ?? 0
+          vb = b.valor_total ?? 0
+          break
+        case 'status':
+          va = (STATUS_DOC[a.status_documento]?.label ?? a.status_documento).toLowerCase()
+          vb = (STATUS_DOC[b.status_documento]?.label ?? b.status_documento).toLowerCase()
+          break
+        default: // data_solicitacao
+          va = a.data_solicitacao ?? ''
+          vb = b.data_solicitacao ?? ''
+      }
+      if (va < vb) return sortDir === 'asc' ? -1 : 1
+      if (va > vb) return sortDir === 'asc' ? 1 : -1
+      return 0
+    })
+
+    return filtered
+  }, [pedidos, view, dataInicio, dataFim, filtroPedido, filtroFornecedor, filtroSolicitante, filtroAprovador, filtroStatus, sortKey, sortDir])
 
   const totalFiltrado = pedidosFiltrados.reduce((s, p) => s + (p.valor_total || 0), 0)
   const temFiltroAtivo = !!(
@@ -621,29 +676,43 @@ function PedidosFatDiretoContent() {
                     color: 'var(--text-3)',
                   }}
                 >
-                  <span className="flex items-center gap-1">
+                  <button onClick={() => toggleSort('pedido')} className="flex items-center gap-1 cursor-pointer select-none hover:opacity-80">
                     Pedido
+                    <SortIcon colKey="pedido" />
                     <ColumnFilter label="Pedido" values={valoresUnicos.pedido} selected={filtroPedido} onChange={setFiltroPedido} />
-                  </span>
-                  <span className="flex items-center gap-1">
+                  </button>
+                  <button onClick={() => toggleSort('fornecedor')} className="flex items-center gap-1 cursor-pointer select-none hover:opacity-80">
                     Fornecedor
+                    <SortIcon colKey="fornecedor" />
                     <ColumnFilter label="Fornecedor" values={valoresUnicos.fornecedor} selected={filtroFornecedor} onChange={setFiltroFornecedor} />
-                  </span>
-                  <span className="flex items-center gap-1">
+                  </button>
+                  <button onClick={() => toggleSort('solicitante')} className="flex items-center gap-1 cursor-pointer select-none hover:opacity-80">
                     Solicitante
+                    <SortIcon colKey="solicitante" />
                     <ColumnFilter label="Solicitante" values={valoresUnicos.solicitante} selected={filtroSolicitante} onChange={setFiltroSolicitante} />
-                  </span>
-                  <span>Data solicit.</span>
-                  <span className="flex items-center gap-1">
+                  </button>
+                  <button onClick={() => toggleSort('data_solicitacao')} className="flex items-center gap-1 cursor-pointer select-none hover:opacity-80">
+                    Data solicit.
+                    <SortIcon colKey="data_solicitacao" />
+                  </button>
+                  <button onClick={() => toggleSort('aprovador')} className="flex items-center gap-1 cursor-pointer select-none hover:opacity-80">
                     Aprovador
+                    <SortIcon colKey="aprovador" />
                     <ColumnFilter label="Aprovador" values={valoresUnicos.aprovador} selected={filtroAprovador} onChange={setFiltroAprovador} />
-                  </span>
-                  <span>Data aprov.</span>
-                  <span className="text-right">Valor</span>
-                  <span className="flex items-center gap-1">
+                  </button>
+                  <button onClick={() => toggleSort('data_aprovacao')} className="flex items-center gap-1 cursor-pointer select-none hover:opacity-80">
+                    Data aprov.
+                    <SortIcon colKey="data_aprovacao" />
+                  </button>
+                  <button onClick={() => toggleSort('valor_total')} className="flex items-center gap-1 cursor-pointer select-none hover:opacity-80 ml-auto">
+                    Valor
+                    <SortIcon colKey="valor_total" />
+                  </button>
+                  <button onClick={() => toggleSort('status')} className="flex items-center gap-1 cursor-pointer select-none hover:opacity-80">
                     Status
+                    <SortIcon colKey="status" />
                     <ColumnFilter label="Status" values={valoresUnicos.status} selected={filtroStatus} onChange={setFiltroStatus} />
-                  </span>
+                  </button>
                   <span className="text-center">Pedido PDF</span>
                   <span className="text-center">NF PDF</span>
                   {mostrarAcoes && <span className="text-center" title="Ações">·</span>}
