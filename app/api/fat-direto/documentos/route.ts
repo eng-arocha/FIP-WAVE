@@ -186,6 +186,21 @@ export async function GET(req: Request) {
           }
         }
 
+        // nf_count: total de NFs ativas — usado pela UI para mostrar badge "+N"
+        // quando há mais de uma NF no pedido.
+        rec.nf_count = nfsAtivas.length > 0
+          ? nfsAtivas.length
+          : (rec.nf_numero ? 1 : 0)
+
+        // nf_pdfs: lista de todas as NFs com PDF para o dropdown multi-NF
+        rec.nf_pdfs = nfsAtivas
+          .filter((n: any) => n.arquivo_url)
+          .map((n: any) => ({ numero_nf: n.numero_nf, url: n.arquivo_url }))
+        // Inclui o nf_pdf_url legacy se não está coberto acima
+        if (rec.nf_pdf_url && !rec.nf_pdfs.some((p: any) => p.url === rec.nf_pdf_url)) {
+          rec.nf_pdfs.unshift({ numero_nf: rec.nf_numero ?? 'NF', url: rec.nf_pdf_url })
+        }
+
         delete rec.notas_fiscais
         return rec
       })

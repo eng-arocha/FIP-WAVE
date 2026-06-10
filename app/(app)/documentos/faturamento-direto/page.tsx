@@ -10,7 +10,7 @@ import { ColumnFilter, passaFiltro } from '@/components/ui/column-filter'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 import { formatCurrency } from '@/lib/utils'
 import {
-  FileText, Search, Filter, Download, Clock, CheckCircle2, Banknote,
+  FileText, Search, Filter, Download, Clock, CheckCircle2,
   X, Upload, RefreshCw, FolderOpen, Receipt,
   Paperclip, FileCheck, Trash2, Loader2, Undo2,
   ChevronsUpDown, ChevronUp, ChevronDown,
@@ -35,6 +35,8 @@ interface Pedido {
   nf_numero: string | null
   nf_data: string | null
   nf_pdf_url: string | null
+  nf_count: number
+  nf_pdfs: { numero_nf: string; url: string }[]
   status_documento: string
   contrato: Contrato | null
   solicitante: PerfilMini | null
@@ -53,7 +55,7 @@ function nomeExibicao(p: PerfilMini | null | undefined): string {
 const STATUS_DOC: Record<string, { label: string; color: string; bg: string; Icon: any }> = {
   pendente_nf: { label: 'Pendente NF',  color: '#F59E0B', bg: 'rgba(245,158,11,0.12)',  Icon: Clock },
   nf_recebida: { label: 'NF Recebida',  color: '#3B82F6', bg: 'rgba(59,130,246,0.12)',  Icon: CheckCircle2 },
-  pago:        { label: 'Pago',         color: '#10B981', bg: 'rgba(16,185,129,0.12)',  Icon: Banknote },
+  pago:        { label: 'Pago',         color: '#10B981', bg: 'rgba(16,185,129,0.12)',  Icon: CheckCircle2 },
 }
 
 function formatDateBR(iso: string | null) {
@@ -421,19 +423,21 @@ function PedidosFatDiretoContent() {
     }
   }
 
-  async function marcarPago(pedido: Pedido) {
-    const res = await fetch(`/api/fat-direto/documentos/${pedido.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status_documento: 'pago' }),
-    })
-    if (res.ok) {
-      setPedidos(prev => prev.map(p => p.id === pedido.id ? { ...p, status_documento: 'pago' } : p))
-    }
-  }
-
   function onNfSaved(updated: Pedido) {
-    setPedidos(prev => prev.map(p => p.id === updated.id ? { ...p, ...updated } : p))
+    setPedidos(prev => prev.map(p => {
+      if (p.id !== updated.id) return p
+      const merged = { ...p, ...updated }
+      // Garante que nf_pdfs existe (GET /documentos/[id] não retorna o campo)
+      if (!merged.nf_pdfs) {
+        merged.nf_pdfs = merged.nf_pdf_url
+          ? [{ numero_nf: merged.nf_numero ?? 'NF', url: merged.nf_pdf_url }]
+          : []
+      }
+      if (typeof merged.nf_count !== 'number') {
+        merged.nf_count = merged.nf_pdfs.length
+      }
+      return merged
+    }))
   }
 
   // Exportar CSV (respeita os filtros de coluna aplicados na UI)
@@ -812,21 +816,10 @@ function PedidosFatDiretoContent() {
                           {formatCurrency(pedido.valor_total)}
                         </span>
 
-                        {/* Status */}
+                        {/* Status — sem botão "Marcar como Pago" (controle de pagamento
+                            não é usado nesta view; o status fica como referência histórica) */}
                         <div className="flex items-center gap-1">
                           <StatusBadge status={pedido.status_documento} />
-                          {pedido.status_documento === 'nf_recebida' && (
-                            <button
-                              onClick={() => marcarPago(pedido)}
-                              title="Marcar como Pago"
-                              className="w-5 h-5 rounded-full flex items-center justify-center transition-all"
-                              style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981' }}
-                              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.25)' }}
-                              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.12)' }}
-                            >
-                              <Banknote className="w-3 h-3" strokeWidth={2} />
-                            </button>
-                          )}
                         </div>
 
                         {/* PDF Pedido */}
@@ -838,9 +831,32 @@ function PedidosFatDiretoContent() {
                           />
                         </div>
 
-                        {/* PDF NF / Anexar NF */}
-                        <div className="flex justify-center">
-                          {pedido.nf_pdf_url ? (
+                        {/* PDF NF — suporte a múltiplas NFs por pedido.
+                            Se nf_pdfs tem mais de 1 entrada, exibe o 1º ícone + badge "+N".
+                            Se não tem nenhum PDF, exibe o clipe para anexar. */}
+                        <div className="flex justify-center items-center gap-0.5">
+                          {(pedido.nf_pdfs?.length ?? 0) > 0 ? (
+                            <>
+                              <PdfIcon
+                                url={pedido.nf_pdfs[0].url}
+                                nome={`NF-${pedido.nf_pdfs[0].numero_nf}.pdf`}
+                                onClick={() => setPdfModal({ url: pedido.nf_pdfs[0].url, nome: `NF-${pedido.nf_pdfs[0].numero_nf}.pdf` })}
+                              />
+                              {pedido.nf_pdfs.length > 1 && (
+                                <span
+                                  className="text-[10px] font-bold px-1 py-0.5 rounded cursor-pointer select-none"
+                                  style={{ background: 'rgba(239,68,68,0.12)', color: '#EF4444' }}
+                                  title={pedido.nf_pdfs.map(n => `NF-${n.numero_nf}`).join(', ')}
+                                  onClick={() => {
+                                    // Abre a segunda NF diretamente; se mais de 2, fica visível no tooltip
+                                    setPdfModal({ url: pedido.nf_pdfs[1].url, nome: `NF-${pedido.nf_pdfs[1].numero_nf}.pdf` })
+                                  }}
+                                >
+                                  +{pedido.nf_pdfs.length - 1}
+                                </span>
+                              )}
+                            </>
+                          ) : pedido.nf_pdf_url ? (
                             <PdfIcon
                               url={pedido.nf_pdf_url}
                               nome={`NF-${pedido.nf_numero ?? 'doc'}.pdf`}
