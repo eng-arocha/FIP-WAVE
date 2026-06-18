@@ -47,18 +47,32 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 }
 
-// DELETE: excluir medição
+// DELETE: excluir medição (admin sempre; criador se ainda não aprovada/em_analise)
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string; medicaoId: string }> }) {
   try {
-    const user = await checkAdmin()
-    if (!user) return NextResponse.json({ error: 'Apenas administradores' }, { status: 403 })
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
     const { medicaoId } = await params
     const admin = createAdminClient()
 
-    await admin.from('medicao_itens').delete().eq('medicao_id', medicaoId)
-    await admin.from('medicao_anexos').delete().eq('medicao_id', medicaoId)
-    await admin.from('medicao_aprovacoes').delete().eq('medicao_id', medicaoId)
+    const isAdmin = await checkAdmin().then(u => u !== null)
+    if (!isAdmin) {
+      const { data: medicao } = await admin
+        .from('medicoes')
+        .select('solicitante_email, status')
+        .eq('id', medicaoId)
+        .single()
+      if (!medicao) return NextResponse.json({ error: 'Medição não encontrada' }, { status: 404 })
+      const criadorPodeExcluir =
+        medicao.solicitante_email === user.email &&
+        !['aprovado', 'em_analise'].includes(medicao.status)
+      if (!criadorPodeExcluir)
+        return NextResponse.json({ error: 'Sem permissão para excluir esta medição' }, { status: 403 })
+    }
+
+    // Cascade ON DELETE na FK já remove medicao_itens, medicao_anexos e aprovacoes
     const { error } = await admin.from('medicoes').delete().eq('id', medicaoId)
     if (error) throw error
 

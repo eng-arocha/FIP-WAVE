@@ -14,7 +14,30 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       getContrato(id),
       getContratoResumo(id).catch(() => null),
     ])
-    return NextResponse.json({ ...contrato, ...resumo })
+
+    // Subtract approved fat-direto NFs from saldo (vw_resumo_contrato only counts medições de serviço)
+    const admin = createAdminClient()
+    const { data: solsAprov } = await admin
+      .from('solicitacoes_fat_direto')
+      .select('id')
+      .eq('contrato_id', id)
+      .eq('status', 'aprovado')
+    const solIds = (solsAprov || []).map((s: any) => s.id)
+    let fatDiretoAprovado = 0
+    if (solIds.length > 0) {
+      const { data: nfs } = await admin
+        .from('notas_fiscais_fat_direto')
+        .select('valor')
+        .in('solicitacao_id', solIds)
+        .neq('status', 'cancelada')
+      fatDiretoAprovado = (nfs || []).reduce((acc: number, nf: any) => acc + (nf.valor || 0), 0)
+    }
+
+    const valorContratado: number = (resumo as any)?.valor_contratado ?? (contrato as any)?.valor_total ?? 0
+    const valorMedido: number = (resumo as any)?.valor_medido ?? 0
+    const saldo = valorContratado - valorMedido - fatDiretoAprovado
+
+    return NextResponse.json({ ...contrato, ...resumo, saldo, fat_direto_aprovado: fatDiretoAprovado })
   } catch (e: any) {
     return apiError(e)
   }
