@@ -120,6 +120,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
 
   const [historicoMedicoes, setHistoricoMedicoes] = useState<any[]>([])
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
   const { perfilAtual } = usePermissoes()
   const isAdmin = perfilAtual === 'admin'
 
@@ -256,6 +257,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
   // Realtime: auto-refresh when this measurement is approved/rejected elsewhere
   useEffect(() => {
     const supabase = createClient()
+    supabase.auth.getUser().then(({ data }) => setUserEmail(data.user?.email ?? null))
     const channel = supabase
       .channel(`medicao-${medicaoId}`)
       .on(
@@ -276,6 +278,8 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
   }
 
   const isPendente = status === 'submetido' || status === 'em_analise'
+  const isCriador = userEmail !== null && medicao.solicitante_email === userEmail
+  const criadorPodeExcluir = isCriador && !['aprovado', 'em_analise', 'cancelado'].includes(status)
 
   // Anomaly detection: flag if value is >2x the average of approved measurements
   const anomalia = (() => {
@@ -703,6 +707,31 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                   </Button>
                   {confirmDelete && (
                     <Button variant="outline" size="sm" onClick={() => setConfirmDelete(false)}>Cancelar</Button>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Remover medição — disponível para o próprio criador enquanto não aprovada */}
+            {!isAdmin && criadorPodeExcluir && (
+              <Card className="border-red-900/40">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-red-400">Remover Medição</CardTitle>
+                </CardHeader>
+                <CardContent className="flex gap-2 items-center">
+                  <Button
+                    variant="outline" size="sm"
+                    onClick={excluir}
+                    className={confirmDelete ? 'border-red-500 bg-red-900/30 text-red-300' : 'border-red-900 text-red-400 hover:bg-red-900/20'}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    {confirmDelete ? 'Confirmar Exclusão' : 'Excluir Medição'}
+                  </Button>
+                  {confirmDelete && (
+                    <Button variant="outline" size="sm" onClick={() => setConfirmDelete(false)}>Cancelar</Button>
+                  )}
+                  {!confirmDelete && (
+                    <span className="text-xs text-[var(--text-3)]">Só disponível enquanto não aprovada</span>
                   )}
                 </CardContent>
               </Card>
