@@ -15,7 +15,7 @@ import { usePermissoes } from '@/lib/context/permissoes-context'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { exportCsv } from '@/lib/utils/csv'
 import {
-  ArrowLeft, Loader2, Download, Copy, Check, FileText, TrendingUp, Printer, HelpCircle, X,
+  ArrowLeft, ArrowRight, Loader2, Download, Copy, Check, FileText, TrendingUp, Printer, HelpCircle, X,
   CheckCircle2, XCircle, Mail, AlertTriangle, Info, Undo2, Pencil,
 } from 'lucide-react'
 
