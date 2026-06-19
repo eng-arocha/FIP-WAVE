@@ -122,6 +122,8 @@ export default function NfFatDiretoPage() {
   const [motivoRejeicao, setMotivoRejeicao] = useState('')
   const [filaErro, setFilaErro] = useState('')
 
+  const [filtroRetidoIds, setFiltroRetidoIds] = useState<Set<string>>(new Set())
+
   const reload = useCallback(() => {
     setLoading(true)
     fetch('/api/nf-fat-direto')
@@ -131,6 +133,20 @@ export default function NfFatDiretoPage() {
   }, [])
 
   useEffect(() => { reload() }, [reload])
+
+  // Lê sol_ids da URL (vindo do boletim ao clicar em RETIDO)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const solIds = params.get('sol_ids')
+    if (solIds) {
+      const ids = solIds.split(',').filter(Boolean)
+      if (ids.length > 0) {
+        setFiltroRetidoIds(new Set(ids))
+        setFiltroStatus('todos')
+      }
+    }
+  }, [])
 
   // NFs aguardando aprovação, achatadas com o pedido de origem.
   const nfsAguardando = useMemo(() => {
@@ -211,6 +227,7 @@ export default function NfFatDiretoPage() {
   const [fStatusCol, setFStatusCol] = useState<Set<string>>(new Set())
 
   const filtradasStatus = solicitacoes.filter(s => {
+    if (filtroRetidoIds.size > 0) return filtroRetidoIds.has(s.id)
     if (filtroStatus === 'com_saldo') return s.status === 'aprovado' && temSaldo(s)
     if (filtroStatus === 'sem_saldo') return !temSaldo(s)
     return true
@@ -1190,6 +1207,28 @@ export default function NfFatDiretoPage() {
           ))}
         </div>
 
+        {/* Banner: filtro por saldo retido do boletim */}
+        {filtroRetidoIds.size > 0 && (
+          <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.30)' }}>
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" style={{ color: '#F59E0B' }} />
+            <span className="text-sm flex-1" style={{ color: 'var(--text-2)' }}>
+              Filtrando {filtradasStatus.length} pedido(s) com saldo retido referenciados no boletim
+              {filtradasStatus.length < filtroRetidoIds.size && (
+                <span className="ml-1" style={{ color: '#F59E0B' }}>
+                  ({filtroRetidoIds.size - filtradasStatus.length} não encontrado(s) — pode ter sido encerrado ou excluído)
+                </span>
+              )}
+            </span>
+            <button
+              onClick={() => { setFiltroRetidoIds(new Set()); setFiltroStatus('com_saldo') }}
+              className="text-xs font-medium px-2.5 py-1 rounded-lg flex-shrink-0"
+              style={{ background: 'rgba(245,158,11,0.15)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.30)' }}
+            >
+              Limpar filtro ×
+            </button>
+          </div>
+        )}
+
         {/* Filtro pills */}
         <div className="flex gap-2">
           {([
@@ -1197,12 +1236,12 @@ export default function NfFatDiretoPage() {
             { id: 'com_saldo', label: 'Pedidos com Saldo' },
             { id: 'sem_saldo', label: 'Pedidos sem Saldo' },
           ] as const).map(f => (
-            <button key={f.id} onClick={() => setFiltroStatus(f.id)}
+            <button key={f.id} onClick={() => { setFiltroStatus(f.id); setFiltroRetidoIds(new Set()) }}
               className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
               style={{
-                background: filtroStatus === f.id ? '#06B6D4' : 'var(--surface-2)',
-                color: filtroStatus === f.id ? '#fff' : 'var(--text-2)',
-                border: `1px solid ${filtroStatus === f.id ? '#06B6D4' : 'var(--border)'}`,
+                background: filtroStatus === f.id && filtroRetidoIds.size === 0 ? '#06B6D4' : 'var(--surface-2)',
+                color: filtroStatus === f.id && filtroRetidoIds.size === 0 ? '#fff' : 'var(--text-2)',
+                border: `1px solid ${filtroStatus === f.id && filtroRetidoIds.size === 0 ? '#06B6D4' : 'var(--border)'}`,
               }}
             >
               {f.label}

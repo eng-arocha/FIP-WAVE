@@ -67,6 +67,8 @@ export interface InformaconLinha {
   servico_acumulado: number
   ajustes_admin: AjusteAdmin[]
   foi_ajustado_pelo_admin: boolean
+  /** IDs das solicitações fat-direto aprovadas com saldo em aberto para este item. */
+  solicitacoes_retido_ids: string[]
 }
 
 export interface InformaconTotais {
@@ -307,6 +309,7 @@ export async function calcularInformaconData(
   // 4) Solicitações fat-direto APROVADAS + NFs alocadas por detalhamento
   const aprovadoPorDet: Record<string, number> = {}
   const nfAlocadaPorDet: Record<string, number> = {}
+  const solicitacoesComSaldoPorDet: Record<string, string[]> = {}
   {
     const { data: solRaw, error: solErr } = await admin
       .from('solicitacoes_fat_direto')
@@ -334,6 +337,14 @@ export async function calcularInformaconData(
 
       const totalNfsSol = ((sol.nfs || []) as any[])
         .reduce((s: number, nf: any) => s + Number(nf.valor || 0), 0)
+
+      // Solicitacao tem saldo em aberto → associa aos seus itens
+      if (totalSol > totalNfsSol + 0.01) {
+        for (const it of itensVal) {
+          if (!solicitacoesComSaldoPorDet[it.detId!]) solicitacoesComSaldoPorDet[it.detId!] = []
+          solicitacoesComSaldoPorDet[it.detId!].push(sol.id)
+        }
+      }
 
       if (totalSol > 0 && totalNfsSol > 0) {
         for (const it of itensVal) {
@@ -438,6 +449,9 @@ export async function calcularInformaconData(
         servico_acumulado: qtdAcum * servUnit,
         ajustes_admin: [],
         foi_ajustado_pelo_admin: false,
+        solicitacoes_retido_ids: faturamentoDiretoEmAberto > 0
+          ? (solicitacoesComSaldoPorDet[det.id] || [])
+          : [],
       }
       return linha
     })
@@ -502,6 +516,7 @@ export async function calcularInformaconData(
       servico_acumulado: qtdAcum * servUnit,
       ajustes_admin: [],
       foi_ajustado_pelo_admin: false,
+      solicitacoes_retido_ids: [],
     }
     linhas.push(linhaVirtual)
   }
