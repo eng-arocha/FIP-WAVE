@@ -62,19 +62,21 @@ const s = StyleSheet.create({
   footerTxt: { fontSize: 6.5, color: '#94a3b8' },
 })
 
-// column widths (landscape A4 = 841pt, minus 72pt margins = 769pt usable)
+// column widths — soma exata = 100%
+// antPct/atuPct/totPct/salPct maiores para caber "39.6% (19)"
 const COL = {
-  cod:   '7%',
-  desc:  '27%',
-  vg:    '10%',
-  ant:   '10%',   // Med. Anterior R$
-  antPct:'7%',    // Med. Anterior %
-  atu:   '10%',   // Med. Atual R$
-  atuPct:'7%',    // Med. Atual %
-  tot:   '10%',   // Total R$
-  totPct:'6%',    // Total %
-  sal:   '10%',   // Saldo R$
-  salPct:'6%',    // Saldo %
+  cod:   '5%',
+  desc:  '20%',
+  vg:    '8%',
+  antPct:'9%',    // Med. Anterior % (+ qtd)
+  ant:   '9%',    // Med. Anterior R$
+  atuPct:'9%',    // Med. Atual % (+ qtd)
+  atu:   '9%',    // Med. Atual R$
+  totPct:'8%',    // Total % (+ qtd)
+  tot:   '8%',    // Total R$
+  salPct:'8%',    // Saldo % (+ qtd)
+  sal:   '7%',    // Saldo R$
+  // 5+20+8+9+9+9+9+8+8+8+7 = 100 ✓
 }
 
 function R(v: number) {
@@ -84,6 +86,13 @@ function fmtDate(d?: string) { return d ? new Date(d).toLocaleDateString('pt-BR'
 
 // pct já vem em escala 0-100 da API (ex: 4.9 = 4,9%)
 function rPct(pct: number) { return pct === 0 ? '—' : `${pct.toFixed(1)}%` }
+// Com quantidade entre parênteses: "39.6% (19)" — usado quando qtdContratada > 1
+function rPctQtd(pct: number, qtd: number, showQtd: boolean): string {
+  const base = pct === 0 ? '—' : `${pct.toFixed(1)}%`
+  if (!showQtd || qtd === 0 || pct === 0) return base
+  const q = Number.isInteger(qtd) ? String(qtd) : qtd.toFixed(2).replace(/\.?0+$/, '')
+  return `${base} (${q})`
+}
 function rVal(v: number) { return v === 0 ? '—' : R(v) }
 
 interface MedicaoPDFProps {
@@ -303,6 +312,9 @@ export function MedicaoPDF({ medicao, itens, aprovacoes, planilha, somentePeriod
                     {t.detalhamentos.map((d: any) => {
                       const alt = detIdx++ % 2 === 0
                       const hasPav = d.pavimentos_pct && Object.keys(d.pavimentos_pct).length > 0
+                      // Mostrar quantidade entre parênteses para itens multi-unidade (vãos, prumadas, etc.)
+                      // Não aplica a itens PAV TIPO (já têm breakdown por pavimento)
+                      const showQtd = d.quantidade_contratada > 1 && !hasPav
                       const qtdUnit = d.quantidade_contratada > 0
                         ? `${d.quantidade_contratada} × ${R(d.valor_unitario_contratual)}`
                         : R(d.valor_global_item)
@@ -315,13 +327,13 @@ export function MedicaoPDF({ medicao, itens, aprovacoes, planilha, somentePeriod
                               <Text style={{ fontSize: 6, color: '#94a3b8', marginTop: 1 }}>{qtdUnit}</Text>
                             </View>
                             <Text style={[s.dtTxt, { width: COL.vg, textAlign: 'right', fontFamily: 'Helvetica-Bold' }]}>{R(d.valor_global_item)}</Text>
-                            <Text style={[s.dtTxt, { width: COL.antPct, textAlign: 'right', color: GRY }]}>{rPct(d.pct_anterior)}</Text>
+                            <Text style={[s.dtTxt, { width: COL.antPct, textAlign: 'right', color: GRY }]}>{rPctQtd(d.pct_anterior, d.qtd_anterior, showQtd)}</Text>
                             <Text style={[s.dtTxt, { width: COL.ant, textAlign: 'right', color: GRY }]}>{rVal(d.valor_anterior)}</Text>
-                            <Text style={[s.dtTxt, { width: COL.atuPct, textAlign: 'right', color: d.valor_atual > 0 ? AMB : GRY }]}>{rPct(d.pct_atual)}</Text>
+                            <Text style={[s.dtTxt, { width: COL.atuPct, textAlign: 'right', color: d.valor_atual > 0 ? AMB : GRY }]}>{rPctQtd(d.pct_atual, d.qtd_atual, showQtd)}</Text>
                             <Text style={[s.dtTxt, { width: COL.atu, textAlign: 'right', fontFamily: d.valor_atual > 0 ? 'Helvetica-Bold' : 'Helvetica', color: d.valor_atual > 0 ? AMB : GRY }]}>{rVal(d.valor_atual)}</Text>
-                            <Text style={[s.dtTxt, { width: COL.totPct, textAlign: 'right' }]}>{rPct(d.pct_total)}</Text>
+                            <Text style={[s.dtTxt, { width: COL.totPct, textAlign: 'right' }]}>{rPctQtd(d.pct_total, d.qtd_total, showQtd)}</Text>
                             <Text style={[s.dtTxt, { width: COL.tot, textAlign: 'right' }]}>{rVal(d.valor_total)}</Text>
-                            <Text style={[s.dtTxt, { width: COL.salPct, textAlign: 'right', color: GRY }]}>{rPct(d.pct_saldo)}</Text>
+                            <Text style={[s.dtTxt, { width: COL.salPct, textAlign: 'right', color: GRY }]}>{rPctQtd(d.pct_saldo, d.qtd_saldo, showQtd)}</Text>
                             <Text style={[s.dtTxt, { width: COL.sal, textAlign: 'right', color: GRY }]}>{rVal(d.valor_saldo)}</Text>
                           </View>
                           {hasPav && renderPavBreakdown(d.pavimentos_pct, d.pavimentos_pct_anterior)}
