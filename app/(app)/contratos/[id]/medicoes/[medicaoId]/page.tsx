@@ -18,6 +18,7 @@ import {
   Mail, TrendingUp, ChevronRight, ChevronDown, Pencil, Building2,
 } from 'lucide-react'
 import { detectarPavRange, listarPavimentos } from '@/lib/pavimentos'
+import { detectarVaos, nomeVao } from '@/lib/vaos'
 import {
   formatCurrency, formatDatetime, formatDate, formatPercent,
   getMedicaoStatusColor
@@ -988,6 +989,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                           const hasPav = !!(it.pavimentos_pct && Object.keys(it.pavimentos_pct).length > 0)
                                           const isPavExpanded = hasPav && expandedPavItems.has(pavItemKey)
                                           const pavRange = hasPav ? detectarPavRange(it.descricao, it.quantidade_contratada) : null
+                                          const vaoNomes = (hasPav && !pavRange) ? detectarVaos(it.descricao, it.quantidade_contratada) : null
                                           return (
                                             <Fragment key={`d-${it.medicao_item_id || it.detalhamento_id}`}>
                                               <tr className="border-b border-[var(--border)]" style={{ background: 'var(--surface-1)' }}>
@@ -1075,14 +1077,21 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                                   <td colSpan={7} className="pb-3 px-10">
                                                     <div className="rounded-lg border p-2" style={{ borderColor: 'var(--border)', background: 'var(--surface-2)' }}>
                                                       <p className="text-[10px] mb-2" style={{ color: 'var(--text-3)' }}>
-                                                        Breakdown por pavimento · acumulado ao fim desta medição
+                                                        {vaoNomes ? 'Breakdown por vão' : 'Breakdown por pavimento'} · acumulado ao fim desta medição
                                                       </p>
                                                       <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-1">
-                                                        {(pavRange ? listarPavimentos(pavRange) : Object.keys(it.pavimentos_pct).map(Number).sort((a, b) => a - b))
+                                                        {(pavRange
+                                                          ? listarPavimentos(pavRange)
+                                                          : vaoNomes
+                                                          ? vaoNomes.map((_, i) => i + 1)
+                                                          : Object.keys(it.pavimentos_pct!).map(Number).sort((a, b) => a - b))
                                                           .map(pavtoNum => {
                                                             const pctAtu = Number(it.pavimentos_pct![String(pavtoNum)] ?? 0)
                                                             const pctAnt = Number(it.pavimentos_pct_anterior?.[String(pavtoNum)] ?? 0)
                                                             const isDelta = pctAtu > pctAnt
+                                                            const label = vaoNomes
+                                                              ? nomeVao(vaoNomes, pavtoNum)
+                                                              : `${pavtoNum}º pav`
                                                             return (
                                                               <div
                                                                 key={pavtoNum}
@@ -1094,7 +1103,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                                                     : 'border-[var(--border)]'
                                                                 }`}
                                                               >
-                                                                <div className="text-[10px] font-mono" style={{ color: 'var(--text-3)' }}>{pavtoNum}º pav</div>
+                                                                <div className="text-[10px] font-mono" style={{ color: 'var(--text-3)' }}>{label}</div>
                                                                 {isDelta && pctAnt > 0 && (
                                                                   <div className="text-[9px]" style={{ color: 'var(--text-3)' }}>ant: {pctAnt}%</div>
                                                                 )}
