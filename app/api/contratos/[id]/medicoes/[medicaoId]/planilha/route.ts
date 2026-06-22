@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
 import { isSchemaMissingError } from '@/lib/db/resilient'
+import { mesclarMaximoPorPavto } from '@/lib/pavimentos'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -55,6 +56,14 @@ type ItemPlanilha = {
 
   material_atual: number
   servico_atual: number
+
+  // Breakdown por pavimento (só itens "PAV TIPO"; cf. migration 066).
+  // pavimentos_pct:           pct acumulado por pavto AO FIM desta medição.
+  // pavimentos_pct_anterior:  pct acumulado por pavto ANTES desta medição.
+  // O delta por pavto (o que foi medido AGORA) = atual - anterior.
+  // null quando o item não é pavimento-tipo (ou migration 066 não rodou).
+  pavimentos_pct: Record<string, number> | null
+  pavimentos_pct_anterior: Record<string, number> | null
 }
 
 export type DetalhamentoPlanilha = ItemPlanilha & {
@@ -152,6 +161,8 @@ function calcularItem(args: {
   vUnitItemAtual: number
   qtdAnterior: number
   valorAnterior: number
+  pavimentosPct: Record<string, number> | null
+  pavimentosPctAnterior: Record<string, number> | null
 }): ItemPlanilha {
   const {
     medicaoItemId,
@@ -167,6 +178,8 @@ function calcularItem(args: {
     vUnitItemAtual,
     qtdAnterior,
     valorAnterior,
+    pavimentosPct,
+    pavimentosPctAnterior,
   } = args
 
   const valorAtual = qtdAtual * vUnitItemAtual
@@ -215,6 +228,9 @@ function calcularItem(args: {
 
     material_atual: qtdAtual * matUnit,
     servico_atual: qtdAtual * servUnit,
+
+    pavimentos_pct: pavimentosPct,
+    pavimentos_pct_anterior: pavimentosPctAnterior,
   }
 }
 
@@ -329,6 +345,45 @@ export async function GET(
       }
     }
 
+    // 4c) Breakdown por pavimento (migration 066) — resiliente se a coluna
+    //     'pavimentos_pct' ainda não existir no schema.
+    //     pavtoAtualPorDet:    pct acumulado por pavto AO FIM desta medição.
+    //     pavtoAnteriorPorDet: MAX por pavto entre medições aprovadas com
+    //                          numero MENOR que o desta — o "ponto de partida"
+    //                          desta competência. O delta por pavto exibido na
+    //                          UI = atual - anterior.
+    const numeroAlvo = Number((medicaoAlvo as any).numero || 0)
+    const idsAnterioresPavto = (medicoesDoContrato || [])
+      .filter((m: any) => m.status === 'aprovado' && m.id !== medicaoId && Number(m.numero || 0) < numeroAlvo)
+      .map((m: any) => m.id as string)
+
+    const pavtoAtualPorDet: Record<string, Record<string, number>> = {}
+    const pavtoAnteriorPorDet: Record<string, Record<string, number>> = {}
+    {
+      const { data: pavRows, error: pavErr } = await admin
+        .from('medicao_itens')
+        .select('detalhamento_id, medicao_id, pavimentos_pct')
+        .in('medicao_id', [medicaoId, ...idsAnterioresPavto])
+      if (pavErr) {
+        // Coluna ausente (migration 066 não rodou) — segue sem breakdown.
+        if (!isSchemaMissingError(pavErr, ['pavimentos_pct'])) throw pavErr
+      } else {
+        for (const r of (pavRows || []) as any[]) {
+          const detId = r.detalhamento_id
+          const pct = r.pavimentos_pct
+          if (!detId || !pct || typeof pct !== 'object') continue
+          if (r.medicao_id === medicaoId) {
+            pavtoAtualPorDet[detId] = pct as Record<string, number>
+          } else {
+            pavtoAnteriorPorDet[detId] = mesclarMaximoPorPavto(
+              pavtoAnteriorPorDet[detId] || null,
+              pct as Record<string, number>,
+            )
+          }
+        }
+      }
+    }
+
     // 5) Monta linhas (FLAT — apenas itens DESTA medição)
     const itens: ItemPlanilha[] = (medicaoItens || [])
       .map((it: any): ItemPlanilha | null => {
@@ -360,6 +415,8 @@ export async function GET(
           vUnitItemAtual: Number(it.valor_unitario || 0),
           qtdAnterior: qtdAnteriorPorDet[detId] || 0,
           valorAnterior: valorAnteriorPorDet[detId] || 0,
+          pavimentosPct: pavtoAtualPorDet[detId] || null,
+          pavimentosPctAnterior: pavtoAnteriorPorDet[detId] || null,
         })
       })
       .filter((x): x is ItemPlanilha => x !== null)
@@ -453,6 +510,8 @@ export async function GET(
               vUnitItemAtual: atual?.vUnitItemAtual || 0,
               qtdAnterior: qtdAnteriorPorDet[detId] || 0,
               valorAnterior: valorAnteriorPorDet[detId] || 0,
+              pavimentosPct: pavtoAtualPorDet[detId] || null,
+              pavimentosPctAnterior: pavtoAnteriorPorDet[detId] || null,
             })
           },
         )

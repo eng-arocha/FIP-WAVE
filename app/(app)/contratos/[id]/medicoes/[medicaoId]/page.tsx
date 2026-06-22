@@ -15,7 +15,7 @@ import {
 import {
   ArrowLeft, CheckCircle2, XCircle, MessageSquare, Download,
   FileText, User, Calendar, Hash, Clock, Paperclip, AlertCircle, Loader2, Trash2, Undo2,
-  Mail, TrendingUp, ChevronRight, ChevronDown, Pencil,
+  Mail, TrendingUp, ChevronRight, ChevronDown, Pencil, Building2,
 } from 'lucide-react'
 import {
   formatCurrency, formatDatetime, formatDate, formatPercent,
@@ -24,6 +24,7 @@ import {
 import { MEDICAO_STATUS_LABELS, TIPO_MEDICAO_LABELS, MedicaoStatus } from '@/types'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 import { EmailLiberacaoMedicaoModal } from '@/components/medicoes/email-liberacao-medicao-modal'
+import { detectarPavRange, listarPavimentos } from '@/lib/pavimentos'
 
 // Tipos da rota /api/contratos/[id]/medicoes/[medicaoId]/planilha
 type ItemPlanilha = {
@@ -48,6 +49,11 @@ type ItemPlanilha = {
   pct_saldo: number
   material_atual: number
   servico_atual: number
+  // Breakdown por pavimento (itens "PAV TIPO"; cf. migration 066).
+  // pavimentos_pct: pct acumulado por pavto ao FIM desta medição.
+  // pavimentos_pct_anterior: pct acumulado por pavto ANTES desta medição.
+  pavimentos_pct: Record<string, number> | null
+  pavimentos_pct_anterior: Record<string, number> | null
 }
 
 type TotaisPlanilha = {
@@ -173,6 +179,8 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
   // - Tarefas começam todas fechadas (clicar abre os detalhamentos).
   const [expandedGrupos, setExpandedGrupos] = useState<Set<string>>(new Set())
   const [expandedTarefas, setExpandedTarefas] = useState<Set<string>>(new Set())
+  // Detalhamentos "PAV TIPO" com a grade de pavimentos expandida (key = id do item).
+  const [expandedPavto, setExpandedPavto] = useState<Set<string>>(new Set())
   // Toggle "mostrar todos vs só os com medição"; default = só com medição.
   const [mostrarTodos, setMostrarTodos] = useState(false)
 
@@ -180,6 +188,9 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
     const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s
   })
   const toggleTarefa = (id: string) => setExpandedTarefas(prev => {
+    const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s
+  })
+  const togglePavto = (id: string) => setExpandedPavto(prev => {
     const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s
   })
 
@@ -953,8 +964,26 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                         {/* === LINHAS DE DETALHAMENTO (nivel 3) — só se tarefa expandida === */}
                                         {isTarefaOpen && t.detalhamentos.map((it) => {
                                           const pctTotalBarI = Math.min(Math.max(it.pct_total, 0), 100)
+                                          const detKey = it.medicao_item_id || it.detalhamento_id || it.codigo
+                                          // Itens "PAV TIPO ( Xº AO Yº PAV )" têm breakdown por pavto (migration 066).
+                                          const pavRange = detectarPavRange(it.descricao, it.quantidade_contratada)
+                                          const pavAtual = it.pavimentos_pct
+                                          const pavAnterior = it.pavimentos_pct_anterior
+                                          const temPavto = !!pavRange && !!pavAtual && Object.keys(pavAtual).length > 0
+                                          const isPavOpen = expandedPavto.has(detKey)
+                                          // Pavtos que avançaram NESTA medição (delta acumulado > 0).
+                                          const pavtosMedidos = pavRange && temPavto
+                                            ? listarPavimentos(pavRange)
+                                                .map(p => {
+                                                  const atual = Number(pavAtual?.[String(p)] || 0)
+                                                  const anterior = Number(pavAnterior?.[String(p)] || 0)
+                                                  return { pavto: p, atual, anterior, delta: atual - anterior }
+                                                })
+                                                .filter(x => x.delta > 0)
+                                            : []
                                           return (
-                                            <tr key={`d-${it.medicao_item_id || it.detalhamento_id}`} className="border-b border-[var(--border)]" style={{ background: 'var(--surface-1)' }}>
+                                            <Fragment key={`d-${detKey}`}>
+                                            <tr className="border-b border-[var(--border)]" style={{ background: 'var(--surface-1)' }}>
                                               <td className="py-2 font-mono" style={{ color: 'var(--text-3)', paddingLeft: '32px' }}>
                                                 <span className="inline-flex items-center gap-1.5">
                                                   {isAdmin && isPendente && it.detalhamento_id && (
@@ -976,7 +1005,28 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                                   {it.codigo}
                                                 </span>
                                               </td>
-                                              <td className="py-2" style={{ color: 'var(--text-2)' }}>{it.descricao}</td>
+                                              <td className="py-2" style={{ color: 'var(--text-2)' }}>
+                                                {it.descricao}
+                                                {temPavto && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => togglePavto(detKey)}
+                                                    className="mt-1 flex items-center gap-1 text-[11px] font-medium rounded px-1.5 py-0.5 transition-colors hover:brightness-125"
+                                                    style={{ color: '#818CF8', border: '1px solid rgba(99,102,241,0.35)', background: 'rgba(99,102,241,0.08)' }}
+                                                    title="Ver percentual medido por pavimento"
+                                                  >
+                                                    <Building2 className="w-3 h-3 flex-shrink-0" />
+                                                    {isPavOpen
+                                                      ? <ChevronDown className="w-3 h-3 flex-shrink-0" />
+                                                      : <ChevronRight className="w-3 h-3 flex-shrink-0" />}
+                                                    <span className="text-left">
+                                                      {pavtosMedidos.length > 0
+                                                        ? `Mediu: ${pavtosMedidos.slice(0, 3).map(x => `${x.pavto}º ${x.atual}%`).join(', ')}${pavtosMedidos.length > 3 ? ` +${pavtosMedidos.length - 3}` : ''}`
+                                                        : 'Pavimentos — sem avanço nesta medição'}
+                                                    </span>
+                                                  </button>
+                                                )}
+                                              </td>
                                               <td className="py-2 text-right">
                                                 <div className="text-sm tabular-nums" style={{ color: 'var(--text-2)' }}>
                                                   {formatCurrency(it.valor_global_item)}
@@ -1024,6 +1074,66 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                                 </div>
                                               </td>
                                             </tr>
+
+                                            {/* === BREAKDOWN POR PAVIMENTO (PAV TIPO) — só se expandido === */}
+                                            {temPavto && isPavOpen && pavRange && (
+                                              <tr style={{ background: 'var(--surface-2)' }}>
+                                                <td colSpan={7} className="px-8 py-3">
+                                                  <div className="rounded-lg border border-[var(--border)] p-3" style={{ background: 'var(--surface-1)' }}>
+                                                    <div className="flex items-center gap-1.5 mb-2">
+                                                      <Building2 className="w-3.5 h-3.5" style={{ color: '#818CF8' }} />
+                                                      <span className="text-[11px] font-semibold" style={{ color: 'var(--text-1)' }}>
+                                                        Medição por pavimento — {pavRange.primeiro}º ao {pavRange.ultimo}º ({pavRange.count} pavtos)
+                                                      </span>
+                                                    </div>
+                                                    <p className="text-[11px] mb-2.5">
+                                                      {pavtosMedidos.length > 0 ? (
+                                                        <>
+                                                          <strong style={{ color: '#F59E0B' }}>Avanço nesta medição: </strong>
+                                                          <span style={{ color: 'var(--text-2)' }}>
+                                                            {pavtosMedidos.map(x => `${x.pavto}º pav (${x.anterior}% → ${x.atual}%)`).join('   ·   ')}
+                                                          </span>
+                                                        </>
+                                                      ) : (
+                                                        <span className="italic" style={{ color: 'var(--text-3)' }}>
+                                                          Nenhum pavimento avançou nesta medição — acumulado mantido.
+                                                        </span>
+                                                      )}
+                                                    </p>
+                                                    <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-9 lg:grid-cols-12 gap-1.5">
+                                                      {listarPavimentos(pavRange).map(p => {
+                                                        const atual = Number(pavAtual?.[String(p)] || 0)
+                                                        const anterior = Number(pavAnterior?.[String(p)] || 0)
+                                                        const delta = atual - anterior
+                                                        const cor = delta > 0
+                                                          ? { border: 'rgba(245,158,11,0.45)', bg: 'rgba(245,158,11,0.10)', txt: '#F59E0B' }
+                                                          : atual >= 100
+                                                          ? { border: 'rgba(16,185,129,0.35)', bg: 'rgba(16,185,129,0.08)', txt: '#10B981' }
+                                                          : atual > 0
+                                                          ? { border: 'rgba(15,118,110,0.35)', bg: 'rgba(15,118,110,0.08)', txt: '#0F766E' }
+                                                          : { border: 'var(--border)', bg: 'var(--surface-2)', txt: 'var(--text-3)' }
+                                                        return (
+                                                          <div key={p} className="rounded-md border px-1 py-1 text-center" style={{ borderColor: cor.border, background: cor.bg }}>
+                                                            <div className="text-[9px] font-mono" style={{ color: 'var(--text-3)' }}>{p}º</div>
+                                                            <div className="text-[12px] font-bold tabular-nums" style={{ color: cor.txt }}>{atual}%</div>
+                                                            {delta > 0 && (
+                                                              <div className="text-[8px] tabular-nums" style={{ color: '#F59E0B' }}>+{delta}%</div>
+                                                            )}
+                                                          </div>
+                                                        )
+                                                      })}
+                                                    </div>
+                                                    <div className="flex flex-wrap items-center gap-3 mt-2.5 text-[9px]" style={{ color: 'var(--text-3)' }}>
+                                                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'rgba(245,158,11,0.55)' }} />Medido nesta competência</span>
+                                                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'rgba(16,185,129,0.55)' }} />Concluído (100%)</span>
+                                                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'rgba(15,118,110,0.55)' }} />Acumulado anterior</span>
+                                                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm border" style={{ borderColor: 'var(--border)' }} />Não medido</span>
+                                                    </div>
+                                                  </div>
+                                                </td>
+                                              </tr>
+                                            )}
+                                            </Fragment>
                                           )
                                         })}
                                       </Fragment>
