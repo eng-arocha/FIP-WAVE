@@ -12,6 +12,7 @@ import { formatCurrency } from '@/lib/utils'
 import { TipoAnexo } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 import { detectarPavRange, listarPavimentos, somarPavimentos, normalizarPct, PAV_PCTS, type PavRange } from '@/lib/pavimentos'
+import { detectarVaos, nomeVao } from '@/lib/vaos'
 
 const MESES = [
   { v: '01', l: 'Janeiro' }, { v: '02', l: 'Fevereiro' }, { v: '03', l: 'Março' },
@@ -65,7 +66,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
   // qtdeMedicao[detId] eh derivado: somarPavimentos(pavPctMap[detId]).
   const [pavPctMap, setPavPctMap] = useState<Record<string, Record<string, number>>>({})
 
-  // Grade de pavtos colapsada por padrao (recomendado pelo usuario).
+  // Grade de pavtos/vãos colapsada por padrao.
   const [expandedPavGrid, setExpandedPavGrid] = useState<Set<string>>(new Set())
   function togglePavGrid(detId: string) {
     setExpandedPavGrid(prev => {
@@ -74,6 +75,51 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
       else next.add(detId)
       return next
     })
+  }
+
+  // Modal de backfill de vãos: itens com histórico mas sem breakdown por vão
+  const [backfillModal, setBackfillModal] = useState<{
+    detId: string
+    descricao: string
+    vaoNomes: string[]
+    qtdeAnt: number
+    pcts: Record<string, number>
+  } | null>(null)
+  const [backfillSaving, setBackfillSaving] = useState(false)
+
+  function openBackfill(det: any, vaoNomes: string[]) {
+    const qtdeAnt = getAcumQtde(det.id)
+    const n = Math.min(Math.round(qtdeAnt), vaoNomes.length)
+    const pcts: Record<string, number> = {}
+    for (let i = 1; i <= vaoNomes.length; i++) {
+      pcts[String(i)] = i <= n ? 100 : 0
+    }
+    setBackfillModal({ detId: det.id, descricao: det.descricao, vaoNomes, qtdeAnt, pcts })
+  }
+
+  async function saveBackfill() {
+    if (!backfillModal) return
+    setBackfillSaving(true)
+    try {
+      const res = await fetch(`/api/contratos/${contratoId}/medicoes/vaos-backfill`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ detalhamento_id: backfillModal.detId, pavimentos_pct: backfillModal.pcts }),
+      })
+      if (res.ok) {
+        setAcumulado(prev => ({
+          ...prev,
+          [backfillModal.detId]: { ...prev[backfillModal.detId], pavimentos_pct: backfillModal.pcts },
+        }))
+        setPavPctMap(prev => ({
+          ...prev,
+          [backfillModal.detId]: { ...(prev[backfillModal.detId] || {}), ...backfillModal.pcts },
+        }))
+      }
+    } finally {
+      setBackfillSaving(false)
+      setBackfillModal(null)
+    }
   }
 
   // Collapse state para step 2 — começa com todos fechados
@@ -311,10 +357,11 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
             const acumQtde = getAcumQtde(det.id)
             const deltaQtde = qtdeAtual - acumQtde
             if (deltaQtde > 0) {
-              // Para itens PAV TIPO, anexa o breakdown acumulado por pavto.
+              // Para PAV TIPO e vãos, anexa o breakdown acumulado.
               // O backend grava em medicao_itens.pavimentos_pct (migration 066).
               const pavRange = detectarPavRange(det.descricao, Number(det.quantidade_contratada || 0))
-              const pavto = pavRange ? pavPctMap[det.id] : null
+              const vaoNomesItem = !pavRange ? detectarVaos(det.descricao, Number(det.quantidade_contratada || 0)) : null
+              const pavto = (pavRange || vaoNomesItem) ? pavPctMap[det.id] : null
               itens.push({
                 detalhamento_id: det.id,
                 quantidade_medida: deltaQtde,
@@ -504,9 +551,9 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                               {(tarefa.detalhamentos || []).map((det: any) => {
                                 const qtdeContratada = Number(det.quantidade_contratada || 0)
                                 const pavRange = detectarPavRange(det.descricao, qtdeContratada)
-                                // Para itens PAV TIPO, qtdeMedicao deriva da soma do
-                                // breakdown por pavto. Para os outros, eh o input do usuario.
-                                const qtdeAtual = pavRange
+                                const vaoNomes = !pavRange ? detectarVaos(det.descricao, qtdeContratada) : null
+                                // PAV TIPO e vãos: qtdeMedicao deriva da soma do breakdown
+                                const qtdeAtual = (pavRange || vaoNomes)
                                   ? somarPavimentos(pavPctMap[det.id])
                                   : (qtdeMedicao[det.id] ?? getAcumQtde(det.id))
                                 const qtdeAnt = getAcumQtde(det.id)
@@ -517,6 +564,8 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                 const useUnidades = qtdeContratada > 1
                                 const isInteiro = useUnidades && Number.isInteger(qtdeContratada)
                                 const isPavGridOpen = expandedPavGrid.has(det.id)
+                                // Backfill necessário: tem histórico mas sem breakdown de vãos
+                                const needsBackfill = !!(vaoNomes && qtdeAnt > 0 && !acumulado[det.id]?.pavimentos_pct)
                                 return (
                                   <div key={det.id}>
                                   <div className={`grid grid-cols-12 gap-2 p-2.5 rounded-lg text-xs items-center transition-all ${deltaQtde > 0 ? 'bg-amber-500/8 border border-amber-500/30' : isCompleto ? 'bg-emerald-500/8 border border-emerald-500/20' : 'bg-[var(--surface-1)] border border-transparent'}`}>
@@ -531,7 +580,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                     </div>
                                     <div className="col-span-1 text-center text-[var(--text-3)]">{det.unidade}</div>
                                     <div className="col-span-1 text-center text-[var(--text-3)]">{formatCurrency(det.valor_unitario || 0)}</div>
-                                    {/* Seletor: PAV TIPO (grade) | % buttons (qtde=1) | input numerico (qtde>1) */}
+                                    {/* Seletor: PAV TIPO (grade) | VÃOS (grade binária) | % buttons (qtde=1) | input numerico (qtde>1) */}
                                     <div className="col-span-4">
                                       {pavRange ? (
                                         // PAV TIPO: resumo + botao expandir grade (cf. migration 066)
@@ -554,6 +603,39 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                           {qtdeAnt > 0 && (
                                             <p className="text-[9px] text-slate-400 mt-0.5">
                                               mín. (acumulado anterior): <strong>{qtdeAnt.toFixed(2).replace(/\.?0+$/, '')}</strong> {det.unidade}
+                                            </p>
+                                          )}
+                                        </div>
+                                      ) : vaoNomes ? (
+                                        // VÃO: resumo + botao expandir grade binária (0/100)
+                                        <div>
+                                          <button
+                                            type="button"
+                                            onClick={() => togglePavGrid(det.id)}
+                                            className="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded text-[11px] font-bold bg-[#1e293b] text-slate-200 hover:bg-[#334155] hover:text-white transition-colors"
+                                          >
+                                            <span className="flex items-center gap-1.5">
+                                              {isPavGridOpen
+                                                ? <ChevronUp className="w-3 h-3" />
+                                                : <ChevronDown className="w-3 h-3" />}
+                                              Medir por vão ({vaoNomes.length} un.)
+                                            </span>
+                                            <span className="tabular-nums text-slate-300">
+                                              {Math.round(qtdeAtual)} / {vaoNomes.length}
+                                            </span>
+                                          </button>
+                                          {needsBackfill && (
+                                            <button
+                                              type="button"
+                                              onClick={() => openBackfill(det, vaoNomes)}
+                                              className="mt-0.5 text-[9px] text-amber-400 hover:text-amber-300 text-left"
+                                            >
+                                              ⚠ Histórico sem breakdown — configurar backfill
+                                            </button>
+                                          )}
+                                          {qtdeAnt > 0 && (
+                                            <p className="text-[9px] text-slate-400 mt-0.5">
+                                              mín. (acumulado anterior): <strong>{Math.round(qtdeAnt)}</strong> vãos
                                             </p>
                                           )}
                                         </div>
@@ -726,6 +808,44 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                                 )
                                               })()}
                                             </div>
+                                          )
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {/* Grade de vãos (binária 0/100) */}
+                                  {vaoNomes && isPavGridOpen && (
+                                    <div className="mt-1.5 ml-6 p-3 rounded-lg bg-[var(--surface-1)] border border-[var(--border)]">
+                                      <p className="text-[10px] text-slate-400 mb-2">
+                                        Selecione os vãos concluídos. Cada vão vale 1 {det.unidade}.
+                                      </p>
+                                      <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-1.5">
+                                        {vaoNomes.map((nome, idx) => {
+                                          const vaoIdx = idx + 1
+                                          const pctAnt = getPavPctAnterior(det.id, vaoIdx)
+                                          const pctAtu = getPavPctAtual(det.id, vaoIdx)
+                                          const isLocked = pctAnt >= 100
+                                          const isDone = pctAtu >= 100
+                                          const isDelta = isDone && pctAtu > pctAnt
+                                          return (
+                                            <button
+                                              key={vaoIdx}
+                                              type="button"
+                                              disabled={isLocked}
+                                              onClick={() => togglePavPct(det.id, vaoIdx, isDone ? 0 : 100)}
+                                              className={`px-2 py-1.5 rounded text-left border transition-all ${
+                                                isLocked
+                                                  ? 'bg-emerald-900/30 border-emerald-500/30 text-emerald-300 cursor-not-allowed'
+                                                  : isDelta
+                                                  ? 'bg-amber-500/20 border-amber-500/40 text-amber-200 hover:bg-amber-500/30'
+                                                  : isDone
+                                                  ? 'bg-emerald-900/20 border-emerald-500/20 text-emerald-300 hover:bg-emerald-900/30'
+                                                  : 'bg-[var(--surface-2)] border-[var(--border)] text-slate-500 hover:border-slate-500 hover:text-slate-300'
+                                              }`}
+                                            >
+                                              <span className="block text-[9px] text-slate-400">{nome}</span>
+                                              <span className="text-[11px] font-bold">{isDone ? '✓' : '—'}</span>
+                                            </button>
                                           )
                                         })}
                                       </div>
@@ -950,6 +1070,71 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
           )}
         </div>
       </div>
+
+      {/* Modal de backfill de vãos */}
+      {backfillModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setBackfillModal(null)} />
+          <div className="relative z-10 w-full max-w-2xl max-h-[80vh] overflow-y-auto rounded-xl border p-5 space-y-4"
+            style={{ background: 'var(--surface-1)', borderColor: 'var(--border)' }}>
+            <div>
+              <h3 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>Backfill de Vãos</h3>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>{backfillModal.descricao}</p>
+              <p className="text-xs mt-1 text-amber-400">
+                Selecione os vãos já concluídos antes desta medição.
+                Sugestão: {Math.round(backfillModal.qtdeAnt)} marcados (acumulado anterior).
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: 'var(--text-2)' }}>
+                Selecionados: {Object.values(backfillModal.pcts).filter(v => v === 100).length} / {backfillModal.vaoNomes.length}
+              </p>
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
+                {backfillModal.vaoNomes.map((nome, idx) => {
+                  const key = String(idx + 1)
+                  const isDone = (backfillModal.pcts[key] ?? 0) === 100
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setBackfillModal(prev => prev ? {
+                        ...prev,
+                        pcts: { ...prev.pcts, [key]: isDone ? 0 : 100 },
+                      } : null)}
+                      className={`px-2 py-1.5 rounded text-left border transition-all ${
+                        isDone
+                          ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                          : 'bg-[var(--surface-2)] border-[var(--border)] text-slate-500 hover:border-slate-400 hover:text-slate-300'
+                      }`}
+                    >
+                      <span className="block text-[9px] text-slate-400">{nome}</span>
+                      <span className="text-[11px] font-bold">{isDone ? '✓' : '—'}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
+              <button
+                type="button"
+                onClick={() => setBackfillModal(null)}
+                className="px-3 py-1.5 text-xs rounded-lg border"
+                style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={backfillSaving}
+                onClick={saveBackfill}
+                className="px-3 py-1.5 text-xs rounded-lg bg-blue-500 text-white font-semibold disabled:opacity-50"
+              >
+                {backfillSaving ? 'Salvando…' : 'Salvar backfill'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
