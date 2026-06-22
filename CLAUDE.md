@@ -51,3 +51,9 @@ NUNCA misturar com APP-GESTAO-OBRAS ou qualquer outro projeto.
 
 Branch de desenvolvimento: `claude/improve-scrollbar-visibility-MI3PH`
 Deploy vai para: `main` → Vercel `fip-wave.vercel.app`
+
+## REGRA 5 — Avaliação sempre em produção (main)
+O usuário **sempre avalia em produção (main)** — não apenas no preview do Vercel.
+- Não é necessário aguardar validação no preview antes de subir para `main`
+- Seguir a REGRA 4 (deploy automático) diretamente ao concluir alterações em estado estável
+- Informar o commit hash e o que foi deployado para que o usuário valide direto em `fip-wave.vercel.app`
