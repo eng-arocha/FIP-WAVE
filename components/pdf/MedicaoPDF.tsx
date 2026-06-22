@@ -80,11 +80,10 @@ const COL = {
 function R(v: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 }).format(v)
 }
-function P(v: number) { return `${(v * 100).toFixed(1)}%` }
 function fmtDate(d?: string) { return d ? new Date(d).toLocaleDateString('pt-BR') : '—' }
 
-// Compact pct for table cells: show "—" when zero
-function rPct(pct: number) { return pct === 0 ? '—' : `${(pct * 100).toFixed(1)}%` }
+// pct já vem em escala 0-100 da API (ex: 4.9 = 4,9%)
+function rPct(pct: number) { return pct === 0 ? '—' : `${pct.toFixed(1)}%` }
 function rVal(v: number) { return v === 0 ? '—' : R(v) }
 
 interface MedicaoPDFProps {
@@ -92,9 +91,10 @@ interface MedicaoPDFProps {
   itens: any[]
   aprovacoes: any[]
   planilha?: any | null
+  somentePeriodo?: boolean
 }
 
-export function MedicaoPDF({ medicao, itens, aprovacoes, planilha }: MedicaoPDFProps) {
+export function MedicaoPDF({ medicao, itens, aprovacoes, planilha, somentePeriodo = true }: MedicaoPDFProps) {
   const statusLabels: Record<string, string> = {
     submetido: 'Submetido', em_analise: 'Em Análise',
     aprovado: 'Aprovado', rejeitado: 'Rejeitado', rascunho: 'Rascunho',
@@ -104,7 +104,46 @@ export function MedicaoPDF({ medicao, itens, aprovacoes, planilha }: MedicaoPDFP
   }
 
   const totais = planilha?.totais
-  const grupos: any[] = planilha?.grupos || []
+  const todosGrupos: any[] = planilha?.grupos || []
+
+  // somentePeriodo=true → apenas itens com valor_atual > 0 (+ suas hierarquias)
+  const grupos = somentePeriodo
+    ? todosGrupos
+        .map((g: any) => ({
+          ...g,
+          tarefas: g.tarefas
+            .map((t: any) => ({
+              ...t,
+              detalhamentos: t.detalhamentos.filter((d: any) => d.valor_atual > 0),
+            }))
+            .filter((t: any) => t.detalhamentos.length > 0),
+        }))
+        .filter((g: any) => g.tarefas.length > 0)
+    : todosGrupos
+
+  // Subtotais calculados sobre os grupos efetivamente exibidos
+  const totaisExibir = (() => {
+    if (!totais) return null
+    if (!somentePeriodo) return totais
+    let va = 0, vat = 0, vt = 0, vs = 0
+    grupos.forEach((g: any) => g.tarefas.forEach((t: any) => t.detalhamentos.forEach((d: any) => {
+      va += d.valor_anterior; vat += d.valor_atual; vt += d.valor_total; vs += d.valor_saldo
+    })))
+    const vg = grupos.reduce((s: number, g: any) => s + g.valor_global, 0)
+    return {
+      valor_global_total: vg,
+      valor_anterior_total: va,
+      valor_atual_total: vat,
+      valor_total_medido: vt,
+      valor_saldo_total: vs,
+      pct_anterior_total: vg > 0 ? (va / vg) * 100 : 0,
+      pct_atual_total: vg > 0 ? (vat / vg) * 100 : 0,
+      pct_total_medido: vg > 0 ? (vt / vg) * 100 : 0,
+      pct_saldo_total: vg > 0 ? (vs / vg) * 100 : 0,
+      material_atual_total: totais.material_atual_total,
+      servico_atual_total: totais.servico_atual_total,
+    }
+  })()
 
   // Pav breakdown: only floors with pct > 0 (compact)
   function renderPavBreakdown(pavimentos_pct: Record<string, number>, pavimentos_pct_anterior?: Record<string, number> | null) {
@@ -152,6 +191,8 @@ export function MedicaoPDF({ medicao, itens, aprovacoes, planilha }: MedicaoPDFP
 
   let detIdx = 0
 
+  const tituloDoc = somentePeriodo ? 'BOLETIM DE MEDIÇÃO' : 'MEDIÇÃO ACUMULADA'
+
   return (
     <Document title={`Medição #${String(medicao.numero).padStart(3,'0')} — ${medicao.contrato?.numero || ''}`}>
       <Page size="A4" orientation="landscape" style={s.page}>
@@ -163,7 +204,7 @@ export function MedicaoPDF({ medicao, itens, aprovacoes, planilha }: MedicaoPDFP
             <Text style={s.logoSub}>Sistema de Controle de Medições · FIP Engenharia</Text>
           </View>
           <View style={{ alignItems: 'flex-end' }}>
-            <Text style={s.docTitle}>BOLETIM DE MEDIÇÃO</Text>
+            <Text style={s.docTitle}>{tituloDoc}</Text>
             <Text style={s.docSub}>#{String(medicao.numero).padStart(3,'0')} · {medicao.periodo_referencia} · {statusLabels[medicao.status] || medicao.status}</Text>
             <Text style={s.docSub}>{medicao.contrato?.numero || ''} — {medicao.contrato?.descricao || ''}</Text>
           </View>
@@ -206,7 +247,7 @@ export function MedicaoPDF({ medicao, itens, aprovacoes, planilha }: MedicaoPDFP
         </View>
 
         {/* Items table */}
-        <Text style={s.secTitle}>Itens da Medição</Text>
+        <Text style={s.secTitle}>{somentePeriodo ? 'Itens Medidos no Período' : 'Planilha Acumulada — Todos os Itens'}</Text>
 
         {grupos.length > 0 ? (
           <View style={{ marginTop: 2 }}>
@@ -293,19 +334,19 @@ export function MedicaoPDF({ medicao, itens, aprovacoes, planilha }: MedicaoPDFP
             ))}
 
             {/* Totals row */}
-            {totais && (
+            {totaisExibir && (
               <View style={s.totRow}>
                 <Text style={[s.totTxt, { width: COL.cod }]}> </Text>
                 <Text style={[s.totTxt, { width: COL.desc }]}>SUBTOTAL</Text>
-                <Text style={[s.totTxt, { width: COL.vg, textAlign: 'right' }]}>{R(totais.valor_global_total)}</Text>
-                <Text style={[s.totTxt, { width: COL.antPct, textAlign: 'right' }]}>{rPct(totais.pct_anterior_total)}</Text>
-                <Text style={[s.totTxt, { width: COL.ant, textAlign: 'right' }]}>{R(totais.valor_anterior_total)}</Text>
-                <Text style={[s.totTxt, { width: COL.atuPct, textAlign: 'right' }]}>{rPct(totais.pct_atual_total)}</Text>
-                <Text style={[s.totTxt, { width: COL.atu, textAlign: 'right' }]}>{R(totais.valor_atual_total)}</Text>
-                <Text style={[s.totTxt, { width: COL.totPct, textAlign: 'right' }]}>{rPct(totais.pct_total_medido)}</Text>
-                <Text style={[s.totTxt, { width: COL.tot, textAlign: 'right' }]}>{R(totais.valor_total_medido)}</Text>
-                <Text style={[s.totTxt, { width: COL.salPct, textAlign: 'right' }]}>{rPct(totais.pct_saldo_total)}</Text>
-                <Text style={[s.totTxt, { width: COL.sal, textAlign: 'right' }]}>{R(totais.valor_saldo_total)}</Text>
+                <Text style={[s.totTxt, { width: COL.vg, textAlign: 'right' }]}>{R(totaisExibir.valor_global_total)}</Text>
+                <Text style={[s.totTxt, { width: COL.antPct, textAlign: 'right' }]}>{rPct(totaisExibir.pct_anterior_total)}</Text>
+                <Text style={[s.totTxt, { width: COL.ant, textAlign: 'right' }]}>{R(totaisExibir.valor_anterior_total)}</Text>
+                <Text style={[s.totTxt, { width: COL.atuPct, textAlign: 'right' }]}>{rPct(totaisExibir.pct_atual_total)}</Text>
+                <Text style={[s.totTxt, { width: COL.atu, textAlign: 'right' }]}>{R(totaisExibir.valor_atual_total)}</Text>
+                <Text style={[s.totTxt, { width: COL.totPct, textAlign: 'right' }]}>{rPct(totaisExibir.pct_total_medido)}</Text>
+                <Text style={[s.totTxt, { width: COL.tot, textAlign: 'right' }]}>{R(totaisExibir.valor_total_medido)}</Text>
+                <Text style={[s.totTxt, { width: COL.salPct, textAlign: 'right' }]}>{rPct(totaisExibir.pct_saldo_total)}</Text>
+                <Text style={[s.totTxt, { width: COL.sal, textAlign: 'right' }]}>{R(totaisExibir.valor_saldo_total)}</Text>
               </View>
             )}
           </View>
@@ -327,19 +368,19 @@ export function MedicaoPDF({ medicao, itens, aprovacoes, planilha }: MedicaoPDFP
         )}
 
         {/* Summary cards */}
-        {totais && (
+        {totaisExibir && (
           <View style={s.cardRow}>
             <View style={[s.card, { borderColor: '#bfdbfe' }]}>
               <Text style={s.cardLabel}>Material (Fat. Direto)</Text>
-              <Text style={[s.cardValue, { color: '#1d4ed8' }]}>{R(totais.material_atual_total ?? 0)}</Text>
+              <Text style={[s.cardValue, { color: '#1d4ed8' }]}>{R(totaisExibir.material_atual_total ?? 0)}</Text>
             </View>
             <View style={[s.card, { borderColor: '#a7f3d0' }]}>
               <Text style={s.cardLabel}>Serviço medido</Text>
-              <Text style={[s.cardValue, { color: '#047857' }]}>{R(totais.servico_atual_total ?? 0)}</Text>
+              <Text style={[s.cardValue, { color: '#047857' }]}>{R(totaisExibir.servico_atual_total ?? 0)}</Text>
             </View>
             <View style={[s.card, { borderColor: BRD }]}>
-              <Text style={s.cardLabel}>Total da Medição</Text>
-              <Text style={[s.cardValue]}>{R(totais.valor_atual_total ?? medicao.valor_total)}</Text>
+              <Text style={s.cardLabel}>{somentePeriodo ? 'Total da Medição' : 'Total Acumulado'}</Text>
+              <Text style={[s.cardValue]}>{R(totaisExibir.valor_atual_total ?? medicao.valor_total)}</Text>
             </View>
           </View>
         )}
