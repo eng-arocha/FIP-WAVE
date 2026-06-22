@@ -55,6 +55,10 @@ type ItemPlanilha = {
 
   material_atual: number
   servico_atual: number
+
+  // Breakdown por pavimento (só para itens "PAV TIPO ( X AO Y PAV )")
+  pavimentos_pct: Record<string, number> | null
+  pavimentos_pct_anterior: Record<string, number> | null
 }
 
 export type DetalhamentoPlanilha = ItemPlanilha & {
@@ -152,6 +156,8 @@ function calcularItem(args: {
   vUnitItemAtual: number
   qtdAnterior: number
   valorAnterior: number
+  pavimentosPct: Record<string, number> | null
+  pavimentosPctAnterior: Record<string, number> | null
 }): ItemPlanilha {
   const {
     medicaoItemId,
@@ -167,6 +173,8 @@ function calcularItem(args: {
     vUnitItemAtual,
     qtdAnterior,
     valorAnterior,
+    pavimentosPct,
+    pavimentosPctAnterior,
   } = args
 
   const valorAtual = qtdAtual * vUnitItemAtual
@@ -215,6 +223,9 @@ function calcularItem(args: {
 
     material_atual: qtdAtual * matUnit,
     servico_atual: qtdAtual * servUnit,
+
+    pavimentos_pct: pavimentosPct,
+    pavimentos_pct_anterior: pavimentosPctAnterior,
   }
 }
 
@@ -266,7 +277,7 @@ export async function GET(
       const tryFull = await admin
         .from('medicao_itens')
         .select(`
-          id, quantidade_medida, valor_unitario, detalhamento_id,
+          id, quantidade_medida, valor_unitario, detalhamento_id, pavimentos_pct,
           detalhamento:detalhamentos (
             id, codigo, descricao, unidade, quantidade_contratada,
             valor_unitario, valor_material_unit, valor_servico_unit
@@ -279,7 +290,7 @@ export async function GET(
         const fallback = await admin
           .from('medicao_itens')
           .select(`
-            id, quantidade_medida, valor_unitario, detalhamento_id,
+            id, quantidade_medida, valor_unitario, detalhamento_id, pavimentos_pct,
             detalhamento:detalhamentos (
               id, codigo, descricao, unidade, quantidade_contratada, valor_unitario
             )
@@ -292,40 +303,33 @@ export async function GET(
       }
     }
 
-    // 4) Quantidade ANTERIOR acumulada por detalhamento — soma medicao_itens
-    //    de TODAS as medições aprovadas anteriores. 1 query usando .in().
+    // 4) Acumulados anteriores — quantidade, valor e pavimentos_pct por detalhamento.
+    //    Consolidado em uma única query (elimina a query duplicada anterior).
     const qtdAnteriorPorDet: Record<string, number> = {}
+    const valorAnteriorPorDet: Record<string, number> = {}
+    const pavPctAntPorDet: Record<string, Record<string, number>> = {}
     if (idsAprovadasAnteriores.length > 0) {
       const { data: anterioresRows, error: antErr } = await admin
         .from('medicao_itens')
-        .select('detalhamento_id, quantidade_medida, valor_unitario, medicao_id')
+        .select('detalhamento_id, quantidade_medida, valor_unitario, pavimentos_pct')
         .in('medicao_id', idsAprovadasAnteriores)
       if (antErr) throw antErr
       for (const r of (anterioresRows || []) as any[]) {
         const detId = r.detalhamento_id
         if (!detId) continue
-        qtdAnteriorPorDet[detId] = (qtdAnteriorPorDet[detId] || 0) + Number(r.quantidade_medida || 0)
-      }
-    }
-
-    // 4b) Valor ANTERIOR acumulado por detalhamento — preserva snapshot
-    //     histórico: usa valor_unitario de CADA medicao_item (da época em que
-    //     foi medido), não o valor_unitario atual do detalhamento.
-    const valorAnteriorPorDet: Record<string, number> = {}
-    if (idsAprovadasAnteriores.length > 0) {
-      // Reaproveita a mesma query — refaz pra clareza, mas idealmente seria 1 só.
-      // Optei por refazer aqui pra deixar a lógica explícita e fácil de auditar.
-      const { data: anterioresRows2, error: antErr2 } = await admin
-        .from('medicao_itens')
-        .select('detalhamento_id, quantidade_medida, valor_unitario')
-        .in('medicao_id', idsAprovadasAnteriores)
-      if (antErr2) throw antErr2
-      for (const r of (anterioresRows2 || []) as any[]) {
-        const detId = r.detalhamento_id
-        if (!detId) continue
         const q = Number(r.quantidade_medida || 0)
         const vu = Number(r.valor_unitario || 0)
+        qtdAnteriorPorDet[detId] = (qtdAnteriorPorDet[detId] || 0) + q
         valorAnteriorPorDet[detId] = (valorAnteriorPorDet[detId] || 0) + q * vu
+        // MAX pct por pavto — acumula maior valor entre medições aprovadas
+        if (r.pavimentos_pct && typeof r.pavimentos_pct === 'object') {
+          if (!pavPctAntPorDet[detId]) pavPctAntPorDet[detId] = {}
+          for (const [k, v] of Object.entries(r.pavimentos_pct as Record<string, number>)) {
+            const prev = Number(pavPctAntPorDet[detId][k] || 0)
+            const cur = Number(v)
+            if (cur > prev) pavPctAntPorDet[detId][k] = cur
+          }
+        }
       }
     }
 
@@ -360,6 +364,8 @@ export async function GET(
           vUnitItemAtual: Number(it.valor_unitario || 0),
           qtdAnterior: qtdAnteriorPorDet[detId] || 0,
           valorAnterior: valorAnteriorPorDet[detId] || 0,
+          pavimentosPct: it.pavimentos_pct || null,
+          pavimentosPctAnterior: pavPctAntPorDet[detId] || null,
         })
       })
       .filter((x): x is ItemPlanilha => x !== null)
@@ -369,7 +375,12 @@ export async function GET(
     //     A medição-alvo já fornece esse snapshot; pra detalhamentos que NÃO
     //     foram medidos nesta medição, qtdAtual=0 e vUnitItemAtual=0
     //     (resultando em valor_atual=0).
-    const atualPorDet: Record<string, { medicaoItemId: string; qtdAtual: number; vUnitItemAtual: number }> = {}
+    const atualPorDet: Record<string, {
+      medicaoItemId: string
+      qtdAtual: number
+      vUnitItemAtual: number
+      pavimentosPct: Record<string, number> | null
+    }> = {}
     for (const it of (medicaoItens || []) as any[]) {
       const det = it.detalhamento
       if (!det) continue
@@ -377,6 +388,7 @@ export async function GET(
         medicaoItemId: it.id,
         qtdAtual: Number(it.quantidade_medida || 0),
         vUnitItemAtual: Number(it.valor_unitario || 0),
+        pavimentosPct: it.pavimentos_pct || null,
       }
     }
 
@@ -453,6 +465,8 @@ export async function GET(
               vUnitItemAtual: atual?.vUnitItemAtual || 0,
               qtdAnterior: qtdAnteriorPorDet[detId] || 0,
               valorAnterior: valorAnteriorPorDet[detId] || 0,
+              pavimentosPct: atual?.pavimentosPct || null,
+              pavimentosPctAnterior: pavPctAntPorDet[detId] || null,
             })
           },
         )

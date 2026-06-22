@@ -15,8 +15,9 @@ import {
 import {
   ArrowLeft, CheckCircle2, XCircle, MessageSquare, Download,
   FileText, User, Calendar, Hash, Clock, Paperclip, AlertCircle, Loader2, Trash2, Undo2,
-  Mail, TrendingUp, ChevronRight, ChevronDown, Pencil,
+  Mail, TrendingUp, ChevronRight, ChevronDown, Pencil, Building2,
 } from 'lucide-react'
+import { detectarPavRange, listarPavimentos } from '@/lib/pavimentos'
 import {
   formatCurrency, formatDatetime, formatDate, formatPercent,
   getMedicaoStatusColor
@@ -48,6 +49,8 @@ type ItemPlanilha = {
   pct_saldo: number
   material_atual: number
   servico_atual: number
+  pavimentos_pct?: Record<string, number> | null
+  pavimentos_pct_anterior?: Record<string, number> | null
 }
 
 type TotaisPlanilha = {
@@ -173,6 +176,8 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
   // - Tarefas começam todas fechadas (clicar abre os detalhamentos).
   const [expandedGrupos, setExpandedGrupos] = useState<Set<string>>(new Set())
   const [expandedTarefas, setExpandedTarefas] = useState<Set<string>>(new Set())
+  // Detalhamentos com grade de pavimentos expandida (por medicao_item_id ou detalhamento_id).
+  const [expandedPavItems, setExpandedPavItems] = useState<Set<string>>(new Set())
   // Toggle "mostrar todos vs só os com medição"; default = só com medição.
   const [mostrarTodos, setMostrarTodos] = useState(false)
 
@@ -180,6 +185,9 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
     const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s
   })
   const toggleTarefa = (id: string) => setExpandedTarefas(prev => {
+    const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s
+  })
+  const togglePavItem = (id: string) => setExpandedPavItems(prev => {
     const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s
   })
 
@@ -772,10 +780,20 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                       setExpandedTarefas(new Set(
                         planilha.grupos.flatMap(g => g.tarefas.map(t => t.id))
                       ))
+                      // Expande também os itens com pavimentos
+                      const pavIds = new Set<string>()
+                      planilha.grupos.forEach(g => g.tarefas.forEach(t => t.detalhamentos.forEach(d => {
+                        if (d.pavimentos_pct && Object.keys(d.pavimentos_pct).length > 0) {
+                          const key = d.medicao_item_id || d.detalhamento_id || ''
+                          if (key) pavIds.add(key)
+                        }
+                      })))
+                      setExpandedPavItems(pavIds)
                     }
                     const colapsarTudo = () => {
                       setExpandedGrupos(new Set())
                       setExpandedTarefas(new Set())
+                      setExpandedPavItems(new Set())
                     }
 
                     const totalAlgumExpandido =
@@ -953,77 +971,132 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                         {/* === LINHAS DE DETALHAMENTO (nivel 3) — só se tarefa expandida === */}
                                         {isTarefaOpen && t.detalhamentos.map((it) => {
                                           const pctTotalBarI = Math.min(Math.max(it.pct_total, 0), 100)
+                                          const pavItemKey = it.medicao_item_id || it.detalhamento_id || ''
+                                          const hasPav = !!(it.pavimentos_pct && Object.keys(it.pavimentos_pct).length > 0)
+                                          const isPavExpanded = hasPav && expandedPavItems.has(pavItemKey)
+                                          const pavRange = hasPav ? detectarPavRange(it.descricao, it.quantidade_contratada) : null
                                           return (
-                                            <tr key={`d-${it.medicao_item_id || it.detalhamento_id}`} className="border-b border-[var(--border)]" style={{ background: 'var(--surface-1)' }}>
-                                              <td className="py-2 font-mono" style={{ color: 'var(--text-3)', paddingLeft: '32px' }}>
-                                                <span className="inline-flex items-center gap-1.5">
-                                                  {isAdmin && isPendente && it.detalhamento_id && (
-                                                    <button
-                                                      onClick={() => abrirAjustar({
-                                                        detalhamento_id: it.detalhamento_id!,
-                                                        codigo: it.codigo,
-                                                        descricao: it.descricao,
-                                                        qtd_atual: it.qtd_atual,
-                                                        quantidade_contratada: it.quantidade_contratada,
-                                                      })}
-                                                      className="text-[10px] font-medium px-1.5 py-0.5 rounded print:hidden hover:bg-orange-500/10"
-                                                      style={{ color: '#F97316', border: '1px solid rgba(249,115,22,0.4)' }}
-                                                      title="Admin: ajustar quantidade medida"
-                                                    >
-                                                      <Pencil className="inline w-3 h-3" />
-                                                    </button>
-                                                  )}
-                                                  {it.codigo}
-                                                </span>
-                                              </td>
-                                              <td className="py-2" style={{ color: 'var(--text-2)' }}>{it.descricao}</td>
-                                              <td className="py-2 text-right">
-                                                <div className="text-sm tabular-nums" style={{ color: 'var(--text-2)' }}>
-                                                  {formatCurrency(it.valor_global_item)}
-                                                </div>
-                                                <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
-                                                  {Number(it.quantidade_contratada).toLocaleString('pt-BR')} × {formatCurrency(it.valor_unitario_contratual)}
-                                                </div>
-                                              </td>
-                                              <td className="py-2 text-right">
-                                                <div className="text-sm font-bold tabular-nums" style={{ color: 'var(--text-3)' }}>
-                                                  {formatPercent(it.pct_anterior)}
-                                                </div>
-                                                <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
-                                                  {formatCurrency(it.valor_anterior)}
-                                                </div>
-                                              </td>
-                                              <td className="py-2 text-right">
-                                                <div className="text-sm font-bold tabular-nums" style={{ color: '#0F766E' }}>
-                                                  {formatPercent(it.pct_atual)}
-                                                </div>
-                                                <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
-                                                  {formatCurrency(it.valor_atual)}
-                                                </div>
-                                              </td>
-                                              <td className="py-2 text-right">
-                                                <div className="text-sm font-bold tabular-nums" style={{ color: '#10B981' }}>
-                                                  {formatPercent(it.pct_total)}
-                                                </div>
-                                                <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
-                                                  {formatCurrency(it.valor_total)}
-                                                </div>
-                                                <div className="h-1 mt-1 rounded-full" style={{ background: 'var(--surface-3)' }}>
-                                                  <div className="h-full rounded-full transition-all" style={{
-                                                    width: `${pctTotalBarI}%`,
-                                                    background: '#10B981',
-                                                  }} />
-                                                </div>
-                                              </td>
-                                              <td className="py-2 text-right">
-                                                <div className="text-sm font-bold tabular-nums" style={{ color: '#F59E0B' }}>
-                                                  {formatPercent(it.pct_saldo)}
-                                                </div>
-                                                <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
-                                                  {formatCurrency(it.valor_saldo)}
-                                                </div>
-                                              </td>
-                                            </tr>
+                                            <Fragment key={`d-${it.medicao_item_id || it.detalhamento_id}`}>
+                                              <tr className="border-b border-[var(--border)]" style={{ background: 'var(--surface-1)' }}>
+                                                <td className="py-2 font-mono" style={{ color: 'var(--text-3)', paddingLeft: '32px' }}>
+                                                  <span className="inline-flex items-center gap-1.5">
+                                                    {hasPav && (
+                                                      <button
+                                                        onClick={() => pavItemKey && togglePavItem(pavItemKey)}
+                                                        className={`px-1 py-0.5 rounded print:hidden transition-colors ${isPavExpanded ? 'text-blue-400' : 'text-slate-600 hover:text-blue-400'}`}
+                                                        title={isPavExpanded ? 'Ocultar pavimentos' : 'Ver % por pavimento'}
+                                                      >
+                                                        <Building2 className="inline w-3 h-3" />
+                                                      </button>
+                                                    )}
+                                                    {isAdmin && isPendente && it.detalhamento_id && (
+                                                      <button
+                                                        onClick={() => abrirAjustar({
+                                                          detalhamento_id: it.detalhamento_id!,
+                                                          codigo: it.codigo,
+                                                          descricao: it.descricao,
+                                                          qtd_atual: it.qtd_atual,
+                                                          quantidade_contratada: it.quantidade_contratada,
+                                                        })}
+                                                        className="text-[10px] font-medium px-1.5 py-0.5 rounded print:hidden hover:bg-orange-500/10"
+                                                        style={{ color: '#F97316', border: '1px solid rgba(249,115,22,0.4)' }}
+                                                        title="Admin: ajustar quantidade medida"
+                                                      >
+                                                        <Pencil className="inline w-3 h-3" />
+                                                      </button>
+                                                    )}
+                                                    {it.codigo}
+                                                  </span>
+                                                </td>
+                                                <td className="py-2" style={{ color: 'var(--text-2)' }}>{it.descricao}</td>
+                                                <td className="py-2 text-right">
+                                                  <div className="text-sm tabular-nums" style={{ color: 'var(--text-2)' }}>
+                                                    {formatCurrency(it.valor_global_item)}
+                                                  </div>
+                                                  <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                                    {Number(it.quantidade_contratada).toLocaleString('pt-BR')} × {formatCurrency(it.valor_unitario_contratual)}
+                                                  </div>
+                                                </td>
+                                                <td className="py-2 text-right">
+                                                  <div className="text-sm font-bold tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                                    {formatPercent(it.pct_anterior)}
+                                                  </div>
+                                                  <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                                    {formatCurrency(it.valor_anterior)}
+                                                  </div>
+                                                </td>
+                                                <td className="py-2 text-right">
+                                                  <div className="text-sm font-bold tabular-nums" style={{ color: '#0F766E' }}>
+                                                    {formatPercent(it.pct_atual)}
+                                                  </div>
+                                                  <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                                    {formatCurrency(it.valor_atual)}
+                                                  </div>
+                                                </td>
+                                                <td className="py-2 text-right">
+                                                  <div className="text-sm font-bold tabular-nums" style={{ color: '#10B981' }}>
+                                                    {formatPercent(it.pct_total)}
+                                                  </div>
+                                                  <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                                    {formatCurrency(it.valor_total)}
+                                                  </div>
+                                                  <div className="h-1 mt-1 rounded-full" style={{ background: 'var(--surface-3)' }}>
+                                                    <div className="h-full rounded-full transition-all" style={{
+                                                      width: `${pctTotalBarI}%`,
+                                                      background: '#10B981',
+                                                    }} />
+                                                  </div>
+                                                </td>
+                                                <td className="py-2 text-right">
+                                                  <div className="text-sm font-bold tabular-nums" style={{ color: '#F59E0B' }}>
+                                                    {formatPercent(it.pct_saldo)}
+                                                  </div>
+                                                  <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                                    {formatCurrency(it.valor_saldo)}
+                                                  </div>
+                                                </td>
+                                              </tr>
+                                              {/* === GRADE DE PAVIMENTOS — expandida sob o detalhamento === */}
+                                              {isPavExpanded && it.pavimentos_pct && (
+                                                <tr style={{ background: 'var(--surface-1)' }}>
+                                                  <td colSpan={7} className="pb-3 px-10">
+                                                    <div className="rounded-lg border p-2" style={{ borderColor: 'var(--border)', background: 'var(--surface-2)' }}>
+                                                      <p className="text-[10px] mb-2" style={{ color: 'var(--text-3)' }}>
+                                                        Breakdown por pavimento · acumulado ao fim desta medição
+                                                      </p>
+                                                      <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-1">
+                                                        {(pavRange ? listarPavimentos(pavRange) : Object.keys(it.pavimentos_pct).map(Number).sort((a, b) => a - b))
+                                                          .map(pavtoNum => {
+                                                            const pctAtu = Number(it.pavimentos_pct![String(pavtoNum)] ?? 0)
+                                                            const pctAnt = Number(it.pavimentos_pct_anterior?.[String(pavtoNum)] ?? 0)
+                                                            const isDelta = pctAtu > pctAnt
+                                                            return (
+                                                              <div
+                                                                key={pavtoNum}
+                                                                className={`p-1.5 rounded-md border text-center ${
+                                                                  isDelta
+                                                                    ? 'border-amber-500/40 bg-amber-500/5'
+                                                                    : pctAtu >= 100
+                                                                    ? 'border-emerald-500/30 bg-emerald-500/5'
+                                                                    : 'border-[var(--border)]'
+                                                                }`}
+                                                              >
+                                                                <div className="text-[10px] font-mono" style={{ color: 'var(--text-3)' }}>{pavtoNum}º pav</div>
+                                                                {isDelta && pctAnt > 0 && (
+                                                                  <div className="text-[9px]" style={{ color: 'var(--text-3)' }}>ant: {pctAnt}%</div>
+                                                                )}
+                                                                <div className={`text-[11px] font-bold ${
+                                                                  isDelta ? 'text-amber-300' : pctAtu >= 100 ? 'text-emerald-300' : 'text-slate-500'
+                                                                }`}>{pctAtu}%</div>
+                                                              </div>
+                                                            )
+                                                          })}
+                                                      </div>
+                                                    </div>
+                                                  </td>
+                                                </tr>
+                                              )}
+                                            </Fragment>
                                           )
                                         })}
                                       </Fragment>

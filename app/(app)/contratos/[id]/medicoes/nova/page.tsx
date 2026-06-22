@@ -254,6 +254,21 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
   }
 
   /**
+   * Seta pct de pavto sem normalizar para {0,25,50,75,100}.
+   * Usado pelo input customizado de % livre.
+   */
+  function setPavPctArbitrario(detId: string, pavto: number, pctRaw: number) {
+    const anterior = getPavPctAnterior(detId, pavto)
+    const efetivo = Math.max(anterior, Math.min(100, Math.round(pctRaw)))
+    setPavPctMap(prev => {
+      const next = { ...prev, [detId]: { ...(prev[detId] || {}), [String(pavto)]: efetivo } }
+      const novaQtde = somarPavimentos(next[detId])
+      setQtdeMedicao(prevQ => ({ ...prevQ, [detId]: novaQtde }))
+      return next
+    })
+  }
+
+  /**
    * Click no botao de pct. Se o pavto JA esta nesse pct e ele eh maior que
    * o anterior, "destoggle" (volta pro anterior). Caso contrario, seta.
    */
@@ -543,8 +558,8 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                           )}
                                         </div>
                                       ) : !useUnidades ? (
-                                        // Item indivisivel — botoes percentuais 0/25/50/75/100
-                                        <div className="flex gap-0.5">
+                                        // Item indivisivel — botoes percentuais 0/25/50/75/100 + input livre
+                                        <div className="flex gap-0.5 items-center">
                                           {[0, 25, 50, 75, 100].map(p => {
                                             const novaQtdeBotao = p / 100 // qtde_contratada=1 → qtde absoluta=pct/100
                                             const isMin   = novaQtdeBotao < qtdeAnt
@@ -570,6 +585,33 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                               </button>
                                             )
                                           })}
+                                          {/* Input de % livre — aceita qualquer valor entre min e 100 */}
+                                          {(() => {
+                                            const currentPctInt = Math.round(qtdeAtual * 100)
+                                            const isStd = [0, 25, 50, 75, 100].includes(currentPctInt)
+                                            const minPct = Math.round(qtdeAnt * 100)
+                                            return (
+                                              <input
+                                                key={isStd ? 'std' : currentPctInt}
+                                                type="number"
+                                                defaultValue={isStd ? '' : String(currentPctInt)}
+                                                min={minPct}
+                                                max={100}
+                                                step={1}
+                                                placeholder="…"
+                                                onBlur={e => {
+                                                  const v = parseFloat(e.target.value)
+                                                  if (Number.isFinite(v)) {
+                                                    const clamped = Math.max(minPct, Math.min(100, Math.round(v)))
+                                                    setQtdeMedicao(prev => ({ ...prev, [det.id]: clamped / 100 }))
+                                                  }
+                                                  e.target.value = ''
+                                                }}
+                                                onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                                                className="w-10 py-1.5 rounded text-[11px] font-bold text-center tabular-nums bg-[#1e293b] text-slate-300 border border-[#334155] focus:border-amber-400 focus:ring-1 focus:ring-amber-400/40 outline-none placeholder-slate-600"
+                                              />
+                                            )
+                                          })()}
                                         </div>
                                       ) : (
                                         // Item divisivel — input numerico de unidades
@@ -661,6 +703,28 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                                   )
                                                 })}
                                               </div>
+                                              {/* Input de % livre por pavto */}
+                                              {(() => {
+                                                const isStdPav = [0, 25, 50, 75, 100].includes(pctAtu)
+                                                return (
+                                                  <input
+                                                    key={isStdPav ? 'std' : pctAtu}
+                                                    type="number"
+                                                    defaultValue={isStdPav ? '' : String(pctAtu)}
+                                                    min={pctAnt}
+                                                    max={100}
+                                                    step={1}
+                                                    placeholder="…"
+                                                    onBlur={e => {
+                                                      const v = parseFloat(e.target.value)
+                                                      if (Number.isFinite(v)) setPavPctArbitrario(det.id, pavto, v)
+                                                      e.target.value = ''
+                                                    }}
+                                                    onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                                                    className="mt-0.5 w-full py-0.5 rounded text-[9px] font-bold text-center tabular-nums bg-[#1e293b] text-slate-300 border border-[#334155] focus:border-amber-400 outline-none placeholder-slate-600"
+                                                  />
+                                                )
+                                              })()}
                                             </div>
                                           )
                                         })}
