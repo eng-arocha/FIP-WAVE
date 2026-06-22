@@ -416,11 +416,19 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
   const aprovacoes: any[] = medicao.aprovacoes || []
 
   async function downloadPDF() {
+    // Garante que planilha está carregada antes de gerar o PDF
+    let planilhaParaPDF = planilha
+    if (!planilhaParaPDF) {
+      try {
+        const res = await fetch(`/api/contratos/${contratoId}/medicoes/${medicaoId}/planilha`, { cache: 'no-store' })
+        if (res.ok) planilhaParaPDF = await res.json()
+      } catch { /* usa fallback */ }
+    }
     // Dynamic import to avoid SSR issues
     const { pdf } = await import('@react-pdf/renderer')
     const { MedicaoPDF } = await import('@/components/pdf/MedicaoPDF')
     const blob = await pdf(
-      <MedicaoPDF medicao={medicao} itens={itens} aprovacoes={aprovacoes} planilha={planilha} />
+      <MedicaoPDF medicao={medicao} itens={itens} aprovacoes={aprovacoes} planilha={planilhaParaPDF} />
     ).toBlob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
