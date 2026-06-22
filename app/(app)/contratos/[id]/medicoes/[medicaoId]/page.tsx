@@ -420,7 +420,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
     const { pdf } = await import('@react-pdf/renderer')
     const { MedicaoPDF } = await import('@/components/pdf/MedicaoPDF')
     const blob = await pdf(
-      <MedicaoPDF medicao={medicao} itens={itens} aprovacoes={aprovacoes} />
+      <MedicaoPDF medicao={medicao} itens={itens} aprovacoes={aprovacoes} planilha={planilha} />
     ).toBlob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
