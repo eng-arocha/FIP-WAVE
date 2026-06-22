@@ -415,7 +415,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
   const notas_fiscais: any[] = medicao.notas_fiscais || []
   const aprovacoes: any[] = medicao.aprovacoes || []
 
-  async function downloadPDF() {
+  async function downloadPDF(somentePeriodo = true) {
     // Garante que planilha está carregada antes de gerar o PDF
     let planilhaParaPDF = planilha
     if (!planilhaParaPDF) {
@@ -428,12 +428,13 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
     const { pdf } = await import('@react-pdf/renderer')
     const { MedicaoPDF } = await import('@/components/pdf/MedicaoPDF')
     const blob = await pdf(
-      <MedicaoPDF medicao={medicao} itens={itens} aprovacoes={aprovacoes} planilha={planilhaParaPDF} />
+      <MedicaoPDF medicao={medicao} itens={itens} aprovacoes={aprovacoes} planilha={planilhaParaPDF} somentePeriodo={somentePeriodo} />
     ).toBlob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `medicao-${String(medicao.numero).padStart(3,'0')}-${medicao.periodo_referencia}.pdf`
+    const sufixo = somentePeriodo ? 'periodo' : 'acumulado'
+    a.download = `medicao-${String(medicao.numero).padStart(3,'0')}-${medicao.periodo_referencia}-${sufixo}.pdf`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -451,9 +452,13 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                 Voltar
               </Button>
             </Link>
-            <Button variant="outline" size="sm" onClick={downloadPDF}>
+            <Button variant="outline" size="sm" onClick={() => downloadPDF(true)}>
               <Download className="w-4 h-4" />
               Exportar PDF
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => downloadPDF(false)}>
+              <FileText className="w-4 h-4" />
+              Exportar Acumulado
             </Button>
           </div>
         }
