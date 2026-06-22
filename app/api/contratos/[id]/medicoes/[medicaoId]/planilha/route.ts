@@ -265,10 +265,18 @@ export async function GET(
       .eq('contrato_id', contratoId)
     if (medsErr) throw medsErr
 
-    // IDs das aprovadas anteriores: aprovado E id != medicaoId.
-    // (Se a alvo já estiver aprovada ela é "atual", não "anterior".)
+    // IDs das aprovadas anteriores: aprovadas E com numero < numero da medição alvo.
+    // Garante acumulado cronológico correto — evita incluir medições FUTURAS
+    // aprovadas ao visualizar uma medição histórica.
+    const medicaoNumero = Number((medicaoAlvo as any).numero ?? 0)
     const idsAprovadasAnteriores = (medicoesDoContrato || [])
-      .filter((m: any) => m.status === 'aprovado' && m.id !== medicaoId)
+      .filter((m: any) => {
+        if (m.status !== 'aprovado' || m.id === medicaoId) return false
+        // Só inclui medições cronologicamente anteriores (numero menor)
+        if (medicaoNumero > 0) return Number(m.numero) < medicaoNumero
+        // Fallback defensivo: sem numero disponível, inclui todas aprovadas
+        return true
+      })
       .map((m: any) => m.id as string)
 
     // 3) Itens da medição-alvo com detalhamento embed (com fallback de schema)

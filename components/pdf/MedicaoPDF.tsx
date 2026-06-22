@@ -265,8 +265,8 @@ export function MedicaoPDF({ medicao, itens, aprovacoes, planilha, somentePeriod
               <Text style={[s.thTxt, { width: COL.cod }]}>Cód.</Text>
               <Text style={[s.thTxt, { width: COL.desc }]}>Descrição</Text>
               <Text style={[s.thTxt, { width: COL.vg, textAlign: 'right' }]}>Valor Global</Text>
-              <Text style={[s.thTxt, { width: COL.antPct, textAlign: 'right' }]}>Ant. %</Text>
-              <Text style={[s.thTxt, { width: COL.ant, textAlign: 'right' }]}>Med. Anterior</Text>
+              <Text style={[s.thTxt, { width: COL.antPct, textAlign: 'right' }]}>Acum. Ant. %</Text>
+              <Text style={[s.thTxt, { width: COL.ant, textAlign: 'right' }]}>Acum. Anterior</Text>
               <Text style={[s.thTxt, { width: COL.atuPct, textAlign: 'right' }]}>Atu. %</Text>
               <Text style={[s.thTxt, { width: COL.atu, textAlign: 'right' }]}>Med. Atual</Text>
               <Text style={[s.thTxt, { width: COL.totPct, textAlign: 'right' }]}>Tot. %</Text>
