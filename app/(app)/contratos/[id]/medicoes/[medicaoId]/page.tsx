@@ -841,7 +841,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                               <th className="text-left py-2 text-[var(--text-3)] font-medium">Código</th>
                               <th className="text-left py-2 text-[var(--text-3)] font-medium">Descrição</th>
                               <th className="text-right py-2 text-[var(--text-3)] font-medium">Valor Global</th>
-                              <th className="text-right py-2 text-[var(--text-3)] font-medium">Med. Anterior</th>
+                              <th className="text-right py-2 text-[var(--text-3)] font-medium">Acum. Anterior</th>
                               <th className="text-right py-2 font-medium" style={{ color: '#0F766E' }}>Med. Atual</th>
                               <th className="text-right py-2 font-medium" style={{ color: '#10B981' }}>Total Medido</th>
                               <th className="text-right py-2 font-medium" style={{ color: '#F59E0B' }}>Saldo a Medir</th>
