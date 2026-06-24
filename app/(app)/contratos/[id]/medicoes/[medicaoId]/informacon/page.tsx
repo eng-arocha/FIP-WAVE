@@ -15,7 +15,7 @@ import { usePermissoes } from '@/lib/context/permissoes-context'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { exportCsv } from '@/lib/utils/csv'
 import {
-  ArrowLeft, Loader2, Download, Copy, Check, FileText, TrendingUp, Printer, HelpCircle, X,
+  ArrowLeft, ArrowRight, Loader2, Download, Copy, Check, FileText, TrendingUp, Printer, HelpCircle, X,
   CheckCircle2, XCircle, Mail, AlertTriangle, Info, Undo2, Pencil,
 } from 'lucide-react'
 
@@ -74,6 +74,8 @@ interface Linha {
     ajustado_em: string
     ajustado_por_nome: string | null
   }>
+  // IDs das solicitações fat-direto aprovadas com saldo retido para este item
+  solicitacoes_retido_ids?: string[]
 }
 
 interface Resp {
@@ -928,7 +930,31 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                       <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.saldo_aprovado)}</td>
                       <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.nf_descontavel)}</td>
                       <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(245,158,11,0.04)', color: 'var(--text-3)' }}>{formatCurrency(l.gap_material)}</td>
-                      <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(245,158,11,0.04)', color: l.faturamento_direto_em_aberto > 0 ? '#F59E0B' : 'var(--text-3)' }}>{formatCurrency(l.faturamento_direto_em_aberto)}</td>
+                      <td
+                        style={{
+                          ...td('tabular-nums font-semibold'),
+                          textAlign: 'right',
+                          background: 'rgba(245,158,11,0.04)',
+                          color: l.faturamento_direto_em_aberto > 0 ? '#F59E0B' : 'var(--text-3)',
+                          cursor: l.faturamento_direto_em_aberto > 0 && (l.solicitacoes_retido_ids?.length ?? 0) > 0 ? 'pointer' : 'default',
+                        }}
+                        title={l.faturamento_direto_em_aberto > 0 && (l.solicitacoes_retido_ids?.length ?? 0) > 0
+                          ? `Ver ${l.solicitacoes_retido_ids!.length} pedido(s) com saldo em aberto → NF Fat-Direto`
+                          : undefined}
+                        onClick={() => {
+                          const ids = l.solicitacoes_retido_ids
+                          if (l.faturamento_direto_em_aberto > 0 && ids && ids.length > 0) {
+                            window.open(`/nf-fat-direto?sol_ids=${ids.join(',')}`, '_blank')
+                          }
+                        }}
+                      >
+                        <span className="inline-flex items-center gap-1 justify-end w-full">
+                          {formatCurrency(l.faturamento_direto_em_aberto)}
+                          {l.faturamento_direto_em_aberto > 0 && (l.solicitacoes_retido_ids?.length ?? 0) > 0 && (
+                            <ArrowRight className="w-3 h-3 opacity-50 flex-shrink-0" />
+                          )}
+                        </span>
+                      </td>
                       <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(59,130,246,0.04)', color: l.fip_faturar > 0 ? '#3B82F6' : 'var(--text-3)' }}>{formatCurrency(l.fip_faturar)}</td>
                       <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(15,118,110,0.04)', color: '#0F766E' }}>{formatCurrency(l.wave_servico)}</td>
                       <td
