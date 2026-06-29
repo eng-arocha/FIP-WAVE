@@ -128,6 +128,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
   const { perfilAtual, temPermissao } = usePermissoes()
   const podeAprovar = perfilAtual === 'admin' || temPermissao('medicoes', 'aprovar')
 
+  const [modalAutorizar, setModalAutorizar] = useState(false)
   const [modalAprovar,   setModalAprovar]   = useState(false)
   const [modalLiberacao, setModalLiberacao] = useState<'aprovar' | 'reenviar' | null>(null)
   const [modalRejeitar,  setModalRejeitar]  = useState(false)
@@ -227,6 +228,27 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
   // ============================================================
   // Aprovar / rejeitar a medição (chama backend igual page.tsx fazia)
   // ============================================================
+  // PORTÃO 1 — Autorizar: libera a NF de material FIP (não aprova ainda a
+  // emissão da NF de serviço; isso é o portão 2 depois da NF de material).
+  async function autorizar() {
+    setSaving(true)
+    setErroAcao('')
+    try {
+      const res = await fetch(`/api/contratos/${contratoId}/medicoes/${medicaoId}/autorizar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ comentario }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) { setErroAcao(body?.error || `Falha (HTTP ${res.status}).`); return }
+      setModalAutorizar(false)
+      setComentario('')
+      await carregar()
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function aprovarSemEmail() {
     setSaving(true)
     setErroAcao('')
@@ -549,6 +571,9 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
   const dataReferencia = data.medicao.data_aprovacao || data.medicao.data_submissao
   const isPendente =
     data.medicao.status === 'submetido' || data.medicao.status === 'em_analise'
+  // Portão 1 já concluído: material FIP liberado, aguardando lançamento da
+  // NF de material pra liberar o portão 2 (emissão da NF de serviço).
+  const isAutorizado = data.medicao.status === 'autorizado'
 
   // Mapa visual por status
   const statusInfo = (() => {
@@ -572,6 +597,15 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
           color: '#3B82F6',
           bg: 'rgba(59,130,246,0.10)',
           border: 'rgba(59,130,246,0.40)',
+          isPrevia: true,
+        }
+      case 'autorizado':
+        return {
+          label: 'Autorizado · Material FIP liberado (portão 1)',
+          descricao: 'Material liberado para faturamento direto. Lance a NF de material no sistema; depois aprove a emissão da NF de serviço (portão 2). Valores ainda podem ser ajustados até a aprovação final.',
+          color: '#14B8A6',
+          bg: 'rgba(20,184,166,0.10)',
+          border: 'rgba(20,184,166,0.40)',
           isPrevia: true,
         }
       case 'rascunho':
@@ -676,7 +710,8 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
           </div>
         </div>
 
-        {/* Barra de aprovação/rejeição — só visível quando o aprovador pode agir */}
+        {/* PORTÃO 1 — Autorizar (libera NF de material FIP). Visível enquanto
+            a medição está pendente (submetido/em_analise). */}
         {isPendente && podeAprovar && (
           <div
             className="rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap print:hidden"
@@ -689,11 +724,57 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
               <Info className="w-4 h-4 mt-0.5" style={{ color: '#3B82F6' }} />
               <div className="text-xs" style={{ color: 'var(--text-2)' }}>
                 <p className="font-semibold" style={{ color: 'var(--text-1)' }}>
-                  Aprovação da medição {tag}
+                  Portão 1 — Autorizar medição {tag}
                 </p>
                 <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>
-                  Revise item-a-item (incluindo confirmações &quot;sem mais NF&quot; pra itens com retido)
-                  antes de aprovar e liberar a emissão de NF.
+                  Revise item-a-item (incluindo confirmações &quot;sem mais NF&quot;). Ao autorizar,
+                  o material FIP é liberado para faturamento direto. A NF de serviço só é liberada
+                  no <strong>portão 2</strong>, após a NF de material ser lançada no sistema.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                variant="success"
+                size="sm"
+                onClick={() => setModalAutorizar(true)}
+                title="Autoriza a medição e libera a emissão da NF de material FIP (portão 1)"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                Autorizar (liberar material FIP)
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setModalRejeitar(true)}
+              >
+                <XCircle className="w-4 h-4" />
+                Rejeitar
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* PORTÃO 2 — Aprovar emissão da NF de serviço. Visível quando a
+            medição já foi autorizada (portão 1 concluído). */}
+        {isAutorizado && podeAprovar && (
+          <div
+            className="rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap print:hidden"
+            style={{
+              background: 'rgba(16,185,129,0.06)',
+              border: '1px solid rgba(16,185,129,0.30)',
+            }}
+          >
+            <div className="flex items-start gap-2 flex-1 min-w-[260px]">
+              <Info className="w-4 h-4 mt-0.5" style={{ color: '#10B981' }} />
+              <div className="text-xs" style={{ color: 'var(--text-2)' }}>
+                <p className="font-semibold" style={{ color: 'var(--text-1)' }}>
+                  Portão 2 — Aprovar emissão da NF de serviço · {tag}
+                </p>
+                <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>
+                  Material já autorizado (portão 1). Aprove a emissão da NF de serviço da Wave
+                  <strong> somente após a NF de material FIP ter sido lançada</strong> no sistema —
+                  o sistema valida esse pré-requisito.
                 </p>
               </div>
             </div>
@@ -702,19 +783,19 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                 variant="success"
                 size="sm"
                 onClick={() => setModalLiberacao('aprovar')}
-                title="Aprova a medição e dispara email de liberação para os envolvidos"
+                title="Aprova a emissão da NF de serviço e dispara email de liberação"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                Aprovar e liberar NF
+                Aprovar e liberar NF serviço
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setModalAprovar(true)}
-                title="Aprova sem disparar email"
+                title="Aprova a emissão da NF de serviço sem disparar email"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                Aprovar
+                Aprovar (sem email)
               </Button>
               <Button
                 variant="destructive"
@@ -1005,6 +1086,47 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
       {/* ============================ */}
       {/*   Modais de aprovação        */}
       {/* ============================ */}
+
+      {/* PORTÃO 1 — Autorizar (liberar material FIP) */}
+      <Dialog open={modalAutorizar} onOpenChange={(open) => { if (!open) { setModalAutorizar(false); setErroAcao('') } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-emerald-400 flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5" />
+              Portão 1 — Autorizar Medição {tag}
+            </DialogTitle>
+            <DialogDescription className="text-[var(--text-2)]">
+              Período: {data.medicao.periodo_referencia} · Contrato {data.medicao.contrato.numero}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2 space-y-3">
+            <div className="p-3 bg-blue-900/20 border border-blue-800/40 rounded-lg text-xs text-blue-300 space-y-1">
+              <p className="font-semibold">O que acontece ao autorizar:</p>
+              <p>• O pedido de <strong>NF de material FIP</strong> (faturamento direto) é gerado/liberado.</p>
+              <p>• A medição vai para o status <strong>Autorizado</strong>.</p>
+              <p>• A <strong>NF de serviço da Wave NÃO é liberada ainda</strong> — isso é o portão 2,
+                 disponível somente após a NF de material ser lançada no sistema.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wider">Comentário (opcional)</Label>
+              <Textarea
+                placeholder="Observações sobre a autorização do material..."
+                value={comentario}
+                onChange={e => setComentario(e.target.value)}
+                className="bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-1)] placeholder:text-[var(--text-3)]"
+              />
+            </div>
+            {erroAcao && <p className="text-xs text-red-400">{erroAcao}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalAutorizar(false)} disabled={saving}>Cancelar</Button>
+            <Button variant="success" onClick={autorizar} loading={saving}>
+              <CheckCircle2 className="w-4 h-4" />
+              Confirmar Autorização
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Aprovar SEM email */}
       <Dialog open={modalAprovar} onOpenChange={(open) => { if (!open) { setModalAprovar(false); setErroAcao('') } }}>

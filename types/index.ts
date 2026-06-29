@@ -8,8 +8,8 @@ export type ContratoStatus = 'rascunho' | 'ativo' | 'suspenso' | 'encerrado' | '
 export type AditivoTipo = 'valor' | 'prazo' | 'escopo' | 'misto'
 export type AditivoStatus = 'pendente' | 'aprovado' | 'rejeitado'
 export type TipoMedicao = 'servico' | 'faturamento_direto' | 'misto'
-export type MedicaoStatus = 'rascunho' | 'submetido' | 'em_analise' | 'aprovado' | 'rejeitado' | 'cancelado'
-export type AcaoAprovacao = 'aprovado' | 'rejeitado' | 'solicitou_ajuste' | 'comentou'
+export type MedicaoStatus = 'rascunho' | 'submetido' | 'em_analise' | 'autorizado' | 'aprovado' | 'rejeitado' | 'cancelado'
+export type AcaoAprovacao = 'aprovado' | 'rejeitado' | 'solicitou_ajuste' | 'comentou' | 'autorizado'
 export type TipoAnexo = 'nota_fiscal' | 'boleto' | 'relatorio_fotos' | 'medicao_assinada' | 'outro'
 export type UsuarioPapel = 'admin' | 'aprovador' | 'solicitante' | 'visualizador'
 
@@ -243,6 +243,7 @@ export const MEDICAO_STATUS_LABELS: Record<MedicaoStatus, string> = {
   rascunho: 'Rascunho',
   submetido: 'Aguardando Análise',
   em_analise: 'Em Análise',
+  autorizado: 'Autorizado (material liberado)',
   aprovado: 'Aprovado',
   rejeitado: 'Rejeitado',
   cancelado: 'Cancelado',

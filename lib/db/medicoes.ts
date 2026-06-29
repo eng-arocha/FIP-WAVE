@@ -22,7 +22,9 @@ export async function getMedicoesPendentes() {
         contratado:empresas!contratos_contratado_id_fkey(nome)
       )
     `)
-    .in('status', ['submetido', 'em_analise'])
+    // 'autorizado' = portão 1 concluído, aguardando o portão 2 (aprovar
+    // emissão da NF de serviço). Mantém na fila de aprovações.
+    .in('status', ['submetido', 'em_analise', 'autorizado'])
     .order('created_at', { ascending: false })
   if (error) throw error
   return data || []
@@ -305,6 +307,78 @@ export async function aprovarMedicao(id: string, aprovadorNome: string, aprovado
     acao: 'aprovado',
     comentario,
   })
+}
+
+/**
+ * PORTÃO 1 — Autoriza a medição (submetido/em_analise → autorizado).
+ *
+ * Significado: a equipe avaliou a execução física dos serviços e LIBERA
+ * a emissão da NF de MATERIAL FIP. NÃO libera ainda a NF de serviço da
+ * Wave — isso só acontece no portão 2 (`aprovarMedicao`), depois que a
+ * NF de material for lançada no sistema.
+ *
+ * Grava data_autorizacao + autorizado_por (auditoria). Resiliente: se as
+ * colunas da migration 073 ainda não existem, cai pro update mínimo
+ * (apenas status), mantendo o app vivo.
+ */
+export async function autorizarMedicao(
+  id: string,
+  autorizadorNome: string,
+  autorizadorEmail: string,
+  autorizadorId: string,
+  comentario?: string,
+) {
+  const supabase = await createClient()
+
+  const agora = new Date().toISOString()
+  const updateExtra: Record<string, unknown> = {
+    status: 'autorizado',
+    data_autorizacao: agora,
+    autorizado_por_id: autorizadorId,
+    autorizado_por_nome: autorizadorNome,
+    updated_at: agora,
+  }
+  const updateBase: Record<string, unknown> = {
+    status: 'autorizado',
+    updated_at: agora,
+  }
+
+  const tryUpdate = await supabase.from('medicoes').update(updateExtra).eq('id', id)
+  if (tryUpdate.error) {
+    const msg = (tryUpdate.error as any).message || ''
+    const code = (tryUpdate.error as any).code || ''
+    const isSchemaStale =
+      code === 'PGRST204' ||
+      ['data_autorizacao', 'autorizado_por_id', 'autorizado_por_nome'].some(c => msg.includes(c))
+    if (isSchemaStale) {
+      const retry = await supabase.from('medicoes').update(updateBase).eq('id', id)
+      if (retry.error) throw retry.error
+    } else {
+      throw tryUpdate.error
+    }
+  }
+
+  // Registra na trilha de aprovações (acao='autorizado' reaproveita a
+  // coluna existente; se houver CHECK restritivo, cai pra 'comentou').
+  const ins = await supabase.from('aprovacoes').insert({
+    medicao_id: id,
+    aprovador_nome: autorizadorNome,
+    aprovador_email: autorizadorEmail,
+    acao: 'autorizado',
+    comentario: comentario ?? 'Material FIP liberado (portão 1).',
+  })
+  if (ins.error) {
+    const msg = (ins.error as any).message || ''
+    if (msg.includes('acao') || (ins.error as any).code === '23514') {
+      await supabase.from('aprovacoes').insert({
+        medicao_id: id,
+        aprovador_nome: autorizadorNome,
+        aprovador_email: autorizadorEmail,
+        acao: 'comentou',
+        comentario: `[AUTORIZADO — material liberado] ${comentario ?? ''}`.trim(),
+      })
+    }
+  }
 }
 
 export async function rejeitarMedicao(id: string, aprovadorNome: string, aprovadorEmail: string, motivo: string) {
