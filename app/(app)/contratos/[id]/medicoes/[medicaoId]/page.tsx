@@ -288,7 +288,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
 
   const isPendente = status === 'submetido' || status === 'em_analise'
   const isCriador = userEmail !== null && medicao.solicitante_email === userEmail
-  const criadorPodeExcluir = isCriador && !['aprovado', 'em_analise', 'cancelado'].includes(status)
+  const criadorPodeExcluir = isCriador && !['aprovado', 'autorizado', 'em_analise', 'cancelado'].includes(status)
 
   // Anomaly detection: flag if value is >2x the average of approved measurements
   const anomalia = (() => {
@@ -401,6 +401,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
 
   const ACAO_CONFIG: Record<string, { icon: any; color: string; bg: string; label: string }> = {
     aprovado: { icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-900/30', label: 'Aprovação' },
+    autorizado: { icon: CheckCircle2, color: 'text-teal-400', bg: 'bg-teal-900/30', label: 'Autorização (material liberado)' },
     rejeitado: { icon: XCircle, color: 'text-red-400', bg: 'bg-red-900/30', label: 'Rejeição' },
     solicitou_ajuste: { icon: AlertCircle, color: 'text-amber-400', bg: 'bg-amber-900/30', label: 'Ajuste Solicitado' },
     comentou: { icon: MessageSquare, color: 'text-blue-400', bg: 'bg-blue-500/10', label: 'Comentário' },

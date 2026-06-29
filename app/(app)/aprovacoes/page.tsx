@@ -188,8 +188,9 @@ export default function AprovacoesPage() {
                 }
                 return prev.filter(p => p.id !== newRow.id)
               })
-            } else if (newStatus === 'submetido') {
-              // Re-submitted measurement — refresh full list
+            } else if (newStatus === 'submetido' || newStatus === 'autorizado') {
+              // Re-submetida OU autorizada (portão 1) — atualiza a fila pra
+              // refletir o novo status sem removê-la das pendentes.
               fetch('/api/aprovacoes').then(r => r.json()).then(data => {
                 setPendentes(data.pendentes ?? [])
                 setHistorico(data.historico ?? [])
@@ -206,14 +207,27 @@ export default function AprovacoesPage() {
   async function quickAprovar(m: PendenteMedicao) {
     setQuickAprovando(m.id)
     try {
-      const res = await fetch(`/api/contratos/${m.contrato.id}/medicoes/${m.id}/aprovar`, {
+      // Fluxo de dois portões: medição ainda não autorizada → portão 1
+      // (autorizar, libera material FIP). Já autorizada → portão 2 (aprovar
+      // emissão da NF de serviço). O backend valida os pré-requisitos.
+      const ehPortao1 = m.status !== 'autorizado'
+      const endpoint = ehPortao1 ? 'autorizar' : 'aprovar'
+      const res = await fetch(`/api/contratos/${m.contrato.id}/medicoes/${m.id}/${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ aprovadorNome: 'Fiscal FIP', aprovadorEmail: 'fiscal@fipengenharia.com.br', comentario: '', medicao: m }),
       })
       if (res.ok) {
-        setPendentes(prev => prev.filter(p => p.id !== m.id))
-        setHistorico(prev => [{ ...m, status: 'aprovado', updated_at: new Date().toISOString(), aprovacoes: [{ aprovador_nome: 'Fiscal FIP' }] }, ...prev])
+        if (ehPortao1) {
+          // Permanece na fila, agora aguardando o portão 2.
+          setPendentes(prev => prev.map(p => p.id === m.id ? { ...p, status: 'autorizado' } : p))
+        } else {
+          setPendentes(prev => prev.filter(p => p.id !== m.id))
+          setHistorico(prev => [{ ...m, status: 'aprovado', updated_at: new Date().toISOString(), aprovacoes: [{ aprovador_nome: 'Fiscal FIP' }] }, ...prev])
+        }
+      } else {
+        const body = await res.json().catch(() => ({}))
+        alert(body?.error || `Falha (HTTP ${res.status}).`)
       }
     } finally {
       setQuickAprovando(null)

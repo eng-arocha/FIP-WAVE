@@ -21,7 +21,16 @@ const Body = z.object({
    *  Liberação para NF (template novo, com resumo financeiro consolidado). */
   notificar_envolvidos: z.boolean().optional(),
   destinatarios_ids: z.array(z.string().uuid()).optional(),
+  /** Override excepcional do portão 2: aprova a emissão da NF de serviço
+   *  MESMO sem a NF de material ter sido lançada. Exige justificativa.
+   *  (Ex.: medição 03 / FIP-0017, faturamento direto avulso já aprovado.) */
+  forcar_sem_nf_material: z.boolean().optional(),
+  motivo_forcar: z.string().max(2000).optional(),
 })
+
+// Status da NF de material que CONTAM como "lançada" pro portão 2.
+// cancelada/rejeitada não liberam.
+const NF_MATERIAL_OK = new Set(['aguardando_aprovacao', 'em_correcao', 'aprovada', 'lancada'])
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string; medicaoId: string }> }) {
   try {
@@ -45,12 +54,84 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     const parsed = await parseBody(Body, req)
     if (!parsed.ok) return parsed.res
-    const { comentario, medicao, notificar_envolvidos, destinatarios_ids } = parsed.data
+    const { comentario, medicao, notificar_envolvidos, destinatarios_ids, forcar_sem_nf_material, motivo_forcar } = parsed.data
     const { id: contratoId, medicaoId } = await params
 
     // Recupera nome do aprovador a partir do perfil (não confia no body)
     const { createAdminClient } = await import('@/lib/supabase/admin')
     const admin = createAdminClient()
+
+    // === PORTÃO 2 — pré-requisitos ===
+    // A aprovação (emissão da NF de serviço) só é liberada para medições
+    // que já passaram pelo portão 1 (status 'autorizado') E cuja NF de
+    // material FIP já foi lançada no sistema. Resiliente à migration 073:
+    // se a coluna de vínculo não existe ainda, o gate de NF é pulado.
+    {
+      const medGateRes = await admin
+        .from('medicoes')
+        .select('id, status, material_fat_direto_id')
+        .eq('id', medicaoId)
+        .single()
+      // Fallback se a coluna material_fat_direto_id não existe (073 pendente)
+      let medGate: any = medGateRes.data
+      if (medGateRes.error) {
+        const msg = (medGateRes.error as any).message || ''
+        if (msg.includes('material_fat_direto_id')) {
+          const r2 = await admin.from('medicoes').select('id, status').eq('id', medicaoId).single()
+          if (r2.error || !r2.data) return apiError('Medição não encontrada.', { status: 404 })
+          medGate = r2.data
+        } else {
+          return apiError('Medição não encontrada.', { status: 404 })
+        }
+      }
+      if (!medGate) return apiError('Medição não encontrada.', { status: 404 })
+
+      // Gate de status: exige 'autorizado'. Mantém retrocompat tolerante a
+      // 'submetido'/'em_analise' apenas com override explícito (fluxo antigo).
+      if (medGate.status === 'aprovado') {
+        return NextResponse.json({ error: 'Medição já aprovada.', code: 'JA_APROVADA' }, { status: 409 })
+      }
+      if (medGate.status !== 'autorizado' && !forcar_sem_nf_material) {
+        return NextResponse.json(
+          {
+            error: `Esta medição precisa ser AUTORIZADA primeiro (portão 1) antes de aprovar a emissão da NF de serviço. Status atual: "${medGate.status}".`,
+            code: 'NAO_AUTORIZADA',
+          },
+          { status: 409 },
+        )
+      }
+
+      // Gate de NF de material: se há pedido de material vinculado, exige ao
+      // menos 1 NF lançada nele. Override (forcar_sem_nf_material) pula o gate
+      // mas exige motivo e é auditado.
+      const matPedidoId = medGate.material_fat_direto_id as string | undefined
+      if (matPedidoId && !forcar_sem_nf_material) {
+        const { data: nfs } = await admin
+          .from('notas_fiscais_fat_direto')
+          .select('id, status')
+          .eq('solicitacao_id', matPedidoId)
+        const temNfLancada = (nfs || []).some((n: any) => NF_MATERIAL_OK.has(n.status))
+        if (!temNfLancada) {
+          return NextResponse.json(
+            {
+              error: 'A NF de material FIP ainda não foi lançada no sistema. Lance a NF de material antes de aprovar a emissão da NF de serviço, ou use o override excepcional com justificativa.',
+              code: 'NF_MATERIAL_PENDENTE',
+              pedido_material_id: matPedidoId,
+            },
+            { status: 409 },
+          )
+        }
+      }
+
+      if (forcar_sem_nf_material) {
+        if (!motivo_forcar || motivo_forcar.trim().length < 10) {
+          return apiError('Override do portão 2 exige justificativa (motivo_forcar, mín. 10 caracteres).', { status: 400 })
+        }
+        log.warn('portao2_override_sem_nf_material', {
+          medicaoId, status: medGate.status, motivo: motivo_forcar.trim(),
+        })
+      }
+    }
     const { data: perfilAprovador } = await admin
       .from('perfis')
       .select('nome, email')
@@ -139,42 +220,71 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           }
         }
 
-        // === Rascunho 1 — FIP Material ===
-        const itensFip = informacon.linhas
-          .filter(l => l.fip_faturar > 0)
-          .map(l => ({
-            detalhamento_id: l.detalhamento_id,
-            descricao: l.descricao,
-            valor_total: l.fip_faturar,
-          }))
-        if (itensFip.length > 0) {
-          try {
-            const sol = await criarSolicitacaoRascunhoDeMedicao({
-              contrato_id: contratoId,
-              solicitante_id: check.userId,
-              medicao_id: medicaoId,
-              medicao_numero: informacon.medicao.numero,
-              data_aprovacao: dataAprovacao,
-              tipo: 'fip_material',
-              // Aprovacao da medicao IMPLICA aprovacao deste pedido — ja
-              // cria com status='aprovado'.
-              aprovador_id: check.userId,
-              itens: itensFip,
-            })
-            solicitacaoFipId = sol.id
-            solicitacaoFipValor = Number(sol.valor_total ?? 0)
-            await audit({
-              event: 'solicitacao_fat_direto.rascunho_auto_criado_da_medicao',
-              entity_type: 'solicitacao_fat_direto',
-              entity_id: sol.id,
-              actor_id: check.userId,
-              actor_nome: aprovadorNome,
-              actor_email: aprovadorEmail,
-              metadata: { medicao_id: medicaoId, tipo: 'fip_material', valor_total: solicitacaoFipValor },
-              request: req,
-            })
-          } catch (e: any) {
-            log.warn('rascunho_fip_material_falhou', { medicao_id: medicaoId, error: e?.message })
+        // === FIP Material — JÁ criado/vinculado no portão 1 (autorizar) ===
+        // No fluxo de dois portões, o pedido de material FIP é gerado na
+        // autorização. Aqui apenas REUSAMOS o pedido vinculado à medição
+        // (medicoes.material_fat_direto_id) pra compor email/response.
+        // Fallback: se a 073 ainda não rodou (sem coluna de vínculo), ou se
+        // veio override sem material, recria o rascunho como no fluxo antigo.
+        try {
+          const { data: medLink } = await admin
+            .from('medicoes')
+            .select('material_fat_direto_id')
+            .eq('id', medicaoId)
+            .single()
+          const linkId = (medLink as any)?.material_fat_direto_id as string | undefined
+          if (linkId) {
+            const { data: ped } = await admin
+              .from('solicitacoes_fat_direto')
+              .select('id, valor_total')
+              .eq('id', linkId)
+              .single()
+            if (ped) {
+              solicitacaoFipId = (ped as any).id
+              solicitacaoFipValor = Number((ped as any).valor_total ?? 0)
+            }
+          }
+        } catch {
+          // 073 pendente: segue sem vínculo (email usa só os totais do informacon)
+        }
+
+        // Retrocompat: fluxo antigo (sem portão 1) ainda cria o rascunho FIP
+        // material aqui se nenhum pedido foi vinculado mas há material a faturar.
+        if (!solicitacaoFipId) {
+          const itensFip = informacon.linhas
+            .filter(l => l.fip_faturar > 0)
+            .map(l => ({
+              detalhamento_id: l.detalhamento_id,
+              descricao: l.descricao,
+              valor_total: l.fip_faturar,
+            }))
+          if (itensFip.length > 0) {
+            try {
+              const sol = await criarSolicitacaoRascunhoDeMedicao({
+                contrato_id: contratoId,
+                solicitante_id: check.userId,
+                medicao_id: medicaoId,
+                medicao_numero: informacon.medicao.numero,
+                data_aprovacao: dataAprovacao,
+                tipo: 'fip_material',
+                aprovador_id: check.userId,
+                itens: itensFip,
+              })
+              solicitacaoFipId = sol.id
+              solicitacaoFipValor = Number(sol.valor_total ?? 0)
+              await audit({
+                event: 'solicitacao_fat_direto.rascunho_auto_criado_da_medicao',
+                entity_type: 'solicitacao_fat_direto',
+                entity_id: sol.id,
+                actor_id: check.userId,
+                actor_nome: aprovadorNome,
+                actor_email: aprovadorEmail,
+                metadata: { medicao_id: medicaoId, tipo: 'fip_material', valor_total: solicitacaoFipValor },
+                request: req,
+              })
+            } catch (e: any) {
+              log.warn('rascunho_fip_material_falhou', { medicao_id: medicaoId, error: e?.message })
+            }
           }
         }
 

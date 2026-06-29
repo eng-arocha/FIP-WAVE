@@ -68,6 +68,7 @@ export function getMedicaoStatusColor(status: MedicaoStatus): string {
     rascunho: 'bg-gray-100 text-gray-700 border-gray-200',
     submetido: 'bg-blue-100 text-blue-700 border-blue-200',
     em_analise: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+    autorizado: 'bg-teal-100 text-teal-700 border-teal-200',
     aprovado: 'bg-green-100 text-green-700 border-green-200',
     rejeitado: 'bg-red-100 text-red-700 border-red-200',
     cancelado: 'bg-gray-100 text-gray-500 border-gray-200',
