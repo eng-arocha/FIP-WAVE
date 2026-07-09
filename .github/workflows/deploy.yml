@@ -11,7 +11,22 @@ env:
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
 jobs:
+  # Sem VERCEL_TOKEN nos secrets o job de deploy falhava sempre
+  # ("--token missing a value") e pintava todo PR de vermelho — o deploy
+  # real é feito pela integração Git do Vercel, que não depende deste
+  # workflow. Este job detecta o secret e o deploy só roda se ele existir.
+  # (contexto `secrets` não é permitido em `if` de job, daí o output.)
+  check-token:
+    runs-on: ubuntu-latest
+    outputs:
+      has-token: ${{ steps.check.outputs.has }}
+    steps:
+      - id: check
+        run: echo "has=${{ secrets.VERCEL_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+
   deploy:
+    needs: check-token
+    if: needs.check-token.outputs.has-token == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
