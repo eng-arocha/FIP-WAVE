@@ -488,7 +488,6 @@ export default function NfFatDiretoPage() {
    */
   async function uploadArquivoDireto(file: File, solId: string): Promise<string> {
     const ext = (file.name.split('.').pop() || 'bin').toLowerCase()
-    // eslint-disable-next-line no-console
     console.info('[NF] Upload direto iniciado', { name: file.name, sizeMB: (file.size / 1024 / 1024).toFixed(2), solId })
     // 1. Pega signed upload URL do servidor (admin-side)
     const signRes = await fetch('/api/fat-direto/sign-nf-upload', {
@@ -510,7 +509,6 @@ export default function NfFatDiretoPage() {
     if (!putRes.ok) {
       throw new Error(`Falha no upload do arquivo (HTTP ${putRes.status}).`)
     }
-    // eslint-disable-next-line no-console
     console.info('[NF] Upload direto OK', { publicUrl })
     return publicUrl
   }

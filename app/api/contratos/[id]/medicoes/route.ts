@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { requirePermissao } from '@/lib/api/auth'
 import { z } from 'zod'
 import { getMedicoes, createMedicao } from '@/lib/db/medicoes'
 import { apiError } from '@/lib/api/error-response'
@@ -43,6 +44,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const negado = await requirePermissao('medicoes', 'criar')
+  if (negado) return negado
   try {
     const { id } = await params
     const parsed = await parseBody(Body, req)

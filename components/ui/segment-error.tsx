@@ -30,7 +30,6 @@ export function SegmentError({
 }) {
   useEffect(() => {
     if (typeof console !== 'undefined') {
-      // eslint-disable-next-line no-console
       console.error('[segment-error]', error)
     }
     // Sentry — só roda se SDK estiver ativo (env var setada)

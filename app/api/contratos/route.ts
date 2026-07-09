@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { requirePermissao } from '@/lib/api/auth'
 import { getContratos, createContrato } from '@/lib/db/contratos'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
@@ -48,6 +49,8 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const negado = await requirePermissao('contratos', 'criar')
+  if (negado) return negado
   try {
     const body = await req.json()
     const data = await createContrato(body)

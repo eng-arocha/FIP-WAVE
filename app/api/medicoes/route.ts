@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requirePermissao } from '@/lib/api/auth'
 import { sendEmail } from '@/lib/email/send'
 import { templateNovaMedicao } from '@/lib/email/templates'
 
 export async function POST(request: NextRequest) {
+  const negado = await requirePermissao('medicoes', 'criar')
+  if (negado) return negado
   try {
     const body = await request.json()
     const { medicao, contrato, aprovadores_emails } = body

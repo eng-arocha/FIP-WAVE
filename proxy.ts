@@ -45,6 +45,11 @@ export async function proxy(request: NextRequest) {
     request.nextUrl.pathname === '/api/admin/migrations/status'
 
   if (!user && !isLoginPage && !isAdminBearerEndpoint) {
+    // Chamadas de API sem sessão recebem 401 JSON — redirecionar pra /login
+    // devolveria HTML e quebraria o res.json() do client com erro confuso.
+    if (request.nextUrl.pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+    }
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)

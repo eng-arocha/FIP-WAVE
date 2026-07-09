@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { requirePermissao } from '@/lib/api/auth'
 import { getMedicao } from '@/lib/db/medicoes'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
@@ -27,6 +28,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
 // PATCH: desaprovar (volta para submetido)
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string; medicaoId: string }> }) {
+  const negado = await requirePermissao('medicoes', 'editar')
+  if (negado) return negado
   try {
     const user = await checkAdmin()
     if (!user) return NextResponse.json({ error: 'Apenas administradores' }, { status: 403 })
@@ -49,6 +52,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
 // DELETE: excluir medição (admin sempre; criador se ainda não aprovada/em_analise)
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string; medicaoId: string }> }) {
+  const negado = await requirePermissao('medicoes', 'editar')
+  if (negado) return negado
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()

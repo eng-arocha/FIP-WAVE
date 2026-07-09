@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { requirePermissao } from '@/lib/api/auth'
 import { getGruposMacro, createGrupoMacro } from '@/lib/db/estrutura'
 import { apiError } from '@/lib/api/error-response'
 
@@ -24,6 +25,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const negado = await requirePermissao('contratos', 'editar')
+  if (negado) return negado
   try {
     const { id } = await params
     const body = await req.json()

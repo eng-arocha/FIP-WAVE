@@ -77,7 +77,6 @@ export async function POST(
             request: req,
           })
         } catch (e) {
-          // eslint-disable-next-line no-console
           console.error('Falha ao disparar notificação pós-aprovação:', e)
         }
       }
@@ -104,7 +103,6 @@ export async function POST(
             request: req,
           })
         } catch (e) {
-          // eslint-disable-next-line no-console
           console.error('Falha ao disparar notificação de rejeição:', e)
         }
       }

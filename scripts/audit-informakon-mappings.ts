@@ -360,7 +360,7 @@ const ITENS_APP: Array<[string, string]> = [
 ]
 
 let resolvidos = 0
-let pendentes: Array<[string, string]> = []
+const pendentes: Array<[string, string]> = []
 for (const [codigo, desc] of ITENS_APP) {
   const m = getCodigoInformakon(desc)
   if (m) resolvidos++

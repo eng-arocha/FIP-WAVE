@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { requirePermissao } from '@/lib/api/auth'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
@@ -33,6 +34,8 @@ function sanitizeName(nome: string): string {
 }
 
 export async function POST(req: Request) {
+  const negado = await requirePermissao('documentos', 'criar')
+  if (negado) return negado
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()

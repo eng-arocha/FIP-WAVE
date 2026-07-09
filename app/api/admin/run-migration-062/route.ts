@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/api/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
 import { runMigrations } from '@/lib/db/auto-migrate'
@@ -34,6 +35,8 @@ async function checarTabela() {
 }
 
 export async function GET() {
+  const negado = await requireAdmin()
+  if (negado) return negado
   try {
     return NextResponse.json(await checarTabela())
   } catch (e: any) {
@@ -42,6 +45,8 @@ export async function GET() {
 }
 
 export async function POST() {
+  const negado = await requireAdmin()
+  if (negado) return negado
   try {
     const antes = await checarTabela()
     if (antes.existe) {

@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server'
+import { requirePermissao } from '@/lib/api/auth'
 
 // pdf-parse precisa do runtime Node.js (não funciona no Edge Runtime)
 export const runtime = 'nodejs'
 
 export async function POST(req: Request) {
+  const negado = await requirePermissao('documentos', 'criar')
+  if (negado) return negado
   try {
     const formData = await req.formData()
     const file = formData.get('file') as File | null

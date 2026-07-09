@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { requireAlgumaPermissao } from '@/lib/api/auth'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
@@ -27,6 +28,8 @@ const Body = z.object({
 })
 
 export async function POST(req: Request) {
+  const negado = await requireAlgumaPermissao(['documentos', 'criar'], ['nf_fat_direto', 'lancar'])
+  if (negado) return negado
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()

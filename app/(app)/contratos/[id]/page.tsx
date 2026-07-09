@@ -469,7 +469,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
 
   // gruposExibidos antigos — usados em outras seções da página (orçamento)
   const gruposExibidos = useMemo(() => {
-    let list = filtroGrupo === 'todos' ? [...grupos] : grupos.filter(g => g.id === filtroGrupo)
+    const list = filtroGrupo === 'todos' ? [...grupos] : grupos.filter(g => g.id === filtroGrupo)
     list.sort((a, b) => {
       const va = getValorView(a)
       const vb = getValorView(b)
