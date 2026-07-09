@@ -44,7 +44,14 @@ export async function proxy(request: NextRequest) {
     request.nextUrl.pathname === '/api/admin/migrate' ||
     request.nextUrl.pathname === '/api/admin/migrations/status'
 
-  if (!user && !isLoginPage && !isAdminBearerEndpoint) {
+  // Crons do Vercel chegam SEM cookie de sessão (só header Bearer CRON_SECRET,
+  // validado pelo próprio handler). Sem esta exceção o proxy bloqueia a
+  // chamada antes do handler rodar e os crons nunca executam.
+  const isCronEndpoint =
+    request.nextUrl.pathname === '/api/cron/notificacoes-retry' ||
+    request.nextUrl.pathname === '/api/cron/webhooks-retry'
+
+  if (!user && !isLoginPage && !isAdminBearerEndpoint && !isCronEndpoint) {
     // Chamadas de API sem sessão recebem 401 JSON — redirecionar pra /login
     // devolveria HTML e quebraria o res.json() do client com erro confuso.
     if (request.nextUrl.pathname.startsWith('/api/')) {
