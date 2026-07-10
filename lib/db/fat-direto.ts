@@ -889,7 +889,6 @@ export async function criarNotaFiscal(input: {
   })
 
   // Remove campos que não são colunas da tabela
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const {
     override_data_anterior, override_excede_saldo, motivo_divergencia,
     lancado_por_id, lancador_pode_aprovar, ...rest

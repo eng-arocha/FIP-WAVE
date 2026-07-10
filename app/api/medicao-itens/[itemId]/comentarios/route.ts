@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getUsuarioLogado } from '@/lib/api/auth'
+import { getUsuarioLogado, requireAlgumaPermissao } from '@/lib/api/auth'
 import { apiError } from '@/lib/api/error-response'
 import { parseBody, uuid } from '@/lib/api/schema'
 import { audit } from '@/lib/api/audit'
@@ -39,6 +39,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ itemId:
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ itemId: string }> }) {
+  const negado = await requireAlgumaPermissao(['medicoes', 'editar'], ['aprovacoes', 'aprovar'])
+  if (negado) return negado
   try {
     const user = await getUsuarioLogado()
     if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })

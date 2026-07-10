@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/api/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
 
@@ -17,6 +18,8 @@ export const dynamic = 'force-dynamic'
  */
 
 export async function GET(req: Request) {
+  const negado = await requireAdmin()
+  if (negado) return negado
   try {
     const url = new URL(req.url)
     const contratoId = url.searchParams.get('contrato_id') ||

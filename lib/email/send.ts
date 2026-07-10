@@ -93,7 +93,6 @@ async function tentarEnvio(
   const brevoApiKey = process.env.BREVO_API_KEY
   if (!brevoApiKey) {
     const errMsg = 'BREVO_API_KEY não configurada nas env vars.'
-    // eslint-disable-next-line no-console
     console.error(errMsg)
     if (logId) {
       await admin.from('notificacoes_log').update({
@@ -129,7 +128,6 @@ async function tentarEnvio(
     if (!res.ok) {
       const errBody = await res.text()
       const errMsg = `Brevo ${res.status}: ${errBody.slice(0, 500)}`
-      // eslint-disable-next-line no-console
       console.error('Brevo rejeitou:', { status: res.status, body: errBody, from: FROM_EMAIL, to: payload.to })
 
       if (logId) {
@@ -163,7 +161,6 @@ async function tentarEnvio(
     return { success: true, messageId: messageId ?? undefined, logId }
   } catch (error) {
     const msg = String(error)
-    // eslint-disable-next-line no-console
     console.error('Erro ao enviar via Brevo (exception):', error)
     if (logId) {
       const proximaTentativa = tentativaAtual + 1

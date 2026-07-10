@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { requirePermissao } from '@/lib/api/auth'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { listarSolicitacoes, criarSolicitacao } from '@/lib/db/fat-direto'
@@ -38,6 +39,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const negado = await requirePermissao('documentos', 'criar')
+  if (negado) return negado
   try {
     const { id } = await params
     const supabase = await createClient()

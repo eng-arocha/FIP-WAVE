@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { requirePermissao } from '@/lib/api/auth'
 import { getSolicitacao, checkPedidoFipDuplicado } from '@/lib/db/fat-direto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
@@ -41,6 +42,8 @@ export async function PUT(
   req: Request,
   { params }: { params: Promise<{ id: string; solId: string }> },
 ) {
+  const negado = await requirePermissao('documentos', 'criar')
+  if (negado) return negado
   try {
     const { solId } = await params
     const body = await req.json()
@@ -161,6 +164,8 @@ export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string; solId: string }> },
 ) {
+  const negado = await requirePermissao('documentos', 'criar')
+  if (negado) return negado
   try {
     const { solId } = await params
 

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getUsuarioLogado } from '@/lib/api/auth'
+import { getUsuarioLogado, requireAlgumaPermissao } from '@/lib/api/auth'
 import { apiError } from '@/lib/api/error-response'
 import { audit } from '@/lib/api/audit'
 
@@ -12,6 +12,8 @@ const ParamsSchema = z.object({ commentId: z.string().uuid() })
  * Apenas o autor do comentário ou admin pode resolver.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ commentId: string }> }) {
+  const negado = await requireAlgumaPermissao(['medicoes', 'editar'], ['aprovacoes', 'aprovar'])
+  if (negado) return negado
   try {
     const user = await getUsuarioLogado()
     if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { requirePermissao } from '@/lib/api/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
 import { validateUpload } from '@/lib/api/upload-validation'
@@ -70,6 +71,8 @@ async function registrarAnexosJson(body: any) {
 }
 
 export async function POST(req: Request) {
+  const negado = await requirePermissao('documentos', 'criar')
+  if (negado) return negado
   try {
     // Branch JSON: cliente ja subiu o arquivo via signed URL e so registra.
     const ct = req.headers.get('content-type') || ''

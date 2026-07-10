@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+import { rateLimit, clientIp } from '@/lib/api/rate-limit'
+import { requirePermissao } from '@/lib/api/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
 import * as XLSX from 'xlsx'
@@ -38,6 +40,16 @@ function toNumberBR(v: any): number | undefined {
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  // Parse de arquivo é CPU-pesado — limita abuso por IP.
+  const limitacao = rateLimit({ key: 'orcamento-upload:' + clientIp(req), max: 30, windowMs: 10 * 60_000 })
+  if (!limitacao.ok) {
+    return NextResponse.json(
+      { error: `Muitas requisições. Aguarde ${limitacao.retryAfterSec ?? 60}s.` },
+      { status: 429 }
+    )
+  }
+  const negado = await requirePermissao('contratos', 'editar')
+  if (negado) return negado
   try {
     const { id: contratoId } = await params
     const form = await req.formData()

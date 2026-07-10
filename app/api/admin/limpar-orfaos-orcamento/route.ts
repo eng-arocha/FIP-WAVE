@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/api/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
 
@@ -25,6 +26,8 @@ export const dynamic = 'force-dynamic'
  */
 
 export async function POST(req: Request) {
+  const negado = await requireAdmin()
+  if (negado) return negado
   try {
     const body = await req.json().catch(() => ({}))
     const ids: string[] = Array.isArray(body?.detalhamento_ids) ? body.detalhamento_ids : []
@@ -106,6 +109,8 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
+  const negado = await requireAdmin()
+  if (negado) return negado
   return NextResponse.json({
     info: 'POST com body { detalhamento_ids: string[] } pra deletar orfaos seguros',
     fonte_dos_ids: 'response do POST /api/contratos/[id]/planilha/upload em orcamento.orfaos_safe[].id',

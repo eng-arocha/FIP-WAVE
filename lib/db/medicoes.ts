@@ -69,7 +69,7 @@ export async function getMedicao(id: string) {
 
   // Tenta com percentual_retencao (migration 051); fallback sem ele.
   const cols = 'id, numero, descricao, valor_total, valor_servicos, valor_material_direto, percentual_retencao'
-  let { data, error } = await tryWith(cols)
+  const { data, error } = await tryWith(cols)
   if (error && (
     (error as any).code === 'PGRST204' ||
     String((error as any).message || '').includes('percentual_retencao')

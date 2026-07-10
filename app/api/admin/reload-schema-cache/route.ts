@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/api/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
 
@@ -30,9 +31,13 @@ async function reloadSchema(): Promise<Response> {
 }
 
 export async function GET() {
+  const negado = await requireAdmin()
+  if (negado) return negado
   return reloadSchema()
 }
 
 export async function POST() {
+  const negado = await requireAdmin()
+  if (negado) return negado
   return reloadSchema()
 }

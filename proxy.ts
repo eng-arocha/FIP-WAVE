@@ -4,7 +4,9 @@ import { getSupabaseUrl, getSupabaseAnonKey } from '@/lib/supabase/env'
 
 export async function proxy(request: NextRequest) {
   // SCREENSHOTS_MODE: bypass auth for demo captures (never use in production)
-  if (process.env.SCREENSHOTS_MODE === '1') {
+  // Guard extra: ignora a flag quando rodando no Vercel — o bypass só vale
+  // em servidor local (scripts/take-screenshots.js usa localhost:3001).
+  if (process.env.SCREENSHOTS_MODE === '1' && !process.env.VERCEL) {
     if (request.nextUrl.pathname.startsWith('/login')) {
       const url = request.nextUrl.clone()
       url.pathname = '/dashboard'
@@ -44,7 +46,19 @@ export async function proxy(request: NextRequest) {
     request.nextUrl.pathname === '/api/admin/migrate' ||
     request.nextUrl.pathname === '/api/admin/migrations/status'
 
-  if (!user && !isLoginPage && !isAdminBearerEndpoint) {
+  // Crons do Vercel chegam SEM cookie de sessão (só header Bearer CRON_SECRET,
+  // validado pelo próprio handler). Sem esta exceção o proxy bloqueia a
+  // chamada antes do handler rodar e os crons nunca executam.
+  const isCronEndpoint =
+    request.nextUrl.pathname === '/api/cron/notificacoes-retry' ||
+    request.nextUrl.pathname === '/api/cron/webhooks-retry'
+
+  if (!user && !isLoginPage && !isAdminBearerEndpoint && !isCronEndpoint) {
+    // Chamadas de API sem sessão recebem 401 JSON — redirecionar pra /login
+    // devolveria HTML e quebraria o res.json() do client com erro confuso.
+    if (request.nextUrl.pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+    }
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)

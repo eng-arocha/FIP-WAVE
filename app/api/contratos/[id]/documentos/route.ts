@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { requirePermissao } from '@/lib/api/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
 
@@ -28,6 +29,8 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const negado = await requirePermissao('documentos', 'criar')
+  if (negado) return negado
   try {
     const { id } = await params
     const admin = createAdminClient()
@@ -79,6 +82,8 @@ export async function DELETE(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const negado = await requirePermissao('documentos', 'criar')
+  if (negado) return negado
   try {
     const { id } = await params
     const { searchParams } = new URL(req.url)

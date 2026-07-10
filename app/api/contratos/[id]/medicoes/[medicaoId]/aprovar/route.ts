@@ -513,7 +513,7 @@ async function dispararEmailLiberacaoMedicao(args: {
   let fipMaterialTotal = 0
   let waveServicoTotal = 0
   let fipPorGrupoMacro: Array<{ grupo: number; nome: string; valor: number }> = []
-  let ajustesAdmin: Array<{
+  const ajustesAdmin: Array<{
     codigo: string
     descricao: string
     quantidade_anterior: number

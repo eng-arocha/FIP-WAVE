@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/api/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
 
@@ -163,9 +164,13 @@ async function tryExec(admin: ReturnType<typeof createAdminClient>, sql: string)
 }
 
 export async function POST() {
+  const negado = await requireAdmin()
+  if (negado) return negado
   return executar()
 }
 export async function GET() {
+  const negado = await requireAdmin()
+  if (negado) return negado
   return executar()
 }
 

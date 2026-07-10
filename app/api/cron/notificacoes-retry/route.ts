@@ -26,6 +26,12 @@ export async function GET(req: Request) {
   // Auth básica do cron — Vercel Cron envia automaticamente o header
   const auth = req.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
+  // Fail-closed em produção: sem CRON_SECRET configurado o endpoint não roda
+  // (o proxy deixa este caminho passar sem sessão, então o secret é a única
+  // barreira). Em dev sem secret continua liberado pra testes locais.
+  if (!cronSecret && process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'CRON_SECRET não configurado' }, { status: 503 })
+  }
   if (cronSecret && auth !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }

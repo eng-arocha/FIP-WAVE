@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { requirePermissao } from '@/lib/api/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
 import { z } from 'zod'
@@ -23,6 +24,8 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string; detId: string }> },
 ) {
+  const negado = await requirePermissao('contratos', 'editar')
+  if (negado) return negado
   try {
     const { id: contratoId, detId } = await params
     const body = await req.json()

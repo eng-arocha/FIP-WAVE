@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getPermissoesEfetivas } from '@/lib/db/permissoes'
@@ -63,4 +64,50 @@ export async function assertPermissao(modulo: string, acao: string): Promise<
   }
 
   return { ok: false, status: 403, error: `Sem permissão para ${acao} em ${modulo}` }
+}
+
+/**
+ * Guard de rota: retorna um NextResponse de erro (401/403) se o usuário
+ * logado NÃO tiver a permissão, ou null se estiver autorizado.
+ *
+ * Uso no início de um handler:
+ *   const negado = await requirePermissao('contratos', 'criar')
+ *   if (negado) return negado
+ */
+export async function requirePermissao(modulo: string, acao: string): Promise<NextResponse | null> {
+  const check = await assertPermissao(modulo, acao)
+  if (check.ok) return null
+  return NextResponse.json({ error: check.error }, { status: check.status })
+}
+
+/**
+ * Variante "OU": autoriza se o usuário tiver QUALQUER uma das permissões
+ * listadas (ex.: comentar numa medição vale tanto pra quem edita quanto
+ * pra quem aprova).
+ */
+export async function requireAlgumaPermissao(...pares: Array<[string, string]>): Promise<NextResponse | null> {
+  let ultima: { status: 401 | 403; error: string } | null = null
+  for (const [modulo, acao] of pares) {
+    const check = await assertPermissao(modulo, acao)
+    if (check.ok) return null
+    ultima = { status: check.status, error: check.error }
+  }
+  return NextResponse.json(
+    { error: ultima?.error ?? 'Sem permissão' },
+    { status: ultima?.status ?? 403 }
+  )
+}
+
+/**
+ * Guard de rota admin: retorna NextResponse 403 se o usuário logado não
+ * for admin, ou null se for. Para endpoints operacionais/one-shot em
+ * /api/admin/* que executam ações destrutivas ou de manutenção.
+ */
+export async function requireAdmin(): Promise<NextResponse | null> {
+  const ok = await assertAdmin()
+  if (ok) return null
+  return NextResponse.json(
+    { error: 'Apenas administradores podem executar esta ação.' },
+    { status: 403 }
+  )
 }

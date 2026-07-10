@@ -62,7 +62,7 @@ export async function GET(
     let fipMaterial = 0
     let waveServico = 0
     let fipPorGrupoMacro: Array<{ grupo: number; nome: string; valor: number }> = []
-    let ajustesAdmin: Array<{
+    const ajustesAdmin: Array<{
       codigo: string
       descricao: string
       quantidade_anterior: number

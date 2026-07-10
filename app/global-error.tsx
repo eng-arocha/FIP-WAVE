@@ -16,7 +16,6 @@ export default function GlobalError({
   error: Error & { digest?: string }
   reset: () => void
 }) {
-  // eslint-disable-next-line no-console
   if (typeof console !== 'undefined') console.error('[global-error]', error)
   return (
     <html lang="pt-BR">

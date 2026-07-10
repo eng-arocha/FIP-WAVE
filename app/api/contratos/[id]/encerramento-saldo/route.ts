@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { requirePermissao } from '@/lib/api/auth'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import {
@@ -34,6 +35,8 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const negado = await requirePermissao('contratos', 'editar')
+  if (negado) return negado
   try {
     const { id: contratoId } = await params
 

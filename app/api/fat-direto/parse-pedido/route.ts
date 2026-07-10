@@ -1,9 +1,21 @@
 import { NextResponse } from 'next/server'
+import { rateLimit, clientIp } from '@/lib/api/rate-limit'
+import { requirePermissao } from '@/lib/api/auth'
 
 // pdf-parse precisa do runtime Node.js (não funciona no Edge Runtime)
 export const runtime = 'nodejs'
 
 export async function POST(req: Request) {
+  // Parse de arquivo é CPU-pesado — limita abuso por IP.
+  const limitacao = rateLimit({ key: 'parse-pedido:' + clientIp(req), max: 30, windowMs: 10 * 60_000 })
+  if (!limitacao.ok) {
+    return NextResponse.json(
+      { error: `Muitas requisições. Aguarde ${limitacao.retryAfterSec ?? 60}s.` },
+      { status: 429 }
+    )
+  }
+  const negado = await requirePermissao('documentos', 'criar')
+  if (negado) return negado
   try {
     const formData = await req.formData()
     const file = formData.get('file') as File | null

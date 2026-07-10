@@ -353,7 +353,6 @@ function CronogramaTreeMatriz({
       }
     }
     return out
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grupos, openGrupo, openTarefa])
 
   const setLocalPct = useCallback((detId: string, mes: string, pct: number) => {
