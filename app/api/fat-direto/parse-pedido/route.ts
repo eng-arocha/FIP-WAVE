@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { rateLimit, clientIp } from '@/lib/api/rate-limit'
-import { requirePermissao } from '@/lib/api/auth'
+import { requireAlgumaPermissao } from '@/lib/api/auth'
 
 // pdf-parse precisa do runtime Node.js (não funciona no Edge Runtime)
 export const runtime = 'nodejs'
@@ -14,7 +14,10 @@ export async function POST(req: Request) {
       { status: 429 }
     )
   }
-  const negado = await requirePermissao('documentos', 'criar')
+  // Aceita qualquer permissão que um perfil editor/engenheiro tenha —
+  // o template "Engenheiro FIP" do banco tem nf_fat_direto.lancar e
+  // contratos.editar, mas pode não ter documentos.criar (fix pós-#12).
+  const negado = await requireAlgumaPermissao(['documentos', 'criar'], ['nf_fat_direto', 'lancar'], ['contratos', 'editar'])
   if (negado) return negado
   try {
     const formData = await req.formData()

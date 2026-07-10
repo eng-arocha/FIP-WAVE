@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requirePermissao } from '@/lib/api/auth'
+import { requireAlgumaPermissao } from '@/lib/api/auth'
 import { getSolicitacao, checkPedidoFipDuplicado } from '@/lib/db/fat-direto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
@@ -42,7 +42,10 @@ export async function PUT(
   req: Request,
   { params }: { params: Promise<{ id: string; solId: string }> },
 ) {
-  const negado = await requirePermissao('documentos', 'criar')
+  // Aceita qualquer permissão que um perfil editor/engenheiro tenha —
+  // o template "Engenheiro FIP" do banco tem nf_fat_direto.lancar e
+  // contratos.editar, mas pode não ter documentos.criar (fix pós-#12).
+  const negado = await requireAlgumaPermissao(['documentos', 'criar'], ['nf_fat_direto', 'lancar'], ['contratos', 'editar'])
   if (negado) return negado
   try {
     const { solId } = await params
@@ -164,7 +167,10 @@ export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string; solId: string }> },
 ) {
-  const negado = await requirePermissao('documentos', 'criar')
+  // Aceita qualquer permissão que um perfil editor/engenheiro tenha —
+  // o template "Engenheiro FIP" do banco tem nf_fat_direto.lancar e
+  // contratos.editar, mas pode não ter documentos.criar (fix pós-#12).
+  const negado = await requireAlgumaPermissao(['documentos', 'criar'], ['nf_fat_direto', 'lancar'], ['contratos', 'editar'])
   if (negado) return negado
   try {
     const { solId } = await params
