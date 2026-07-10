@@ -4,7 +4,9 @@ import { getSupabaseUrl, getSupabaseAnonKey } from '@/lib/supabase/env'
 
 export async function proxy(request: NextRequest) {
   // SCREENSHOTS_MODE: bypass auth for demo captures (never use in production)
-  if (process.env.SCREENSHOTS_MODE === '1') {
+  // Guard extra: ignora a flag quando rodando no Vercel — o bypass só vale
+  // em servidor local (scripts/take-screenshots.js usa localhost:3001).
+  if (process.env.SCREENSHOTS_MODE === '1' && !process.env.VERCEL) {
     if (request.nextUrl.pathname.startsWith('/login')) {
       const url = request.nextUrl.clone()
       url.pathname = '/dashboard'

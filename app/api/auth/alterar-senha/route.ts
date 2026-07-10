@@ -5,6 +5,7 @@ import { getSupabaseUrl, getSupabaseAnonKey } from '@/lib/supabase/env'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { validarSenhaForte } from '@/lib/auth/senha'
+import { rateLimit, clientIp } from '@/lib/api/rate-limit'
 import { apiError } from '@/lib/api/error-response'
 import { parseBody } from '@/lib/api/schema'
 
@@ -18,6 +19,16 @@ const Body = z.object({
 // Verifica a senha atual antes de atualizar e exige senha forte.
 export async function PUT(req: Request) {
   try {
+    // Rate limit: a verificação da senha atual via signInWithPassword torna
+    // este endpoint um alvo de força bruta — 5 tentativas a cada 15 min por IP.
+    const limit = rateLimit({ key: `alterar-senha:${clientIp(req)}`, max: 5, windowMs: 15 * 60_000 })
+    if (!limit.ok) {
+      return NextResponse.json(
+        { error: `Muitas tentativas. Aguarde ${limit.retryAfterSec ?? 60}s e tente novamente.` },
+        { status: 429 }
+      )
+    }
+
     const parsed = await parseBody(Body, req)
     if (!parsed.ok) return parsed.res
     const { senha_atual, nova_senha } = parsed.data

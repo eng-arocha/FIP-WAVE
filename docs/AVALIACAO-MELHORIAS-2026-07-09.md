@@ -87,8 +87,9 @@ da anon key e contra rotas futuras sem guard.
 
 - **Testes de autorização:** teste de integração que percorre as rotas de mutação e garante
   403 para perfil `visualizador` (evita regressão do item 1.1).
-- **Rate limiting:** `lib/api/rate-limit.ts` existe mas só é usado em `/api/cnpj`. Aplicar em
-  `alterar-senha` e nos uploads.
+- ~~**Rate limiting**~~ ✅ feito nesta branch: `alterar-senha` (5/15min por IP — anti força
+  bruta da senha atual) e endpoints de parse CPU-pesados (`parse-pedido`, `orcamento/upload`,
+  30/10min). `nfe/parse` já tinha limite interno (30/min).
 - **Padronizar erro no client:** helper `fetchJson()` que lança com a mensagem do servidor
   (`{error}`) e toast padrão — hoje cada página trata (ou ignora) de um jeito.
 - **Remover one-shots já executados:** `setar-datas-contrato` (UUID hardcoded),
@@ -102,10 +103,10 @@ da anon key e contra rotas futuras sem guard.
 
 - **Acessibilidade:** revisar `aria-*` nos componentes de tabela/modal, foco pós-navegação.
 - **Auditoria:** `lib/api/audit.ts` existe; cobrir também criação/edição de contratos e empresas.
-- **`SCREENSHOTS_MODE`:** o bypass de auth do proxy é útil em dev, mas vale um guard extra
-  (`NODE_ENV !== 'production'`) para nunca valer em produção.
-- **Observabilidade:** Sentry já configurado; adicionar `Sentry.captureException` no `apiError()`
-  para erros 500 de API aparecerem com contexto de rota.
+- ~~**`SCREENSHOTS_MODE`**~~ ✅ feito nesta branch: o bypass agora é ignorado quando rodando
+  no Vercel (`process.env.VERCEL`); segue funcionando para capturas locais.
+- ~~**Observabilidade**~~ ✅ já coberto: `apiError()` → `log.error` → `Sentry.captureException`
+  quando `SENTRY_DSN` está setado — nenhuma mudança necessária.
 
 ## 5. Como validar as mudanças desta branch
 
