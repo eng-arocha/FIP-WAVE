@@ -31,6 +31,9 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
 
   const [step, setStep] = useState(1)
   const [saving, setSaving] = useState(false)
+  // Simulador do boletim (prévia item-a-item, sem gravar nada). O fornecedor
+  // pode abrir/recalcular quantas vezes quiser antes de decidir submeter.
+  const [simulando, setSimulando] = useState(false)
   const [estrutura, setEstrutura] = useState<any[]>([])
   const [loadingEstrutura, setLoadingEstrutura] = useState(true)
   // Acumulado de medicoes anteriores. Cada entry tem qtde absoluta + qtde
@@ -385,6 +388,58 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
 
   const totalMedicao = calcularValorTotal()
   const itensFilled = Object.entries(qtdeMedicao).some(([id, q]) => q > getAcumQtde(id))
+
+  // ============================================================
+  // Simulador do boletim — prévia item-a-item (sem gravar nada).
+  // Reproduz a visão que o administrador vê no boletim, calculada
+  // client-side a partir dos dados já digitados. É uma ESTIMATIVA
+  // pré-submissão: a NF a emitir usa serviço − retenção (o desconto
+  // real de material fornecido só é conhecido na conciliação com as
+  // NFs da FIP, pós-submissão).
+  // ============================================================
+  function calcularSimulacao() {
+    const linhas: {
+      codigo: string
+      descricao: string
+      unidade: string
+      delta: number
+      material: number
+      servico: number
+      total: number
+    }[] = []
+    let totalMaterial = 0
+    let totalServico = 0
+    for (const grupo of estruturaServico) {
+      for (const tarefa of (grupo.tarefas || [])) {
+        for (const det of (tarefa.detalhamentos || [])) {
+          const qtdeAtual = qtdeMedicao[det.id] || 0
+          const deltaQtde = qtdeAtual - getAcumQtde(det.id)
+          if (deltaQtde <= 0) continue
+          const matUnit = Number(det.valor_material_unit || 0)
+          const servUnit = Number(det.valor_servico_unit || 0)
+          const material = deltaQtde * matUnit
+          const servico = deltaQtde * servUnit
+          totalMaterial += material
+          totalServico += servico
+          linhas.push({
+            codigo: det.codigo,
+            descricao: det.descricao,
+            unidade: det.unidade,
+            delta: deltaQtde,
+            material,
+            servico,
+            total: material + servico,
+          })
+        }
+      }
+    }
+    linhas.sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), 'pt-BR', { numeric: true }))
+    const pctRet = contratoFin?.percentual_retencao || 5
+    const baseRetencao = totalMaterial + totalServico
+    const retencao = baseRetencao * (pctRet / 100)
+    const liquidoNF = totalServico - retencao
+    return { linhas, totalMaterial, totalServico, baseRetencao, retencao, liquidoNF, pctRet }
+  }
 
   return (
     <div className="flex-1">
@@ -1013,6 +1068,95 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                 </Card>
               )
             })()}
+
+            {/* Simulador do Boletim — prévia item-a-item, repetível, sem gravar */}
+            <Card style={{ border: '1px solid rgba(20,184,166,0.30)' }}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2 text-[var(--text-1)]">
+                  <TrendingUp className="w-4 h-4" style={{ color: '#14B8A6' }} />
+                  Simular boletim (prévia)
+                  {simulando && (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider" style={{ background: 'rgba(20,184,166,0.18)', color: '#2DD4BF' }}>
+                      Não enviado
+                    </span>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-[var(--text-3)] mb-3">
+                  Veja o mesmo boletim que o administrador analisará — item a item — sem submeter.
+                  Volte ao passo <strong>Itens</strong>, ajuste e simule quantas vezes quiser.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSimulando(s => !s)}
+                  disabled={totalMedicao <= 0}
+                  className="border-teal-500/40 text-teal-300 hover:bg-teal-500/10"
+                >
+                  <TrendingUp className="w-4 h-4 mr-1" />
+                  {simulando ? 'Ocultar simulação' : 'Simular boletim'}
+                </Button>
+
+                {simulando && totalMedicao > 0 && (() => {
+                  const sim = calcularSimulacao()
+                  return (
+                    <div className="mt-4 overflow-x-auto">
+                      <table className="w-full text-xs border-collapse min-w-[640px]">
+                        <thead>
+                          <tr className="border-b border-[var(--border)] text-[var(--text-3)]">
+                            <th className="text-left py-1.5 pr-2 font-semibold">Código</th>
+                            <th className="text-left py-1.5 pr-2 font-semibold">Descrição</th>
+                            <th className="text-right py-1.5 px-2 font-semibold">Qtde</th>
+                            <th className="text-right py-1.5 px-2 font-semibold">Material</th>
+                            <th className="text-right py-1.5 px-2 font-semibold">Serviço</th>
+                            <th className="text-right py-1.5 pl-2 font-semibold">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sim.linhas.map(l => (
+                            <tr key={l.codigo} className="border-b border-[var(--border)]/50">
+                              <td className="py-1.5 pr-2 font-mono text-[10px] text-[var(--text-3)]">{l.codigo}</td>
+                              <td className="py-1.5 pr-2 text-[var(--text-2)]">{l.descricao}</td>
+                              <td className="py-1.5 px-2 text-right tabular-nums text-[var(--text-2)]">
+                                {l.delta.toFixed(2).replace(/\.?0+$/, '')} {l.unidade}
+                              </td>
+                              <td className="py-1.5 px-2 text-right tabular-nums text-[var(--text-2)]">{formatCurrency(l.material)}</td>
+                              <td className="py-1.5 px-2 text-right tabular-nums text-[var(--text-2)]">{formatCurrency(l.servico)}</td>
+                              <td className="py-1.5 pl-2 text-right tabular-nums font-semibold text-[var(--text-1)]">{formatCurrency(l.total)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t-2 border-[var(--border-hover)] font-bold">
+                            <td colSpan={3} className="py-2 pr-2 text-right text-[var(--text-2)]">Totais</td>
+                            <td className="py-2 px-2 text-right tabular-nums text-[var(--text-1)]">{formatCurrency(sim.totalMaterial)}</td>
+                            <td className="py-2 px-2 text-right tabular-nums text-[var(--text-1)]">{formatCurrency(sim.totalServico)}</td>
+                            <td className="py-2 pl-2 text-right tabular-nums text-[var(--text-1)]">{formatCurrency(sim.baseRetencao)}</td>
+                          </tr>
+                          <tr>
+                            <td colSpan={5} className="py-1 pr-2 text-right text-[var(--text-3)]">
+                              Retenção ({sim.pctRet.toFixed(2).replace('.', ',')}%)
+                            </td>
+                            <td className="py-1 pl-2 text-right tabular-nums" style={{ color: '#818CF8' }}>−{formatCurrency(sim.retencao)}</td>
+                          </tr>
+                          <tr>
+                            <td colSpan={5} className="py-1 pr-2 text-right font-bold" style={{ color: '#10B981' }}>
+                              ↳ NF de serviço a emitir (líquido)
+                            </td>
+                            <td className="py-1 pl-2 text-right tabular-nums font-bold" style={{ color: '#10B981' }}>{formatCurrency(sim.liquidoNF)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                      <p className="text-[10px] text-[var(--text-3)] mt-2">
+                        Estimativa pré-submissão. O material fornecido pela FIP e a NF final são conciliados
+                        na análise/aprovação, com base nas NFs de material efetivamente lançadas.
+                      </p>
+                    </div>
+                  )
+                })()}
+              </CardContent>
+            </Card>
 
             {/* Aviso de submissão — contraste alto, fundo âmbar sólido + texto escuro/claro com peso */}
             <div className="p-4 rounded-lg flex items-start gap-2.5"
