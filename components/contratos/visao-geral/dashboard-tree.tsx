@@ -136,7 +136,9 @@ export function DashboardTree({ contratoId, modo }: Props) {
               const saldoVal =
                 modo === 'material' ? item.saldo_aprovado_material
                 : modo === 'servico' ? item.saldo_medicao_servico
-                : 0
+                // Total: saldo = quanto ainda falta executar do contratado
+                // (Contratado − Realizado). Informativo (não abre origem).
+                : Math.max(0, item.valor_contratado_total - item.realizado_total)
               return (
                 <DashboardTreeRow
                   key={`${item.id}-${level}`}
