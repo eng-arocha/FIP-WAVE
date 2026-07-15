@@ -31,9 +31,25 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
 
   const [step, setStep] = useState(1)
   const [saving, setSaving] = useState(false)
-  // Simulador do boletim (prévia item-a-item, sem gravar nada). O fornecedor
-  // pode abrir/recalcular quantas vezes quiser antes de decidir submeter.
+  // Simulador do boletim (prévia item-a-item, sem gravar nada). Roda o
+  // cálculo REAL (dry-run do INFORMAKON) via endpoint /simular — mesma
+  // lógica da aprovação, com NFs/pedidos reais do contrato.
   const [simulando, setSimulando] = useState(false)
+  const [simLoading, setSimLoading] = useState(false)
+  const [simResult, setSimResult] = useState<{
+    linhas: {
+      detalhamento_id: string; codigo: string; descricao: string; unidade: string
+      quantidade_medida: number; material_medido: number; servico_medido: number
+      nf_material_lancada: number; fat_direto_em_aberto: number; fip_a_emitir: number
+      base_retencao: number; retencao: number; servico_liquido: number
+    }[]
+    totais: {
+      material_medido: number; servico_medido: number; nf_material_lancada: number
+      fat_direto_em_aberto: number; fip_a_emitir: number; base_retencao: number
+      retencao: number; servico_liquido: number; total_medido: number
+    }
+    pct_retencao: number
+  } | null>(null)
   const [estrutura, setEstrutura] = useState<any[]>([])
   const [loadingEstrutura, setLoadingEstrutura] = useState(true)
   // Acumulado de medicoes anteriores. Cada entry tem qtde absoluta + qtde
@@ -397,48 +413,38 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
   // real de material fornecido só é conhecido na conciliação com as
   // NFs da FIP, pós-submissão).
   // ============================================================
-  function calcularSimulacao() {
-    const linhas: {
-      codigo: string
-      descricao: string
-      unidade: string
-      delta: number
-      material: number
-      servico: number
-      total: number
-    }[] = []
-    let totalMaterial = 0
-    let totalServico = 0
+  // Monta a lista de itens (delta por detalhamento) medidos nesta medição.
+  function coletarItensMedidos(): { detalhamento_id: string; quantidade_medida: number }[] {
+    const itens: { detalhamento_id: string; quantidade_medida: number }[] = []
     for (const grupo of estruturaServico) {
       for (const tarefa of (grupo.tarefas || [])) {
         for (const det of (tarefa.detalhamentos || [])) {
-          const qtdeAtual = qtdeMedicao[det.id] || 0
-          const deltaQtde = qtdeAtual - getAcumQtde(det.id)
-          if (deltaQtde <= 0) continue
-          const matUnit = Number(det.valor_material_unit || 0)
-          const servUnit = Number(det.valor_servico_unit || 0)
-          const material = deltaQtde * matUnit
-          const servico = deltaQtde * servUnit
-          totalMaterial += material
-          totalServico += servico
-          linhas.push({
-            codigo: det.codigo,
-            descricao: det.descricao,
-            unidade: det.unidade,
-            delta: deltaQtde,
-            material,
-            servico,
-            total: material + servico,
-          })
+          const deltaQtde = (qtdeMedicao[det.id] || 0) - getAcumQtde(det.id)
+          if (deltaQtde > 0) itens.push({ detalhamento_id: det.id, quantidade_medida: deltaQtde })
         }
       }
     }
-    linhas.sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), 'pt-BR', { numeric: true }))
-    const pctRet = contratoFin?.percentual_retencao || 5
-    const baseRetencao = totalMaterial + totalServico
-    const retencao = baseRetencao * (pctRet / 100)
-    const liquidoNF = totalServico - retencao
-    return { linhas, totalMaterial, totalServico, baseRetencao, retencao, liquidoNF, pctRet }
+    return itens
+  }
+
+  // Roda o cálculo REAL (dry-run) no servidor e abre a simulação.
+  async function simular() {
+    if (simulando) { setSimulando(false); return }
+    setSimLoading(true)
+    setSimulando(true)
+    try {
+      const res = await fetch(`/api/contratos/${contratoId}/medicoes/simular`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itens: coletarItensMedidos() }),
+      })
+      if (res.ok) setSimResult(await res.json())
+      else setSimResult(null)
+    } catch {
+      setSimResult(null)
+    } finally {
+      setSimLoading(false)
+    }
   }
 
   return (
@@ -1084,77 +1090,75 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
               </CardHeader>
               <CardContent>
                 <p className="text-xs text-[var(--text-3)] mb-3">
-                  Veja o mesmo boletim que o administrador analisará — item a item — sem submeter.
-                  Volte ao passo <strong>Itens</strong>, ajuste e simule quantas vezes quiser.
+                  Cálculo <strong>real</strong> (dry-run) — o mesmo que o administrador verá na aprovação,
+                  usando as NFs de material já lançadas no contrato. Volte ao passo <strong>Itens</strong>,
+                  ajuste e simule quantas vezes quiser. Nada é gravado.
                 </p>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setSimulando(s => !s)}
-                  disabled={totalMedicao <= 0}
+                  onClick={simular}
+                  disabled={totalMedicao <= 0 || simLoading}
                   className="border-teal-500/40 text-teal-300 hover:bg-teal-500/10"
                 >
-                  <TrendingUp className="w-4 h-4 mr-1" />
-                  {simulando ? 'Ocultar simulação' : 'Simular boletim'}
+                  {simLoading
+                    ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" />Calculando...</>
+                    : <><TrendingUp className="w-4 h-4 mr-1" />{simulando ? 'Ocultar simulação' : 'Simular boletim'}</>}
                 </Button>
 
-                {simulando && totalMedicao > 0 && (() => {
-                  const sim = calcularSimulacao()
-                  return (
-                    <div className="mt-4 overflow-x-auto">
-                      <table className="w-full text-xs border-collapse min-w-[640px]">
-                        <thead>
-                          <tr className="border-b border-[var(--border)] text-[var(--text-3)]">
-                            <th className="text-left py-1.5 pr-2 font-semibold">Código</th>
-                            <th className="text-left py-1.5 pr-2 font-semibold">Descrição</th>
-                            <th className="text-right py-1.5 px-2 font-semibold">Qtde</th>
-                            <th className="text-right py-1.5 px-2 font-semibold">Material</th>
-                            <th className="text-right py-1.5 px-2 font-semibold">Serviço</th>
-                            <th className="text-right py-1.5 pl-2 font-semibold">Total</th>
+                {simulando && !simLoading && simResult && simResult.linhas.length > 0 && (
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="w-full text-xs border-collapse min-w-[820px]">
+                      <thead>
+                        <tr className="border-b border-[var(--border)] text-[var(--text-3)]">
+                          <th className="text-left py-1.5 pr-2 font-semibold">Código</th>
+                          <th className="text-left py-1.5 pr-2 font-semibold">Descrição</th>
+                          <th className="text-right py-1.5 px-2 font-semibold">Material medido</th>
+                          <th className="text-right py-1.5 px-2 font-semibold">Material c/ NF lançada</th>
+                          <th className="text-right py-1.5 px-2 font-semibold">FIP a emitir (material)</th>
+                          <th className="text-right py-1.5 pl-2 font-semibold">Serviço líquido</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {simResult.linhas.map(l => (
+                          <tr key={l.detalhamento_id} className="border-b border-[var(--border)]/50">
+                            <td className="py-1.5 pr-2 font-mono text-[10px] text-[var(--text-3)]">{l.codigo}</td>
+                            <td className="py-1.5 pr-2 text-[var(--text-2)]">{l.descricao}</td>
+                            <td className="py-1.5 px-2 text-right tabular-nums text-[var(--text-2)]">{formatCurrency(l.material_medido)}</td>
+                            <td className="py-1.5 px-2 text-right tabular-nums" style={{ color: '#3B82F6' }}>{formatCurrency(l.nf_material_lancada)}</td>
+                            <td className="py-1.5 px-2 text-right tabular-nums" style={{ color: '#F59E0B' }}>{formatCurrency(l.fip_a_emitir)}</td>
+                            <td className="py-1.5 pl-2 text-right tabular-nums font-semibold" style={{ color: '#10B981' }}>{formatCurrency(l.servico_liquido)}</td>
                           </tr>
-                        </thead>
-                        <tbody>
-                          {sim.linhas.map(l => (
-                            <tr key={l.codigo} className="border-b border-[var(--border)]/50">
-                              <td className="py-1.5 pr-2 font-mono text-[10px] text-[var(--text-3)]">{l.codigo}</td>
-                              <td className="py-1.5 pr-2 text-[var(--text-2)]">{l.descricao}</td>
-                              <td className="py-1.5 px-2 text-right tabular-nums text-[var(--text-2)]">
-                                {l.delta.toFixed(2).replace(/\.?0+$/, '')} {l.unidade}
-                              </td>
-                              <td className="py-1.5 px-2 text-right tabular-nums text-[var(--text-2)]">{formatCurrency(l.material)}</td>
-                              <td className="py-1.5 px-2 text-right tabular-nums text-[var(--text-2)]">{formatCurrency(l.servico)}</td>
-                              <td className="py-1.5 pl-2 text-right tabular-nums font-semibold text-[var(--text-1)]">{formatCurrency(l.total)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                        <tfoot>
-                          <tr className="border-t-2 border-[var(--border-hover)] font-bold">
-                            <td colSpan={3} className="py-2 pr-2 text-right text-[var(--text-2)]">Totais</td>
-                            <td className="py-2 px-2 text-right tabular-nums text-[var(--text-1)]">{formatCurrency(sim.totalMaterial)}</td>
-                            <td className="py-2 px-2 text-right tabular-nums text-[var(--text-1)]">{formatCurrency(sim.totalServico)}</td>
-                            <td className="py-2 pl-2 text-right tabular-nums text-[var(--text-1)]">{formatCurrency(sim.baseRetencao)}</td>
-                          </tr>
-                          <tr>
-                            <td colSpan={5} className="py-1 pr-2 text-right text-[var(--text-3)]">
-                              Retenção ({sim.pctRet.toFixed(2).replace('.', ',')}%)
-                            </td>
-                            <td className="py-1 pl-2 text-right tabular-nums" style={{ color: '#818CF8' }}>−{formatCurrency(sim.retencao)}</td>
-                          </tr>
-                          <tr>
-                            <td colSpan={5} className="py-1 pr-2 text-right font-bold" style={{ color: '#10B981' }}>
-                              ↳ NF de serviço a emitir (líquido)
-                            </td>
-                            <td className="py-1 pl-2 text-right tabular-nums font-bold" style={{ color: '#10B981' }}>{formatCurrency(sim.liquidoNF)}</td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                      <p className="text-[10px] text-[var(--text-3)] mt-2">
-                        Estimativa pré-submissão. O material fornecido pela FIP e a NF final são conciliados
-                        na análise/aprovação, com base nas NFs de material efetivamente lançadas.
-                      </p>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-[var(--border-hover)] font-bold">
+                          <td colSpan={2} className="py-2 pr-2 text-right text-[var(--text-2)]">Totais</td>
+                          <td className="py-2 px-2 text-right tabular-nums text-[var(--text-1)]">{formatCurrency(simResult.totais.material_medido)}</td>
+                          <td className="py-2 px-2 text-right tabular-nums" style={{ color: '#3B82F6' }}>{formatCurrency(simResult.totais.nf_material_lancada)}</td>
+                          <td className="py-2 px-2 text-right tabular-nums" style={{ color: '#F59E0B' }}>{formatCurrency(simResult.totais.fip_a_emitir)}</td>
+                          <td className="py-2 pl-2 text-right tabular-nums" style={{ color: '#10B981' }}>{formatCurrency(simResult.totais.servico_liquido)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 text-xs">
+                      <div><p className="text-[var(--text-3)] mb-0.5">Total medido (mat+serv)</p><p className="font-bold tabular-nums text-[var(--text-1)]">{formatCurrency(simResult.totais.total_medido)}</p></div>
+                      <div><p className="text-[var(--text-3)] mb-0.5">Serviço medido</p><p className="font-bold tabular-nums text-[var(--text-1)]">{formatCurrency(simResult.totais.servico_medido)}</p></div>
+                      <div><p className="text-[var(--text-3)] mb-0.5">Retenção ({simResult.pct_retencao.toFixed(2).replace('.', ',')}%)</p><p className="font-bold tabular-nums" style={{ color: '#818CF8' }}>−{formatCurrency(simResult.totais.retencao)}</p></div>
+                      <div><p className="text-[var(--text-3)] mb-0.5">NF de serviço a emitir</p><p className="font-bold tabular-nums" style={{ color: '#10B981' }}>{formatCurrency(simResult.totais.servico_liquido)}</p></div>
                     </div>
-                  )
-                })()}
+
+                    <p className="text-[10px] text-[var(--text-3)] mt-3">
+                      <strong>Material c/ NF lançada</strong>: material já coberto por NF da FIP no sistema ·
+                      <strong> FIP a emitir</strong>: material sem NF ainda, que a FIP terá direito de faturar ·
+                      <strong> Serviço líquido</strong>: NF de serviço a emitir pela Wave (já descontada a retenção).
+                    </p>
+                  </div>
+                )}
+                {simulando && !simLoading && simResult && simResult.linhas.length === 0 && (
+                  <p className="mt-4 text-xs text-[var(--text-3)]">Nenhum item medido para simular.</p>
+                )}
               </CardContent>
             </Card>
 

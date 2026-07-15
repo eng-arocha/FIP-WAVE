@@ -108,6 +108,178 @@ export interface InformaconData {
   totais: InformaconTotais
 }
 
+// ============================================================
+// DRY-RUN / SIMULAÇÃO — calcula o boletim REAL a partir de itens em
+// memória (form de nova medição), SEM gravar nada. Reaproveita os mapas
+// de NFs/pedidos reais do contrato pra que o fornecedor veja exatamente
+// como ficará na aprovação: material medido, material já com NF lançada,
+// direito de NF material FIP e saldo de serviço líquido.
+// ============================================================
+export interface BoletimSimuladoLinha {
+  detalhamento_id: string
+  codigo: string
+  descricao: string
+  unidade: string
+  quantidade_medida: number
+  material_medido: number
+  servico_medido: number
+  nf_material_lancada: number      // nf_descontavel
+  fat_direto_em_aberto: number     // saldo de pedidos aprovados
+  fip_a_emitir: number             // fip_faturar (direito a NF material FIP)
+  base_retencao: number
+  retencao: number
+  servico_liquido: number          // serviço − retenção (NF de serviço a emitir)
+}
+
+export interface BoletimSimulado {
+  linhas: BoletimSimuladoLinha[]
+  totais: {
+    material_medido: number
+    servico_medido: number
+    nf_material_lancada: number
+    fat_direto_em_aberto: number
+    fip_a_emitir: number
+    base_retencao: number
+    retencao: number
+    servico_liquido: number
+    total_medido: number
+  }
+  pct_retencao: number
+}
+
+export async function calcularBoletimSimulado(
+  admin: SupabaseClient,
+  contratoId: string,
+  itens: { detalhamento_id: string; quantidade_medida: number }[],
+): Promise<BoletimSimulado> {
+  const vazio: BoletimSimulado = {
+    linhas: [],
+    totais: {
+      material_medido: 0, servico_medido: 0, nf_material_lancada: 0,
+      fat_direto_em_aberto: 0, fip_a_emitir: 0, base_retencao: 0,
+      retencao: 0, servico_liquido: 0, total_medido: 0,
+    },
+    pct_retencao: 5,
+  }
+  const itensValidos = (itens || []).filter(i => i.detalhamento_id && Number(i.quantidade_medida) > 0)
+  if (itensValidos.length === 0) return vazio
+
+  // Contrato (fallback p/ percentual_retencao ausente no schema cache)
+  let pctRetencao = 5
+  {
+    const tryFull = await admin
+      .from('contratos').select('percentual_retencao').eq('id', contratoId).single()
+    if (!tryFull.error && tryFull.data) {
+      pctRetencao = Number((tryFull.data as any).percentual_retencao ?? 5)
+    }
+  }
+
+  // Detalhamentos dos itens (units) — fallback se mat/serv unit não existem
+  const detIds = itensValidos.map(i => i.detalhamento_id)
+  const detMap = new Map<string, any>()
+  {
+    const tryFull = await admin
+      .from('detalhamentos')
+      .select('id, codigo, descricao, unidade, quantidade_contratada, valor_unitario, valor_material_unit, valor_servico_unit')
+      .in('id', detIds)
+    if (!tryFull.error && tryFull.data) {
+      for (const d of tryFull.data as any[]) detMap.set(d.id, d)
+    } else if (tryFull.error && isSchemaMissingError(tryFull.error, ['valor_material_unit', 'valor_servico_unit'])) {
+      const fb = await admin
+        .from('detalhamentos')
+        .select('id, codigo, descricao, unidade, quantidade_contratada, valor_unitario')
+        .in('id', detIds)
+      if (!fb.error && fb.data) for (const d of fb.data as any[]) detMap.set(d.id, d)
+    }
+  }
+
+  // Solicitações fat-direto APROVADAS + NFs alocadas por detalhamento
+  // (mesma lógica de calcularInformaconData)
+  const aprovadoPorDet: Record<string, number> = {}
+  const nfAlocadaPorDet: Record<string, number> = {}
+  {
+    const { data: solRaw } = await admin
+      .from('solicitacoes_fat_direto')
+      .select(`id, status, deletado_em,
+        itens:itens_solicitacao_fat_direto ( detalhamento_id, valor_total ),
+        nfs:notas_fiscais_fat_direto!solicitacao_id ( valor, status )`)
+      .eq('contrato_id', contratoId)
+      .eq('status', 'aprovado')
+      .is('deletado_em', null)
+    for (const sol of (solRaw || []) as any[]) {
+      const itensVal = ((sol.itens || []) as any[])
+        .map(it => ({ detId: it.detalhamento_id as string | null, valor: Number(it.valor_total || 0) }))
+        .filter(x => x.detId)
+      const totalSol = itensVal.reduce((s, it) => s + it.valor, 0)
+      for (const it of itensVal) aprovadoPorDet[it.detId!] = (aprovadoPorDet[it.detId!] || 0) + it.valor
+      const totalNfsSol = ((sol.nfs || []) as any[]).reduce((s: number, nf: any) => s + Number(nf.valor || 0), 0)
+      if (totalSol > 0 && totalNfsSol > 0) {
+        for (const it of itensVal) {
+          const share = it.valor / totalSol
+          nfAlocadaPorDet[it.detId!] = (nfAlocadaPorDet[it.detId!] || 0) + totalNfsSol * share
+        }
+      }
+    }
+  }
+
+  const linhas: BoletimSimuladoLinha[] = []
+  for (const item of itensValidos) {
+    const det = detMap.get(item.detalhamento_id)
+    if (!det) continue
+    const qtdMed = Number(item.quantidade_medida || 0)
+    const matUnit = Number(det.valor_material_unit || 0)
+    const servUnit = Number(det.valor_servico_unit || 0)
+    const matMedido = qtdMed * matUnit
+    const servMedido = qtdMed * servUnit
+
+    const nfTerceiroItem = nfAlocadaPorDet[det.id] || 0
+    const aprovadoItem = aprovadoPorDet[det.id] || 0
+    const saldoAprovDisponivel = Math.max(0, aprovadoItem - nfTerceiroItem)
+    const nfDescontavel = Math.min(matMedido, nfTerceiroItem)
+    const gapMaterial = Math.max(0, matMedido - nfDescontavel)
+    const fatDiretoEmAberto = Math.min(gapMaterial, saldoAprovDisponivel)
+    const fipFaturar = Math.max(0, gapMaterial - fatDiretoEmAberto)
+    const baseRet = matMedido + servMedido
+    const retencao = baseRet * (pctRetencao / 100)
+
+    linhas.push({
+      detalhamento_id: det.id,
+      codigo: det.codigo,
+      descricao: det.descricao,
+      unidade: det.unidade,
+      quantidade_medida: qtdMed,
+      material_medido: matMedido,
+      servico_medido: servMedido,
+      nf_material_lancada: nfDescontavel,
+      fat_direto_em_aberto: fatDiretoEmAberto,
+      fip_a_emitir: fipFaturar,
+      base_retencao: baseRet,
+      retencao,
+      servico_liquido: servMedido - retencao,
+    })
+  }
+
+  linhas.sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), 'pt-BR', { numeric: true }))
+
+  const totais = linhas.reduce((acc, l) => ({
+    material_medido: acc.material_medido + l.material_medido,
+    servico_medido: acc.servico_medido + l.servico_medido,
+    nf_material_lancada: acc.nf_material_lancada + l.nf_material_lancada,
+    fat_direto_em_aberto: acc.fat_direto_em_aberto + l.fat_direto_em_aberto,
+    fip_a_emitir: acc.fip_a_emitir + l.fip_a_emitir,
+    base_retencao: acc.base_retencao + l.base_retencao,
+    retencao: acc.retencao + l.retencao,
+    servico_liquido: acc.servico_liquido + l.servico_liquido,
+    total_medido: acc.total_medido + l.material_medido + l.servico_medido,
+  }), {
+    material_medido: 0, servico_medido: 0, nf_material_lancada: 0,
+    fat_direto_em_aberto: 0, fip_a_emitir: 0, base_retencao: 0,
+    retencao: 0, servico_liquido: 0, total_medido: 0,
+  })
+
+  return { linhas, totais, pct_retencao: pctRetencao }
+}
+
 /**
  * Monta o boletim Informakon (linhas + totais) pra uma medição.
  * Retorna `null` quando a medição não existe.
