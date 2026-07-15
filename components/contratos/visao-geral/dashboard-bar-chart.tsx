@@ -26,7 +26,7 @@ function buildRows(itens: FlatItem[], modo: DashboardModo) {
   return itens.map(({ item, level }) => {
     let contratado = item.valor_contratado_total
     let realizado = item.realizado_total
-    let saldo = 0
+    let saldo = Math.max(0, item.valor_contratado_total - item.realizado_total)
     if (modo === 'material') {
       contratado = item.valor_contratado_material
       realizado = item.realizado_material
@@ -124,21 +124,20 @@ export function DashboardBarChart({
             }}
             style={{ cursor: 'pointer' }}
           />
-          {modo !== 'total' && (
-            <Bar
-              dataKey="saldo"
-              fill={COLORS.saldo}
-              onClick={(payload: unknown) => {
-                const item = extractItem(payload)
-                if (item) onClickSaldo(item)
-              }}
-              onDoubleClick={(payload: unknown) => {
-                const item = extractItem(payload)
-                if (item) onDoubleClickItem(item)
-              }}
-              style={{ cursor: 'pointer' }}
-            />
-          )}
+          {/* Total: barra de saldo (a executar) é informativa — sem clique de origem. */}
+          <Bar
+            dataKey="saldo"
+            fill={COLORS.saldo}
+            onClick={modo !== 'total' ? (payload: unknown) => {
+              const item = extractItem(payload)
+              if (item) onClickSaldo(item)
+            } : undefined}
+            onDoubleClick={(payload: unknown) => {
+              const item = extractItem(payload)
+              if (item) onDoubleClickItem(item)
+            }}
+            style={{ cursor: 'pointer' }}
+          />
         </BarChart>
       </ResponsiveContainer>
     </div>

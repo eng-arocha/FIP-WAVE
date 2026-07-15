@@ -38,8 +38,9 @@ function getValores(item: DashboardItem, modo: DashboardModo) {
   return {
     contratado: item.valor_contratado_total,
     realizado: item.realizado_total,
-    saldo: 0,
-    saldoLabel: '—',
+    // Total: saldo = quanto falta executar do contratado (Contratado − Realizado).
+    saldo: Math.max(0, item.valor_contratado_total - item.realizado_total),
+    saldoLabel: 'Saldo a executar',
   }
 }
 
