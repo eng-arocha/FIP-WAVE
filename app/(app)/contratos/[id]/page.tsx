@@ -16,7 +16,7 @@ import {
   DollarSign, Wallet, ClipboardList, Search, X, Maximize2,
   Download, Upload, Ban,
 } from 'lucide-react'
-import { DashboardTree } from '@/components/contratos/visao-geral'
+import { DashboardTree, VisaoGeralToolbar } from '@/components/contratos/visao-geral'
 import { EditarContratoModal } from '@/components/contratos/editar-contrato-modal'
 import { EditableOrcamentoCell, parseBRLToNumber, type EditableCellCoordinator } from '@/components/contratos/editable-orcamento-cell'
 import {
@@ -821,6 +821,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
                 </div>
               </CardHeader>
               <CardContent data-no-maximize>
+                <VisaoGeralToolbar contratoId={id} modo={viewMode} contratoNome={contrato.numero || contrato.descricao || 'Contrato'} />
                 <DashboardTree contratoId={id} modo={viewMode} />
               </CardContent>
             </Card>
