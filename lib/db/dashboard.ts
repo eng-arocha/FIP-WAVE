@@ -587,3 +587,28 @@ export async function getDashboardChildrenByScope(
   const result = await getDashboardData(contratoId, filtros)
   return { itens: result.itens, scope: scopeInfo, breadcrumb: result.breadcrumb }
 }
+
+/**
+ * Lista TODOS os itens do contrato (grupos → tarefas → detalhamentos) em
+ * ordem de árvore, com o nível de cada um. Usado pelo filtro por item e
+ * pela exportação (Excel/PDF) da Visão Geral. Reaproveita o tree-walk já
+ * testado de getDashboardChildrenByScope.
+ */
+export interface DashboardFlatItem { item: DashboardItem; level: number }
+
+export async function getDashboardFlat(contratoId: string): Promise<DashboardFlatItem[]> {
+  const out: DashboardFlatItem[] = []
+  const grupos = await getDashboardChildrenByScope(contratoId, null)
+  for (const g of grupos.itens) {
+    out.push({ item: g, level: 0 })
+    if (!g.tem_filhos) continue
+    const tarefas = await getDashboardChildrenByScope(contratoId, g.id)
+    for (const t of tarefas.itens) {
+      out.push({ item: t, level: 1 })
+      if (!t.tem_filhos) continue
+      const dets = await getDashboardChildrenByScope(contratoId, t.id)
+      for (const d of dets.itens) out.push({ item: d, level: 2 })
+    }
+  }
+  return out
+}
