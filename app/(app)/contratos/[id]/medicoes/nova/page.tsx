@@ -1108,13 +1108,14 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
 
                 {simulando && !simLoading && simResult && simResult.linhas.length > 0 && (
                   <div className="mt-4 overflow-x-auto">
-                    <table className="w-full text-xs border-collapse min-w-[820px]">
+                    <table className="w-full text-xs border-collapse min-w-[960px]">
                       <thead>
                         <tr className="border-b border-[var(--border)] text-[var(--text-3)]">
                           <th className="text-left py-1.5 pr-2 font-semibold">Código</th>
                           <th className="text-left py-1.5 pr-2 font-semibold">Descrição</th>
                           <th className="text-right py-1.5 px-2 font-semibold">Material medido</th>
                           <th className="text-right py-1.5 px-2 font-semibold">Material c/ NF lançada</th>
+                          <th className="text-right py-1.5 px-2 font-semibold">Saldo ped. aprovado</th>
                           <th className="text-right py-1.5 px-2 font-semibold">FIP a emitir (material)</th>
                           <th className="text-right py-1.5 pl-2 font-semibold">Serviço líquido</th>
                         </tr>
@@ -1126,6 +1127,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                             <td className="py-1.5 pr-2 text-[var(--text-2)]">{l.descricao}</td>
                             <td className="py-1.5 px-2 text-right tabular-nums text-[var(--text-2)]">{formatCurrency(l.material_medido)}</td>
                             <td className="py-1.5 px-2 text-right tabular-nums" style={{ color: '#3B82F6' }}>{formatCurrency(l.nf_material_lancada)}</td>
+                            <td className="py-1.5 px-2 text-right tabular-nums" style={{ color: '#6366F1' }}>{formatCurrency(l.fat_direto_em_aberto)}</td>
                             <td className="py-1.5 px-2 text-right tabular-nums" style={{ color: '#F59E0B' }}>{formatCurrency(l.fip_a_emitir)}</td>
                             <td className="py-1.5 pl-2 text-right tabular-nums font-semibold" style={{ color: '#10B981' }}>{formatCurrency(l.servico_liquido)}</td>
                           </tr>
@@ -1136,6 +1138,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                           <td colSpan={2} className="py-2 pr-2 text-right text-[var(--text-2)]">Totais</td>
                           <td className="py-2 px-2 text-right tabular-nums text-[var(--text-1)]">{formatCurrency(simResult.totais.material_medido)}</td>
                           <td className="py-2 px-2 text-right tabular-nums" style={{ color: '#3B82F6' }}>{formatCurrency(simResult.totais.nf_material_lancada)}</td>
+                          <td className="py-2 px-2 text-right tabular-nums" style={{ color: '#6366F1' }}>{formatCurrency(simResult.totais.fat_direto_em_aberto)}</td>
                           <td className="py-2 px-2 text-right tabular-nums" style={{ color: '#F59E0B' }}>{formatCurrency(simResult.totais.fip_a_emitir)}</td>
                           <td className="py-2 pl-2 text-right tabular-nums" style={{ color: '#10B981' }}>{formatCurrency(simResult.totais.servico_liquido)}</td>
                         </tr>
@@ -1150,8 +1153,10 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                     </div>
 
                     <p className="text-[10px] text-[var(--text-3)] mt-3">
-                      <strong>Material c/ NF lançada</strong>: material já coberto por NF da FIP no sistema ·
-                      <strong> FIP a emitir</strong>: material sem NF ainda, que a FIP terá direito de faturar ·
+                      <strong>Material medido = Material c/ NF lançada + Saldo ped. aprovado + FIP a emitir.</strong>{' '}
+                      <strong>NF lançada</strong>: material já coberto por NF da FIP ·
+                      <strong> Saldo ped. aprovado</strong>: material com pedido fat-direto aprovado, aguardando NF ·
+                      <strong> FIP a emitir</strong>: material sem pedido/NF, que a FIP terá direito de faturar ·
                       <strong> Serviço líquido</strong>: NF de serviço a emitir pela Wave (já descontada a retenção).
                     </p>
                   </div>
