@@ -26,22 +26,54 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
 }
 
-// PATCH: desaprovar (volta para submetido)
+// PATCH: desaprovar (volta para submetido) — admin.
+// Exceção: o CRIADOR pode submeter o próprio rascunho (rascunho → submetido),
+// fluxo da "prévia completa" (simulação) da Nova Medição.
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string; medicaoId: string }> }) {
   const negado = await requirePermissao('medicoes', 'editar')
   if (negado) return negado
   try {
-    const user = await checkAdmin()
-    if (!user) return NextResponse.json({ error: 'Apenas administradores' }, { status: 403 })
-
     const { medicaoId } = await params
     const { status } = await req.json()
 
     const admin = createAdminClient()
-    const { error } = await admin
-      .from('medicoes')
-      .update({ status, aprovador_nome: null, aprovador_email: null, data_aprovacao: null })
-      .eq('id', medicaoId)
+    const user = await checkAdmin()
+
+    if (!user) {
+      // Não-admin: só rascunho → submetido, pelo próprio solicitante
+      const supabase = await createClient()
+      const { data: { user: u } } = await supabase.auth.getUser()
+      if (!u) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+      const { data: medicao } = await admin
+        .from('medicoes')
+        .select('solicitante_email, status')
+        .eq('id', medicaoId)
+        .single()
+      if (!medicao) return NextResponse.json({ error: 'Medição não encontrada' }, { status: 404 })
+      const podeSubmeter =
+        status === 'submetido' &&
+        medicao.status === 'rascunho' &&
+        medicao.solicitante_email === u.email
+      if (!podeSubmeter) {
+        return NextResponse.json({ error: 'Apenas administradores' }, { status: 403 })
+      }
+      const { error } = await admin
+        .from('medicoes')
+        .update({ status: 'submetido', data_submissao: new Date().toISOString() })
+        .eq('id', medicaoId)
+      if (error) throw error
+      return NextResponse.json({ ok: true })
+    }
+
+    // Admin: transição livre, limpando campos de aprovação (desaprovar).
+    // Rascunho → submetido também atualiza a data de submissão; desaprovar
+    // (aprovado → submetido) preserva a data original.
+    const patch: Record<string, unknown> = { status, aprovador_nome: null, aprovador_email: null, data_aprovacao: null }
+    if (status === 'submetido') {
+      const { data: atual } = await admin.from('medicoes').select('status').eq('id', medicaoId).single()
+      if (atual?.status === 'rascunho') patch.data_submissao = new Date().toISOString()
+    }
+    const { error } = await admin.from('medicoes').update(patch).eq('id', medicaoId)
     if (error) throw error
 
     return NextResponse.json({ ok: true })

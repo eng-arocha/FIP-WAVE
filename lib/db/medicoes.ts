@@ -97,6 +97,12 @@ export async function createMedicao(input: {
     pavimentos_pct?: Record<string, number> | null
   }[]
   notas_fiscais?: { numero_nf: string; emitente: string; cnpj_emitente?: string; valor: number; data_emissao: string }[]
+  /**
+   * Status inicial. 'rascunho' = prévia completa (simulação): a medição é
+   * gravada mas fica fora de todos os acumulados/dashboards (que filtram
+   * por 'aprovado') e sem ações de aprovação até ser submetida.
+   */
+  status?: 'rascunho' | 'submetido'
 }) {
   const supabase = await createClient()
 
@@ -141,7 +147,7 @@ export async function createMedicao(input: {
       numero,
       periodo_referencia: input.periodo_referencia,
       tipo: input.tipo,
-      status: 'submetido',
+      status: input.status ?? 'submetido',
       valor_total,
       data_submissao: new Date().toISOString(),
       solicitante_nome: input.solicitante_nome,

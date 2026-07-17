@@ -59,6 +59,16 @@ type ItemPlanilha = {
   // Breakdown por pavimento (só para itens "PAV TIPO ( X AO Y PAV )")
   pavimentos_pct: Record<string, number> | null
   pavimentos_pct_anterior: Record<string, number> | null
+
+  // Cronograma físico (planejamento_fisico_det). null = item sem cronograma
+  // cadastrado. Escala 0-100, como os pcts realizados.
+  //   prev_anterior: acumulado planejado até o mês ANTERIOR ao período de ref.
+  //   prev_atual:    % planejado DO mês de referência (delta mensal)
+  //   prev_total:    acumulado planejado até o mês de referência (ant + atual)
+  pct_prev_anterior: number | null
+  pct_prev_atual: number | null
+  pct_prev_total: number | null
+  qtd_prev_total: number | null
 }
 
 export type DetalhamentoPlanilha = ItemPlanilha & {
@@ -79,6 +89,11 @@ export type TarefaPlanilha = {
   pct_atual: number
   pct_total: number
   pct_saldo: number
+  // Previsto agregado (ponderado por valor global). null = nenhum
+  // detalhamento filho tem cronograma cadastrado.
+  pct_prev_anterior: number | null
+  pct_prev_atual: number | null
+  pct_prev_total: number | null
   detalhamentos: DetalhamentoPlanilha[]
 }
 
@@ -96,6 +111,9 @@ export type GrupoPlanilha = {
   pct_atual: number
   pct_total: number
   pct_saldo: number
+  pct_prev_anterior: number | null
+  pct_prev_atual: number | null
+  pct_prev_total: number | null
   tarefas: TarefaPlanilha[]
 }
 
@@ -111,6 +129,9 @@ type TotaisPlanilha = {
   pct_saldo_total: number
   material_atual_total: number
   servico_atual_total: number
+  pct_prev_anterior_total: number | null
+  pct_prev_atual_total: number | null
+  pct_prev_total_medido: number | null
 }
 
 const NO_STORE_HEADERS = {
@@ -158,6 +179,7 @@ function calcularItem(args: {
   valorAnterior: number
   pavimentosPct: Record<string, number> | null
   pavimentosPctAnterior: Record<string, number> | null
+  previsto?: { anterior: number; atual: number; total: number } | null
 }): ItemPlanilha {
   const {
     medicaoItemId,
@@ -175,6 +197,7 @@ function calcularItem(args: {
     valorAnterior,
     pavimentosPct,
     pavimentosPctAnterior,
+    previsto,
   } = args
 
   const valorAtual = qtdAtual * vUnitItemAtual
@@ -226,6 +249,11 @@ function calcularItem(args: {
 
     pavimentos_pct: pavimentosPct,
     pavimentos_pct_anterior: pavimentosPctAnterior,
+
+    pct_prev_anterior: previsto ? previsto.anterior : null,
+    pct_prev_atual: previsto ? previsto.atual : null,
+    pct_prev_total: previsto ? previsto.total : null,
+    qtd_prev_total: previsto ? (previsto.total / 100) * qtdContr : null,
   }
 }
 
@@ -240,7 +268,7 @@ export async function GET(
     // 1) Carrega medição-alvo (e valida)
     const { data: medicaoAlvo, error: medErr } = await admin
       .from('medicoes')
-      .select('id, numero, status, contrato_id, data_aprovacao')
+      .select('id, numero, status, contrato_id, data_aprovacao, periodo_referencia')
       .eq('id', medicaoId)
       .single()
     if (medErr || !medicaoAlvo) {
@@ -444,6 +472,56 @@ export async function GET(
       }
     }
 
+    // 5c-bis) Cronograma físico — previsto por detalhamento até o período de
+    //         referência da medição. anterior = Σ meses < ref; atual = mês ref;
+    //         total = anterior + atual. Itens sem linha em
+    //         planejamento_fisico_det ficam sem previsto (null na resposta).
+    //         Falha aqui (ex.: tabela ausente) não derruba a planilha.
+    const prevPorDet: Record<string, { anterior: number; atual: number; total: number }> = {}
+    {
+      const periodoRef = String((medicaoAlvo as any).periodo_referencia || '')
+      const refMes = /^\d{4}-\d{2}/.test(periodoRef) ? `${periodoRef.slice(0, 7)}-01` : null
+      if (refMes) {
+        const todosDetIds: string[] = []
+        for (const g of estruturaRaw || []) {
+          for (const t of ((g.tarefas as any[]) || [])) {
+            for (const d of ((t.detalhamentos as any[]) || [])) todosDetIds.push(d.id)
+          }
+        }
+        if (todosDetIds.length > 0) {
+          try {
+            const { data: planRows, error: planErr } = await admin
+              .from('planejamento_fisico_det')
+              .select('detalhamento_id, mes, pct_planejado')
+              .in('detalhamento_id', todosDetIds)
+            if (!planErr) {
+              for (const p of (planRows || []) as any[]) {
+                const dId = p.detalhamento_id
+                const mes = String(p.mes).slice(0, 10)
+                const pct = Number(p.pct_planejado || 0)
+                const e = (prevPorDet[dId] ||= { anterior: 0, atual: 0, total: 0 })
+                if (mes < refMes) e.anterior += pct
+                else if (mes === refMes) e.atual += pct
+                // meses futuros ao período: fora do acumulado previsto
+              }
+              for (const e of Object.values(prevPorDet)) e.total = e.anterior + e.atual
+            }
+          } catch { /* segue sem previsto */ }
+        }
+      }
+    }
+
+    // Enriquece as linhas FLAT (montadas antes da estrutura) com o previsto.
+    for (const l of itens) {
+      const prev = l.detalhamento_id ? prevPorDet[l.detalhamento_id] : undefined
+      if (prev) {
+        l.pct_prev_anterior = prev.anterior
+        l.pct_prev_atual = prev.atual
+        l.pct_prev_total = prev.total
+        l.qtd_prev_total = (prev.total / 100) * l.quantidade_contratada
+      }
+    }
+
     // 5d) Constrói árvore hierárquica com agregados.
     //     Para CADA detalhamento (mesmo os não medidos nesta medição), monta
     //     um ItemPlanilha completo. Tarefa e grupo agregam VALORES dos filhos
@@ -475,6 +553,7 @@ export async function GET(
               valorAnterior: valorAnteriorPorDet[detId] || 0,
               pavimentosPct: atual?.pavimentosPct || null,
               pavimentosPctAnterior: pavPctAntPorDet[detId] || null,
+              previsto: prevPorDet[detId] || null,
             })
           },
         )
@@ -489,8 +568,17 @@ export async function GET(
             valor_atual: acc.valor_atual + det.valor_atual,
             valor_total: acc.valor_total + det.valor_total,
             valor_saldo: acc.valor_saldo + det.valor_saldo,
+            // Previsto em VALOR (pct × valor global do item) — pcts agregados
+            // saem da divisão pelo valor global total, como os realizados.
+            valor_prev_anterior: acc.valor_prev_anterior + (det.pct_prev_anterior ?? 0) / 100 * det.valor_global_item,
+            valor_prev_atual: acc.valor_prev_atual + (det.pct_prev_atual ?? 0) / 100 * det.valor_global_item,
+            valor_prev_total: acc.valor_prev_total + (det.pct_prev_total ?? 0) / 100 * det.valor_global_item,
+            tem_previsto: acc.tem_previsto || det.pct_prev_total !== null,
           }),
-          { valor_global: 0, valor_anterior: 0, valor_atual: 0, valor_total: 0, valor_saldo: 0 },
+          {
+            valor_global: 0, valor_anterior: 0, valor_atual: 0, valor_total: 0, valor_saldo: 0,
+            valor_prev_anterior: 0, valor_prev_atual: 0, valor_prev_total: 0, tem_previsto: false,
+          },
         )
 
         const tVg = tarefaAgg.valor_global
@@ -507,6 +595,9 @@ export async function GET(
           pct_atual: tVg > 0 ? (tarefaAgg.valor_atual / tVg) * 100 : 0,
           pct_total: tVg > 0 ? (tarefaAgg.valor_total / tVg) * 100 : 0,
           pct_saldo: tVg > 0 ? Math.max(0, (tarefaAgg.valor_saldo / tVg) * 100) : 0,
+          pct_prev_anterior: tarefaAgg.tem_previsto && tVg > 0 ? (tarefaAgg.valor_prev_anterior / tVg) * 100 : null,
+          pct_prev_atual: tarefaAgg.tem_previsto && tVg > 0 ? (tarefaAgg.valor_prev_atual / tVg) * 100 : null,
+          pct_prev_total: tarefaAgg.tem_previsto && tVg > 0 ? (tarefaAgg.valor_prev_total / tVg) * 100 : null,
           detalhamentos,
         }
         return tarefa
@@ -522,8 +613,15 @@ export async function GET(
           valor_atual: acc.valor_atual + t.valor_atual,
           valor_total: acc.valor_total + t.valor_total,
           valor_saldo: acc.valor_saldo + t.valor_saldo,
+          valor_prev_anterior: acc.valor_prev_anterior + ((t.pct_prev_anterior ?? 0) / 100) * t.valor_global,
+          valor_prev_atual: acc.valor_prev_atual + ((t.pct_prev_atual ?? 0) / 100) * t.valor_global,
+          valor_prev_total: acc.valor_prev_total + ((t.pct_prev_total ?? 0) / 100) * t.valor_global,
+          tem_previsto: acc.tem_previsto || t.pct_prev_total !== null,
         }),
-        { valor_global: 0, valor_anterior: 0, valor_atual: 0, valor_total: 0, valor_saldo: 0 },
+        {
+          valor_global: 0, valor_anterior: 0, valor_atual: 0, valor_total: 0, valor_saldo: 0,
+          valor_prev_anterior: 0, valor_prev_atual: 0, valor_prev_total: 0, tem_previsto: false,
+        },
       )
 
       const gVg = grupoAgg.valor_global
@@ -540,6 +638,9 @@ export async function GET(
         pct_atual: gVg > 0 ? (grupoAgg.valor_atual / gVg) * 100 : 0,
         pct_total: gVg > 0 ? (grupoAgg.valor_total / gVg) * 100 : 0,
         pct_saldo: gVg > 0 ? Math.max(0, (grupoAgg.valor_saldo / gVg) * 100) : 0,
+        pct_prev_anterior: grupoAgg.tem_previsto && gVg > 0 ? (grupoAgg.valor_prev_anterior / gVg) * 100 : null,
+        pct_prev_atual: grupoAgg.tem_previsto && gVg > 0 ? (grupoAgg.valor_prev_atual / gVg) * 100 : null,
+        pct_prev_total: grupoAgg.tem_previsto && gVg > 0 ? (grupoAgg.valor_prev_total / gVg) * 100 : null,
         tarefas,
       }
     })
@@ -561,6 +662,9 @@ export async function GET(
         pct_saldo_total: 0,
         material_atual_total: acc.material_atual_total + l.material_atual,
         servico_atual_total: acc.servico_atual_total + l.servico_atual,
+        pct_prev_anterior_total: null,
+        pct_prev_atual_total: null,
+        pct_prev_total_medido: null,
       }),
       {
         valor_global_total: 0,
@@ -574,6 +678,9 @@ export async function GET(
         pct_saldo_total: 0,
         material_atual_total: 0,
         servico_atual_total: 0,
+        pct_prev_anterior_total: null,
+        pct_prev_atual_total: null,
+        pct_prev_total_medido: null,
       },
     )
 
@@ -584,6 +691,23 @@ export async function GET(
       totais.pct_atual_total = (totais.valor_atual_total / vg) * 100
       totais.pct_total_medido = (totais.valor_total_medido / vg) * 100
       totais.pct_saldo_total = Math.max(0, (totais.valor_saldo_total / vg) * 100)
+    }
+
+    // Previsto agregado dos itens flat (ponderado por valor global) — base do
+    // subtotal do PDF do período. null quando nenhum item tem cronograma.
+    {
+      let vPrevAnt = 0, vPrevAtu = 0, vPrevTot = 0, temPrev = false
+      for (const l of itens) {
+        if (l.pct_prev_total !== null) temPrev = true
+        vPrevAnt += ((l.pct_prev_anterior ?? 0) / 100) * l.valor_global_item
+        vPrevAtu += ((l.pct_prev_atual ?? 0) / 100) * l.valor_global_item
+        vPrevTot += ((l.pct_prev_total ?? 0) / 100) * l.valor_global_item
+      }
+      if (temPrev && vg > 0) {
+        totais.pct_prev_anterior_total = (vPrevAnt / vg) * 100
+        totais.pct_prev_atual_total = (vPrevAtu / vg) * 100
+        totais.pct_prev_total_medido = (vPrevTot / vg) * 100
+      }
     }
 
     return NextResponse.json(

@@ -363,42 +363,72 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
     return total
   }
 
-  async function submeter() {
-    setSaving(true)
-    try {
-      const itens: any[] = []
-      for (const grupo of estruturaServico) {
-        for (const tarefa of (grupo.tarefas || [])) {
-          for (const det of (tarefa.detalhamentos || [])) {
-            const qtdeAtual = qtdeMedicao[det.id] || 0
-            const acumQtde = getAcumQtde(det.id)
-            const deltaQtde = qtdeAtual - acumQtde
-            if (deltaQtde > 0) {
-              // Para PAV TIPO e vãos, anexa o breakdown acumulado.
-              const pavRange = detectarPavRange(det.descricao, Number(det.quantidade_contratada || 0))
-              const vaoNomesItem = !pavRange ? detectarVaos(det.descricao, Number(det.quantidade_contratada || 0)) : null
-              const pavto = (pavRange || vaoNomesItem) ? pavPctMap[det.id] : null
-              itens.push({
-                detalhamento_id: det.id,
-                quantidade_medida: deltaQtde,
-                valor_unitario: det.valor_unitario,
-                ...(pavto && Object.keys(pavto).length > 0 ? { pavimentos_pct: pavto } : {}),
-              })
-            }
+  // Monta o payload completo da medição (itens com breakdown + NFs).
+  function montarPayload() {
+    const itens: any[] = []
+    for (const grupo of estruturaServico) {
+      for (const tarefa of (grupo.tarefas || [])) {
+        for (const det of (tarefa.detalhamentos || [])) {
+          const qtdeAtual = qtdeMedicao[det.id] || 0
+          const acumQtde = getAcumQtde(det.id)
+          const deltaQtde = qtdeAtual - acumQtde
+          if (deltaQtde > 0) {
+            // Para PAV TIPO e vãos, anexa o breakdown acumulado.
+            const pavRange = detectarPavRange(det.descricao, Number(det.quantidade_contratada || 0))
+            const vaoNomesItem = !pavRange ? detectarVaos(det.descricao, Number(det.quantidade_contratada || 0)) : null
+            const pavto = (pavRange || vaoNomesItem) ? pavPctMap[det.id] : null
+            itens.push({
+              detalhamento_id: det.id,
+              quantidade_medida: deltaQtde,
+              valor_unitario: det.valor_unitario,
+              ...(pavto && Object.keys(pavto).length > 0 ? { pavimentos_pct: pavto } : {}),
+            })
           }
         }
       }
-      const nfs = novasNFs
-        .filter(nf => nf.numero && nf.valor)
-        .map(nf => ({ numero_nf: nf.numero, emitente: nf.emitente, valor: parseFloat(nf.valor), data_emissao: nf.data }))
+    }
+    const nfs = novasNFs
+      .filter(nf => nf.numero && nf.valor)
+      .map(nf => ({ numero_nf: nf.numero, emitente: nf.emitente, valor: parseFloat(nf.valor), data_emissao: nf.data }))
+    return { periodo_referencia: periodo, tipo: 'servico', solicitante_nome: userNome, solicitante_email: userEmail, observacoes, itens, notas_fiscais: nfs }
+  }
+
+  async function submeter() {
+    setSaving(true)
+    try {
       const res = await fetch(`/api/contratos/${contratoId}/medicoes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ periodo_referencia: periodo, tipo: 'servico', solicitante_nome: userNome, solicitante_email: userEmail, observacoes, itens, notas_fiscais: nfs }),
+        body: JSON.stringify(montarPayload()),
       })
       if (res.ok) router.push(`/contratos/${contratoId}`)
     } finally {
       setSaving(false)
+    }
+  }
+
+  // Prévia completa: grava como RASCUNHO e abre a tela de detalhes real —
+  // a mesma que o administrador vê na aprovação (planilha hierárquica,
+  // Exportar PDF/Acumulado, Boletim INFORMAKON), com marca d'água de
+  // simulação nos PDFs. Lá dá pra submeter ou descartar.
+  const [savingRascunho, setSavingRascunho] = useState(false)
+  async function salvarRascunho() {
+    setSavingRascunho(true)
+    try {
+      const res = await fetch(`/api/contratos/${contratoId}/medicoes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...montarPayload(), status: 'rascunho' }),
+      })
+      if (res.ok) {
+        const medicao = await res.json()
+        if (medicao?.id) {
+          router.push(`/contratos/${contratoId}/medicoes/${medicao.id}`)
+          return
+        }
+      }
+    } finally {
+      setSavingRascunho(false)
     }
   }
 
@@ -1093,6 +1123,10 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                   Cálculo <strong>real</strong> (dry-run) — o mesmo que o administrador verá na aprovação,
                   usando as NFs de material já lançadas no contrato. Volte ao passo <strong>Itens</strong>,
                   ajuste e simule quantas vezes quiser. Nada é gravado.
+                  Para a <strong>visão completa</strong> (planilha hierárquica, pavimentos, Exportar PDF /
+                  Acumulado e Boletim INFORMAKON), use <strong>Prévia completa (rascunho)</strong> abaixo —
+                  grava como rascunho fora do fluxo de aprovação, com marca d&apos;água “SIMULAÇÃO” nos PDFs,
+                  e lá você pode submeter ou descartar.
                 </p>
                 <Button
                   variant="outline"
@@ -1213,9 +1247,20 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
               Próximo →
             </Button>
           ) : (
-            <Button onClick={submeter} disabled={saving} className="bg-emerald-600 hover:bg-emerald-500 text-white">
-              {saving ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Enviando...</> : 'Submeter para Aprovação'}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={salvarRascunho}
+                disabled={saving || savingRascunho || !itensFilled}
+                className="border-teal-500/40 text-teal-300 hover:bg-teal-500/10"
+                title="Grava como rascunho e abre a tela completa da medição (a mesma do aprovador), com PDFs marcados como SIMULAÇÃO"
+              >
+                {savingRascunho ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Salvando...</> : <><TrendingUp className="w-4 h-4 mr-1" />Prévia completa (rascunho)</>}
+              </Button>
+              <Button onClick={submeter} disabled={saving || savingRascunho} className="bg-emerald-600 hover:bg-emerald-500 text-white">
+                {saving ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Enviando...</> : 'Submeter para Aprovação'}
+              </Button>
+            </div>
           )}
         </div>
       </div>

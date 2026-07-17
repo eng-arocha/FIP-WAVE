@@ -640,6 +640,22 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
 
   return (
     <div className="flex-1" style={{ background: 'var(--background)' }}>
+      {/* Marca d'água de simulação — só na impressão (rascunho). `fixed`
+          repete em todas as páginas impressas. */}
+      {data.medicao.status === 'rascunho' && (
+        <div aria-hidden className="hidden print:flex fixed inset-0 z-50 items-center justify-center pointer-events-none">
+          <span style={{
+            transform: 'rotate(-30deg)',
+            fontSize: '110px',
+            fontWeight: 800,
+            letterSpacing: '0.12em',
+            color: 'rgba(100,116,139,0.14)',
+            whiteSpace: 'nowrap',
+          }}>
+            SIMULAÇÃO
+          </span>
+        </div>
+      )}
       <Topbar title={`Boletim INFORMAKON · ${tag}`} subtitle={`Período ${data.medicao.periodo_referencia} · Contrato ${data.medicao.contrato.numero}`} />
 
       <div className="p-4 sm:p-6 space-y-4">
