@@ -172,6 +172,10 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
   const [status, setStatus] = useState<MedicaoStatus | null>(null)
 
   const [historicoMedicoes, setHistoricoMedicoes] = useState<any[]>([])
+  // Ações do modo SIMULAÇÃO (rascunho). PRECISA ficar aqui no topo, antes do
+  // early-return do loader — hook depois de return condicional quebra a ordem
+  // dos hooks entre renders (React #310).
+  const [acaoRascunho, setAcaoRascunho] = useState<'submetendo' | 'descartando' | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const { perfilAtual } = usePermissoes()
@@ -349,7 +353,6 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
   })()
 
   // === Ações do modo SIMULAÇÃO (rascunho) ===
-  const [acaoRascunho, setAcaoRascunho] = useState<'submetendo' | 'descartando' | null>(null)
   async function submeterRascunho() {
     if (!confirm('Submeter esta medição para aprovação da equipe FIP?')) return
     setAcaoRascunho('submetendo')
