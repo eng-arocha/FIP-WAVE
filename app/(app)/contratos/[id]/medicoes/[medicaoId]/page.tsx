@@ -52,6 +52,11 @@ type ItemPlanilha = {
   servico_atual: number
   pavimentos_pct?: Record<string, number> | null
   pavimentos_pct_anterior?: Record<string, number> | null
+  // Cronograma físico (null/ausente = item sem cronograma cadastrado)
+  pct_prev_anterior?: number | null
+  pct_prev_atual?: number | null
+  pct_prev_total?: number | null
+  qtd_prev_total?: number | null
 }
 
 type TotaisPlanilha = {
@@ -66,6 +71,9 @@ type TotaisPlanilha = {
   pct_saldo_total: number
   material_atual_total: number
   servico_atual_total: number
+  pct_prev_anterior_total?: number | null
+  pct_prev_atual_total?: number | null
+  pct_prev_total_medido?: number | null
 }
 
 // Tipos hierárquicos: Grupo → Tarefa → Detalhamento (folha = ItemPlanilha)
@@ -84,6 +92,9 @@ type TarefaPlanilha = {
   pct_atual: number
   pct_total: number
   pct_saldo: number
+  pct_prev_anterior?: number | null
+  pct_prev_atual?: number | null
+  pct_prev_total?: number | null
   detalhamentos: DetalhamentoPlanilha[]
 }
 
@@ -100,6 +111,9 @@ type GrupoPlanilha = {
   pct_atual: number
   pct_total: number
   pct_saldo: number
+  pct_prev_anterior?: number | null
+  pct_prev_atual?: number | null
+  pct_prev_total?: number | null
   tarefas: TarefaPlanilha[]
 }
 
@@ -108,6 +122,41 @@ type PlanilhaResponse = {
   itens: ItemPlanilha[]
   grupos: GrupoPlanilha[]
   totais: TotaisPlanilha
+}
+
+// Farol realizado × previsto (cronograma físico):
+// verde = em dia/adiantado · âmbar = atraso ≤ 2 p.p. · vermelho = atrasado
+function farolColor(realPct: number, prevPct: number): string {
+  if (realPct >= prevPct - 0.05) return '#10B981'
+  if (prevPct - realPct <= 2) return '#F59E0B'
+  return '#EF4444'
+}
+
+/**
+ * Linha "prev X% (n)" + bolinha de farol, exibida sob o percentual realizado
+ * quando o item tem cronograma físico cadastrado. prevQtd só aparece quando
+ * showQtd (itens com múltiplas unidades/pavimentos).
+ */
+function PrevFarol({ realPct, prevPct, prevQtd, showQtd }: {
+  realPct: number
+  prevPct?: number | null
+  prevQtd?: number | null
+  showQtd?: boolean
+}) {
+  if (prevPct === null || prevPct === undefined) return null
+  const q = showQtd && prevQtd != null && prevQtd > 0
+    ? ` (${Number.isInteger(prevQtd) ? prevQtd : prevQtd.toFixed(2).replace(/\.?0+$/, '')})`
+    : ''
+  return (
+    <div className="flex items-center justify-end gap-1 text-[9px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+      <span>prev {prevPct.toFixed(1)}%{q}</span>
+      <span
+        className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
+        style={{ background: farolColor(realPct, prevPct) }}
+        title={realPct >= prevPct - 0.05 ? 'Em dia / adiantado' : prevPct - realPct <= 2 ? 'Atraso leve (≤ 2 p.p.)' : 'Atrasado vs cronograma'}
+      />
+    </div>
+  )
 }
 
 export default function MedicaoDetailPage({ params }: { params: Promise<{ id: string; medicaoId: string }> }) {
@@ -299,6 +348,36 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
     return null
   })()
 
+  // === Ações do modo SIMULAÇÃO (rascunho) ===
+  const [acaoRascunho, setAcaoRascunho] = useState<'submetendo' | 'descartando' | null>(null)
+  async function submeterRascunho() {
+    if (!confirm('Submeter esta medição para aprovação da equipe FIP?')) return
+    setAcaoRascunho('submetendo')
+    try {
+      const res = await fetch(`/api/contratos/${contratoId}/medicoes/${medicaoId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'submetido' }),
+      })
+      if (res.ok) {
+        setStatus('submetido' as MedicaoStatus)
+        await fetchMedicao()
+      }
+    } finally {
+      setAcaoRascunho(null)
+    }
+  }
+  async function descartarRascunho() {
+    if (!confirm('Descartar esta simulação? A medição rascunho será excluída.')) return
+    setAcaoRascunho('descartando')
+    try {
+      const res = await fetch(`/api/contratos/${contratoId}/medicoes/${medicaoId}`, { method: 'DELETE' })
+      if (res.ok) window.location.href = `/contratos/${contratoId}`
+    } finally {
+      setAcaoRascunho(null)
+    }
+  }
+
   async function desaprovar() {
     if (!confirm('Desaprovar esta medição? Voltará para "Submetido".')) return
     const res = await fetch(`/api/contratos/${contratoId}/medicoes/${medicaoId}`, {
@@ -470,6 +549,43 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           {/* Main content */}
           <div className="xl:col-span-2 space-y-5">
+            {/* Banner de SIMULAÇÃO (rascunho) — prévia completa antes de submeter */}
+            {status === 'rascunho' && (
+              <div className="flex flex-wrap items-center gap-3 p-4 rounded-xl border"
+                style={{ background: 'rgba(245,158,11,0.12)', borderColor: 'rgba(245,158,11,0.5)' }}>
+                <AlertCircle className="w-5 h-5 flex-shrink-0" style={{ color: '#F59E0B' }} />
+                <div className="flex-1 min-w-[200px]">
+                  <p className="text-sm font-bold" style={{ color: '#F59E0B' }}>SIMULAÇÃO — medição não submetida</p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-2)' }}>
+                    Esta é a visão completa que o administrador verá na aprovação. Os PDFs exportados
+                    saem com marca d&apos;água “SIMULAÇÃO”. Nada entra no fluxo de aprovação até você submeter.
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={submeterRascunho}
+                    disabled={acaoRascunho !== null}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white"
+                  >
+                    {acaoRascunho === 'submetendo'
+                      ? <><Loader2 className="w-4 h-4 animate-spin mr-1" />Enviando...</>
+                      : <><CheckCircle2 className="w-4 h-4 mr-1" />Submeter para Aprovação</>}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={descartarRascunho}
+                    disabled={acaoRascunho !== null}
+                    className="border-red-500/40 text-red-400 hover:bg-red-500/10"
+                  >
+                    {acaoRascunho === 'descartando'
+                      ? <><Loader2 className="w-4 h-4 animate-spin mr-1" />Excluindo...</>
+                      : <><Trash2 className="w-4 h-4 mr-1" />Descartar simulação</>}
+                  </Button>
+                </div>
+              </div>
+            )}
             {/* Anomaly alert */}
             {anomalia && (
               <div className="flex items-start gap-3 p-4 rounded-xl border border-red-800/50 bg-red-900/20">
@@ -882,6 +998,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                       <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
                                         {formatCurrency(g.valor_anterior)}
                                       </div>
+                                      <PrevFarol realPct={g.pct_anterior} prevPct={g.pct_prev_anterior} />
                                     </td>
                                     <td className="py-2 text-right">
                                       <div className="text-sm font-bold tabular-nums" style={{ color: '#0F766E' }}>
@@ -890,6 +1007,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                       <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
                                         {formatCurrency(g.valor_atual)}
                                       </div>
+                                      <PrevFarol realPct={g.pct_atual} prevPct={g.pct_prev_atual} />
                                     </td>
                                     <td className="py-2 text-right">
                                       <div className="text-sm font-bold tabular-nums" style={{ color: '#10B981' }}>
@@ -898,6 +1016,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                       <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
                                         {formatCurrency(g.valor_total)}
                                       </div>
+                                      <PrevFarol realPct={g.pct_total} prevPct={g.pct_prev_total} />
                                       <div className="h-1 mt-1 rounded-full" style={{ background: 'var(--surface-3)' }}>
                                         <div className="h-full rounded-full transition-all" style={{
                                           width: `${pctTotalBarG}%`,
@@ -950,6 +1069,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                             <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
                                               {formatCurrency(t.valor_anterior)}
                                             </div>
+                                            <PrevFarol realPct={t.pct_anterior} prevPct={t.pct_prev_anterior} />
                                           </td>
                                           <td className="py-2 text-right">
                                             <div className="text-sm font-semibold tabular-nums" style={{ color: '#0F766E' }}>
@@ -958,6 +1078,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                             <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
                                               {formatCurrency(t.valor_atual)}
                                             </div>
+                                            <PrevFarol realPct={t.pct_atual} prevPct={t.pct_prev_atual} />
                                           </td>
                                           <td className="py-2 text-right">
                                             <div className="text-sm font-semibold tabular-nums" style={{ color: '#10B981' }}>
@@ -966,6 +1087,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                             <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
                                               {formatCurrency(t.valor_total)}
                                             </div>
+                                            <PrevFarol realPct={t.pct_total} prevPct={t.pct_prev_total} />
                                             <div className="h-1 mt-1 rounded-full" style={{ background: 'var(--surface-3)' }}>
                                               <div className="h-full rounded-full transition-all" style={{
                                                 width: `${pctTotalBarT}%`,
@@ -1040,6 +1162,12 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                                   <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
                                                     {formatCurrency(it.valor_anterior)}
                                                   </div>
+                                                  <PrevFarol
+                                                    realPct={it.pct_anterior}
+                                                    prevPct={it.pct_prev_anterior}
+                                                    prevQtd={it.pct_prev_anterior != null ? (it.pct_prev_anterior / 100) * it.quantidade_contratada : null}
+                                                    showQtd={it.quantidade_contratada > 1}
+                                                  />
                                                 </td>
                                                 <td className="py-2 text-right">
                                                   <div className="text-sm font-bold tabular-nums" style={{ color: '#0F766E' }}>
@@ -1048,6 +1176,12 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                                   <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
                                                     {formatCurrency(it.valor_atual)}
                                                   </div>
+                                                  <PrevFarol
+                                                    realPct={it.pct_atual}
+                                                    prevPct={it.pct_prev_atual}
+                                                    prevQtd={it.pct_prev_atual != null ? (it.pct_prev_atual / 100) * it.quantidade_contratada : null}
+                                                    showQtd={it.quantidade_contratada > 1}
+                                                  />
                                                 </td>
                                                 <td className="py-2 text-right">
                                                   <div className="text-sm font-bold tabular-nums" style={{ color: '#10B981' }}>
@@ -1056,6 +1190,12 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                                   <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
                                                     {formatCurrency(it.valor_total)}
                                                   </div>
+                                                  <PrevFarol
+                                                    realPct={it.pct_total}
+                                                    prevPct={it.pct_prev_total}
+                                                    prevQtd={it.qtd_prev_total}
+                                                    showQtd={it.quantidade_contratada > 1}
+                                                  />
                                                   <div className="h-1 mt-1 rounded-full" style={{ background: 'var(--surface-3)' }}>
                                                     <div className="h-full rounded-full transition-all" style={{
                                                       width: `${pctTotalBarI}%`,
@@ -1158,6 +1298,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                     <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
                                       {formatCurrency(t.valor_anterior_total)}
                                     </div>
+                                    <PrevFarol realPct={t.pct_anterior_total} prevPct={t.pct_prev_anterior_total} />
                                   </td>
                                   <td className="py-2 text-right">
                                     <div className="text-sm font-bold tabular-nums" style={{ color: '#0F766E' }}>
@@ -1166,6 +1307,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                     <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
                                       {formatCurrency(t.valor_atual_total)}
                                     </div>
+                                    <PrevFarol realPct={t.pct_atual_total} prevPct={t.pct_prev_atual_total} />
                                   </td>
                                   <td className="py-2 text-right">
                                     <div className="text-sm font-bold tabular-nums" style={{ color: '#10B981' }}>
@@ -1174,6 +1316,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                     <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
                                       {formatCurrency(t.valor_total_medido)}
                                     </div>
+                                    <PrevFarol realPct={t.pct_total_medido} prevPct={t.pct_prev_total_medido} />
                                     <div className="h-1 mt-1 rounded-full" style={{ background: 'var(--surface-3)' }}>
                                       <div className="h-full rounded-full transition-all" style={{
                                         width: `${pctTotalBar}%`,

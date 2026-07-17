@@ -95,6 +95,46 @@ function rPctQtd(pct: number, qtd: number, showQtd: boolean): string {
   return `${base} (${q})`
 }
 function rVal(v: number) { return v === 0 ? '—' : R(v) }
+function fmtQtd(q: number) { return Number.isInteger(q) ? String(q) : q.toFixed(2).replace(/\.?0+$/, '') }
+
+// Farol realizado × previsto (cronograma físico):
+//   verde  = em dia/adiantado (realizado >= previsto)
+//   âmbar  = atraso pequeno (até 2 p.p.)
+//   vermelho = atrasado
+function farolColor(realPct: number, prevPct: number): string {
+  if (realPct >= prevPct - 0.05) return '#10b981'
+  if (prevPct - realPct <= 2) return '#f59e0b'
+  return '#ef4444'
+}
+
+/**
+ * Célula de percentual com linha secundária "prev: X% (n)" + bolinha de
+ * farol quando o item tem cronograma físico cadastrado (prevPct !== null).
+ */
+function PctCell({ width, main, mainStyle, realPct, prevPct, prevQtd, showQtd }: {
+  width: string
+  main: string
+  mainStyle: any
+  realPct: number
+  prevPct?: number | null
+  prevQtd?: number | null
+  showQtd?: boolean
+}) {
+  const hasPrev = prevPct !== null && prevPct !== undefined
+  return (
+    <View style={{ width }}>
+      <Text style={[mainStyle, { width: '100%', textAlign: 'right' }]}>{main}</Text>
+      {hasPrev && (
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 1 }}>
+          <Text style={{ fontSize: 5.5, color: '#94a3b8' }}>
+            prev {prevPct!.toFixed(1)}%{showQtd && prevQtd != null && prevQtd > 0 ? ` (${fmtQtd(prevQtd)})` : ''}
+          </Text>
+          <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: farolColor(realPct, prevPct!), marginLeft: 2 }} />
+        </View>
+      )}
+    </View>
+  )
+}
 
 interface MedicaoPDFProps {
   medicao: any
@@ -136,8 +176,16 @@ export function MedicaoPDF({ medicao, itens, aprovacoes, planilha, somentePeriod
     if (!totais) return null
     if (!somentePeriodo) return totais
     let va = 0, vat = 0, vt = 0, vs = 0
+    let vPrevAnt = 0, vPrevAtu = 0, vPrevTot = 0, temPrev = false
     grupos.forEach((g: any) => g.tarefas.forEach((t: any) => t.detalhamentos.forEach((d: any) => {
       va += d.valor_anterior; vat += d.valor_atual; vt += d.valor_total; vs += d.valor_saldo
+      if (d.pct_prev_total !== null && d.pct_prev_total !== undefined) {
+        temPrev = true
+        const vgi = Number(d.valor_global_item || 0)
+        vPrevAnt += ((d.pct_prev_anterior ?? 0) / 100) * vgi
+        vPrevAtu += ((d.pct_prev_atual ?? 0) / 100) * vgi
+        vPrevTot += ((d.pct_prev_total ?? 0) / 100) * vgi
+      }
     })))
     const vg = grupos.reduce((s: number, g: any) => s + g.valor_global, 0)
     return {
@@ -152,6 +200,9 @@ export function MedicaoPDF({ medicao, itens, aprovacoes, planilha, somentePeriod
       pct_saldo_total: vg > 0 ? (vs / vg) * 100 : 0,
       material_atual_total: totais.material_atual_total,
       servico_atual_total: totais.servico_atual_total,
+      pct_prev_anterior_total: temPrev && vg > 0 ? (vPrevAnt / vg) * 100 : null,
+      pct_prev_atual_total: temPrev && vg > 0 ? (vPrevAtu / vg) * 100 : null,
+      pct_prev_total_medido: temPrev && vg > 0 ? (vPrevTot / vg) * 100 : null,
     }
   })()
 
@@ -209,9 +260,47 @@ export function MedicaoPDF({ medicao, itens, aprovacoes, planilha, somentePeriod
 
   const tituloDoc = somentePeriodo ? 'BOLETIM DE MEDIÇÃO' : 'MEDIÇÃO ACUMULADA'
 
+  // Rascunho = simulação (prévia completa) — todas as páginas recebem a
+  // marca d'água pra nenhum PDF de simulação circular como oficial.
+  const isRascunho = medicao.status === 'rascunho'
+
+  // Avanço físico do contrato inteiro (real × previsto), pro card de resumo.
+  // Usa TODOS os grupos (não os filtrados pelo período) — é visão de contrato.
+  const avancoContrato = (() => {
+    let vg = 0, vReal = 0, vPrev = 0, temPrev = false
+    for (const g of todosGrupos) {
+      vg += Number(g.valor_global || 0)
+      vReal += Number(g.valor_total || 0)
+      if (g.pct_prev_total !== null && g.pct_prev_total !== undefined) {
+        temPrev = true
+        vPrev += (Number(g.pct_prev_total) / 100) * Number(g.valor_global || 0)
+      }
+    }
+    if (!temPrev || vg <= 0) return null
+    return { real: (vReal / vg) * 100, prev: (vPrev / vg) * 100 }
+  })()
+
   return (
-    <Document title={`Medição #${String(medicao.numero).padStart(3,'0')} — ${medicao.contrato?.numero || ''}`}>
+    <Document title={`Medição #${String(medicao.numero).padStart(3,'0')} — ${medicao.contrato?.numero || ''}${isRascunho ? ' [SIMULAÇÃO]' : ''}`}>
       <Page size="A4" orientation="landscape" style={s.page}>
+
+        {/* Marca d'água de simulação — em todas as páginas */}
+        {isRascunho && (
+          <View
+            fixed
+            style={{
+              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+              alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Text style={{
+              fontSize: 96, fontFamily: 'Helvetica-Bold', color: '#94a3b8',
+              opacity: 0.13, letterSpacing: 10, transform: 'rotate(-25deg)',
+            }}>
+              SIMULAÇÃO
+            </Text>
+          </View>
+        )}
 
         {/* Header */}
         <View style={s.header} fixed>
@@ -289,11 +378,11 @@ export function MedicaoPDF({ medicao, itens, aprovacoes, planilha, somentePeriod
                   <Text style={[s.grTxt, { width: COL.cod }]}>{g.codigo}</Text>
                   <Text style={[s.grTxt, { width: COL.desc }]}>{g.nome}</Text>
                   <Text style={[s.grTxt, { width: COL.vg, textAlign: 'right' }]}>{R(g.valor_global)}</Text>
-                  <Text style={[s.grTxt, { width: COL.antPct, textAlign: 'right' }]}>{rPct(g.pct_anterior)}</Text>
+                  <PctCell width={COL.antPct} main={rPct(g.pct_anterior)} mainStyle={s.grTxt} realPct={g.pct_anterior} prevPct={g.pct_prev_anterior} />
                   <Text style={[s.grTxt, { width: COL.ant, textAlign: 'right' }]}>{rVal(g.valor_anterior)}</Text>
-                  <Text style={[s.grTxt, { width: COL.atuPct, textAlign: 'right' }]}>{rPct(g.pct_atual)}</Text>
+                  <PctCell width={COL.atuPct} main={rPct(g.pct_atual)} mainStyle={s.grTxt} realPct={g.pct_atual} prevPct={g.pct_prev_atual} />
                   <Text style={[s.grTxt, { width: COL.atu, textAlign: 'right' }]}>{rVal(g.valor_atual)}</Text>
-                  <Text style={[s.grTxt, { width: COL.totPct, textAlign: 'right' }]}>{rPct(g.pct_total)}</Text>
+                  <PctCell width={COL.totPct} main={rPct(g.pct_total)} mainStyle={s.grTxt} realPct={g.pct_total} prevPct={g.pct_prev_total} />
                   <Text style={[s.grTxt, { width: COL.tot, textAlign: 'right' }]}>{rVal(g.valor_total)}</Text>
                   <Text style={[s.grTxt, { width: COL.salPct, textAlign: 'right' }]}>{rPct(g.pct_saldo)}</Text>
                   <Text style={[s.grTxt, { width: COL.sal, textAlign: 'right' }]}>{R(g.valor_saldo)}</Text>
@@ -306,11 +395,11 @@ export function MedicaoPDF({ medicao, itens, aprovacoes, planilha, somentePeriod
                       <Text style={[s.trTxt, { width: COL.cod, paddingLeft: 6 }]}>{t.codigo}</Text>
                       <Text style={[s.trTxt, { width: COL.desc }]}>{t.nome}</Text>
                       <Text style={[s.trTxt, { width: COL.vg, textAlign: 'right' }]}>{R(t.valor_global)}</Text>
-                      <Text style={[s.trTxt, { width: COL.antPct, textAlign: 'right' }]}>{rPct(t.pct_anterior)}</Text>
+                      <PctCell width={COL.antPct} main={rPct(t.pct_anterior)} mainStyle={s.trTxt} realPct={t.pct_anterior} prevPct={t.pct_prev_anterior} />
                       <Text style={[s.trTxt, { width: COL.ant, textAlign: 'right' }]}>{rVal(t.valor_anterior)}</Text>
-                      <Text style={[s.trTxt, { width: COL.atuPct, textAlign: 'right' }]}>{rPct(t.pct_atual)}</Text>
+                      <PctCell width={COL.atuPct} main={rPct(t.pct_atual)} mainStyle={s.trTxt} realPct={t.pct_atual} prevPct={t.pct_prev_atual} />
                       <Text style={[s.trTxt, { width: COL.atu, textAlign: 'right' }]}>{rVal(t.valor_atual)}</Text>
-                      <Text style={[s.trTxt, { width: COL.totPct, textAlign: 'right' }]}>{rPct(t.pct_total)}</Text>
+                      <PctCell width={COL.totPct} main={rPct(t.pct_total)} mainStyle={s.trTxt} realPct={t.pct_total} prevPct={t.pct_prev_total} />
                       <Text style={[s.trTxt, { width: COL.tot, textAlign: 'right' }]}>{rVal(t.valor_total)}</Text>
                       <Text style={[s.trTxt, { width: COL.salPct, textAlign: 'right' }]}>{rPct(t.pct_saldo)}</Text>
                       <Text style={[s.trTxt, { width: COL.sal, textAlign: 'right' }]}>{R(t.valor_saldo)}</Text>
@@ -334,11 +423,35 @@ export function MedicaoPDF({ medicao, itens, aprovacoes, planilha, somentePeriod
                               <Text style={{ fontSize: 6, color: '#94a3b8', marginTop: 1 }}>{qtdUnit}</Text>
                             </View>
                             <Text style={[s.dtTxt, { width: COL.vg, textAlign: 'right', fontFamily: 'Helvetica-Bold' }]}>{R(d.valor_global_item)}</Text>
-                            <Text style={[s.dtTxt, { width: COL.antPct, textAlign: 'right', color: GRY }]}>{rPctQtd(d.pct_anterior, d.qtd_anterior, showQtd)}</Text>
+                            <PctCell
+                              width={COL.antPct}
+                              main={rPctQtd(d.pct_anterior, d.qtd_anterior, showQtd)}
+                              mainStyle={[s.dtTxt, { color: GRY }]}
+                              realPct={d.pct_anterior}
+                              prevPct={d.pct_prev_anterior}
+                              prevQtd={d.pct_prev_anterior != null ? (d.pct_prev_anterior / 100) * d.quantidade_contratada : null}
+                              showQtd={showQtd}
+                            />
                             <Text style={[s.dtTxt, { width: COL.ant, textAlign: 'right', color: GRY }]}>{rVal(d.valor_anterior)}</Text>
-                            <Text style={[s.dtTxt, { width: COL.atuPct, textAlign: 'right', color: d.valor_atual > 0 ? AMB : GRY }]}>{rPctQtd(d.pct_atual, d.qtd_atual, showQtd)}</Text>
+                            <PctCell
+                              width={COL.atuPct}
+                              main={rPctQtd(d.pct_atual, d.qtd_atual, showQtd)}
+                              mainStyle={[s.dtTxt, { color: d.valor_atual > 0 ? AMB : GRY }]}
+                              realPct={d.pct_atual}
+                              prevPct={d.pct_prev_atual}
+                              prevQtd={d.pct_prev_atual != null ? (d.pct_prev_atual / 100) * d.quantidade_contratada : null}
+                              showQtd={showQtd}
+                            />
                             <Text style={[s.dtTxt, { width: COL.atu, textAlign: 'right', fontFamily: d.valor_atual > 0 ? 'Helvetica-Bold' : 'Helvetica', color: d.valor_atual > 0 ? AMB : GRY }]}>{rVal(d.valor_atual)}</Text>
-                            <Text style={[s.dtTxt, { width: COL.totPct, textAlign: 'right' }]}>{rPctQtd(d.pct_total, d.qtd_total, showQtd)}</Text>
+                            <PctCell
+                              width={COL.totPct}
+                              main={rPctQtd(d.pct_total, d.qtd_total, showQtd)}
+                              mainStyle={s.dtTxt}
+                              realPct={d.pct_total}
+                              prevPct={d.pct_prev_total}
+                              prevQtd={d.qtd_prev_total}
+                              showQtd={showQtd}
+                            />
                             <Text style={[s.dtTxt, { width: COL.tot, textAlign: 'right' }]}>{rVal(d.valor_total)}</Text>
                             <Text style={[s.dtTxt, { width: COL.salPct, textAlign: 'right', color: GRY }]}>{rPctQtd(d.pct_saldo, d.qtd_saldo, showQtd)}</Text>
                             <Text style={[s.dtTxt, { width: COL.sal, textAlign: 'right', color: GRY }]}>{rVal(d.valor_saldo)}</Text>
@@ -358,11 +471,11 @@ export function MedicaoPDF({ medicao, itens, aprovacoes, planilha, somentePeriod
                 <Text style={[s.totTxt, { width: COL.cod }]}> </Text>
                 <Text style={[s.totTxt, { width: COL.desc }]}>SUBTOTAL</Text>
                 <Text style={[s.totTxt, { width: COL.vg, textAlign: 'right' }]}>{R(totaisExibir.valor_global_total)}</Text>
-                <Text style={[s.totTxt, { width: COL.antPct, textAlign: 'right' }]}>{rPct(totaisExibir.pct_anterior_total)}</Text>
+                <PctCell width={COL.antPct} main={rPct(totaisExibir.pct_anterior_total)} mainStyle={s.totTxt} realPct={totaisExibir.pct_anterior_total} prevPct={totaisExibir.pct_prev_anterior_total} />
                 <Text style={[s.totTxt, { width: COL.ant, textAlign: 'right' }]}>{R(totaisExibir.valor_anterior_total)}</Text>
-                <Text style={[s.totTxt, { width: COL.atuPct, textAlign: 'right' }]}>{rPct(totaisExibir.pct_atual_total)}</Text>
+                <PctCell width={COL.atuPct} main={rPct(totaisExibir.pct_atual_total)} mainStyle={s.totTxt} realPct={totaisExibir.pct_atual_total} prevPct={totaisExibir.pct_prev_atual_total} />
                 <Text style={[s.totTxt, { width: COL.atu, textAlign: 'right' }]}>{R(totaisExibir.valor_atual_total)}</Text>
-                <Text style={[s.totTxt, { width: COL.totPct, textAlign: 'right' }]}>{rPct(totaisExibir.pct_total_medido)}</Text>
+                <PctCell width={COL.totPct} main={rPct(totaisExibir.pct_total_medido)} mainStyle={s.totTxt} realPct={totaisExibir.pct_total_medido} prevPct={totaisExibir.pct_prev_total_medido} />
                 <Text style={[s.totTxt, { width: COL.tot, textAlign: 'right' }]}>{R(totaisExibir.valor_total_medido)}</Text>
                 <Text style={[s.totTxt, { width: COL.salPct, textAlign: 'right' }]}>{rPct(totaisExibir.pct_saldo_total)}</Text>
                 <Text style={[s.totTxt, { width: COL.sal, textAlign: 'right' }]}>{R(totaisExibir.valor_saldo_total)}</Text>
@@ -401,6 +514,20 @@ export function MedicaoPDF({ medicao, itens, aprovacoes, planilha, somentePeriod
               <Text style={s.cardLabel}>{somentePeriodo ? 'Total da Medição' : 'Total Acumulado'}</Text>
               <Text style={[s.cardValue]}>{R(totaisExibir.valor_atual_total ?? medicao.valor_total)}</Text>
             </View>
+            {avancoContrato && (
+              <View style={[s.card, { borderColor: farolColor(avancoContrato.real, avancoContrato.prev) }]}>
+                <Text style={s.cardLabel}>Avanço físico (contrato)</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: farolColor(avancoContrato.real, avancoContrato.prev), marginRight: 3 }} />
+                  <Text style={{ fontSize: 10, fontFamily: 'Helvetica-Bold', color: '#0f172a' }}>
+                    {avancoContrato.real.toFixed(1)}% real
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 6.5, color: GRY, marginTop: 1 }}>
+                  prev. cronograma: {avancoContrato.prev.toFixed(1)}% · Δ {(avancoContrato.real - avancoContrato.prev) >= 0 ? '+' : ''}{(avancoContrato.real - avancoContrato.prev).toFixed(1)} p.p.
+                </Text>
+              </View>
+            )}
           </View>
         )}
 

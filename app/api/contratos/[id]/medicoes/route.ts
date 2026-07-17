@@ -31,6 +31,9 @@ const Body = z.object({
   observacoes: z.string().max(2000).optional(),
   itens: z.array(Item).min(1, 'Informe pelo menos um item.'),
   notas_fiscais: z.array(Nf).optional(),
+  // 'rascunho' = prévia completa (simulação) — abre a tela de detalhes real
+  // sem entrar no fluxo de aprovação. Default: 'submetido'.
+  status: z.enum(['rascunho', 'submetido']).optional(),
 })
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
