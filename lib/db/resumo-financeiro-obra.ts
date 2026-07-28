@@ -64,8 +64,19 @@ export interface ResumoFinanceiroObra {
     base_retencao: number
     /** Andamento físico = (mat + serv executados nesta medição) / valor_total_contrato × 100. */
     andamento_fisico_pct: number
-    /** Líquido = valor_total da medição (serviço, NF integral) − retenção. */
+    /**
+     * Valor da NF de serviço a emitir = serviço medido − retenção − ajuste de
+     * rateio. Quem preenche a partir do boletim deve usar
+     * `InformaconTotais.servico_liquido`, não refazer a subtração.
+     */
     liquido_a_pagar: number
+    /**
+     * Divergência de rateio material/serviço entre o orçamento do sistema e o
+     * do ERP da FIP, sobre o mesmo total medido (migration 074). Já abatida em
+     * `liquido_a_pagar`. Não é retenção: não volta a ser paga depois.
+     */
+    ajuste_material_anterior?: number
+    ajuste_material_anterior_motivo?: string | null
   }
 }
 

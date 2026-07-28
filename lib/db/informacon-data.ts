@@ -157,6 +157,19 @@ export interface InformaconTotais {
   material_acumulado: number
   servico_acumulado: number
   itens_com_ajuste: number
+  /**
+   * Divergência de rateio material/serviço entre o orçamento do sistema e o do
+   * ERP da FIP, sobre o mesmo total medido (migration 074). Não é retenção:
+   * não volta a ser paga depois.
+   */
+  ajuste_material_anterior: number
+  ajuste_material_anterior_motivo: string | null
+  /**
+   * Valor da NF de serviço a emitir = wave_servico − retenção − ajuste.
+   * Fonte única: quem for exibir "NF a emitir" deve usar este campo em vez de
+   * refazer a conta, porque o ajuste é fácil de esquecer.
+   */
+  servico_liquido: number
 }
 
 export interface InformaconData {
@@ -470,12 +483,26 @@ export async function calcularInformaconData(
   medicaoId: string,
 ): Promise<InformaconData | null> {
   // 1) Medição (campos básicos)
-  const { data: medicao, error: medErr } = await admin
+  let { data: medicao, error: medErr } = await admin
     .from('medicoes')
-    .select('id, numero, periodo_referencia, status, data_aprovacao, data_submissao, valor_total, contrato_id')
+    .select(`
+      id, numero, periodo_referencia, status, data_aprovacao, data_submissao,
+      valor_total, contrato_id, ajuste_material_anterior, ajuste_material_anterior_motivo
+    `)
     .eq('id', medicaoId)
     .single()
-  if (medErr || !medicao) return null
+  // Migration 074 pendente: recarrega sem as colunas do ajuste de rateio.
+  if (medErr && isSchemaMissingError(medErr, ['ajuste_material_anterior', 'ajuste_material_anterior_motivo'])) {
+    const fb = await admin
+      .from('medicoes')
+      .select('id, numero, periodo_referencia, status, data_aprovacao, data_submissao, valor_total, contrato_id')
+      .eq('id', medicaoId)
+      .single()
+    if (fb.error || !fb.data) return null
+    medicao = fb.data as any
+  } else if (medErr || !medicao) {
+    return null
+  }
 
   // 2) Contrato (fallback se percentual_retencao não está no schema cache)
   let contrato: any = null
@@ -1082,6 +1109,10 @@ export async function calcularInformaconData(
     material_acumulado: acc.material_acumulado + l.material_acumulado,
     servico_acumulado:  acc.servico_acumulado  + l.servico_acumulado,
     itens_com_ajuste: acc.itens_com_ajuste + (l.ajuste_aplicado ? 1 : 0),
+    // Não são somatórios de linha — preenchidos logo abaixo do reduce.
+    ajuste_material_anterior: acc.ajuste_material_anterior,
+    ajuste_material_anterior_motivo: acc.ajuste_material_anterior_motivo,
+    servico_liquido: 0,
   }), {
     material_medido: 0, servico_medido: 0,
     nf_terceiro: 0, saldo_aprovado: 0, nf_descontavel: 0, nf_transbordo_grupo: 0,
@@ -1090,6 +1121,9 @@ export async function calcularInformaconData(
     valor_total_medido: 0, dados_informakon: 0, total_informakon: 0,
     base_retencao: 0, retencao: 0,
     material_acumulado: 0, servico_acumulado: 0,
+    ajuste_material_anterior: Math.max(0, Number((medicao as any).ajuste_material_anterior || 0)),
+    ajuste_material_anterior_motivo: (medicao as any).ajuste_material_anterior_motivo ?? null,
+    servico_liquido: 0,
     itens_com_ajuste: 0,
   })
 
@@ -1135,6 +1169,10 @@ export async function calcularInformaconData(
     linha.ajustes_admin = lista
     linha.foi_ajustado_pelo_admin = lista.length > 0
   }
+
+  // Valor da NF de serviço a emitir. Fonte única — ver InformaconTotais.
+  totais.servico_liquido =
+    totais.wave_servico - totais.retencao - totais.ajuste_material_anterior
 
   return {
     medicao: {

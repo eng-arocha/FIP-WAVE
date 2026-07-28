@@ -512,6 +512,7 @@ async function dispararEmailLiberacaoMedicao(args: {
   const { calcularInformaconData } = await import('@/lib/db/informacon-data')
   let fipMaterialTotal = 0
   let waveServicoTotal = 0
+  let ajusteRateioTotal = 0
   let fipPorGrupoMacro: Array<{ grupo: number; nome: string; valor: number }> = []
   const ajustesAdmin: Array<{
     codigo: string
@@ -554,7 +555,13 @@ async function dispararEmailLiberacaoMedicao(args: {
       // (5% × base_retencao). Spec 2026-05-06: base = mat_medido + serv_medido
       resumo.retencao.valor = informacon.totais.retencao
       resumo.retencao.base_retencao = informacon.totais.base_retencao
-      resumo.retencao.liquido_a_pagar = waveServicoTotal - informacon.totais.retencao
+      // `servico_liquido` já desconta a retenção E o ajuste de rateio
+      // material/serviço. Refazer a conta aqui deixaria o email instruindo a
+      // emitir a NF pelo valor errado quando houver ajuste.
+      resumo.retencao.liquido_a_pagar = informacon.totais.servico_liquido
+      resumo.retencao.ajuste_material_anterior = informacon.totais.ajuste_material_anterior
+      resumo.retencao.ajuste_material_anterior_motivo = informacon.totais.ajuste_material_anterior_motivo
+      ajusteRateioTotal = informacon.totais.ajuste_material_anterior
 
       // 3) Ajustes feitos pelo admin (migration 061) — agrupa por item, pega
       // o ajuste mais recente de cada item pra mostrar no email
@@ -580,6 +587,13 @@ async function dispararEmailLiberacaoMedicao(args: {
     })
   }
 
+  // A NF da Wave sai pelo líquido do livro-razão de retenção, mas o ajuste de
+  // rateio não passa por lá — precisa ser abatido aqui também.
+  const waveLiquidoBase = (args.valorWaveLiquido && args.valorWaveLiquido > 0)
+    ? args.valorWaveLiquido
+    : waveServicoTotal
+  const waveLiquidoNF = Math.max(0, waveLiquidoBase - ajusteRateioTotal)
+
   const tpl = templateLiberacaoMedicaoFornecedor({
     numero_medicao: (med as any).numero,
     periodo_referencia: (med as any).periodo_referencia ?? '—',
@@ -604,9 +618,7 @@ async function dispararEmailLiberacaoMedicao(args: {
       // valorWaveLiquido fica em 0 — nesse caso volta pro bruto pra não
       // exibir R$ 0,00.
       wave_servico: {
-        valor: (args.valorWaveLiquido && args.valorWaveLiquido > 0)
-          ? args.valorWaveLiquido
-          : waveServicoTotal,
+        valor: waveLiquidoNF,
         valor_bruto: args.retencaoBreakdown?.wave_bruto ?? waveServicoTotal,
         retencao: args.retencaoBreakdown?.debito ?? 0,
       },

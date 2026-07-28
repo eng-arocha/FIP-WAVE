@@ -115,7 +115,19 @@ export interface LiberacaoMedicaoPayload {
       servico_medido: number
       base_retencao: number
       andamento_fisico_pct: number
+      /**
+       * Valor da NF de serviço a emitir. É serviço − retenção − ajuste de
+       * rateio; NÃO recalcular a partir das outras linhas, porque o ajuste
+       * nem sempre existe.
+       */
       liquido_a_pagar: number
+      /**
+       * Divergência de rateio material/serviço entre o orçamento do sistema e
+       * o do ERP da FIP, sobre o mesmo total medido (migration 074). Já está
+       * abatida em `liquido_a_pagar`. Zero quando não há divergência.
+       */
+      ajuste_material_anterior?: number
+      ajuste_material_anterior_motivo?: string | null
     }
   }
 
@@ -223,6 +235,10 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
   const fipTotal = p.nfs_a_emitir?.fip_material?.valor || 0
   const waveTotal = p.nfs_a_emitir?.wave_servico?.valor || valorMedicao
   const temFipMaterial = fipTotal > 0
+  // Divergência de rateio material/serviço (migration 074). Não é retenção:
+  // não volta a ser paga depois, só desloca valor de serviço para material.
+  const ajusteRateio = Math.max(0, Number(p.resumo.retencao.ajuste_material_anterior || 0))
+  const motivoAjuste = p.resumo.retencao.ajuste_material_anterior_motivo || null
   const temAjustes = (p.ajustes_admin?.length ?? 0) > 0
   const sufixoAjustes = temAjustes ? ` (c/ ${p.ajustes_admin!.length} ajuste${p.ajustes_admin!.length > 1 ? 's' : ''} do admin)` : ''
   const subject = temFipMaterial
@@ -475,6 +491,7 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
           <tr><td style="padding:6px 0;color:#64748b;">Serviço executado</td><td style="padding:6px 0;text-align:right;font-weight:700;font-size:16px;color:#0f766e;">${fmt(p.resumo.retencao.servico_medido)}</td></tr>
           <tr><td style="padding:6px 0;color:#64748b;">Base de retenção (mat + serv)</td><td style="padding:6px 0;text-align:right;color:#475569;">${fmt(p.resumo.retencao.base_retencao)}</td></tr>
           <tr><td style="padding:6px 0;color:#64748b;">Retenção contratual (${pctFmt(p.resumo.retencao.percentual_aplicado, 2)} sobre a base)</td><td style="padding:6px 0;text-align:right;color:#b91c1c;font-weight:600;">− ${fmt(p.resumo.retencao.valor)}</td></tr>
+          ${ajusteRateio > 0 ? `<tr><td style="padding:6px 0;color:#64748b;">Ajuste de rateio material/serviço</td><td style="padding:6px 0;text-align:right;color:#b91c1c;font-weight:600;">− ${fmt(ajusteRateio)}</td></tr>` : ''}
           <tr style="border-top:2px solid #e5e7eb;"><td style="padding:8px 0;color:#0f172a;font-weight:700;">Líquido a pagar (NF a emitir)</td><td style="padding:8px 0;text-align:right;font-weight:700;color:#059669;">${fmt(p.resumo.retencao.liquido_a_pagar)}</td></tr>
           <tr><td style="padding:6px 0;color:#64748b;">Andamento físico desta medição</td><td style="padding:6px 0;text-align:right;">${pctFmt(p.resumo.retencao.andamento_fisico_pct)} do contrato</td></tr>
         </table>
@@ -487,14 +504,21 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
               ? `<li><strong>NF FIP material:</strong> emitir pelo valor integral (sem retenção).</li>`
               : ''}
             <li>
-              <strong>NF Wave serviço:</strong> emitir <strong>já descontando a retenção contratual</strong>,
-              ou seja, pelo valor de <strong>${fmt(p.resumo.retencao.liquido_a_pagar)}</strong>.
+              <strong>NF Wave serviço:</strong> emitir pelo valor de
+              <strong>${fmt(p.resumo.retencao.liquido_a_pagar)}</strong>${ajusteRateio > 0
+                ? ` — serviço medido (${fmt(p.resumo.retencao.servico_medido)}) menos a retenção contratual (${fmt(p.resumo.retencao.valor)}) e menos o ajuste de rateio material/serviço (${fmt(ajusteRateio)})`
+                : `, já descontada a retenção contratual (${fmt(p.resumo.retencao.valor)})`}.
             </li>
           </ul>
           <p style="margin:8px 0 0;">
             A diferença retida (<strong>${fmt(p.resumo.retencao.valor)}</strong>) será paga
             conforme condições contratuais, mediante emissão de Nota Fiscal de serviço futura específica.
           </p>
+          ${ajusteRateio > 0 ? `<p style="margin:8px 0 0;">
+            O ajuste de rateio <strong>não é retenção e não será pago depois</strong>: o total medido
+            é o mesmo nos dois sistemas, apenas a divisão entre material e serviço difere${
+              motivoAjuste ? `. ${escapeHtml(motivoAjuste)}` : ''}
+          </p>` : ''}
         </div>
       </div>
 
@@ -720,14 +744,30 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
     `  Serviço executado:           ${fmt(p.resumo.retencao.servico_medido)}`,
     `  Base de retenção:           ${fmt(p.resumo.retencao.base_retencao)}`,
     `  Retenção (${pctFmt(p.resumo.retencao.percentual_aplicado)}):           − ${fmt(p.resumo.retencao.valor)}`,
+    ...(ajusteRateio > 0
+      ? [`  Ajuste de rateio mat/serv:  − ${fmt(ajusteRateio)}`]
+      : []),
     `  Líquido a pagar:            ${fmt(p.resumo.retencao.liquido_a_pagar)}`,
     `  Andamento físico:           ${pctFmt(p.resumo.retencao.andamento_fisico_pct)} do contrato`,
     '',
     `⚠ COMO EMITIR CADA NF`,
     `  - NF FIP material: pelo valor integral (sem retenção).`,
-    `  - NF Wave serviço: já descontando a retenção, ou seja, pelo valor de ${fmt(p.resumo.retencao.liquido_a_pagar)}.`,
+    `  - NF Wave serviço: emitir pelo valor de ${fmt(p.resumo.retencao.liquido_a_pagar)}.`,
+    ...(ajusteRateio > 0
+      ? [
+          `    = serviço medido ${fmt(p.resumo.retencao.servico_medido)}`,
+          `      − retenção ${fmt(p.resumo.retencao.valor)}`,
+          `      − ajuste de rateio material/serviço ${fmt(ajusteRateio)}`,
+        ]
+      : [`    (já descontada a retenção de ${fmt(p.resumo.retencao.valor)})`]),
     `  A diferença retida (${fmt(p.resumo.retencao.valor)}) será paga conforme condições`,
     `  contratuais, mediante emissão de NF de serviço futura específica.`,
+    ...(ajusteRateio > 0
+      ? [
+          `  O ajuste de rateio NAO e retencao e nao sera pago depois: o total medido e o`,
+          `  mesmo nos dois sistemas, apenas a divisao material/servico difere.`,
+        ]
+      : []),
     '',
     `RESUMO FINANCEIRO DA OBRA (${ehPrimeira ? 'desde início' : periodoLabel})`,
     `  Serviços — esta medição:    ${fmt(p.resumo.servicos.esta_medicao)}`,

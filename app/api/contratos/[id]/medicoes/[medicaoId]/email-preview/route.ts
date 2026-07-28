@@ -80,6 +80,7 @@ export async function GET(
     let debitoRet = 0
     let saldoRetDepois = 0
     let waveLiquido = 0
+    let ajusteRateio = 0
     const informaconData = await calcularInformaconData(admin, contratoId, medicaoId)
     if (informaconData) {
       const linhas = informaconData.linhas
@@ -94,7 +95,12 @@ export async function GET(
       // Convergência (A): retenção exibida no email vem do informacon-data
       resumo.retencao.valor = informaconData.totais.retencao
       resumo.retencao.base_retencao = informaconData.totais.base_retencao
-      resumo.retencao.liquido_a_pagar = waveServico - informaconData.totais.retencao
+      // Ver rota de aprovação: `servico_liquido` já abate retenção E ajuste
+      // de rateio material/serviço.
+      resumo.retencao.liquido_a_pagar = informaconData.totais.servico_liquido
+      resumo.retencao.ajuste_material_anterior = informaconData.totais.ajuste_material_anterior
+      resumo.retencao.ajuste_material_anterior_motivo = informaconData.totais.ajuste_material_anterior_motivo
+      ajusteRateio = informaconData.totais.ajuste_material_anterior
 
       // Simula o livro-razão (= mesmo cálculo de aplicarRetencaoDaAprovacao,
       // sem persistir): credita 5% × base_retencao, debita até zerar contra
@@ -152,7 +158,9 @@ export async function GET(
         // É o que a Wave SPE deverá emitir efetivamente (já com retenção
         // descontada). Bruto e retenção descontada vão no breakdown abaixo.
         wave_servico: {
-          valor: waveLiquido > 0 ? waveLiquido : waveServico,
+          // O ajuste de rateio não passa pelo livro-razão de retenção —
+          // precisa ser abatido aqui também (ver rota de aprovação).
+          valor: Math.max(0, (waveLiquido > 0 ? waveLiquido : waveServico) - ajusteRateio),
           valor_bruto: waveServico,
           retencao: debitoRet,
         },
