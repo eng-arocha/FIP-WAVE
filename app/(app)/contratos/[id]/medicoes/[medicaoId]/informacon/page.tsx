@@ -104,6 +104,12 @@ interface Resp {
     retencao: number
     material_acumulado: number
     servico_acumulado: number
+    /** Parte do desconto recuperada de medições anteriores (régua acumulada). */
+    nf_recuperacao_anterior?: number
+    /** Divergência de rateio material/serviço contra o ERP da FIP. */
+    ajuste_material_anterior?: number
+    /** NF de serviço a emitir = wave_servico − retenção − ajuste. */
+    servico_liquido?: number
     // novo: contagem de itens que tiveram % ajustado
     itens_com_ajuste?: number
   }
@@ -410,7 +416,9 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
       ? Math.max(0, pctServMed - (fatDir / valorServTotal) * 100)
       : pctServMed
     const waveServico        = (pctAdj / 100) * valorServTotal
-    return waveServico + matMedido - fatDir
+    // Espelha a fórmula do servidor (ver informacon-data.ts): o Informakon
+    // mostra serviço + material medido, sem deduzir pedido sem NF.
+    return waveServico + matMedido
   }
 
   // Inverte dados_informakon → qty por busca binária sobre computeInformakon.
@@ -873,13 +881,45 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
         </div>
 
         {/* Cards de totais — refletem a lógica Wave/FIP */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-          <Card label="Wave (Serviço)" value={formatCurrency(data.totais.wave_servico)} accent="#0F766E" hint="NF Wave a emitir" />
-          <Card label="FIP (Material)" value={formatCurrency(data.totais.fip_faturar)} accent="#3B82F6" hint="Fat-direto FIP a criar" />
-          <Card label="NF terceiro descontada" value={formatCurrency(data.totais.nf_descontavel)} accent="var(--text-2)" hint="Já lançadas no item" />
-          <Card label="Fat. Direto em aberto" value={formatCurrency(data.totais.faturamento_direto_em_aberto)} accent="#F59E0B" hint="Pedido FIP fat-direto aprovado, NF a emitir" />
-          <Card label="Dados Informakon" value={formatCurrency(data.totais.dados_informakon)} accent="#10B981" hint={`Wave + NF Desc. (sem FIP) · Retenção ${pctFmt(data.medicao.contrato.percentual_retencao)} sobre Valor Total Medido: ${formatCurrency(data.totais.retencao)}`} />
-        </div>
+        {(() => {
+          // O card "Wave (Serviço)" mostra o LÍQUIDO, que é o valor da nota a
+          // emitir — serviço bruto menos retenção menos ajuste de rateio. O
+          // bruto vai na dica, senão o número da tela não bate com o do
+          // espelho enviado à FIP.
+          const ajusteRateio = Number(data.totais.ajuste_material_anterior || 0)
+          const liquidoWave = data.totais.servico_liquido != null
+            ? Number(data.totais.servico_liquido)
+            : data.totais.wave_servico - data.totais.retencao - ajusteRateio
+          const recuperacao = Number(data.totais.nf_recuperacao_anterior || 0)
+          // Dedução do espelho: a linha "desconto de notas lançadas no
+          // Informakon" é o material medido pelo rateio DELES — o nosso mais o
+          // ajuste. Não confundir com a NF de terceiro descontada.
+          const deducaoEspelho = data.totais.material_medido + ajusteRateio
+          return (
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+              <Card
+                label="Wave (Serviço)"
+                value={formatCurrency(liquidoWave)}
+                accent="#0F766E"
+                hint={`NF Wave a emitir · bruto ${formatCurrency(data.totais.wave_servico)} − retenção ${formatCurrency(data.totais.retencao)}${ajusteRateio > 0 ? ` − ajuste de rateio ${formatCurrency(ajusteRateio)}` : ''}`}
+              />
+              <Card label="FIP (Material)" value={formatCurrency(data.totais.fip_faturar)} accent="#3B82F6" hint="Fat-direto FIP a criar" />
+              <Card
+                label="NF terceiro descontada"
+                value={formatCurrency(data.totais.nf_descontavel)}
+                accent="var(--text-2)"
+                hint={`NF de material abatida${recuperacao > 0 ? `, dos quais ${formatCurrency(recuperacao)} recuperados de medições anteriores` : ''}. Não é a dedução do espelho — essa é o material pelo rateio da FIP: ${formatCurrency(deducaoEspelho)}`}
+              />
+              <Card label="Fat. Direto em aberto" value={formatCurrency(data.totais.faturamento_direto_em_aberto)} accent="#F59E0B" hint="Pedido FIP fat-direto aprovado, NF a emitir" />
+              <Card
+                label="Dados Informakon"
+                value={formatCurrency(data.totais.dados_informakon)}
+                accent="#10B981"
+                hint={`Serviço Wave + material medido · − retenção ${pctFmt(data.medicao.contrato.percentual_retencao)} (${formatCurrency(data.totais.retencao)}) − dedução material (${formatCurrency(deducaoEspelho)}) = NF ${formatCurrency(liquidoWave)}`}
+              />
+            </div>
+          )
+        })()}
 
         {/* Aviso agregado — só aparece se há ao menos 1 ajuste aplicado */}
         {itensComAjuste > 0 && (

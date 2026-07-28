@@ -954,11 +954,25 @@ export async function calcularInformaconData(
 
       const waveServico = (pctServMedAjustado / 100) * valorServicoTotalItem
       const valorTotalMedido = (pctServMedAjustado / 100) * valorServicoTotalItem
-      // dados_informakon (manter como métrica exibida no boletim) =
-      // o que aparece no Informakon = wave + mat - fat-direto em aberto
-      const dadosInformakon = waveServico + matMedido - faturamentoDiretoEmAberto
+      // dados_informakon = o total que o relatório do Informakon mostra para
+      // este item: serviço da Wave + material medido.
+      //
+      // Antes subtraía `faturamento_direto_em_aberto`. Estava errado por dois
+      // motivos. Primeiro, o espelho da medição 004 fecha em 805.522,67 — o
+      // total medido inteiro, sem dedução de pedido sem NF; o Informakon
+      // registra o que foi executado, não o que já virou nota. Segundo, quando
+      // há confirmação "sem mais NF" o `waveServico` JÁ foi reduzido em
+      // `faturamento_direto_em_aberto` via pctServMedAjustado — subtrair de
+      // novo descontava duas vezes o mesmo valor.
+      //
+      // O problema só ficou visível quando o transbordo por grupo passou a
+      // classificar R$ 7.207,99 como pedido aprovado sem NF, valor que antes
+      // era zero nesta obra.
+      const dadosInformakon = waveServico + matMedido
       const pctInformakon = valorGlobalItem > 0 ? (dadosInformakon / valorGlobalItem) * 100 : 0
-      const alteradoPorRetido = faturamentoDiretoEmAberto > 0
+      // O valor do item só é "alterado por retido" quando a confirmação sem NF
+      // efetivamente reduziu o percentual de serviço.
+      const alteradoPorRetido = ajusteAplicado
       // Base de retenção: SOMA do que foi executado fisicamente nesta medição
       // = mat_medido + serv_medido. Não subtrai 'fat-direto em aberto' porque
       // todo material executado já está sob nossa posse e deve reter 5% pra
