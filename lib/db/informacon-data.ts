@@ -1135,7 +1135,7 @@ export async function calcularInformaconData(
     valor_total_medido: 0, dados_informakon: 0, total_informakon: 0,
     base_retencao: 0, retencao: 0,
     material_acumulado: 0, servico_acumulado: 0,
-    ajuste_material_anterior: Math.max(0, Number((medicao as any).ajuste_material_anterior || 0)),
+    ajuste_material_anterior: Number((medicao as any).ajuste_material_anterior || 0),
     ajuste_material_anterior_motivo: (medicao as any).ajuste_material_anterior_motivo ?? null,
     servico_liquido: 0,
     itens_com_ajuste: 0,

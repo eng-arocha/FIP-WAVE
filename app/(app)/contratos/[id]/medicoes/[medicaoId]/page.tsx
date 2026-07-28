@@ -693,7 +693,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                       const retencaoHeader = totaisInformacon?.retencao ?? (baseRet * pctRet / 100)
                       // Idem card de retenção: o líquido da NF já abate o
                       // ajuste de rateio material/serviço.
-                      const ajusteHeader = Math.max(0, Number(medicao.ajuste_material_anterior || 0))
+                      const ajusteHeader = Number(medicao.ajuste_material_anterior || 0)
                       const liquidoHeader = totaisInformacon?.servico_liquido
                         ?? (servicoMed - retencaoHeader - ajusteHeader)
                       return (
@@ -821,7 +821,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
               // diferença entre o nosso rateio e o do ERP da FIP sobre o mesmo
               // total medido. Sem abatê-lo aqui a tela promete uma NF maior do
               // que a que o rodapé e o email instruem a emitir.
-              const ajusteRateioCard = Math.max(0, Number(medicao.ajuste_material_anterior || 0))
+              const ajusteRateioCard = Number(medicao.ajuste_material_anterior || 0)
               const liquidoNF = totaisInformacon?.servico_liquido
                 ?? (servicoMedido - retencao - ajusteRateioCard)
               const andamento = valorContrato > 0 ? (baseRetencao / valorContrato) * 100 : 0
