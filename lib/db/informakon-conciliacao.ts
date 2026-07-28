@@ -239,16 +239,24 @@ export async function calcularNotasDivergentes(
     if (l.macro_item) agg.macroItens.add(l.macro_item)
   }
 
-  // Notas do FIP-WAVE: todas as solicitações não-deletadas do contrato
-  // (qualquer status — a comparação é sobre o que já foi lançado, não só
-  // o aprovado).
+  // Notas do FIP-WAVE: solicitações não-deletadas do contrato, EXCLUINDO as
+  // de serviço da Wave.
+  //
+  // Excluir a Wave não é detalhe: o relatório do Informakon que estamos
+  // comparando é o de faturamento direto (material de terceiros), e a NF de
+  // serviço da Wave não está nele. Pior, a numeração de NFS-e é municipal e
+  // recomeça baixa — a NFS-e 3 da Wave (R$ 267.873,72) tem o mesmo número da
+  // NFS-e 3 do fornecedor de administração de obra (R$ 8.500,00). Somadas,
+  // produziam um "valor no sistema" de R$ 276.373,72 para uma nota de 8.500.
   const { data: solRows, error: solErr } = await admin
     .from('solicitacoes_fat_direto')
-    .select('id')
+    .select('id, tipo, fornecedor_cnpj, fornecedor_razao_social')
     .eq('contrato_id', contratoId)
     .is('deletado_em', null)
   if (solErr) throw solErr
-  const solIds = (solRows || []).map((s: any) => s.id)
+  const solIds = (solRows || [])
+    .filter((s: any) => !ehPedidoDeServicoWave(s))
+    .map((s: any) => s.id)
 
   let nfsSistema: any[] = []
   if (solIds.length > 0) {
@@ -260,13 +268,13 @@ export async function calcularNotasDivergentes(
     nfsSistema = data || []
   }
 
-  const sistemaPorNumero = new Map<string, { valor: number; status: string }>()
+  const sistemaPorNumero = new Map<string, { valor: number; qtd: number }>()
   for (const nf of nfsSistema as any[]) {
     const numero = String(nf.numero_nf ?? '').replace(/\D/g, '')
     if (!numero) continue
     const atual = sistemaPorNumero.get(numero)
-    if (atual) atual.valor += Number(nf.valor || 0)
-    else sistemaPorNumero.set(numero, { valor: Number(nf.valor || 0), status: nf.status })
+    if (atual) { atual.valor += Number(nf.valor || 0); atual.qtd += 1 }
+    else sistemaPorNumero.set(numero, { valor: Number(nf.valor || 0), qtd: 1 })
   }
 
   const linhas: NotaDivergente[] = []
@@ -288,7 +296,14 @@ export async function calcularNotasDivergentes(
       valorInformakon: agg.valor,
       valorSistema,
       diferenca,
-      situacao: sistema ? sistema.status : 'não encontrada no FIP-WAVE',
+      // A situação descreve a DIVERGÊNCIA, não o status do documento. Mostrar
+      // "aprovada" aqui só dizia que a nota existe — que é justamente o que
+      // não está em questão numa lista de divergências.
+      situacao: !sistema
+        ? 'não encontrada no FIP-WAVE'
+        : sistema.qtd > 1
+          ? `valor divergente (${sistema.qtd} notas com este número no FIP-WAVE)`
+          : 'valor divergente',
     })
   }
 
