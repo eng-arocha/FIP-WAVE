@@ -214,6 +214,13 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
     /** NF FIP material já lançada e descontada da medição (= min(matMedido, nf_terceiro)) */
     nf_descontavel: number
     /**
+     * Do `nf_descontavel` acima, quanto veio de saldo ocioso de NF de OUTRO
+     * detalhamento do mesmo grupo macro ("transbordo"). Já está incluído em
+     * `nf_descontavel` — não somar de novo em lugar nenhum, é só um detalhamento
+     * visual de origem.
+     */
+    nf_transbordo_grupo: number
+    /**
      * Material da medição que tem pedido fat-direto APROVADO mas NF ainda
      * pendente de chegar — vira "Saldo Ped. Aprovados (NF Pendentes)".
      * = min(gap_material, saldo_aprovado_disponivel)
@@ -281,6 +288,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
         material_medido: Number(data.totais?.material_medido || 0),
         servico_medido:  Number(data.totais?.servico_medido  || 0),
         nf_descontavel:  Number(data.totais?.nf_descontavel  || 0),
+        nf_transbordo_grupo: Number(data.totais?.nf_transbordo_grupo || 0),
         faturamento_direto_em_aberto: Number(data.totais?.faturamento_direto_em_aberto || 0),
         fip_faturar:     Number(data.totais?.fip_faturar     || 0),
         base_retencao:   Number(data.totais?.base_retencao   || 0),
@@ -1449,6 +1457,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                               const tot = Number(medicao.valor_total || 0)
                               if (mat === 0 && serv === 0 && tot > 0) serv = tot
                               const nfFipMaterial      = totaisInformacon?.nf_descontavel ?? 0
+                              const nfTransbordoGrupo  = totaisInformacon?.nf_transbordo_grupo ?? 0
                               const saldoPedAprovados  = totaisInformacon?.faturamento_direto_em_aberto ?? 0
                               const fipACriar          = totaisInformacon?.fip_faturar    ?? 0
                               const pctRet = totaisInformacon?.pct_retencao ?? Number(medicao.contrato?.percentual_retencao ?? 5)
@@ -1471,6 +1480,25 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                     <td colSpan={6} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ NOTA FIP Material <span className="text-[10px] font-medium opacity-75">(já descontada)</span></td>
                                     <td className="text-right text-sm font-semibold tabular-nums" style={{ color: '#06B6D4' }}>{formatCurrency(nfFipMaterial)}</td>
                                   </tr>
+                                  {nfTransbordoGrupo > 0 && (
+                                    <tr>
+                                      <td
+                                        colSpan={6}
+                                        className="text-xs text-right pr-4"
+                                        style={{ color: 'var(--text-3)' }}
+                                        title="Material medido cujo desconto veio de nota alocada em outro item do mesmo grupo macro. A FIP compra por lote e a medição é por pavimento — sem isso, a nota fica parada num item enquanto o vizinho aparece sem cobertura."
+                                      >
+                                        ↳ dos quais cobertos por NF do mesmo grupo macro
+                                      </td>
+                                      <td
+                                        className="text-right text-xs tabular-nums"
+                                        style={{ color: 'var(--text-3)' }}
+                                        title="Material medido cujo desconto veio de nota alocada em outro item do mesmo grupo macro. A FIP compra por lote e a medição é por pavimento — sem isso, a nota fica parada num item enquanto o vizinho aparece sem cobertura."
+                                      >
+                                        {formatCurrency(nfTransbordoGrupo)}
+                                      </td>
+                                    </tr>
+                                  )}
                                   <tr>
                                     <td colSpan={6} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ Saldo Ped. Aprovados <span className="text-[10px] font-medium opacity-75">(NF Pendentes)</span></td>
                                     <td className="text-right text-sm font-semibold tabular-nums" style={{ color: '#F59E0B' }}>{formatCurrency(saldoPedAprovados)}</td>
@@ -1559,6 +1587,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                         const tot = Number(medicao.valor_total || 0)
                         if (mat === 0 && serv === 0 && tot > 0) serv = tot
                         const nfFipMaterial      = totaisInformacon?.nf_descontavel ?? 0
+                        const nfTransbordoGrupo  = totaisInformacon?.nf_transbordo_grupo ?? 0
                         const saldoPedAprovados  = totaisInformacon?.faturamento_direto_em_aberto ?? 0
                         const fipACriar          = totaisInformacon?.fip_faturar    ?? 0
                         const pctRet = totaisInformacon?.pct_retencao ?? Number(medicao.contrato?.percentual_retencao ?? 5)
@@ -1581,6 +1610,26 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                               <td colSpan={2} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ NOTA FIP Material <span className="text-[10px] font-medium opacity-75">(já descontada)</span></td>
                               <td className="text-right text-sm font-semibold tabular-nums" style={{ color: '#06B6D4' }}>{formatCurrency(nfFipMaterial)}</td>
                             </tr>
+                            {nfTransbordoGrupo > 0 && (
+                              <tr>
+                                <td colSpan={3} />
+                                <td
+                                  colSpan={2}
+                                  className="text-xs text-right pr-4"
+                                  style={{ color: 'var(--text-3)' }}
+                                  title="Material medido cujo desconto veio de nota alocada em outro item do mesmo grupo macro. A FIP compra por lote e a medição é por pavimento — sem isso, a nota fica parada num item enquanto o vizinho aparece sem cobertura."
+                                >
+                                  ↳ dos quais cobertos por NF do mesmo grupo macro
+                                </td>
+                                <td
+                                  className="text-right text-xs tabular-nums"
+                                  style={{ color: 'var(--text-3)' }}
+                                  title="Material medido cujo desconto veio de nota alocada em outro item do mesmo grupo macro. A FIP compra por lote e a medição é por pavimento — sem isso, a nota fica parada num item enquanto o vizinho aparece sem cobertura."
+                                >
+                                  {formatCurrency(nfTransbordoGrupo)}
+                                </td>
+                              </tr>
+                            )}
                             <tr>
                               <td colSpan={3} />
                               <td colSpan={2} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ Saldo Ped. Aprovados <span className="text-[10px] font-medium opacity-75">(NF Pendentes)</span></td>

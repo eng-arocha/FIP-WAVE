@@ -6,6 +6,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { isSchemaMissingError } from '@/lib/db/resilient'
+import { calcularDescontoComTransbordo, type ItemDesconto } from '@/lib/db/desconto-transbordo'
 import { getCodigoInformakon } from '@/lib/data/informakon-codigos'
 
 // CNPJ da Wave — os pedidos criados na aprovação da medição para a NF de
@@ -98,6 +99,8 @@ export interface InformaconLinha {
   nf_disponivel: number
   saldo_aprovado: number
   nf_descontavel: number
+  /** Parte do desconto que veio de NF ociosa de outro detalhamento do grupo. */
+  nf_transbordo_grupo: number
   gap_material: number
   faturamento_direto_em_aberto: number
   fip_faturar: number
@@ -127,6 +130,8 @@ export interface InformaconTotais {
   nf_terceiro: number
   saldo_aprovado: number
   nf_descontavel: number
+  /** Parte do desconto que veio de NF ociosa de outro detalhamento do grupo. */
+  nf_transbordo_grupo: number
   gap_material: number
   faturamento_direto_em_aberto: number
   fip_faturar: number
@@ -288,6 +293,45 @@ export async function calcularBoletimSimulado(
     return carregarNfJaAbatida(admin, (aprovadas || []).map((m: any) => m.id))
   })()
 
+  // Transbordo dentro do grupo macro — mesma regra da medição real, senão a
+  // simulação prometeria um número e a medição entregaria outro.
+  const descontoSimulado = await (async () => {
+    const detIdsRelevantes = Array.from(new Set([
+      ...itensValidos.map(i => i.detalhamento_id),
+      ...Object.keys(nfAlocadaPorDet),
+    ]))
+    const grupoPorDet: Record<string, string> = {}
+    if (detIdsRelevantes.length > 0) {
+      const { data: dets } = await admin
+        .from('detalhamentos')
+        .select('id, tarefa:tarefas ( grupo_macro_id )')
+        .in('id', detIdsRelevantes)
+      for (const d of (dets || []) as any[]) {
+        const grupo = d.tarefa?.grupo_macro_id
+        if (d.id && grupo) grupoPorDet[d.id] = grupo
+      }
+    }
+
+    const medidoPorDet = new Map<string, number>()
+    for (const item of itensValidos) {
+      const det = detMap.get(item.detalhamento_id)
+      if (!det) continue
+      medidoPorDet.set(
+        det.id,
+        Number(item.quantidade_medida || 0) * Number(det.valor_material_unit || 0),
+      )
+    }
+
+    const entrada: ItemDesconto[] = detIdsRelevantes.map(detId => ({
+      detalhamentoId: detId,
+      grupoId: grupoPorDet[detId] ?? null,
+      matMedido: medidoPorDet.get(detId) ?? 0,
+      nfAlocada: nfAlocadaPorDet[detId] || 0,
+      nfJaAbatida: nfJaAbatidaPorDet[detId] || 0,
+    }))
+    return calcularDescontoComTransbordo(entrada)
+  })()
+
   const linhas: BoletimSimuladoLinha[] = []
   for (const item of itensValidos) {
     const det = detMap.get(item.detalhamento_id)
@@ -302,7 +346,11 @@ export async function calcularBoletimSimulado(
     const aprovadoItem = aprovadoPorDet[det.id] || 0
     const saldoAprovDisponivel = Math.max(0, aprovadoItem - nfTerceiroItem)
     const nfDisponivel = Math.max(0, nfTerceiroItem - (nfJaAbatidaPorDet[det.id] || 0))
-    const nfDescontavel = Math.min(matMedido, nfDisponivel)
+    const descontoItem = descontoSimulado.get(det.id)
+    const nfDescontavel = Math.min(
+      matMedido,
+      descontoItem?.total ?? Math.min(matMedido, nfDisponivel),
+    )
     const gapMaterial = Math.max(0, matMedido - nfDescontavel)
     const fatDiretoEmAberto = Math.min(gapMaterial, saldoAprovDisponivel)
     const fipFaturar = Math.max(0, gapMaterial - fatDiretoEmAberto)
@@ -464,6 +512,9 @@ export async function calcularInformaconData(
   // Query em 3 passos: grupos_macro → tarefas → detalhamentos. Defensivo:
   // se qualquer passo falhar, segue com array vazio (página continua viva).
   let todosDetalhamentos: any[] = []
+  // Grupo macro de cada detalhamento — necessário pro transbordo do desconto
+  // dentro do grupo (ver lib/db/desconto-transbordo.ts).
+  const grupoPorDetalhamento: Record<string, string> = {}
   try {
     // 1) grupos_macro do contrato
     const { data: gruposRows, error: gruposErr } = await admin
@@ -478,18 +529,22 @@ export async function calcularInformaconData(
         // 2) tarefas dos grupos
         const { data: tarefasRows, error: tarefasErr } = await admin
           .from('tarefas')
-          .select('id')
+          .select('id, grupo_macro_id')
           .in('grupo_macro_id', grupoIds)
         if (tarefasErr) {
           console.warn('[informacon] falha ao buscar tarefas:', tarefasErr.message)
         } else {
+          const grupoPorTarefa: Record<string, string> = {}
+          for (const t of (tarefasRows || []) as any[]) {
+            if (t.id && t.grupo_macro_id) grupoPorTarefa[t.id] = t.grupo_macro_id
+          }
           const tarefaIds = (tarefasRows || []).map((t: any) => t.id).filter(Boolean)
           if (tarefaIds.length > 0) {
             // 3) detalhamentos das tarefas
             const tryFull = await admin
               .from('detalhamentos')
               .select(`
-                id, codigo, descricao, unidade, quantidade_contratada,
+                id, codigo, descricao, unidade, quantidade_contratada, tarefa_id,
                 valor_unitario, valor_material_unit, valor_servico_unit
               `)
               .in('tarefa_id', tarefaIds)
@@ -498,7 +553,7 @@ export async function calcularInformaconData(
             } else if (tryFull.error && isSchemaMissingError(tryFull.error, ['valor_material_unit', 'valor_servico_unit'])) {
               const fallback = await admin
                 .from('detalhamentos')
-                .select('id, codigo, descricao, unidade, quantidade_contratada, valor_unitario')
+                .select('id, codigo, descricao, unidade, quantidade_contratada, tarefa_id, valor_unitario')
                 .in('tarefa_id', tarefaIds)
               if (!fallback.error && fallback.data) {
                 todosDetalhamentos = fallback.data
@@ -507,6 +562,10 @@ export async function calcularInformaconData(
               }
             } else if (tryFull.error) {
               console.warn('[informacon] falha ao buscar detalhamentos:', tryFull.error.message)
+            }
+            for (const d of todosDetalhamentos as any[]) {
+              const grupo = d.tarefa_id ? grupoPorTarefa[d.tarefa_id] : undefined
+              if (d.id && grupo) grupoPorDetalhamento[d.id] = grupo
             }
           }
         }
@@ -612,6 +671,50 @@ export async function calcularInformaconData(
     }
   }
 
+  // === Transbordo do desconto dentro do grupo macro ===
+  // A NF fica alocada ao seu detalhamento, mas o saldo ocioso cobre o material
+  // medido dos vizinhos do mesmo grupo. Sem isto, material comprado por lote
+  // (prumada) e medido por pavimento aparece como "sem NF" enquanto a nota
+  // está parada ao lado. Ver lib/db/desconto-transbordo.ts.
+  //
+  // O pool considera TODOS os detalhamentos do contrato com NF alocada — não
+  // só os medidos nesta medição —, porque é justamente na nota de um item
+  // ainda não medido que costuma estar o saldo.
+  const descontoPorDet = (() => {
+    const vistos = new Set<string>()
+    const itensDesconto: ItemDesconto[] = []
+
+    for (const it of (medicaoItens || []) as any[]) {
+      const det = it.detalhamento
+      if (!det?.id) continue
+      vistos.add(det.id)
+      const matMedido = Number(it.quantidade_medida || 0) * Number(det.valor_material_unit || 0)
+      const nfAlocada = nfAlocadaPorDet[det.id] || 0
+      itensDesconto.push({
+        detalhamentoId: det.id,
+        grupoId: grupoPorDetalhamento[det.id] ?? null,
+        matMedido,
+        nfAlocada,
+        nfJaAbatida: nfJaAbatidaPorDet[det.id] || 0,
+      })
+    }
+
+    // Detalhamentos com NF que não entraram nesta medição: entram só como
+    // saldo disponível (matMedido = 0), alimentando o pool do grupo.
+    for (const detId of Object.keys(nfAlocadaPorDet)) {
+      if (vistos.has(detId)) continue
+      itensDesconto.push({
+        detalhamentoId: detId,
+        grupoId: grupoPorDetalhamento[detId] ?? null,
+        matMedido: 0,
+        nfAlocada: nfAlocadaPorDet[detId] || 0,
+        nfJaAbatida: nfJaAbatidaPorDet[detId] || 0,
+      })
+    }
+
+    return calcularDescontoComTransbordo(itensDesconto)
+  })()
+
   // Monta linhas
   const linhas: InformaconLinha[] = (medicaoItens || [])
     .map((it: any) => {
@@ -636,7 +739,11 @@ export async function calcularInformaconData(
       const nfJaAbatida  = nfJaAbatidaPorDet[det.id] || 0
       const nfDisponivel = Math.max(0, nfTerceiroItem - nfJaAbatida)
 
-      const nfDescontavel  = Math.min(matMedido, nfDisponivel)
+      // Desconto com transbordo: a NF do próprio item mais a parte que o
+      // saldo ocioso do grupo cobre. Nunca passa do material medido.
+      const desconto = descontoPorDet.get(det.id)
+      const nfDescontavel  = Math.min(matMedido, desconto?.total ?? Math.min(matMedido, nfDisponivel))
+      const nfTransbordo   = desconto?.transbordo ?? 0
       const gapMaterial    = Math.max(0, matMedido - nfDescontavel)
       const faturamentoDiretoEmAberto = Math.min(gapMaterial, saldoAprovDisponivel)
       const fipFaturar     = Math.max(0, gapMaterial - faturamentoDiretoEmAberto)
@@ -693,6 +800,7 @@ export async function calcularInformaconData(
         nf_disponivel: nfDisponivel,
         saldo_aprovado: saldoAprovDisponivel,
         nf_descontavel: nfDescontavel,
+        nf_transbordo_grupo: nfTransbordo,
         gap_material: gapMaterial,
         faturamento_direto_em_aberto: faturamentoDiretoEmAberto,
         fip_faturar: fipFaturar,
@@ -759,6 +867,7 @@ export async function calcularInformaconData(
       nf_disponivel: Math.max(0, (nfAlocadaPorDet[det.id] || 0) - (nfJaAbatidaPorDet[det.id] || 0)),
       saldo_aprovado: Math.max(0, (aprovadoPorDet[det.id] || 0) - (nfAlocadaPorDet[det.id] || 0)),
       nf_descontavel: 0,
+      nf_transbordo_grupo: 0,
       gap_material: 0,
       faturamento_direto_em_aberto: 0,
       fip_faturar: 0,
@@ -792,6 +901,7 @@ export async function calcularInformaconData(
     nf_terceiro:     acc.nf_terceiro     + l.nf_terceiro,
     saldo_aprovado:  acc.saldo_aprovado  + l.saldo_aprovado,
     nf_descontavel:  acc.nf_descontavel  + l.nf_descontavel,
+    nf_transbordo_grupo: acc.nf_transbordo_grupo + l.nf_transbordo_grupo,
     gap_material:    acc.gap_material    + l.gap_material,
     faturamento_direto_em_aberto: acc.faturamento_direto_em_aberto + l.faturamento_direto_em_aberto,
     fip_faturar:     acc.fip_faturar     + l.fip_faturar,
@@ -806,7 +916,7 @@ export async function calcularInformaconData(
     itens_com_ajuste: acc.itens_com_ajuste + (l.ajuste_aplicado ? 1 : 0),
   }), {
     material_medido: 0, servico_medido: 0,
-    nf_terceiro: 0, saldo_aprovado: 0, nf_descontavel: 0, gap_material: 0,
+    nf_terceiro: 0, saldo_aprovado: 0, nf_descontavel: 0, nf_transbordo_grupo: 0, gap_material: 0,
     faturamento_direto_em_aberto: 0, fip_faturar: 0, wave_servico: 0,
     valor_total_medido: 0, dados_informakon: 0, total_informakon: 0,
     base_retencao: 0, retencao: 0,
