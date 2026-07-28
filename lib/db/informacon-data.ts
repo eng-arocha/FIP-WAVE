@@ -487,12 +487,16 @@ export async function calcularInformaconData(
     .from('medicoes')
     .select(`
       id, numero, periodo_referencia, status, data_aprovacao, data_submissao,
-      valor_total, contrato_id, ajuste_material_anterior, ajuste_material_anterior_motivo
+      valor_total, contrato_id, ajuste_material_anterior, ajuste_material_anterior_motivo,
+      valor_material_correspondente, valor_retencao_garantia
     `)
     .eq('id', medicaoId)
     .single()
-  // Migration 074 pendente: recarrega sem as colunas do ajuste de rateio.
-  if (medErr && isSchemaMissingError(medErr, ['ajuste_material_anterior', 'ajuste_material_anterior_motivo'])) {
+  // Migration 074 pendente: recarrega sem as colunas do ajuste/snapshot.
+  if (medErr && isSchemaMissingError(medErr, [
+    'ajuste_material_anterior', 'ajuste_material_anterior_motivo',
+    'valor_material_correspondente', 'valor_retencao_garantia',
+  ])) {
     const fb = await admin
       .from('medicoes')
       .select('id, numero, periodo_referencia, status, data_aprovacao, data_submissao, valor_total, contrato_id')
@@ -530,15 +534,8 @@ export async function calcularInformaconData(
   // 3) Itens da medição (3 níveis de fallback de schema)
   let medicaoItens: any[] = []
   {
-    // valor_material_correspondente/valor_servico_correspondente (migration
-    // 074) são o snapshot gravado NA APROVAÇÃO. Congela material_medido e
-    // servico_medido pra sempre — sem isto, editar o preço unitário de um
-    // detalhamento meses depois muda o boletim de uma medição já aprovada e
-    // paga (foi o que aconteceu com a MED-003: comparar com o congelado
-    // mostrou 8.769,43 de material que apareceu do nada).
     const SELECT_FULL = `
       id, quantidade_medida, valor_unitario, detalhamento_id,
-      valor_material_correspondente, valor_servico_correspondente,
       confirmacao_sem_nf, confirmacao_sem_nf_em, confirmacao_sem_nf_por_id,
       confirmacao_sem_nf_motivo,
       detalhamento:detalhamentos (
@@ -548,7 +545,6 @@ export async function calcularInformaconData(
     `
     const SELECT_SEM_CONFIRMACAO = `
       id, quantidade_medida, valor_unitario, detalhamento_id,
-      valor_material_correspondente, valor_servico_correspondente,
       detalhamento:detalhamentos (
         id, codigo, descricao, unidade, quantidade_contratada,
         valor_unitario, valor_material_unit, valor_servico_unit
@@ -573,8 +569,6 @@ export async function calcularInformaconData(
         'confirmacao_sem_nf_em',
         'confirmacao_sem_nf_por_id',
         'confirmacao_sem_nf_motivo',
-        'valor_material_correspondente',
-        'valor_servico_correspondente',
       ])
     ) {
       const trySemConfirmacao = await admin
@@ -583,7 +577,7 @@ export async function calcularInformaconData(
         .eq('medicao_id', medicaoId)
       if (!trySemConfirmacao.error) {
         medicaoItens = trySemConfirmacao.data || []
-      } else if (isSchemaMissingError(trySemConfirmacao.error, ['valor_material_unit', 'valor_servico_unit', 'valor_material_correspondente', 'valor_servico_correspondente'])) {
+      } else if (isSchemaMissingError(trySemConfirmacao.error, ['valor_material_unit', 'valor_servico_unit'])) {
         const fallback = await admin
           .from('medicao_itens')
           .select(SELECT_FALLBACK_FULL)
@@ -593,7 +587,7 @@ export async function calcularInformaconData(
       } else {
         throw trySemConfirmacao.error
       }
-    } else if (isSchemaMissingError(tryFull.error, ['valor_material_unit', 'valor_servico_unit', 'valor_material_correspondente', 'valor_servico_correspondente'])) {
+    } else if (isSchemaMissingError(tryFull.error, ['valor_material_unit', 'valor_servico_unit'])) {
       const fallback = await admin
         .from('medicao_itens')
         .select(SELECT_FALLBACK_FULL)
@@ -801,22 +795,6 @@ export async function calcularInformaconData(
     return temValor ? snap : null
   })()
 
-  // Mesmo motivo do snapshot acima, aplicado a material/serviço: se o preço
-  // unitário de um detalhamento for editado depois da aprovação (correção de
-  // orçamento, reconciliação com o Informakon), o boletim de uma medição já
-  // aprovada e paga passa a mostrar valores diferentes dos que foram
-  // aprovados. Confirmado na MED-003: comparar o congelado (207.739,55) com
-  // o recálculo ao vivo (216.508,98) mostrou 8.769,43 de material que
-  // apareceram do nada meses depois da aprovação. `medicao_itens
-  // .valor_material_correspondente/valor_servico_correspondente` (migration
-  // 074) travam esse valor pra sempre quando presentes.
-  function materialServicoMedido(it: any): { mat: number; serv: number } | null {
-    if (!snapshotAprovado) return null
-    const mat = it.valor_material_correspondente
-    const serv = it.valor_servico_correspondente
-    if (mat == null || serv == null) return null
-    return { mat: Number(mat), serv: Number(serv) }
-  }
 
   // === Transbordo do desconto dentro do grupo macro ===
   // A NF fica alocada ao seu detalhamento, mas o saldo ocioso cobre o material
@@ -839,8 +817,7 @@ export async function calcularInformaconData(
       const det = it.detalhamento
       if (!det?.id) continue
       vistos.add(det.id)
-      const frozen = materialServicoMedido(it)
-      const matMedido = frozen?.mat ?? (Number(it.quantidade_medida || 0) * Number(det.valor_material_unit || 0))
+      const matMedido = Number(it.quantidade_medida || 0) * Number(det.valor_material_unit || 0)
       itensDesconto.push({
         detalhamentoId: det.id,
         grupoId: grupoPorDetalhamento[det.id] ?? null,
@@ -882,8 +859,7 @@ export async function calcularInformaconData(
   for (const it of (medicaoItens || []) as any[]) {
     const det = it.detalhamento
     if (!det?.id) continue
-    const frozenCalculo = materialServicoMedido(it)
-    const matMedido = frozenCalculo?.mat ?? (Number(it.quantidade_medida || 0) * Number(det.valor_material_unit || 0))
+    const matMedido = Number(it.quantidade_medida || 0) * Number(det.valor_material_unit || 0)
     const nfDisponivel = Math.max(
       0,
       (nfAlocadaPorDet[det.id] || 0) - (nfJaAbatidaPorDet[det.id] || 0),
@@ -943,9 +919,8 @@ export async function calcularInformaconData(
       const matUnit = Number(det.valor_material_unit || 0)
       const servUnit = Number(det.valor_servico_unit || 0)
       const valorUnit = Number(det.valor_unitario || (matUnit + servUnit))
-      const frozenLinha = materialServicoMedido(it)
-      const matMedido = frozenLinha?.mat ?? (qtdMed * matUnit)
-      const servMedido = frozenLinha?.serv ?? (qtdMed * servUnit)
+      const matMedido = qtdMed * matUnit
+      const servMedido = qtdMed * servUnit
       const qtdAcum = acumulado[det.id] || 0
 
       const nfTerceiroItem = nfAlocadaPorDet[det.id] || 0
@@ -982,13 +957,7 @@ export async function calcularInformaconData(
         ? Math.max(0, pctServMed - (faturamentoDiretoEmAberto / valorServicoTotalItem) * 100)
         : pctServMed
 
-      // Fora do caso "sem mais NF" (raro), o congelado já É o waveServico —
-      // travar aqui impede que editar valor_servico_unit meses depois mude
-      // a base de retenção/líquido de uma medição já paga (mesma causa raiz
-      // do bug da MED-003, agora fechada também pro lado do serviço).
-      const waveServico = (frozenLinha && !ajusteAplicado)
-        ? frozenLinha.serv
-        : (pctServMedAjustado / 100) * valorServicoTotalItem
+      const waveServico = (pctServMedAjustado / 100) * valorServicoTotalItem
       const valorTotalMedido = (pctServMedAjustado / 100) * valorServicoTotalItem
       // dados_informakon = o total que o relatório do Informakon mostra para
       // este item: serviço da Wave + material medido.
@@ -1218,6 +1187,46 @@ export async function calcularInformaconData(
     const lista = ajustesPorItem.get(linha.medicao_item_id) ?? []
     linha.ajustes_admin = lista
     linha.foi_ajustado_pelo_admin = lista.length > 0
+  }
+
+  // === Trava os TOTAIS de uma medição aprovada no que foi congelado na
+  // aprovação (`aprovarMedicao`, lib/db/medicoes.ts) ===
+  //
+  // Uma primeira tentativa deste fix travava por ITEM, usando
+  // `medicao_itens.valor_material_correspondente/valor_servico_correspondente`.
+  // Zerou a MED-003: essas colunas por item nunca foram escritas de forma
+  // confiável (aparentam ter sido adicionadas ao código de aprovação depois
+  // que a 003 já tinha sido aprovada, então ficaram em 0 — não `null` —, o
+  // que passou pela checagem e travou os totais em zero).
+  //
+  // O nível de MEDIÇÃO é confiável: `medicoes.valor_material_correspondente`
+  // e `valor_total` já foram conferidos contra a régua da FIP (scripts
+  // 081/082) e batem ao centavo pra MED-003 e MED-004. É esta fonte que
+  // trava aqui — nunca mais muda depois de aprovada, mesmo que o preço
+  // unitário de um detalhamento seja editado meses depois (foi isso que
+  // fez a MED-003 mostrar R$ 8.769,43 de material que não existiam na
+  // aprovação).
+  //
+  // `matCongelado > 0` exclui medições aprovadas ANTES de esta coluna
+  // existir (ex.: MED-001, MED-002) — lá o valor ficou em 0 desde sempre,
+  // não há base histórica pra travar, e o cálculo ao vivo de hoje continua
+  // sendo o melhor disponível.
+  if ((medicao as any).status === 'aprovado') {
+    const matCongelado = Number((medicao as any).valor_material_correspondente ?? NaN)
+    const totalCongelado = Number((medicao as any).valor_total ?? NaN)
+    if (Number.isFinite(matCongelado) && Number.isFinite(totalCongelado) && matCongelado > 0) {
+      const servCongelado = Math.max(0, totalCongelado - matCongelado)
+      const retCongelada = Number((medicao as any).valor_retencao_garantia ?? NaN)
+      const baseCongelada = matCongelado + servCongelado
+      totais.material_medido = matCongelado
+      totais.servico_medido = servCongelado
+      totais.wave_servico = servCongelado
+      totais.base_retencao = baseCongelada
+      totais.retencao = Number.isFinite(retCongelada) && retCongelada > 0
+        ? retCongelada
+        : baseCongelada * (pctRetencao / 100)
+      totais.dados_informakon = baseCongelada
+    }
   }
 
   // Valor da NF de serviço a emitir. Fonte única — ver InformaconTotais.
