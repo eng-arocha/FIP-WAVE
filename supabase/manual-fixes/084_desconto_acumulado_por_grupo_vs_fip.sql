@@ -118,3 +118,38 @@ SELECT c.numero, c.grupo,
   JOIN fip ON fip.numero = c.numero AND fip.grupo = c.grupo
  WHERE c.numero IN (1, 2)
  ORDER BY c.numero, ABS(c.desconto_do_periodo_nosso - fip.material_fornecido_fip) DESC;
+
+
+-- ---------------------------------------------------------------------------
+-- CONCLUSÃO (rodado em 28/07/2026, resultado registrado aqui pra referência
+-- futura — nada neste bloco é executável, é só documentação do achado):
+--
+-- Com o ledger de NF de HOJE, `nf_descontada_nossa` bateu EXATAMENTE com
+-- `material_medido_bruto` nos grupos 7 e 8 (MED-001/002) — ou seja, a régua
+-- acumulada não precisou capar nada: há nota de sobra hoje cobrindo 100% do
+-- material. Isso confirma que a nota que faltava em março/maio de 2026 (a
+-- diferença que a FIP mostrou como "Material Fornecido" menor que o
+-- executado) FOI EMITIDA DEPOIS — a régua, rodada com dados de hoje,
+-- reconhece essa cobertura.
+--
+-- DECISÃO: não mexer em MED-001 e MED-002. Elas já foram aprovadas e pagas
+-- pelo SERVIÇO (líquido = serviço medido − retenção), que nunca dependeu do
+-- material ter nota ou não. A pequena diferença de líquido contra a FIP
+-- (R$ 58,69 na MED-001, R$ 302,46 na MED-002) vem de uma escolha de design
+-- proposital e já documentada no código: a base de retenção soma TODO
+-- material executado fisicamente, não só o que já tem nota — mais
+-- conservador pra Wave, garante a retenção mesmo antes da nota chegar
+-- (ver comentário "Base de retenção" em lib/db/informacon-data.ts).
+--
+-- Isso reabriu a pergunta sobre a MED-004: o ajuste_material_anterior de
+-- R$ 3.909,77 aplicado nela comparou material bruto (nosso) contra a nota
+-- descontada (FIP) — base diferente da usada aqui. A comparação certa
+-- (nota nossa, já com régua acumulada, x nota da FIP) fica em R$ 768,53, não
+-- R$ 3.909,77 — uma diferença de R$ 3.141,24 no líquido já emitido.
+--
+-- DECISÃO (usuário, 28/07/2026): manter o ajuste de R$ 3.909,77 como está.
+-- A NF da MED-004 já foi emitida e entregue em R$ 340.631,06; não reabrir
+-- esse valor. Fica registrado aqui para o caso de a questão voltar no
+-- futuro (ex.: se a NF ainda não tiver sido paga/confirmada pela FIP e
+-- alguém quiser reconsiderar).
+-- ---------------------------------------------------------------------------
