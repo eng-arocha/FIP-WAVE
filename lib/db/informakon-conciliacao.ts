@@ -8,6 +8,7 @@
 // enxuta — ver ali o consumo.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { ehPedidoDeServicoWave } from '@/lib/db/informacon-data'
 
 /** Acima disso a diferença por grupo é destacada em vermelho na UI. */
 export const LIMIAR_DIVERGENCIA_GRUPO = 1000
@@ -113,8 +114,11 @@ export async function calcularConciliacaoPorGrupo(
 
   // ---- 3) Lado FIP-WAVE: solicitações aprovadas de fat-direto (exceto NF de
   // serviço da própria Wave), com NF rateada pro-rata pelos itens.
+  // Traz cnpj e razão social junto com `tipo` porque quem decide se o pedido é
+  // NF de serviço da Wave é `ehPedidoDeServicoWave` — olhar só `tipo` deixaria
+  // passar pedido anterior à migration 074 cujo backfill não tenha alcançado.
   const SELECT_SOL = `
-    id, tipo, status, deletado_em,
+    id, tipo, status, deletado_em, fornecedor_cnpj, fornecedor_razao_social,
     itens:itens_solicitacao_fat_direto ( detalhamento_id, valor_total ),
     nfs:notas_fiscais_fat_direto!solicitacao_id ( valor )
   `
@@ -128,7 +132,9 @@ export async function calcularConciliacaoPorGrupo(
 
   const fipwavePorChave = new Map<string, number>()
   for (const sol of (solicitacoes || []) as any[]) {
-    if (sol.tipo === 'wave_servico') continue
+    // A NF de serviço da Wave não é material de terceiro — ela É o faturamento
+    // da Wave. Mesma regra do cálculo do boletim.
+    if (ehPedidoDeServicoWave(sol)) continue
     const itens = ((sol.itens || []) as any[])
       .map(it => ({ detId: it.detalhamento_id as string | null, valor: Number(it.valor_total || 0) }))
       .filter(it => it.detId)

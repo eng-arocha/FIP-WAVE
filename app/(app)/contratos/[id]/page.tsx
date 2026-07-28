@@ -14,7 +14,7 @@ import {
   ArrowLeft, Plus, FileText, Loader2, Pencil,
   ChevronRight, ChevronDown, Layers, Filter, Package, TrendingUp,
   DollarSign, Wallet, ClipboardList, Search, X, Maximize2,
-  Download, Upload, Ban,
+  Download, Upload, Ban, FileSpreadsheet,
 } from 'lucide-react'
 import { DashboardTree, VisaoGeralToolbar } from '@/components/contratos/visao-geral'
 import { EditarContratoModal } from '@/components/contratos/editar-contrato-modal'
@@ -555,6 +555,13 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
               <Button variant="ghost" size="sm" className="px-2 sm:px-3 gap-1 font-semibold hover:brightness-110" style={{ background: '#0f766e', color: '#ccfbf1' }}>
                 <span className="hidden sm:inline">Fat. Direto</span>
                 <span className="sm:hidden text-xs">Fat.</span>
+              </Button>
+            </Link>
+            <Link href={`/contratos/${id}/informakon`}>
+              <Button variant="ghost" size="sm" className="px-2 sm:px-3 gap-1 font-semibold hover:brightness-110" style={{ background: '#4d7c0f', color: '#ecfccb' }}>
+                <FileSpreadsheet className="w-4 h-4" strokeWidth={1.5} />
+                <span className="hidden sm:inline">Informakon</span>
+                <span className="sm:hidden text-xs">Inf.</span>
               </Button>
             </Link>
             <Link href={`/contratos/${id}/encerramentos`}>
