@@ -19,6 +19,17 @@
 
 
 -- ---------------------------------------------------------------------------
+-- ATENCAO — ESTE SCRIPT DESCREVE A REGRA ANTIGA (28/07/2026)
+--
+-- Foi escrito para diagnosticar o desconto apurado POR DETALHAMENTO. Desde
+-- entao a regra mudou: o saldo passou a ser apurado por GRUPO MACRO e
+-- distribuido entre os itens medidos (lib/db/desconto-transbordo.ts). Os
+-- numeros aqui nao correspondem mais ao que a tela mostra.
+--
+-- Mantido como registro do diagnostico que motivou a mudanca.
+-- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
 -- F1 — Gap por detalhamento na medição 004
 --
 -- Reproduz fielmente lib/db/informacon-data.ts (calcularInformaconData):

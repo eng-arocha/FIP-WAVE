@@ -671,6 +671,23 @@ export async function calcularInformaconData(
     }
   }
 
+  // === Medição aprovada: o boletim mostra o que foi aprovado ===
+  //
+  // O boletim recalcula ao vivo a cada abertura. Numa medição já aprovada e
+  // paga isso é errado: mudanças posteriores — NF lançada depois, ou uma
+  // mudança na própria regra de desconto, como o transbordo por grupo — fariam
+  // a tela exibir números diferentes dos que foram aprovados, assinados e
+  // enviados por e-mail. `medicao_itens.nf_material_descontada` guarda o
+  // snapshot gravado na aprovação (migration 074); quando ele existe, é ele
+  // que manda. Mesmo padrão de lib/db/resumo-financeiro-obra.ts.
+  const snapshotAprovado = await (async () => {
+    if ((medicao as any).status !== 'aprovado') return null
+    const snap = await carregarNfJaAbatida(admin, [medicaoId])
+    // Medição aprovada antes da migration 074 não tem snapshot — aí recalcula.
+    const temValor = Object.values(snap).some(v => Number(v) > 0)
+    return temValor ? snap : null
+  })()
+
   // === Transbordo do desconto dentro do grupo macro ===
   // A NF fica alocada ao seu detalhamento, mas o saldo ocioso cobre o material
   // medido dos vizinhos do mesmo grupo. Sem isto, material comprado por lote
@@ -742,8 +759,12 @@ export async function calcularInformaconData(
       // Desconto com transbordo: a NF do próprio item mais a parte que o
       // saldo ocioso do grupo cobre. Nunca passa do material medido.
       const desconto = descontoPorDet.get(det.id)
-      const nfDescontavel  = Math.min(matMedido, desconto?.total ?? Math.min(matMedido, nfDisponivel))
-      const nfTransbordo   = desconto?.transbordo ?? 0
+      const calculado = Math.min(matMedido, desconto?.total ?? Math.min(matMedido, nfDisponivel))
+      // Medição aprovada: vale o que foi gravado na aprovação, não o recálculo.
+      const nfDescontavel  = snapshotAprovado
+        ? Math.min(matMedido, Number(snapshotAprovado[det.id] ?? 0))
+        : calculado
+      const nfTransbordo   = snapshotAprovado ? 0 : (desconto?.transbordo ?? 0)
       const gapMaterial    = Math.max(0, matMedido - nfDescontavel)
       const faturamentoDiretoEmAberto = Math.min(gapMaterial, saldoAprovDisponivel)
       const fipFaturar     = Math.max(0, gapMaterial - faturamentoDiretoEmAberto)

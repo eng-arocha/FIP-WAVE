@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ehPedidoDeServicoWave } from './informacon-data'
+import { calcularDescontoComTransbordo } from './desconto-transbordo'
 
 /**
  * Regressões do desconto de NF de material (migration 074).
@@ -50,11 +51,18 @@ describe('ehPedidoDeServicoWave — tira a NF de serviço da conta de material',
 
 /**
  * Saldo corrido: a mesma NF não pode ser descontável em toda medição.
- * Replica a fórmula aplicada em calcularInformaconData.
+ *
+ * Chama a função de produção com um único item sem grupo — sem grupo não há
+ * transbordo, então o resultado é exatamente a regra de saldo corrido isolada.
+ * Antes isto era uma cópia da fórmula escrita à mão aqui dentro, que continuou
+ * passando depois que a regra de produção mudou para apurar por grupo macro —
+ * um teste que não testava mais nada.
  */
 function nfDescontavel(matMedido: number, nfEmitida: number, nfJaAbatida: number) {
-  const disponivel = Math.max(0, nfEmitida - nfJaAbatida)
-  return Math.min(matMedido, disponivel)
+  const r = calcularDescontoComTransbordo([
+    { detalhamentoId: 'x', grupoId: null, matMedido, nfAlocada: nfEmitida, nfJaAbatida },
+  ])
+  return r.get('x')!.total
 }
 
 describe('saldo corrido do desconto de NF de material', () => {
