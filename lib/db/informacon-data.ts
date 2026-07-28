@@ -338,8 +338,13 @@ export async function calcularBoletimSimulado(
       for (const r of (rows || []) as any[]) {
         if (!r.detalhamento_id) continue
         const det = detMap.get(r.detalhamento_id)
-        const valor = r.valor_material_correspondente != null
-          ? Number(r.valor_material_correspondente || 0)
+        // `> 0`, não `!= null`: nas medições aprovadas antes da migration 074
+        // esta coluna por item ficou gravada como 0, não null — o teste de
+        // nulidade passava e zerava o teto acumulado da régua de desconto.
+        // Mesma armadilha que zerou a MED-003 na tela.
+        const snapshotItem = Number(r.valor_material_correspondente ?? 0)
+        const valor = snapshotItem > 0
+          ? snapshotItem
           : Number(r.quantidade_medida || 0) * Number(det?.valor_material_unit || 0)
         matAcumAprovadoPorDet[r.detalhamento_id] =
           (matAcumAprovadoPorDet[r.detalhamento_id] || 0) + valor

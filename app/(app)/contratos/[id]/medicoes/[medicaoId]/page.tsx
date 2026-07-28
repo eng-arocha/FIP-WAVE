@@ -394,6 +394,25 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
 
   const isPendente = status === 'submetido' || status === 'em_analise'
   const isCriador = userEmail !== null && medicao.solicitante_email === userEmail
+
+  /**
+   * Material e serviço congelados na aprovação, quando existem.
+   *
+   * Usado só nos caminhos de fallback — quando o endpoint /informacon não
+   * respondeu. Sem isto, uma medição aprovada com o endpoint fora do ar
+   * mostrava o cabeçalho e os rodapés recalculados ao vivo (preço unitário de
+   * hoje) enquanto o card de retenção logo abaixo já mostrava o congelado.
+   *
+   * `material > 0` exclui as medições aprovadas antes de a coluna existir,
+   * onde ela ficou gravada como 0 e não como null.
+   */
+  const snapshotMedicao = (): { material: number; servico: number } | null => {
+    if (status !== 'aprovado') return null
+    const material = Number(medicao.valor_material_correspondente ?? NaN)
+    const total = Number(medicao.valor_total ?? NaN)
+    if (!Number.isFinite(material) || !Number.isFinite(total) || material <= 0) return null
+    return { material, servico: Math.max(0, total - material) }
+  }
   const criadorPodeExcluir = isCriador && !['aprovado', 'autorizado', 'em_analise', 'cancelado'].includes(status)
 
   // Anomaly detection: flag if value is >2x the average of approved measurements
@@ -674,13 +693,19 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                       let materialMed = totaisInformacon?.material_medido ?? 0
                       let servicoMed  = totaisInformacon?.servico_medido  ?? 0
                       if (!totaisInformacon) {
-                        for (const it of (medicao.medicao_itens || []) as any[]) {
-                          const qtd = Number(it.quantidade_medida || 0)
-                          materialMed += qtd * Number(it.detalhamento?.valor_material_unit || 0)
-                          servicoMed  += qtd * Number(it.detalhamento?.valor_servico_unit || 0)
-                        }
-                        if (materialMed === 0 && servicoMed === 0 && valorTotal > 0) {
-                          servicoMed = valorTotal
+                        const congelado = snapshotMedicao()
+                        if (congelado) {
+                          materialMed = congelado.material
+                          servicoMed  = congelado.servico
+                        } else {
+                          for (const it of (medicao.medicao_itens || []) as any[]) {
+                            const qtd = Number(it.quantidade_medida || 0)
+                            materialMed += qtd * Number(it.detalhamento?.valor_material_unit || 0)
+                            servicoMed  += qtd * Number(it.detalhamento?.valor_servico_unit || 0)
+                          }
+                          if (materialMed === 0 && servicoMed === 0 && valorTotal > 0) {
+                            servicoMed = valorTotal
+                          }
                         }
                       }
                       // FIP a criar = parte da medição que ainda não tem NF
@@ -1474,10 +1499,16 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                               let mat = totaisInformacon?.material_medido ?? 0
                               let serv = totaisInformacon?.servico_medido ?? 0
                               if (!totaisInformacon) {
-                                for (const it of (medicao.medicao_itens || []) as any[]) {
-                                  const qtd = Number(it.quantidade_medida || 0)
-                                  mat += qtd * Number(it.detalhamento?.valor_material_unit || 0)
-                                  serv += qtd * Number(it.detalhamento?.valor_servico_unit || 0)
+                                const congelado = snapshotMedicao()
+                                if (congelado) {
+                                  mat = congelado.material
+                                  serv = congelado.servico
+                                } else {
+                                  for (const it of (medicao.medicao_itens || []) as any[]) {
+                                    const qtd = Number(it.quantidade_medida || 0)
+                                    mat += qtd * Number(it.detalhamento?.valor_material_unit || 0)
+                                    serv += qtd * Number(it.detalhamento?.valor_servico_unit || 0)
+                                  }
                                 }
                               }
                               const tot = Number(medicao.valor_total || 0)
@@ -1624,10 +1655,16 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                         let mat = totaisInformacon?.material_medido ?? 0
                         let serv = totaisInformacon?.servico_medido ?? 0
                         if (!totaisInformacon) {
-                          for (const it of (medicao.medicao_itens || []) as any[]) {
-                            const qtd = Number(it.quantidade_medida || 0)
-                            mat += qtd * Number(it.detalhamento?.valor_material_unit || 0)
-                            serv += qtd * Number(it.detalhamento?.valor_servico_unit || 0)
+                          const congelado = snapshotMedicao()
+                          if (congelado) {
+                            mat = congelado.material
+                            serv = congelado.servico
+                          } else {
+                            for (const it of (medicao.medicao_itens || []) as any[]) {
+                              const qtd = Number(it.quantidade_medida || 0)
+                              mat += qtd * Number(it.detalhamento?.valor_material_unit || 0)
+                              serv += qtd * Number(it.detalhamento?.valor_servico_unit || 0)
+                            }
                           }
                         }
                         const tot = Number(medicao.valor_total || 0)

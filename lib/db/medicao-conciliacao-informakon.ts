@@ -76,10 +76,25 @@ function semDados(sistema: CamposConciliacaoMedicao = { ...CAMPOS_ZERO }): Conci
 async function carregarMedicaoBasico(
   admin: SupabaseClient,
   medicaoId: string,
-): Promise<{ numero: number; ajusteMaterialAnterior: number } | null> {
+): Promise<{
+  numero: number
+  ajusteMaterialAnterior: number
+  congelado: { material: number; total: number } | null
+} | null> {
+  // `material > 0` exclui as medições aprovadas antes de a coluna existir,
+  // onde ela ficou gravada como 0 (não null) — ali não há snapshot a
+  // respeitar e o recálculo ao vivo segue valendo.
+  const snapshotDe = (d: any) => {
+    if (d?.status !== 'aprovado') return null
+    const material = Number(d.valor_material_correspondente ?? NaN)
+    const total = Number(d.valor_total ?? NaN)
+    if (!Number.isFinite(material) || !Number.isFinite(total) || material <= 0) return null
+    return { material, total }
+  }
+
   const full = await admin
     .from('medicoes')
-    .select('numero, ajuste_material_anterior')
+    .select('numero, status, valor_total, valor_material_correspondente, ajuste_material_anterior')
     .eq('id', medicaoId)
     .single()
 
@@ -88,17 +103,22 @@ async function carregarMedicaoBasico(
     return {
       numero: Number(d.numero),
       ajusteMaterialAnterior: Number(d.ajuste_material_anterior || 0),
+      congelado: snapshotDe(d),
     }
   }
 
   if (full.error && isSchemaMissingError(full.error, ['ajuste_material_anterior'])) {
     const fallback = await admin
       .from('medicoes')
-      .select('numero')
+      .select('numero, status, valor_total, valor_material_correspondente')
       .eq('id', medicaoId)
       .single()
     if (fallback.error || !fallback.data) return null
-    return { numero: Number((fallback.data as any).numero), ajusteMaterialAnterior: 0 }
+    return {
+      numero: Number((fallback.data as any).numero),
+      ajusteMaterialAnterior: 0,
+      congelado: snapshotDe(fallback.data),
+    }
   }
 
   // Erro inesperado (id inválido, etc.) — não é o papel desta função denunciar
@@ -130,21 +150,33 @@ async function calcularLadoSistema(
   medicaoId: string,
   ajusteMaterialAnterior: number,
   percentualRetencao: number,
+  congelado: { material: number; total: number } | null,
 ): Promise<CamposConciliacaoMedicao> {
-  const { data, error } = await admin
-    .from('medicao_itens')
-    .select('quantidade_medida, detalhamento:detalhamentos ( valor_material_unit, valor_servico_unit )')
-    .eq('medicao_id', medicaoId)
-
-  if (error) return { ...CAMPOS_ZERO }
-
   let material = 0
   let servico = 0
-  for (const it of (data || []) as any[]) {
-    const qtd = Number(it.quantidade_medida || 0)
-    const det = it.detalhamento
-    material += qtd * Number(det?.valor_material_unit || 0)
-    servico += qtd * Number(det?.valor_servico_unit || 0)
+
+  // Medição aprovada com snapshot: vale o que foi congelado na aprovação.
+  // Esta tela existe pra DETECTAR divergência contra o ERP da FIP — se ela
+  // recalculasse ao vivo, editar o preço unitário de um detalhamento meses
+  // depois inventaria uma divergência que não existe (ou esconderia uma que
+  // existe). Mesma trava de lib/db/informacon-data.ts.
+  if (congelado) {
+    material = congelado.material
+    servico = Math.max(0, congelado.total - congelado.material)
+  } else {
+    const { data, error } = await admin
+      .from('medicao_itens')
+      .select('quantidade_medida, detalhamento:detalhamentos ( valor_material_unit, valor_servico_unit )')
+      .eq('medicao_id', medicaoId)
+
+    if (error) return { ...CAMPOS_ZERO }
+
+    for (const it of (data || []) as any[]) {
+      const qtd = Number(it.quantidade_medida || 0)
+      const det = it.detalhamento
+      material += qtd * Number(det?.valor_material_unit || 0)
+      servico += qtd * Number(det?.valor_servico_unit || 0)
+    }
   }
 
   const contratual = material + servico
@@ -220,6 +252,7 @@ export async function conciliarMedicaoComInformakon(
       medicaoId,
       medicaoBasico.ajusteMaterialAnterior,
       percentualRetencao,
+      medicaoBasico.congelado,
     )
 
     const importacao = await buscarImportacaoMaisRecente(admin, contratoId)
