@@ -190,4 +190,91 @@ describe('conciliarMedicaoComInformakon', () => {
     const r = await conciliarMedicaoComInformakon(admin, CONTRATO_ID, MEDICAO_ID)
     expect(r.sistema).toEqual({ contratual: 0, material: 0, retencao: 0, aPagar: 0 })
   })
+
+  // Medição APROVADA: o boletim tem de usar o snapshot congelado na
+  // aprovação, não recalcular a partir do preço unitário de hoje. Esta é a
+  // tela cujo propósito é detectar divergência contra o ERP da FIP — se ela
+  // recalculasse ao vivo, editar um valor_material_unit meses depois
+  // inventaria uma divergência que não existe.
+  it('medição aprovada usa o snapshot congelado, não o preço unitário de hoje', async () => {
+    const admin = makeAdmin(
+      baseTableResults({
+        medicoes: {
+          data: {
+            numero: MEDICAO_NUMERO,
+            status: 'aprovado',
+            valor_total: 1500,
+            valor_material_correspondente: 500,
+            ajuste_material_anterior: 0,
+          },
+          error: null,
+        },
+        // Preço unitário foi editado depois da aprovação: agora daria
+        // material 900 / serviço 1000. O snapshot tem de prevalecer.
+        medicao_itens: {
+          data: [{ quantidade_medida: 10, detalhamento: { valor_material_unit: 90, valor_servico_unit: 100 } }],
+          error: null,
+        },
+        informakon_medicoes_servico: {
+          data: [{ valor_contratual: 1500, valor_material: 500, retencao: 75, valor_a_pagar: 925 }],
+          error: null,
+        },
+      }),
+    )
+    const r = await conciliarMedicaoComInformakon(admin, CONTRATO_ID, MEDICAO_ID)
+    expect(r.sistema).toEqual({ contratual: 1500, material: 500, retencao: 75, aPagar: 925 })
+    expect(r.divergencias).toEqual([])
+  })
+
+  // MED-001/MED-002 do WAVE: aprovadas antes de a coluna existir, ficaram com
+  // 0 gravado (não null). O guard tem de ser `> 0`, senão o snapshot "vazio"
+  // zera a conciliação inteira — foi assim que a MED-003 apareceu zerada.
+  it('aprovada sem snapshot (coluna gravada como 0) volta ao cálculo ao vivo', async () => {
+    const admin = makeAdmin(
+      baseTableResults({
+        medicoes: {
+          data: {
+            numero: MEDICAO_NUMERO,
+            status: 'aprovado',
+            valor_total: 1200,
+            valor_material_correspondente: 0,
+            ajuste_material_anterior: 0,
+          },
+          error: null,
+        },
+        informakon_medicoes_servico: {
+          data: [{ valor_contratual: 1500, valor_material: 500, retencao: 75, valor_a_pagar: 925 }],
+          error: null,
+        },
+      }),
+    )
+    const r = await conciliarMedicaoComInformakon(admin, CONTRATO_ID, MEDICAO_ID)
+    // Cálculo ao vivo dos itens base: material 500, serviço 1000.
+    expect(r.sistema.material).toBe(500)
+    expect(r.sistema.contratual).toBe(1500)
+    expect(r.divergencias).toEqual([])
+  })
+
+  it('medição não aprovada recalcula ao vivo mesmo tendo valores gravados', async () => {
+    const admin = makeAdmin(
+      baseTableResults({
+        medicoes: {
+          data: {
+            numero: MEDICAO_NUMERO,
+            status: 'submetido',
+            valor_total: 9999,
+            valor_material_correspondente: 9999,
+            ajuste_material_anterior: 0,
+          },
+          error: null,
+        },
+        informakon_medicoes_servico: {
+          data: [{ valor_contratual: 1500, valor_material: 500, retencao: 75, valor_a_pagar: 925 }],
+          error: null,
+        },
+      }),
+    )
+    const r = await conciliarMedicaoComInformakon(admin, CONTRATO_ID, MEDICAO_ID)
+    expect(r.sistema).toEqual({ contratual: 1500, material: 500, retencao: 75, aPagar: 925 })
+  })
 })

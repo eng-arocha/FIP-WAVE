@@ -827,8 +827,12 @@ export default function DashboardPage() {
                         </div>
                         <p className="text-xs" style={{ color: 'var(--text-3)' }}>{m.contrato?.numero}</p>
                       </div>
+                      {/* `valor_total_exibicao` reconstrói mat + serv na mesma
+                          régua dos cards; sem ele a MED-001 (fórmula antiga,
+                          só serviço) aparece ao lado da MED-004 (mat + serv)
+                          como se fossem comparáveis. Ver /api/dashboard. */}
                       <span className="text-sm font-semibold flex-shrink-0" style={{ color: 'var(--text-1)' }}>
-                        {formatCurrency(m.valor_total)}
+                        {formatCurrency(m.valor_total_exibicao ?? m.valor_total)}
                       </span>
                     </div>
                   </Link>

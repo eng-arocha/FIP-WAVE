@@ -31,7 +31,7 @@ export async function GET() {
       // 'Medição de Serviço' (= MO) vs 'Fat. Direto Medido' (= material).
       // Source-of-truth pra os 4 cards de medição do dashboard (spec 2026-05-06).
       admin.from('medicoes')
-        .select(`id, status, contrato_id,
+        .select(`id, status, contrato_id, valor_total, valor_material_correspondente,
           medicao_itens (
             quantidade_medida,
             detalhamento:detalhamentos ( valor_material_unit, valor_servico_unit )
@@ -111,20 +111,46 @@ export async function GET() {
       }
     }
 
-    // Split medição: serviço (MO) × material — calculado a partir de
-    // medicao_itens × detalhamentos (mat_unit + servico_unit). Não confia em
-    // medicoes.valor_total (que pode ter sido gravado pela fórmula antiga).
+    // Split medição: serviço (MO) × material.
+    //
+    // Fonte preferida: o snapshot congelado na aprovação
+    // (`medicoes.valor_material_correspondente` + `valor_total`). O recálculo
+    // ao vivo a partir de medicao_itens × detalhamentos usa o preço unitário
+    // de HOJE — se o orçamento for editado depois da aprovação, o dashboard
+    // passa a mostrar números diferentes dos que foram aprovados e pagos.
+    // Aconteceu na MED-003: R$ 8.769,42 migraram de serviço pra material meses
+    // depois da aprovação, jogando o card "Fat. Direto Medido" pra cima e o
+    // "Medição de Serviço" pra baixo, sem que nada tivesse sido medido.
+    // Mesma trava aplicada em lib/db/informacon-data.ts.
+    //
+    // `valor_material_correspondente > 0` exclui as medições aprovadas antes
+    // de a coluna existir (MED-001, MED-002), onde ela ficou gravada como 0 —
+    // ali não há snapshot pra respeitar e o cálculo ao vivo segue valendo.
+    // Também não se usa `valor_total` dessas medições: ele foi gravado por uma
+    // fórmula antiga e está incompleto.
     let totalServicoMedido = 0
     let totalMaterialMedido = 0
+    /** Por medição aprovada: mat + serv na mesma régua usada nos cards. */
+    const totalPorMedicao = new Map<string, number>()
     const medsAgg = (medicoesAprovadasComItens?.data || []) as any[]
     for (const m of medsAgg) {
-      for (const it of (m.medicao_itens || []) as any[]) {
-        const qtde = Number(it.quantidade_medida || 0)
-        const matUnit = Number(it.detalhamento?.valor_material_unit || 0)
-        const servUnit = Number(it.detalhamento?.valor_servico_unit || 0)
-        totalMaterialMedido += qtde * matUnit
-        totalServicoMedido  += qtde * servUnit
+      let mat = 0
+      let serv = 0
+      const matCongelado = Number(m.valor_material_correspondente ?? NaN)
+      const totalCongelado = Number(m.valor_total ?? NaN)
+      if (Number.isFinite(matCongelado) && matCongelado > 0 && Number.isFinite(totalCongelado)) {
+        mat = matCongelado
+        serv = Math.max(0, totalCongelado - matCongelado)
+      } else {
+        for (const it of (m.medicao_itens || []) as any[]) {
+          const qtde = Number(it.quantidade_medida || 0)
+          mat  += qtde * Number(it.detalhamento?.valor_material_unit || 0)
+          serv += qtde * Number(it.detalhamento?.valor_servico_unit || 0)
+        }
       }
+      totalMaterialMedido += mat
+      totalServicoMedido  += serv
+      if (m.id) totalPorMedicao.set(String(m.id), Math.round((mat + serv) * 100) / 100)
     }
     const totalMedicao = Math.round((totalMaterialMedido + totalServicoMedido) * 100) / 100
     totalMaterialMedido = Math.round(totalMaterialMedido * 100) / 100
@@ -151,9 +177,22 @@ export async function GET() {
     // de TUDO que foi medido durante a obra.
     const retencaoPrevistaFinal = Math.round((valorServicos + valorMaterialDireto) * 0.05 * 100) / 100
 
+    // "Medições Recentes": `medicoes.valor_total` das medições antigas foi
+    // gravado pela fórmula anterior à spec 2026-05-06 (só serviço, sem o item
+    // 19 Administração), então a MED-001 aparecia como R$ 262.922,07 ao lado
+    // da MED-004 com R$ 805.520,27 — grandezas diferentes na mesma lista.
+    // O backfill foi descartado de propósito (§4.2 da spec, Opção 2) e hoje
+    // seria pior: `valor_total` entra no `boletim_hash` dos boletins já
+    // emitidos, e mexer nele invalidaria a verificação pública em
+    // /verificar/[hash]. Por isso a régua é aplicada só na EXIBIÇÃO.
+    const medicoesRecentes = (medicoesPendentes || []).map((m: any) => ({
+      ...m,
+      valor_total_exibicao: totalPorMedicao.get(String(m.id)) ?? m.valor_total,
+    }))
+
     return NextResponse.json({
       contratos: contratos || [],
-      medicoes_recentes: medicoesPendentes || [],
+      medicoes_recentes: medicoesRecentes,
       grupos: grupos || [],
       total_nf_fat_direto: totalNfFatDireto,
       total_nfs_lancadas: totalNfsLancadas,

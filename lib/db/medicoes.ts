@@ -497,6 +497,23 @@ export async function recalcularValorTotalMedicao(
   admin: SupabaseClient,
   medicaoId: string,
 ): Promise<number | null> {
+  // Defesa em profundidade: esta é a única função do repo capaz de sobrescrever
+  // `medicoes.valor_total`, que é o snapshot congelado na aprovação e a base do
+  // cálculo de serviço/retenção de toda medição aprovada. As rotas que a chamam
+  // hoje já barram status 'aprovado', mas um call-site futuro sem essa guarda
+  // corromperia o histórico em silêncio.
+  {
+    const { data: med } = await admin
+      .from('medicoes')
+      .select('status')
+      .eq('id', medicaoId)
+      .single()
+    if ((med as any)?.status === 'aprovado') {
+      console.warn('[recalcularValorTotalMedicao] ignorado: medição aprovada', medicaoId)
+      return null
+    }
+  }
+
   const { data, error } = await admin
     .from('medicao_itens')
     .select('quantidade_medida, detalhamento:detalhamentos ( valor_material_unit, valor_servico_unit )')
