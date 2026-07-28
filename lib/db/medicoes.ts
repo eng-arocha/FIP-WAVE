@@ -289,8 +289,15 @@ export async function aprovarMedicao(id: string, aprovadorNome: string, aprovado
   // Snapshot de quanto de NF de material foi abatido em cada item nesta
   // medição (migration 074). É o que faz o saldo corrido funcionar: sem
   // congelar isto aqui, as notas desta medição voltariam a ser descontáveis
-  // na medição seguinte. Best-effort: se falhar, a aprovação segue.
+  // na medição seguinte — a mesma nota abatendo duas vezes, em dois meses.
+  //
+  // `snapshotOk` distingue "calculei e deu zero" de "não consegui calcular".
+  // Antes, qualquer falha aqui era engolida por um console.warn e o UPDATE
+  // abaixo gravava 0 em TODOS os itens, com a rota devolvendo sucesso — o
+  // resultado é indistinguível de uma medição que legitimamente não abateu
+  // nada, e o erro só apareceria meses depois como desconto em dobro.
   const nfDescontadaPorDet = new Map<string, number>()
+  let snapshotOk = false
   if (medSnap) {
     try {
       const { createAdminClient } = await import('@/lib/supabase/admin')
@@ -300,11 +307,16 @@ export async function aprovarMedicao(id: string, aprovadorNome: string, aprovado
         String((medSnap as any).contrato_id),
         id,
       )
-      for (const l of boletim?.linhas ?? []) {
-        if (l.nf_descontavel > 0) nfDescontadaPorDet.set(l.detalhamento_id, l.nf_descontavel)
+      if (boletim) {
+        for (const l of boletim.linhas ?? []) {
+          if (l.nf_descontavel > 0) nfDescontadaPorDet.set(l.detalhamento_id, l.nf_descontavel)
+        }
+        snapshotOk = true
+      } else {
+        console.error('[aprovarMedicao] boletim vazio — snapshot de NF não gravado', { medicaoId: id })
       }
     } catch (e: any) {
-      console.warn('[aprovarMedicao] snapshot de nf_material_descontada falhou:', e?.message)
+      console.error('[aprovarMedicao] snapshot de nf_material_descontada falhou:', e?.message, { medicaoId: id })
     }
   }
 
@@ -318,11 +330,19 @@ export async function aprovarMedicao(id: string, aprovadorNome: string, aprovado
     await Promise.all(updatesItens.map(async u => {
       const detId = detPorItem.get(u.id)
       const nfDescontada = detId ? (nfDescontadaPorDet.get(detId) ?? 0) : 0
-      const payloadCompleto = {
-        valor_material_correspondente: u.mat,
-        valor_servico_correspondente: u.serv,
-        nf_material_descontada: nfDescontada,
-      }
+      // Sem cálculo confiável, não se grava a coluna: deixar o valor anterior
+      // (ou o DEFAULT) é honesto; gravar 0 é uma afirmação falsa de que nada
+      // foi abatido, e ela reaparece como desconto em dobro no mês seguinte.
+      const payloadCompleto = snapshotOk
+        ? {
+            valor_material_correspondente: u.mat,
+            valor_servico_correspondente: u.serv,
+            nf_material_descontada: nfDescontada,
+          }
+        : {
+            valor_material_correspondente: u.mat,
+            valor_servico_correspondente: u.serv,
+          }
       const { error } = await supabase
         .from('medicao_itens')
         .update(payloadCompleto)
