@@ -124,6 +124,17 @@ type PlanilhaResponse = {
   totais: TotaisPlanilha
 }
 
+// Tipo da rota /api/contratos/[id]/medicoes/[medicaoId]/conciliacao-informakon
+// (espelha ConciliacaoMedicao de lib/db/medicao-conciliacao-informakon.ts).
+type ConciliacaoInformakon = {
+  temDados: boolean
+  referencia: string | null
+  informakon: { contratual: number; material: number; retencao: number; aPagar: number } | null
+  sistema: { contratual: number; material: number; retencao: number; aPagar: number }
+  divergencias: { campo: string; rotulo: string; informakon: number; sistema: number; diferenca: number }[]
+  maiorDivergencia: number
+}
+
 // Farol realizado × previsto (cronograma físico):
 // verde = em dia/adiantado · âmbar = atraso ≤ 2 p.p. · vermelho = atrasado
 function farolColor(realPct: number, prevPct: number): string {
@@ -224,6 +235,11 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
   // server-side pra evitar re-cálculo de quantidades acumuladas no client.
   const [planilha, setPlanilha] = useState<PlanilhaResponse | null>(null)
 
+  // Conciliação com o relatório do Informakon (migration 075) — só existe
+  // dado quando o contrato já teve um relatório importado. `null` enquanto
+  // carrega; `temDados: false` quando não há importação pra comparar.
+  const [conciliacaoInformakon, setConciliacaoInformakon] = useState<ConciliacaoInformakon | null>(null)
+
   // Estrutura hierárquica: grupos e tarefas expandidos (Set<string> com IDs).
   // - Grupos com `valor_atual > 0` começam abertos (efeito mais abaixo) pra
   //   o usuário já ver o que foi medido sem clicar.
@@ -289,10 +305,23 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
     } catch {/* fallback pra tabela antiga */}
   }
 
+  // Conciliação com o Informakon: painel de aviso ANTES da aprovação. Falha
+  // silenciosa — contratos sem importação do Informakon simplesmente não
+  // mostram o painel (ver `temDados` no render).
+  async function fetchConciliacaoInformakon() {
+    try {
+      const res = await fetch(`/api/contratos/${contratoId}/medicoes/${medicaoId}/conciliacao-informakon`)
+      if (!res.ok) return
+      const data: ConciliacaoInformakon = await res.json()
+      setConciliacaoInformakon(data)
+    } catch {/* painel simplesmente não aparece */}
+  }
+
   useEffect(() => {
     fetchMedicao()
     fetchTotaisInformacon()
     fetchPlanilha()
+    fetchConciliacaoInformakon()
     // Load historical measurements for anomaly detection
     fetch(`/api/contratos/${contratoId}/medicoes`)
       .then(r => r.ok ? r.json() : [])
@@ -877,6 +906,71 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                   )}
                 </CardContent>
               </Card>
+            )}
+
+            {/* Conciliação com o Informakon — só aparece quando o contrato já teve
+                um relatório importado (migration 075). Sem ruído nos demais. */}
+            {conciliacaoInformakon?.temDados && (
+              conciliacaoInformakon.divergencias.length > 0 ? (
+                <Card
+                  className={conciliacaoInformakon.maiorDivergencia > 1000 ? 'border-red-900/40' : 'border-amber-900/40'}
+                  style={{
+                    background: conciliacaoInformakon.maiorDivergencia > 1000
+                      ? 'rgba(239, 68, 68, 0.06)'
+                      : 'rgba(245, 158, 11, 0.06)',
+                  }}
+                >
+                  <CardHeader className="pb-2">
+                    <CardTitle
+                      className="text-sm flex items-center gap-2"
+                      style={{ color: conciliacaoInformakon.maiorDivergencia > 1000 ? '#F87171' : '#FBBF24' }}
+                    >
+                      <AlertCircle className="w-4 h-4" />
+                      Conferência com o Informakon
+                    </CardTitle>
+                    <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+                      Relatório de {formatDate(conciliacaoInformakon.referencia)} — os valores abaixo não batem com o que o Informakon fechou para esta medição.
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
+                            <th className="text-left py-1.5 font-medium" style={{ color: 'var(--text-3)' }}>Campo</th>
+                            <th className="text-right py-1.5 font-medium" style={{ color: 'var(--text-3)' }}>Informakon</th>
+                            <th className="text-right py-1.5 font-medium" style={{ color: 'var(--text-3)' }}>FIP-WAVE</th>
+                            <th className="text-right py-1.5 font-medium" style={{ color: 'var(--text-3)' }}>Diferença</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {conciliacaoInformakon.divergencias.map(d => (
+                            <tr key={d.campo} className="border-b" style={{ borderColor: 'var(--border)' }}>
+                              <td className="py-1.5" style={{ color: 'var(--text-1)' }}>{d.rotulo}</td>
+                              <td className="py-1.5 text-right tabular-nums" style={{ color: 'var(--text-2)' }}>{formatCurrency(d.informakon)}</td>
+                              <td className="py-1.5 text-right tabular-nums" style={{ color: 'var(--text-2)' }}>{formatCurrency(d.sistema)}</td>
+                              <td
+                                className="py-1.5 text-right tabular-nums font-semibold"
+                                style={{ color: Math.abs(d.diferenca) > 1000 ? '#F87171' : '#FBBF24' }}
+                              >
+                                {d.diferenca > 0 ? '+' : ''}{formatCurrency(d.diferenca)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div
+                  className="text-xs px-3 py-2 rounded flex items-center gap-2"
+                  style={{ background: 'rgba(16, 185, 129, 0.08)', color: '#34D399', border: '1px solid rgba(16, 185, 129, 0.25)' }}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                  Bate com o Informakon (relatório de {formatDate(conciliacaoInformakon.referencia)})
+                </div>
+              )
             )}
 
             {/* Itens */}
