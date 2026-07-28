@@ -901,7 +901,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                 label="Wave (Serviço)"
                 value={formatCurrency(liquidoWave)}
                 accent="#0F766E"
-                hint={`NF Wave a emitir · bruto ${formatCurrency(data.totais.wave_servico)} − retenção ${formatCurrency(data.totais.retencao)}${ajusteRateio > 0 ? ` − ajuste de rateio ${formatCurrency(ajusteRateio)}` : ''}`}
+                hint={`NF Wave a emitir · bruto ${formatCurrency(data.totais.wave_servico)} − retenção ${formatCurrency(data.totais.retencao)}${ajusteRateio !== 0 ? ` ${ajusteRateio > 0 ? '−' : '+'} ajuste de rateio ${formatCurrency(Math.abs(ajusteRateio))}` : ''}`}
               />
               <Card label="FIP (Material)" value={formatCurrency(data.totais.fip_faturar)} accent="#3B82F6" hint="Fat-direto FIP a criar" />
               <Card

@@ -130,4 +130,20 @@ describe('templateLiberacaoMedicaoFornecedor — valor da NF de serviço', () =>
     expect(html).toContain('344.540,83')
     expect(html).not.toContain('Ajuste de rateio material/serviço')
   })
+
+  // Caso MED-003: nosso rateio atribui MENOS a serviço do que a FIP (o
+  // oposto da MED-004) — o ajuste precisa ser NEGATIVO pra somar de volta ao
+  // líquido, não só subtrair. Sem suporte a sinal, o valor seria zerado e o
+  // líquido ficaria abaixo do que a FIP reconhece.
+  it('ajuste negativo soma de volta ao líquido em vez de subtrair', () => {
+    const { html, text } = templateLiberacaoMedicaoFornecedor(payload({
+      liquido: 267_873.72,
+      ajuste: -8_768.69,
+    }))
+    expect(html).toContain('267.873,72')
+    expect(html).toContain('Ajuste de rateio material/serviço')
+    expect(html).toMatch(/\+\s*R\$\s*8\.768,69/)
+    expect(html).not.toMatch(/−\s*R\$\s*8\.768,69/)
+    expect(text).toMatch(/\+\s*R\$\s*8\.768,69/)
+  })
 })
