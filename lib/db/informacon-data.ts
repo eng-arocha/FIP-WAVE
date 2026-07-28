@@ -530,8 +530,15 @@ export async function calcularInformaconData(
   // 3) Itens da medição (3 níveis de fallback de schema)
   let medicaoItens: any[] = []
   {
+    // valor_material_correspondente/valor_servico_correspondente (migration
+    // 074) são o snapshot gravado NA APROVAÇÃO. Congela material_medido e
+    // servico_medido pra sempre — sem isto, editar o preço unitário de um
+    // detalhamento meses depois muda o boletim de uma medição já aprovada e
+    // paga (foi o que aconteceu com a MED-003: comparar com o congelado
+    // mostrou 8.769,43 de material que apareceu do nada).
     const SELECT_FULL = `
       id, quantidade_medida, valor_unitario, detalhamento_id,
+      valor_material_correspondente, valor_servico_correspondente,
       confirmacao_sem_nf, confirmacao_sem_nf_em, confirmacao_sem_nf_por_id,
       confirmacao_sem_nf_motivo,
       detalhamento:detalhamentos (
@@ -541,6 +548,7 @@ export async function calcularInformaconData(
     `
     const SELECT_SEM_CONFIRMACAO = `
       id, quantidade_medida, valor_unitario, detalhamento_id,
+      valor_material_correspondente, valor_servico_correspondente,
       detalhamento:detalhamentos (
         id, codigo, descricao, unidade, quantidade_contratada,
         valor_unitario, valor_material_unit, valor_servico_unit
@@ -565,6 +573,8 @@ export async function calcularInformaconData(
         'confirmacao_sem_nf_em',
         'confirmacao_sem_nf_por_id',
         'confirmacao_sem_nf_motivo',
+        'valor_material_correspondente',
+        'valor_servico_correspondente',
       ])
     ) {
       const trySemConfirmacao = await admin
@@ -573,7 +583,7 @@ export async function calcularInformaconData(
         .eq('medicao_id', medicaoId)
       if (!trySemConfirmacao.error) {
         medicaoItens = trySemConfirmacao.data || []
-      } else if (isSchemaMissingError(trySemConfirmacao.error, ['valor_material_unit', 'valor_servico_unit'])) {
+      } else if (isSchemaMissingError(trySemConfirmacao.error, ['valor_material_unit', 'valor_servico_unit', 'valor_material_correspondente', 'valor_servico_correspondente'])) {
         const fallback = await admin
           .from('medicao_itens')
           .select(SELECT_FALLBACK_FULL)
@@ -583,7 +593,7 @@ export async function calcularInformaconData(
       } else {
         throw trySemConfirmacao.error
       }
-    } else if (isSchemaMissingError(tryFull.error, ['valor_material_unit', 'valor_servico_unit'])) {
+    } else if (isSchemaMissingError(tryFull.error, ['valor_material_unit', 'valor_servico_unit', 'valor_material_correspondente', 'valor_servico_correspondente'])) {
       const fallback = await admin
         .from('medicao_itens')
         .select(SELECT_FALLBACK_FULL)
@@ -791,6 +801,23 @@ export async function calcularInformaconData(
     return temValor ? snap : null
   })()
 
+  // Mesmo motivo do snapshot acima, aplicado a material/serviço: se o preço
+  // unitário de um detalhamento for editado depois da aprovação (correção de
+  // orçamento, reconciliação com o Informakon), o boletim de uma medição já
+  // aprovada e paga passa a mostrar valores diferentes dos que foram
+  // aprovados. Confirmado na MED-003: comparar o congelado (207.739,55) com
+  // o recálculo ao vivo (216.508,98) mostrou 8.769,43 de material que
+  // apareceram do nada meses depois da aprovação. `medicao_itens
+  // .valor_material_correspondente/valor_servico_correspondente` (migration
+  // 074) travam esse valor pra sempre quando presentes.
+  function materialServicoMedido(it: any): { mat: number; serv: number } | null {
+    if (!snapshotAprovado) return null
+    const mat = it.valor_material_correspondente
+    const serv = it.valor_servico_correspondente
+    if (mat == null || serv == null) return null
+    return { mat: Number(mat), serv: Number(serv) }
+  }
+
   // === Transbordo do desconto dentro do grupo macro ===
   // A NF fica alocada ao seu detalhamento, mas o saldo ocioso cobre o material
   // medido dos vizinhos do mesmo grupo. Sem isto, material comprado por lote
@@ -812,7 +839,8 @@ export async function calcularInformaconData(
       const det = it.detalhamento
       if (!det?.id) continue
       vistos.add(det.id)
-      const matMedido = Number(it.quantidade_medida || 0) * Number(det.valor_material_unit || 0)
+      const frozen = materialServicoMedido(it)
+      const matMedido = frozen?.mat ?? (Number(it.quantidade_medida || 0) * Number(det.valor_material_unit || 0))
       itensDesconto.push({
         detalhamentoId: det.id,
         grupoId: grupoPorDetalhamento[det.id] ?? null,
@@ -854,7 +882,8 @@ export async function calcularInformaconData(
   for (const it of (medicaoItens || []) as any[]) {
     const det = it.detalhamento
     if (!det?.id) continue
-    const matMedido = Number(it.quantidade_medida || 0) * Number(det.valor_material_unit || 0)
+    const frozenCalculo = materialServicoMedido(it)
+    const matMedido = frozenCalculo?.mat ?? (Number(it.quantidade_medida || 0) * Number(det.valor_material_unit || 0))
     const nfDisponivel = Math.max(
       0,
       (nfAlocadaPorDet[det.id] || 0) - (nfJaAbatidaPorDet[det.id] || 0),
@@ -914,8 +943,9 @@ export async function calcularInformaconData(
       const matUnit = Number(det.valor_material_unit || 0)
       const servUnit = Number(det.valor_servico_unit || 0)
       const valorUnit = Number(det.valor_unitario || (matUnit + servUnit))
-      const matMedido = qtdMed * matUnit
-      const servMedido = qtdMed * servUnit
+      const frozenLinha = materialServicoMedido(it)
+      const matMedido = frozenLinha?.mat ?? (qtdMed * matUnit)
+      const servMedido = frozenLinha?.serv ?? (qtdMed * servUnit)
       const qtdAcum = acumulado[det.id] || 0
 
       const nfTerceiroItem = nfAlocadaPorDet[det.id] || 0
@@ -952,7 +982,13 @@ export async function calcularInformaconData(
         ? Math.max(0, pctServMed - (faturamentoDiretoEmAberto / valorServicoTotalItem) * 100)
         : pctServMed
 
-      const waveServico = (pctServMedAjustado / 100) * valorServicoTotalItem
+      // Fora do caso "sem mais NF" (raro), o congelado já É o waveServico —
+      // travar aqui impede que editar valor_servico_unit meses depois mude
+      // a base de retenção/líquido de uma medição já paga (mesma causa raiz
+      // do bug da MED-003, agora fechada também pro lado do serviço).
+      const waveServico = (frozenLinha && !ajusteAplicado)
+        ? frozenLinha.serv
+        : (pctServMedAjustado / 100) * valorServicoTotalItem
       const valorTotalMedido = (pctServMedAjustado / 100) * valorServicoTotalItem
       // dados_informakon = o total que o relatório do Informakon mostra para
       // este item: serviço da Wave + material medido.
