@@ -459,18 +459,39 @@ export async function criarSolicitacaoRascunhoDeMedicao(input: {
     fornecedor_cnpj: fornecedor.cnpj,
     valor_total,
     status: autoAprovado ? 'aprovado' : 'rascunho',
+    // Migration 074: sem isto a NF de SERVIÇO da Wave, que vive nesta mesma
+    // tabela, entra na conta do desconto de MATERIAL do boletim.
+    tipo: input.tipo,
   }
   if (autoAprovado) {
     insertPayload.aprovador_id = input.aprovador_id
     insertPayload.data_aprovacao = input.data_aprovacao ?? new Date().toISOString()
   }
 
-  const { data: sol, error } = await admin
-    .from('solicitacoes_fat_direto')
-    .insert(insertPayload)
-    .select()
-    .single()
-  if (error) throw error
+  let sol: any = null
+  {
+    const tryFull = await admin
+      .from('solicitacoes_fat_direto')
+      .insert(insertPayload)
+      .select()
+      .single()
+    if (!tryFull.error) {
+      sol = tryFull.data
+    } else if (isSchemaMissingError(tryFull.error, ['tipo'])) {
+      // Migration 074 pendente — grava sem o tipo. O cálculo do boletim
+      // continua identificando a NF Wave pelo CNPJ do fornecedor.
+      const { tipo: _tipo, ...semTipo } = insertPayload
+      const fallback = await admin
+        .from('solicitacoes_fat_direto')
+        .insert(semTipo)
+        .select()
+        .single()
+      if (fallback.error) throw fallback.error
+      sol = fallback.data
+    } else {
+      throw tryFull.error
+    }
+  }
 
   const itensPayload = input.itens.map(i => ({
     solicitacao_id: sol.id,

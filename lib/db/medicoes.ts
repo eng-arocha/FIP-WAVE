@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 
 export async function getMedicoes(contratoId: string) {
@@ -223,7 +224,7 @@ export async function aprovarMedicao(id: string, aprovadorNome: string, aprovado
   const { data: itensSnap } = await supabase
     .from('medicao_itens')
     .select(`
-      id, quantidade_medida,
+      id, quantidade_medida, detalhamento_id,
       detalhamento:detalhamentos ( valor_material_unit, valor_servico_unit )
     `)
     .eq('medicao_id', id)
@@ -285,23 +286,69 @@ export async function aprovarMedicao(id: string, aprovadorNome: string, aprovado
     }
   }
 
+  // Snapshot de quanto de NF de material foi abatido em cada item nesta
+  // medição (migration 074). É o que faz o saldo corrido funcionar: sem
+  // congelar isto aqui, as notas desta medição voltariam a ser descontáveis
+  // na medição seguinte. Best-effort: se falhar, a aprovação segue.
+  const nfDescontadaPorDet = new Map<string, number>()
+  if (medSnap) {
+    try {
+      const { createAdminClient } = await import('@/lib/supabase/admin')
+      const { calcularInformaconData } = await import('@/lib/db/informacon-data')
+      const boletim = await calcularInformaconData(
+        createAdminClient(),
+        String((medSnap as any).contrato_id),
+        id,
+      )
+      for (const l of boletim?.linhas ?? []) {
+        if (l.nf_descontavel > 0) nfDescontadaPorDet.set(l.detalhamento_id, l.nf_descontavel)
+      }
+    } catch (e: any) {
+      console.warn('[aprovarMedicao] snapshot de nf_material_descontada falhou:', e?.message)
+    }
+  }
+
   // UPDATE dos itens (snapshot mat/serv correspondente). Em paralelo,
   // resiliente: se colunas ainda não estão no schema cache, ignora.
   if (updatesItens.length > 0) {
+    const detPorItem = new Map<string, string>()
+    for (const it of (itensSnap || []) as any[]) {
+      if (it.id && it.detalhamento_id) detPorItem.set(it.id, it.detalhamento_id)
+    }
     await Promise.all(updatesItens.map(async u => {
+      const detId = detPorItem.get(u.id)
+      const nfDescontada = detId ? (nfDescontadaPorDet.get(detId) ?? 0) : 0
+      const payloadCompleto = {
+        valor_material_correspondente: u.mat,
+        valor_servico_correspondente: u.serv,
+        nf_material_descontada: nfDescontada,
+      }
       const { error } = await supabase
         .from('medicao_itens')
-        .update({
-          valor_material_correspondente: u.mat,
-          valor_servico_correspondente: u.serv,
-        })
+        .update(payloadCompleto)
         .eq('id', u.id)
       if (error) {
         const msg = (error as any).message || ''
         const code = (error as any).code || ''
         const isSchemaStale = code === 'PGRST204' ||
-          ['valor_material_correspondente', 'valor_servico_correspondente'].some(c => msg.includes(c))
+          ['valor_material_correspondente', 'valor_servico_correspondente', 'nf_material_descontada']
+            .some(c => msg.includes(c))
         if (!isSchemaStale) throw error
+        // Migration 074 pendente — tenta sem a coluna nova.
+        const retry = await supabase
+          .from('medicao_itens')
+          .update({
+            valor_material_correspondente: u.mat,
+            valor_servico_correspondente: u.serv,
+          })
+          .eq('id', u.id)
+        if (retry.error) {
+          const rMsg = (retry.error as any).message || ''
+          const rCode = (retry.error as any).code || ''
+          const rStale = rCode === 'PGRST204' ||
+            ['valor_material_correspondente', 'valor_servico_correspondente'].some(c => rMsg.includes(c))
+          if (!rStale) throw retry.error
+        }
       }
     }))
   }
@@ -433,4 +480,46 @@ export async function uploadAnexo(medicaoId: string, file: File, tipoDocumento: 
     .single()
   if (error) throw error
   return data
+}
+
+/**
+ * Recalcula `medicoes.valor_total` a partir dos itens gravados.
+ *
+ * `createMedicao` grava esse snapshot na criação (Σ qtd × (mat_unit +
+ * serv_unit)), mas as rotas de ajuste de quantidade só mexiam em
+ * `medicao_itens.quantidade_medida` — o snapshot ficava defasado e o card
+ * "Total da Medição (mat + serv)" da tela, que lê essa coluna, mostrava
+ * número errado (no WAVE chegou a R$ 56 mil de diferença).
+ *
+ * Best-effort: devolve o novo total, ou null se não conseguiu recalcular.
+ */
+export async function recalcularValorTotalMedicao(
+  admin: SupabaseClient,
+  medicaoId: string,
+): Promise<number | null> {
+  const { data, error } = await admin
+    .from('medicao_itens')
+    .select('quantidade_medida, detalhamento:detalhamentos ( valor_material_unit, valor_servico_unit )')
+    .eq('medicao_id', medicaoId)
+  if (error) {
+    console.warn('[recalcularValorTotalMedicao] falha ao ler itens:', error.message)
+    return null
+  }
+  let total = 0
+  for (const it of (data || []) as any[]) {
+    const qtd = Number(it.quantidade_medida || 0)
+    const mat = Number(it.detalhamento?.valor_material_unit || 0)
+    const serv = Number(it.detalhamento?.valor_servico_unit || 0)
+    total += qtd * (mat + serv)
+  }
+  const valorTotal = Math.round(total * 100) / 100
+  const { error: upErr } = await admin
+    .from('medicoes')
+    .update({ valor_total: valorTotal })
+    .eq('id', medicaoId)
+  if (upErr) {
+    console.warn('[recalcularValorTotalMedicao] falha ao gravar:', upErr.message)
+    return null
+  }
+  return valorTotal
 }
