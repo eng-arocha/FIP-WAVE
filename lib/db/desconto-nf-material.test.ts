@@ -58,9 +58,14 @@ describe('ehPedidoDeServicoWave — tira a NF de serviço da conta de material',
  * passando depois que a regra de produção mudou para apurar por grupo macro —
  * um teste que não testava mais nada.
  */
-function nfDescontavel(matMedido: number, nfEmitida: number, nfJaAbatida: number) {
+function nfDescontavel(
+  matMedido: number,
+  nfEmitida: number,
+  nfJaAbatida: number,
+  matAcumulado: number = matMedido,
+) {
   const r = calcularDescontoComTransbordo([
-    { detalhamentoId: 'x', grupoId: null, matMedido, nfAlocada: nfEmitida, nfJaAbatida },
+    { detalhamentoId: 'x', grupoId: null, matMedido, matAcumulado, nfAlocada: nfEmitida, nfJaAbatida },
   ])
   return r.get('x')!.total
 }
@@ -76,9 +81,18 @@ describe('saldo corrido do desconto de NF de material', () => {
   })
 
   it('NF que sobrou de mês anterior continua disponível (não se perde)', () => {
-    // Emitida 1000, abatida só 300 → sobram 700 pra esta medição.
-    expect(nfDescontavel(500, 1000, 300)).toBe(500)
-    expect(nfDescontavel(900, 1000, 300)).toBe(700)
+    // Emitida 1000, abatida só 300 → sobram 700 pra esta medição. Os 300 já
+    // abatidos vieram de 300 de material medido antes, então o acumulado é
+    // esse material anterior mais o do período.
+    expect(nfDescontavel(500, 1000, 300, 800)).toBe(500)
+    expect(nfDescontavel(900, 1000, 300, 1200)).toBe(700)
+  })
+
+  it('a régua é o material ACUMULADO, não o do período', () => {
+    // Só 500 de material foram medidos na obra inteira e 300 já descontaram:
+    // sobram 200, mesmo com 1000 de nota emitida. Descontar 500 de novo seria
+    // abater nota de material que ainda não foi executado.
+    expect(nfDescontavel(500, 1000, 300, 500)).toBe(200)
   })
 
   it('nunca passa do material medido, mesmo com NF gigante', () => {

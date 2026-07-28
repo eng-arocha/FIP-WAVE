@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { calcularDescontoComTransbordo, type ItemDesconto } from './desconto-transbordo'
+import {
+  calcularDescontoComTransbordo,
+  calcularSaldoAprovadoComTransbordo,
+  type ItemDesconto,
+  type ItemSaldoAprovado,
+} from './desconto-transbordo'
 
 /**
  * Testes de `calcularDescontoComTransbordo`.
@@ -26,24 +31,24 @@ function embaralhar<T>(itens: T[]): T[] {
 describe('sem transbordo necessário', () => {
   it('cada item com NF suficiente não gera transbordo — total = direto', () => {
     const itens: ItemDesconto[] = [
-      { detalhamentoId: 'a', grupoId: 'g1', matMedido: 100, nfAlocada: 150, nfJaAbatida: 0 },
-      { detalhamentoId: 'b', grupoId: 'g1', matMedido: 200, nfAlocada: 200, nfJaAbatida: 0 },
-      { detalhamentoId: 'c', grupoId: 'g2', matMedido: 50, nfAlocada: 60, nfJaAbatida: 0 },
+      { detalhamentoId: 'a', grupoId: 'g1', matMedido: 100, matAcumulado: 100, nfAlocada: 150, nfJaAbatida: 0 },
+      { detalhamentoId: 'b', grupoId: 'g1', matMedido: 200, matAcumulado: 200, nfAlocada: 200, nfJaAbatida: 0 },
+      { detalhamentoId: 'c', grupoId: 'g2', matMedido: 50, matAcumulado: 50, nfAlocada: 60, nfJaAbatida: 0 },
     ]
 
     const resultado = calcularDescontoComTransbordo(itens)
 
-    expect(resultado.get('a')).toEqual({ direto: 100, transbordo: 0, total: 100 })
-    expect(resultado.get('b')).toEqual({ direto: 200, transbordo: 0, total: 200 })
-    expect(resultado.get('c')).toEqual({ direto: 50, transbordo: 0, total: 50 })
+    expect(resultado.get('a')).toEqual({ direto: 100, transbordo: 0, recuperacao: 0, total: 100 })
+    expect(resultado.get('b')).toEqual({ direto: 200, transbordo: 0, recuperacao: 0, total: 200 })
+    expect(resultado.get('c')).toEqual({ direto: 50, transbordo: 0, recuperacao: 0, total: 50 })
   })
 })
 
 describe('transbordo simples dentro do grupo', () => {
   it('item sem NF é coberto pela sobra ociosa do vizinho do mesmo grupo', () => {
     const itens: ItemDesconto[] = [
-      { detalhamentoId: 'A', grupoId: 'g1', matMedido: 100, nfAlocada: 0, nfJaAbatida: 0 },
-      { detalhamentoId: 'B', grupoId: 'g1', matMedido: 0, nfAlocada: 100, nfJaAbatida: 0 },
+      { detalhamentoId: 'A', grupoId: 'g1', matMedido: 100, matAcumulado: 100, nfAlocada: 0, nfJaAbatida: 0 },
+      { detalhamentoId: 'B', grupoId: 'g1', matMedido: 0, matAcumulado: 0, nfAlocada: 100, nfJaAbatida: 0 },
     ]
 
     const resultado = calcularDescontoComTransbordo(itens)
@@ -63,8 +68,8 @@ describe('transbordo simples dentro do grupo', () => {
 describe('caso real da medição 004', () => {
   it('14.2.6 transborda a NF ociosa de 14.2.1 (mesmo grupo 14) e zera o gap', () => {
     const itens: ItemDesconto[] = [
-      { detalhamentoId: '14.2.6', grupoId: '14', matMedido: 24053.65, nfAlocada: 487.13, nfJaAbatida: 0 },
-      { detalhamentoId: '14.2.1', grupoId: '14', matMedido: 12574.48, nfAlocada: 217162.55, nfJaAbatida: 0 },
+      { detalhamentoId: '14.2.6', grupoId: '14', matMedido: 24053.65, matAcumulado: 24053.65, nfAlocada: 487.13, nfJaAbatida: 0 },
+      { detalhamentoId: '14.2.1', grupoId: '14', matMedido: 12574.48, matAcumulado: 12574.48, nfAlocada: 217162.55, nfJaAbatida: 0 },
     ]
 
     const resultado = calcularDescontoComTransbordo(itens)
@@ -82,9 +87,9 @@ describe('grupos não se misturam', () => {
   it('NF ociosa do grupo 10 não cobre a falta do grupo 3', () => {
     const itens: ItemDesconto[] = [
       // Sobra ociosa grande no grupo 10 (não medido, NF parada).
-      { detalhamentoId: 'g10-ocioso', grupoId: '10', matMedido: 0, nfAlocada: 5000, nfJaAbatida: 0 },
+      { detalhamentoId: 'g10-ocioso', grupoId: '10', matMedido: 0, matAcumulado: 0, nfAlocada: 5000, nfJaAbatida: 0 },
       // Falta no grupo 3 — não pode ser coberta pelo grupo 10.
-      { detalhamentoId: 'g3-faltante', grupoId: '3', matMedido: 200, nfAlocada: 0, nfJaAbatida: 0 },
+      { detalhamentoId: 'g3-faltante', grupoId: '3', matMedido: 200, matAcumulado: 200, nfAlocada: 0, nfJaAbatida: 0 },
     ]
 
     const resultado = calcularDescontoComTransbordo(itens)
@@ -98,9 +103,9 @@ describe('grupos não se misturam', () => {
 describe('pool insuficiente — rateio proporcional', () => {
   it('rateia a sobra proporcionalmente quando o pool não cobre toda a falta', () => {
     const itens: ItemDesconto[] = [
-      { detalhamentoId: 'falta-100', grupoId: 'g', matMedido: 100, nfAlocada: 0, nfJaAbatida: 0 },
-      { detalhamentoId: 'falta-300', grupoId: 'g', matMedido: 300, nfAlocada: 0, nfJaAbatida: 0 },
-      { detalhamentoId: 'sobra-200', grupoId: 'g', matMedido: 0, nfAlocada: 200, nfJaAbatida: 0 },
+      { detalhamentoId: 'falta-100', grupoId: 'g', matMedido: 100, matAcumulado: 100, nfAlocada: 0, nfJaAbatida: 0 },
+      { detalhamentoId: 'falta-300', grupoId: 'g', matMedido: 300, matAcumulado: 300, nfAlocada: 0, nfJaAbatida: 0 },
+      { detalhamentoId: 'sobra-200', grupoId: 'g', matMedido: 0, matAcumulado: 0, nfAlocada: 200, nfJaAbatida: 0 },
     ]
 
     const resultado = calcularDescontoComTransbordo(itens)
@@ -121,8 +126,8 @@ describe('pool insuficiente — rateio proporcional', () => {
 describe('grupoId null não transborda', () => {
   it('item sem grupo não recebe transbordo mesmo havendo sobra em outros', () => {
     const itens: ItemDesconto[] = [
-      { detalhamentoId: 'sem-grupo-falta', grupoId: null, matMedido: 100, nfAlocada: 0, nfJaAbatida: 0 },
-      { detalhamentoId: 'com-grupo-sobra', grupoId: 'g1', matMedido: 0, nfAlocada: 500, nfJaAbatida: 0 },
+      { detalhamentoId: 'sem-grupo-falta', grupoId: null, matMedido: 100, matAcumulado: 100, nfAlocada: 0, nfJaAbatida: 0 },
+      { detalhamentoId: 'com-grupo-sobra', grupoId: 'g1', matMedido: 0, matAcumulado: 0, nfAlocada: 500, nfJaAbatida: 0 },
     ]
 
     const resultado = calcularDescontoComTransbordo(itens)
@@ -134,8 +139,8 @@ describe('grupoId null não transborda', () => {
 
   it('item sem grupo não doa sua sobra ociosa para outros detalhamentos', () => {
     const itens: ItemDesconto[] = [
-      { detalhamentoId: 'sem-grupo-sobra', grupoId: null, matMedido: 0, nfAlocada: 500, nfJaAbatida: 0 },
-      { detalhamentoId: 'com-grupo-falta', grupoId: 'g1', matMedido: 100, nfAlocada: 0, nfJaAbatida: 0 },
+      { detalhamentoId: 'sem-grupo-sobra', grupoId: null, matMedido: 0, matAcumulado: 0, nfAlocada: 500, nfJaAbatida: 0 },
+      { detalhamentoId: 'com-grupo-falta', grupoId: 'g1', matMedido: 100, matAcumulado: 100, nfAlocada: 0, nfJaAbatida: 0 },
     ]
 
     const resultado = calcularDescontoComTransbordo(itens)
@@ -149,14 +154,14 @@ describe('grupoId null não transborda', () => {
 describe('determinismo', () => {
   it('a ordem dos itens de entrada não muda o resultado', () => {
     const itens: ItemDesconto[] = [
-      { detalhamentoId: '14.2.6', grupoId: '14', matMedido: 24053.65, nfAlocada: 487.13, nfJaAbatida: 0 },
-      { detalhamentoId: '14.2.1', grupoId: '14', matMedido: 12574.48, nfAlocada: 217162.55, nfJaAbatida: 0 },
-      { detalhamentoId: 'falta-100', grupoId: 'g', matMedido: 100, nfAlocada: 0, nfJaAbatida: 0 },
-      { detalhamentoId: 'falta-300', grupoId: 'g', matMedido: 300, nfAlocada: 0, nfJaAbatida: 0 },
-      { detalhamentoId: 'sobra-200', grupoId: 'g', matMedido: 0, nfAlocada: 200, nfJaAbatida: 0 },
-      { detalhamentoId: 'g10-ocioso', grupoId: '10', matMedido: 0, nfAlocada: 5000, nfJaAbatida: 0 },
-      { detalhamentoId: 'g3-faltante', grupoId: '3', matMedido: 200, nfAlocada: 0, nfJaAbatida: 0 },
-      { detalhamentoId: 'sem-grupo-falta', grupoId: null, matMedido: 100, nfAlocada: 0, nfJaAbatida: 0 },
+      { detalhamentoId: '14.2.6', grupoId: '14', matMedido: 24053.65, matAcumulado: 24053.65, nfAlocada: 487.13, nfJaAbatida: 0 },
+      { detalhamentoId: '14.2.1', grupoId: '14', matMedido: 12574.48, matAcumulado: 12574.48, nfAlocada: 217162.55, nfJaAbatida: 0 },
+      { detalhamentoId: 'falta-100', grupoId: 'g', matMedido: 100, matAcumulado: 100, nfAlocada: 0, nfJaAbatida: 0 },
+      { detalhamentoId: 'falta-300', grupoId: 'g', matMedido: 300, matAcumulado: 300, nfAlocada: 0, nfJaAbatida: 0 },
+      { detalhamentoId: 'sobra-200', grupoId: 'g', matMedido: 0, matAcumulado: 0, nfAlocada: 200, nfJaAbatida: 0 },
+      { detalhamentoId: 'g10-ocioso', grupoId: '10', matMedido: 0, matAcumulado: 0, nfAlocada: 5000, nfJaAbatida: 0 },
+      { detalhamentoId: 'g3-faltante', grupoId: '3', matMedido: 200, matAcumulado: 200, nfAlocada: 0, nfJaAbatida: 0 },
+      { detalhamentoId: 'sem-grupo-falta', grupoId: null, matMedido: 100, matAcumulado: 100, nfAlocada: 0, nfJaAbatida: 0 },
     ]
 
     const resultadoOriginal = calcularDescontoComTransbordo(itens)
@@ -172,10 +177,10 @@ describe('determinismo', () => {
   })
 })
 
-describe('nunca desconta mais que o material medido', () => {
-  it('NF disponível gigante não faz o total ultrapassar o matMedido', () => {
+describe('nunca desconta mais que o material executado', () => {
+  it('NF disponível gigante não faz o total ultrapassar o material acumulado', () => {
     const itens: ItemDesconto[] = [
-      { detalhamentoId: 'x', grupoId: 'g1', matMedido: 10, nfAlocada: 1_000_000, nfJaAbatida: 0 },
+      { detalhamentoId: 'x', grupoId: 'g1', matMedido: 10, matAcumulado: 10, nfAlocada: 1_000_000, nfJaAbatida: 0 },
     ]
 
     const resultado = calcularDescontoComTransbordo(itens)
@@ -194,7 +199,7 @@ describe('entradas degeneradas', () => {
 
   it('valores negativos ou NaN em matMedido/nfAlocada são tratados como zero', () => {
     const itens: ItemDesconto[] = [
-      { detalhamentoId: 'negativo', grupoId: 'g1', matMedido: -50, nfAlocada: NaN, nfJaAbatida: 0 },
+      { detalhamentoId: 'negativo', grupoId: 'g1', matMedido: -50, matAcumulado: -50, nfAlocada: NaN, nfJaAbatida: 0 },
     ]
 
     const resultado = calcularDescontoComTransbordo(itens)
@@ -207,7 +212,7 @@ describe('entradas degeneradas', () => {
 
   it('item com matMedido 0 e nfAlocada 0 fica zerado sem erro', () => {
     const itens: ItemDesconto[] = [
-      { detalhamentoId: 'zerado', grupoId: 'g1', matMedido: 0, nfAlocada: 0, nfJaAbatida: 0 },
+      { detalhamentoId: 'zerado', grupoId: 'g1', matMedido: 0, matAcumulado: 0, nfAlocada: 0, nfJaAbatida: 0 },
     ]
 
     const resultado = calcularDescontoComTransbordo(itens)
@@ -222,9 +227,9 @@ describe('entradas degeneradas', () => {
 describe('caso da Geração — pool não cobre tudo', () => {
   it('2.7.1 recebe o pool inteiro do grupo 2 e mantém gap residual', () => {
     const itens: ItemDesconto[] = [
-      { detalhamentoId: '2.7.1', grupoId: '2', matMedido: 26611.16, nfAlocada: 13511.04, nfJaAbatida: 0 },
-      { detalhamentoId: '2-ocioso-1', grupoId: '2', matMedido: 0, nfAlocada: 9615.34, nfJaAbatida: 0 },
-      { detalhamentoId: '2-ocioso-2', grupoId: '2', matMedido: 0, nfAlocada: 209.28, nfJaAbatida: 0 },
+      { detalhamentoId: '2.7.1', grupoId: '2', matMedido: 26611.16, matAcumulado: 26611.16, nfAlocada: 13511.04, nfJaAbatida: 0 },
+      { detalhamentoId: '2-ocioso-1', grupoId: '2', matMedido: 0, matAcumulado: 0, nfAlocada: 9615.34, nfJaAbatida: 0 },
+      { detalhamentoId: '2-ocioso-2', grupoId: '2', matMedido: 0, matAcumulado: 0, nfAlocada: 209.28, nfJaAbatida: 0 },
     ]
 
     const resultado = calcularDescontoComTransbordo(itens)
@@ -247,8 +252,8 @@ describe('saldo corrido entre medições', () => {
     // Mês 1: A mede 24.053,65 com apenas 487,13 de NF própria; B tem
     // 217.162,55 parados e nada medido.
     const mes1 = calcularDescontoComTransbordo([
-      { detalhamentoId: 'A', grupoId: '14', matMedido: 24053.65, nfAlocada: 487.13, nfJaAbatida: 0 },
-      { detalhamentoId: 'B', grupoId: '14', matMedido: 0, nfAlocada: 217162.55, nfJaAbatida: 0 },
+      { detalhamentoId: 'A', grupoId: '14', matMedido: 24053.65, matAcumulado: 24053.65, nfAlocada: 487.13, nfJaAbatida: 0 },
+      { detalhamentoId: 'B', grupoId: '14', matMedido: 0, matAcumulado: 0, nfAlocada: 217162.55, nfJaAbatida: 0 },
     ])
     expect(mes1.get('A')!.total).toBeCloseTo(24053.65, 2)
 
@@ -261,8 +266,8 @@ describe('saldo corrido entre medições', () => {
     // Mês 2: A mede mais 10.000. O saldo do grupo tem de descontar o que já
     // foi consumido no mês 1, mesmo estando gravado no item "errado".
     const mes2 = calcularDescontoComTransbordo([
-      { detalhamentoId: 'A', grupoId: '14', matMedido: 10000, nfAlocada: 487.13, nfJaAbatida: abatidoA },
-      { detalhamentoId: 'B', grupoId: '14', matMedido: 0, nfAlocada: 217162.55, nfJaAbatida: abatidoB },
+      { detalhamentoId: 'A', grupoId: '14', matMedido: 10000, matAcumulado: 34053.65, nfAlocada: 487.13, nfJaAbatida: abatidoA },
+      { detalhamentoId: 'B', grupoId: '14', matMedido: 0, matAcumulado: 0, nfAlocada: 217162.55, nfJaAbatida: abatidoB },
     ])
 
     // Disponível do grupo = (487,13 + 217.162,55) − 24.053,65 = 193.596,03.
@@ -277,10 +282,142 @@ describe('saldo corrido entre medições', () => {
     // Grupo com 1.000 de NF, dos quais 900 já foram abatidos num item cuja
     // alocação própria era só 100 — o excesso de 800 veio do vizinho.
     const r = calcularDescontoComTransbordo([
-      { detalhamentoId: 'A', grupoId: '9', matMedido: 500, nfAlocada: 100, nfJaAbatida: 900 },
-      { detalhamentoId: 'B', grupoId: '9', matMedido: 0, nfAlocada: 900, nfJaAbatida: 0 },
+      { detalhamentoId: 'A', grupoId: '9', matMedido: 500, matAcumulado: 1400, nfAlocada: 100, nfJaAbatida: 900 },
+      { detalhamentoId: 'B', grupoId: '9', matMedido: 0, matAcumulado: 0, nfAlocada: 900, nfJaAbatida: 0 },
     ])
     // Disponível do grupo = 1.000 − 900 = 100. Não os 900 de B.
     expect(r.get('A')!.total).toBeCloseTo(100, 2)
+  })
+})
+
+
+describe('régua acumulada', () => {
+  // O caso que motivou a mudança: nos meses 1 a 3 a nota existia mas ficou
+  // parada no detalhamento errado sob a regra item-a-item, e o desconto do
+  // período não a alcançava. Apurando sobre o acumulado ela volta sozinha.
+  it('recupera nota que ficou para trás em medições anteriores', () => {
+    // Grupo com 46.214,00 de material acumulado e 51.624,13 de NF lançada.
+    // As medições anteriores só abateram 29.369,06 — faltaram 1.239,78.
+    const r = calcularDescontoComTransbordo([
+      {
+        detalhamentoId: 'A', grupoId: '1',
+        matMedido: 15605.16, matAcumulado: 46214.00,
+        nfAlocada: 51624.13, nfJaAbatida: 29369.06,
+      },
+    ])
+
+    const a = r.get('A')!
+    // Desconto acumulado = min(46.214,00; 51.624,13) = 46.214,00
+    // Do período = 46.214,00 − 29.369,06 = 16.844,94 (1.239,78 acima do mês).
+    expect(a.total).toBeCloseTo(16844.94, 2)
+    expect(a.recuperacao).toBeCloseTo(1239.78, 2)
+  })
+
+  it('a trava do acumulado impede descontar material ainda não executado', () => {
+    // R$ 200 mil de tubo comprado, R$ 50 mil instalados no acumulado.
+    const r = calcularDescontoComTransbordo([
+      {
+        detalhamentoId: 'A', grupoId: '10',
+        matMedido: 20000, matAcumulado: 50000,
+        nfAlocada: 200000, nfJaAbatida: 30000,
+      },
+    ])
+    // min(50.000; 200.000) − 30.000 = 20.000. O resto fica de saldo.
+    expect(r.get('A')!.total).toBeCloseTo(20000, 2)
+    expect(r.get('A')!.recuperacao).toBeCloseTo(0, 2)
+  })
+
+  it('material executado além da nota lançada continua sem cobertura', () => {
+    // Geração: 67.084,81 acumulados de material contra 58.237,50 de NF.
+    const r = calcularDescontoComTransbordo([
+      {
+        detalhamentoId: '2.7.1', grupoId: '2',
+        matMedido: 26611.16, matAcumulado: 67084.81,
+        nfAlocada: 58237.50, nfJaAbatida: 38834.32,
+      },
+    ])
+    const item = r.get('2.7.1')!
+    expect(item.total).toBeCloseTo(19403.18, 2)
+    // Gap do período — é aqui que a FIP realmente precisa emitir nota.
+    expect(26611.16 - item.total).toBeCloseTo(7207.98, 2)
+  })
+
+  it('não desconta duas vezes ao longo de três medições seguidas', () => {
+    const NF = 1000
+    let abatido = 0
+    let acumulado = 0
+    for (const medido of [400, 400, 400]) {
+      acumulado += medido
+      const r = calcularDescontoComTransbordo([
+        {
+          detalhamentoId: 'A', grupoId: 'g',
+          matMedido: medido, matAcumulado: acumulado,
+          nfAlocada: NF, nfJaAbatida: abatido,
+        },
+      ])
+      abatido += r.get('A')!.total
+    }
+    // 1.200 de material executado contra 1.000 de nota: desconta 1.000.
+    expect(abatido).toBeCloseTo(1000, 2)
+  })
+
+  it('matAcumulado zerado por dado inconsistente não zera o desconto', () => {
+    const r = calcularDescontoComTransbordo([
+      { detalhamentoId: 'A', grupoId: 'g', matMedido: 500, matAcumulado: 0, nfAlocada: 900, nfJaAbatida: 0 },
+    ])
+    expect(r.get('A')!.total).toBeCloseTo(500, 2)
+  })
+})
+
+describe('calcularSaldoAprovadoComTransbordo', () => {
+  // Mesmo descasamento lote-x-pavimento: o pedido aprovado está num
+  // detalhamento e a medição em outro, do mesmo grupo. Sem transbordo o
+  // sistema pede "NF nova" para material já comprado.
+  it('pedido aprovado do vizinho cobre o gap do item medido', () => {
+    const itens: ItemSaldoAprovado[] = [
+      { detalhamentoId: 'medido', grupoId: '2', gapMaterial: 8000, aprovado: 0, nfAlocada: 0 },
+      { detalhamentoId: 'pedido', grupoId: '2', gapMaterial: 0, aprovado: 300000, nfAlocada: 0 },
+    ]
+    expect(calcularSaldoAprovadoComTransbordo(itens).get('medido')).toBeCloseTo(8000, 2)
+  })
+
+  it('não classifica além do gap do próprio item', () => {
+    const itens: ItemSaldoAprovado[] = [
+      { detalhamentoId: 'medido', grupoId: '2', gapMaterial: 100, aprovado: 999999, nfAlocada: 0 },
+    ]
+    expect(calcularSaldoAprovadoComTransbordo(itens).get('medido')).toBeCloseTo(100, 2)
+  })
+
+  it('pedido de outro grupo macro não cobre', () => {
+    const itens: ItemSaldoAprovado[] = [
+      { detalhamentoId: 'medido', grupoId: '2', gapMaterial: 8000, aprovado: 0, nfAlocada: 0 },
+      { detalhamentoId: 'pedido', grupoId: '10', gapMaterial: 0, aprovado: 300000, nfAlocada: 0 },
+    ]
+    expect(calcularSaldoAprovadoComTransbordo(itens).get('medido')).toBeCloseTo(0, 2)
+  })
+
+  it('pedido já totalmente faturado não sobra para classificar', () => {
+    const itens: ItemSaldoAprovado[] = [
+      { detalhamentoId: 'medido', grupoId: '2', gapMaterial: 8000, aprovado: 50000, nfAlocada: 50000 },
+    ]
+    expect(calcularSaldoAprovadoComTransbordo(itens).get('medido')).toBeCloseTo(0, 2)
+  })
+
+  it('pool insuficiente é rateado proporcionalmente ao gap', () => {
+    const itens: ItemSaldoAprovado[] = [
+      { detalhamentoId: 'a', grupoId: 'g', gapMaterial: 100, aprovado: 0, nfAlocada: 0 },
+      { detalhamentoId: 'b', grupoId: 'g', gapMaterial: 300, aprovado: 200, nfAlocada: 0 },
+    ]
+    const r = calcularSaldoAprovadoComTransbordo(itens)
+    expect(r.get('a')).toBeCloseTo(50, 2)
+    expect(r.get('b')).toBeCloseTo(150, 2)
+  })
+
+  it('item sem grupo não recebe pedido de terceiros', () => {
+    const itens: ItemSaldoAprovado[] = [
+      { detalhamentoId: 'medido', grupoId: null, gapMaterial: 8000, aprovado: 0, nfAlocada: 0 },
+      { detalhamentoId: 'pedido', grupoId: null, gapMaterial: 0, aprovado: 300000, nfAlocada: 0 },
+    ]
+    expect(calcularSaldoAprovadoComTransbordo(itens).get('medido')).toBeCloseTo(0, 2)
   })
 })

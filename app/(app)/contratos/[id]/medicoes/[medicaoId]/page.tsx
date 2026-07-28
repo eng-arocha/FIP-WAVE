@@ -221,6 +221,12 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
      */
     nf_transbordo_grupo: number
     /**
+     * Do `nf_descontavel` acima, quanto excede o material medido NO PERIODO —
+     * nota de medicoes anteriores recuperada pela regua acumulada por grupo.
+     * Ja esta incluido em `nf_descontavel`.
+     */
+    nf_recuperacao_anterior: number
+    /**
      * Material da medição que tem pedido fat-direto APROVADO mas NF ainda
      * pendente de chegar — vira "Saldo Ped. Aprovados (NF Pendentes)".
      * = min(gap_material, saldo_aprovado_disponivel)
@@ -289,6 +295,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
         servico_medido:  Number(data.totais?.servico_medido  || 0),
         nf_descontavel:  Number(data.totais?.nf_descontavel  || 0),
         nf_transbordo_grupo: Number(data.totais?.nf_transbordo_grupo || 0),
+        nf_recuperacao_anterior: Number(data.totais?.nf_recuperacao_anterior || 0),
         faturamento_direto_em_aberto: Number(data.totais?.faturamento_direto_em_aberto || 0),
         fip_faturar:     Number(data.totais?.fip_faturar     || 0),
         base_retencao:   Number(data.totais?.base_retencao   || 0),
@@ -1458,6 +1465,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                               if (mat === 0 && serv === 0 && tot > 0) serv = tot
                               const nfFipMaterial      = totaisInformacon?.nf_descontavel ?? 0
                               const nfTransbordoGrupo  = totaisInformacon?.nf_transbordo_grupo ?? 0
+                              const nfRecuperacao      = totaisInformacon?.nf_recuperacao_anterior ?? 0
                               const saldoPedAprovados  = totaisInformacon?.faturamento_direto_em_aberto ?? 0
                               const fipACriar          = totaisInformacon?.fip_faturar    ?? 0
                               const pctRet = totaisInformacon?.pct_retencao ?? Number(medicao.contrato?.percentual_retencao ?? 5)
@@ -1496,6 +1504,25 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                         title="Material medido cujo desconto veio de nota alocada em outro item do mesmo grupo macro. A FIP compra por lote e a medição é por pavimento — sem isso, a nota fica parada num item enquanto o vizinho aparece sem cobertura."
                                       >
                                         {formatCurrency(nfTransbordoGrupo)}
+                                      </td>
+                                    </tr>
+                                  )}
+                                  {nfRecuperacao > 0 && (
+                                    <tr>
+                                      <td
+                                        colSpan={6}
+                                        className="text-xs text-right pr-4"
+                                        style={{ color: 'var(--text-3)' }}
+                                        title="Nota de medições anteriores que não descontou na época e está sendo recuperada agora. O saldo de NF é apurado sobre o acumulado do grupo macro (menor entre material executado e nota lançada), então o desconto de um mês pode superar o material medido nesse mês."
+                                      >
+                                        ↳ dos quais recuperação de NF de medições anteriores
+                                      </td>
+                                      <td
+                                        className="text-right text-xs tabular-nums"
+                                        style={{ color: 'var(--text-3)' }}
+                                        title="Nota de medições anteriores que não descontou na época e está sendo recuperada agora. O saldo de NF é apurado sobre o acumulado do grupo macro (menor entre material executado e nota lançada), então o desconto de um mês pode superar o material medido nesse mês."
+                                      >
+                                        {formatCurrency(nfRecuperacao)}
                                       </td>
                                     </tr>
                                   )}
@@ -1588,6 +1615,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                         if (mat === 0 && serv === 0 && tot > 0) serv = tot
                         const nfFipMaterial      = totaisInformacon?.nf_descontavel ?? 0
                         const nfTransbordoGrupo  = totaisInformacon?.nf_transbordo_grupo ?? 0
+                        const nfRecuperacao      = totaisInformacon?.nf_recuperacao_anterior ?? 0
                         const saldoPedAprovados  = totaisInformacon?.faturamento_direto_em_aberto ?? 0
                         const fipACriar          = totaisInformacon?.fip_faturar    ?? 0
                         const pctRet = totaisInformacon?.pct_retencao ?? Number(medicao.contrato?.percentual_retencao ?? 5)
@@ -1627,6 +1655,26 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                   title="Material medido cujo desconto veio de nota alocada em outro item do mesmo grupo macro. A FIP compra por lote e a medição é por pavimento — sem isso, a nota fica parada num item enquanto o vizinho aparece sem cobertura."
                                 >
                                   {formatCurrency(nfTransbordoGrupo)}
+                                </td>
+                              </tr>
+                            )}
+                            {nfRecuperacao > 0 && (
+                              <tr>
+                                <td colSpan={3} />
+                                <td
+                                  colSpan={2}
+                                  className="text-xs text-right pr-4"
+                                  style={{ color: 'var(--text-3)' }}
+                                  title="Nota de medições anteriores que não descontou na época e está sendo recuperada agora. O saldo de NF é apurado sobre o acumulado do grupo macro (menor entre material executado e nota lançada), então o desconto de um mês pode superar o material medido nesse mês."
+                                >
+                                  ↳ dos quais recuperação de NF de medições anteriores
+                                </td>
+                                <td
+                                  className="text-right text-xs tabular-nums"
+                                  style={{ color: 'var(--text-3)' }}
+                                  title="Nota de medições anteriores que não descontou na época e está sendo recuperada agora. O saldo de NF é apurado sobre o acumulado do grupo macro (menor entre material executado e nota lançada), então o desconto de um mês pode superar o material medido nesse mês."
+                                >
+                                  {formatCurrency(nfRecuperacao)}
                                 </td>
                               </tr>
                             )}
