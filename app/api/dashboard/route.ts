@@ -132,6 +132,8 @@ export async function GET() {
     let totalMaterialMedido = 0
     /** Por medição aprovada: mat + serv na mesma régua usada nos cards. */
     const totalPorMedicao = new Map<string, number>()
+    /** Idem, somado por contrato — alimenta o card de contrato. */
+    const totalPorContrato = new Map<string, number>()
     const medsAgg = (medicoesAprovadasComItens?.data || []) as any[]
     for (const m of medsAgg) {
       let mat = 0
@@ -151,6 +153,10 @@ export async function GET() {
       totalMaterialMedido += mat
       totalServicoMedido  += serv
       if (m.id) totalPorMedicao.set(String(m.id), Math.round((mat + serv) * 100) / 100)
+      if (m.contrato_id) {
+        const k = String(m.contrato_id)
+        totalPorContrato.set(k, (totalPorContrato.get(k) ?? 0) + mat + serv)
+      }
     }
     const totalMedicao = Math.round((totalMaterialMedido + totalServicoMedido) * 100) / 100
     totalMaterialMedido = Math.round(totalMaterialMedido * 100) / 100
@@ -190,8 +196,26 @@ export async function GET() {
       valor_total_exibicao: totalPorMedicao.get(String(m.id)) ?? m.valor_total,
     }))
 
+    // Card do contrato: `vw_resumo_contrato.valor_medido` é SUM(valor_total)
+    // das medições aprovadas, e por isso herda o problema da MED-001/002
+    // (fórmula antiga, só serviço). Isso fazia o card mostrar avanço de 9,4%
+    // contra os 10,1% do card "Medição Total" logo acima, na mesma tela.
+    // Reexpõe medido/saldo/percentual na régua única (mat + serv medido).
+    const contratosAlinhados = (contratos || []).map((c: any) => {
+      const medido = totalPorContrato.get(String(c.contrato_id))
+      if (medido === undefined) return c
+      const contratado = Number(c.valor_contratado || 0)
+      const medidoR = Math.round(medido * 100) / 100
+      return {
+        ...c,
+        valor_medido: medidoR,
+        saldo: Math.round((contratado - medidoR) * 100) / 100,
+        percentual_medido: contratado > 0 ? (medidoR / contratado) * 100 : 0,
+      }
+    })
+
     return NextResponse.json({
-      contratos: contratos || [],
+      contratos: contratosAlinhados,
       medicoes_recentes: medicoesRecentes,
       grupos: grupos || [],
       total_nf_fat_direto: totalNfFatDireto,

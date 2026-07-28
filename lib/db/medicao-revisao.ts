@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isSchemaMissingError } from '@/lib/db/resilient'
 
 /**
  * Helper para "desfazer aprovação" de uma medição.
@@ -95,6 +96,25 @@ export async function desfazerAprovacaoMedicao(input: DesfazerAprovacaoInput) {
     .update({ status: 'submetido', data_aprovacao: null })
     .eq('id', input.medicao_id)
   if (updErr) throw updErr
+
+  // 3b) Limpa o snapshot de NF abatida desta medição.
+  //
+  // Sem isto, uma reaprovação lê o snapshot velho como se fosse definitivo:
+  // `calcularInformaconData` só recalcula ao vivo quando a medição aprovada
+  // NÃO tem valores gravados (ver `snapshotAprovado` em informacon-data.ts).
+  // Como o status já foi para 'aprovado' antes do cálculo, o snapshot antigo
+  // passaria a mandar — e todo detalhamento ausente dele viraria 0,
+  // devolvendo a nota ao saldo e permitindo descontá-la de novo.
+  // Best-effort: se a coluna não existe (074 pendente), segue.
+  {
+    const { error } = await admin
+      .from('medicao_itens')
+      .update({ nf_material_descontada: 0 })
+      .eq('medicao_id', input.medicao_id)
+    if (error && !isSchemaMissingError(error, ['nf_material_descontada'])) {
+      console.warn('[desfazerAprovacao] falha ao limpar nf_material_descontada:', error.message)
+    }
+  }
 
   // 4) Registra revisão (audit trail)
   const { error: logErr } = await admin
