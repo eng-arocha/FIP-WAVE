@@ -6,6 +6,7 @@ import {
   parseDocumento,
   toNumero,
   toData,
+  extrairReferenciaDoNome,
   acharCabecalho,
   parseGlobal,
   parseMedicao,
@@ -119,6 +120,24 @@ describe('toData', () => {
     expect(toData('2026-07-20 00:00:00')).toBe('2026-07-20')
     expect(toData('20/07/2026')).toBe('2026-07-20')
     expect(toData(null)).toBeNull()
+  })
+})
+
+describe('extrairReferenciaDoNome', () => {
+  it('lê a data do nome do arquivo', () => {
+    expect(extrairReferenciaDoNome('Controle_FIP_INFORMAKON_28JUL26.xlsx')).toBe('2026-07-28')
+    expect(extrairReferenciaDoNome('controle 01mar26.xlsx')).toBe('2026-03-01')
+  })
+
+  it('devolve null quando o nome não tem data, para o banco aplicar CURRENT_DATE', () => {
+    expect(extrairReferenciaDoNome('relatorio.xlsx')).toBeNull()
+    expect(extrairReferenciaDoNome('')).toBeNull()
+  })
+
+  it('rejeita data que não existe no calendário', () => {
+    expect(extrairReferenciaDoNome('x_31FEV26.xlsx')).toBeNull()
+    expect(extrairReferenciaDoNome('x_31ABR26.xlsx')).toBeNull()
+    expect(extrairReferenciaDoNome('x_29FEV24.xlsx')).toBe('2024-02-29')
   })
 })
 

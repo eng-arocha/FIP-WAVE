@@ -111,6 +111,36 @@ export function toData(v: unknown): string | null {
   return null
 }
 
+const MESES_PT: Record<string, string> = {
+  JAN: '01', FEV: '02', MAR: '03', ABR: '04', MAI: '05', JUN: '06',
+  JUL: '07', AGO: '08', SET: '09', OUT: '10', NOV: '11', DEZ: '12',
+}
+
+/**
+ * Extrai a data de referência do nome do arquivo no padrão `DDMMMAA`
+ * (ex.: "Controle_FIP_INFORMAKON_28JUL26.xlsx" -> "2026-07-28").
+ *
+ * O relatório não traz essa data em nenhuma célula — só no nome do arquivo,
+ * que o time da FIP preenche à mão. Por isso é best-effort: sem casar o
+ * padrão devolve null, e quem chama deixa o banco aplicar CURRENT_DATE.
+ */
+export function extrairReferenciaDoNome(nomeArquivo: string): string | null {
+  const m = String(nomeArquivo ?? '').toUpperCase().match(
+    /(\d{2})(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)(\d{2})/,
+  )
+  if (!m) return null
+  const [, dd, mes, aa] = m
+  const dia = Number(dd)
+  const ano = 2000 + Number(aa)
+  const mm = MESES_PT[mes]
+  // Valida o calendário — evita "31FEV26" virar data inválida no insert.
+  const data = new Date(Date.UTC(ano, Number(mm) - 1, dia))
+  if (data.getUTCFullYear() !== ano || data.getUTCMonth() !== Number(mm) - 1 || data.getUTCDate() !== dia) {
+    return null
+  }
+  return `${ano}-${mm}-${dd}`
+}
+
 type Linha = unknown[]
 
 /**

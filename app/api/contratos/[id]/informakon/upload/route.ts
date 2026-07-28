@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { apiError } from '@/lib/api/error-response'
 import { isSchemaMissingError } from '@/lib/db/resilient'
-import { parseRelatorio } from '@/lib/informakon/parser'
+import { parseRelatorio, extrairReferenciaDoNome } from '@/lib/informakon/parser'
 import * as XLSX from 'xlsx'
 
 /**
@@ -29,38 +29,6 @@ const TABELAS_075 = [
   'informakon_medicao_descontos',
   'informakon_medicoes_servico',
 ]
-
-const MESES_PT: Record<string, string> = {
-  JAN: '01', FEV: '02', MAR: '03', ABR: '04', MAI: '05', JUN: '06',
-  JUL: '07', AGO: '08', SET: '09', OUT: '10', NOV: '11', DEZ: '12',
-}
-
-/**
- * Extrai a data de referência do nome do arquivo no padrão `DDMMMAA`
- * (ex.: "Controle_FIP_INFORMAKON_28JUL26.xlsx" -> "2026-07-28").
- *
- * O relatório não traz essa data em nenhuma célula — só no nome do arquivo,
- * que o time da FIP preenche à mão. Por isso é best-effort: se não casar o
- * padrão, devolve null e quem chama simplesmente omite o campo (a coluna
- * `referencia` tem DEFAULT CURRENT_DATE).
- */
-export function extrairReferenciaDoNome(nomeArquivo: string): string | null {
-  const m = String(nomeArquivo ?? '').toUpperCase().match(
-    /(\d{2})(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)(\d{2})/,
-  )
-  if (!m) return null
-  const [, dd, mes, aa] = m
-  const dia = Number(dd)
-  const ano = 2000 + Number(aa)
-  if (dia < 1 || dia > 31) return null
-  const mm = MESES_PT[mes]
-  // Validação simples de calendário — evita "31FEV26" virar data inválida.
-  const data = new Date(Date.UTC(ano, Number(mm) - 1, dia))
-  if (data.getUTCFullYear() !== ano || data.getUTCMonth() !== Number(mm) - 1 || data.getUTCDate() !== dia) {
-    return null
-  }
-  return `${ano}-${mm}-${dd}`
-}
 
 /** Insere em lotes de 500 — as abas grandes (NFS WAVE GLOBAL) têm milhares de linhas. */
 async function inserirEmLotes(admin: ReturnType<typeof createAdminClient>, tabela: string, linhas: any[]) {
