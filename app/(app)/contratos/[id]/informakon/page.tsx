@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatCurrency, formatDate, formatDatetime } from '@/lib/utils'
 import { isSchemaMissingError } from '@/lib/db/resilient'
+import { conciliarMedicaoComInformakon } from '@/lib/db/medicao-conciliacao-informakon'
 import {
   calcularConciliacaoPorGrupo,
   calcularNotasDivergentes,
@@ -18,19 +19,16 @@ interface Props {
   params: Promise<{ id: string }>
 }
 
+// A situação descreve a divergência em si, não o status do documento — numa
+// lista de divergências, "aprovada" só dizia que a nota existe.
 const SITUACAO_NF_LABEL: Record<string, string> = {
-  aguardando_aprovacao: 'Aguardando aprovação',
-  aprovada: 'Aprovada',
-  em_correcao: 'Em correção',
-  cancelada: 'Cancelada',
   'não encontrada no FIP-WAVE': 'Não encontrada no FIP-WAVE',
+  'valor divergente': 'Valor divergente',
 }
 
 function corSituacao(situacao: string): 'default' | 'outline' | 'success' | 'warning' | 'destructive' {
-  if (situacao === 'aprovada') return 'success'
-  if (situacao === 'aguardando_aprovacao' || situacao === 'em_correcao') return 'warning'
-  if (situacao === 'cancelada') return 'outline'
   if (situacao === 'não encontrada no FIP-WAVE') return 'destructive'
+  if (situacao.startsWith('valor divergente')) return 'warning'
   return 'default'
 }
 
@@ -139,6 +137,22 @@ export default async function InformakonPage({ params }: Props) {
     .from('medicoes')
     .select('id, numero, status, valor_total, periodo_referencia')
     .eq('contrato_id', contratoId)
+
+  // O "valor a pagar" do Informakon é o LÍQUIDO (serviço − retenção − ajuste),
+  // não o valor contratual medido. Comparar com `medicoes.valor_total` punha
+  // lado a lado grandezas diferentes — a MED 04 aparecia como 805.520,27
+  // contra 340.631,06 e parecia divergir em meio milhão.
+  // `conciliarMedicaoComInformakon` já calcula o líquido pela mesma regra do
+  // rodapé da medição; reusamos por medição (são poucas).
+  const conciliacoes = await Promise.all(
+    (medicoesFipwave || []).map(async (m: any) => ({
+      numero: m.numero,
+      conciliacao: await conciliarMedicaoComInformakon(admin, contratoId, m.id),
+    })),
+  )
+  const liquidoFipwavePorNumero = new Map(
+    conciliacoes.map(c => [c.numero, c.conciliacao.sistema.aPagar]),
+  )
 
   const medicaoFipwavePorNumero = new Map(
     (medicoesFipwave || []).map((m: any) => [m.numero, m]),
@@ -317,7 +331,7 @@ export default async function InformakonPage({ params }: Props) {
                         {formatCurrency(n.valorSistema)}
                       </td>
                       <td style={{ padding: 10 }}>
-                        <Badge variant={corSituacao(n.situacao)}>{SITUACAO_NF_LABEL[n.situacao] || n.situacao}</Badge>
+                        <Badge variant={corSituacao(n.situacao)}>{SITUACAO_NF_LABEL[n.situacao] || (n.situacao.charAt(0).toUpperCase() + n.situacao.slice(1))}</Badge>
                       </td>
                     </tr>
                   ))}
@@ -356,13 +370,17 @@ export default async function InformakonPage({ params }: Props) {
                     <th style={{ padding: 10, textAlign: 'right' }}>Material descontado</th>
                     <th style={{ padding: 10, textAlign: 'right' }}>Retenção</th>
                     <th style={{ padding: 10, textAlign: 'right' }}>Valor a pagar (Informakon)</th>
-                    <th style={{ padding: 10, textAlign: 'right' }}>Valor no FIP-WAVE</th>
+                    <th style={{ padding: 10, textAlign: 'right' }}>Valor a pagar (FIP-WAVE)</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(medicoesServicoInformakon || []).map((m: any) => {
                     const fip = m.medicao_numero != null ? medicaoFipwavePorNumero.get(m.medicao_numero) : null
-                    const valorFip = fip ? Number(fip.valor_total || 0) : null
+                    // Líquido a pagar do nosso lado, pela mesma regra do rodapé
+                    // da medição — comparável com o "valor a pagar" do Informakon.
+                    const valorFip = m.medicao_numero != null
+                      ? liquidoFipwavePorNumero.get(m.medicao_numero) ?? null
+                      : null
                     const divergente = valorFip != null && Math.abs(valorFip - Number(m.valor_a_pagar || 0)) > 1
                     return (
                       <tr key={m.id} style={{ borderBottom: '1px solid var(--border)' }}>
