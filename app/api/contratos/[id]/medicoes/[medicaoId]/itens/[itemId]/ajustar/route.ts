@@ -6,6 +6,7 @@ import { assertPermissao } from '@/lib/api/auth'
 import { apiError } from '@/lib/api/error-response'
 import { parseBody, uuid } from '@/lib/api/schema'
 import { audit } from '@/lib/api/audit'
+import { recalcularValorTotalMedicao } from '@/lib/db/medicoes'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -140,6 +141,10 @@ export async function PATCH(
       .update({ quantidade_medida: quantidade_nova })
       .eq('id', itemId)
     if (upErr) throw upErr
+
+    // Snapshot medicoes.valor_total precisa acompanhar a quantidade — o card
+    // "Total da Medição (mat + serv)" da tela lê essa coluna.
+    await recalcularValorTotalMedicao(admin, medicaoId)
 
     await audit({
       event: 'medicao_item.quantidade_ajustada_pelo_admin',

@@ -1359,7 +1359,12 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                               const fipACriar          = totaisInformacon?.fip_faturar    ?? 0
                               const pctRet = totaisInformacon?.pct_retencao ?? Number(medicao.contrato?.percentual_retencao ?? 5)
                               const retTfoot = totaisInformacon?.retencao ?? ((mat + serv) * pctRet / 100)
-                              const liquidoTfoot = serv - retTfoot
+                              // Compensação de material faturado a mais em medições
+                              // anteriores (migration 074). O desconto de NF é travado
+                              // no material medido, então este é o único caminho pro
+                              // líquido divergir de (serviço − retenção).
+                              const ajusteMatAnterior = Number(medicao.ajuste_material_anterior || 0)
+                              const liquidoTfoot = serv - retTfoot - ajusteMatAnterior
                               // 7 colunas: label ocupa 6, valor na última.
                               return (
                                 <>
@@ -1391,6 +1396,17 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                     <td colSpan={6} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ Retenção contratual <span className="text-[10px] font-medium opacity-75">({pctRet.toFixed(0)}%)</span></td>
                                     <td className="text-right text-sm font-semibold tabular-nums" style={{ color: '#818CF8' }}>− {formatCurrency(retTfoot)}</td>
                                   </tr>
+                                  {ajusteMatAnterior !== 0 && (
+                                    <tr>
+                                      <td colSpan={6} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>
+                                        ↳ Ajuste de material de medições anteriores
+                                        {medicao.ajuste_material_anterior_motivo && (
+                                          <span className="text-[10px] font-medium opacity-75 ml-1">({medicao.ajuste_material_anterior_motivo})</span>
+                                        )}
+                                      </td>
+                                      <td className="text-right text-sm font-semibold tabular-nums" style={{ color: '#F59E0B' }}>− {formatCurrency(ajusteMatAnterior)}</td>
+                                    </tr>
+                                  )}
                                   <tr>
                                     <td colSpan={6} className="text-sm font-bold text-right pr-4" style={{ color: '#10B981' }}>
                                       ↳ NF a emitir <span className="text-[10px] font-bold ml-1 px-1 py-0.5 rounded" style={{ background: 'rgba(16,185,129,0.15)' }}>líquido</span>
@@ -1453,7 +1469,12 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                         const fipACriar          = totaisInformacon?.fip_faturar    ?? 0
                         const pctRet = totaisInformacon?.pct_retencao ?? Number(medicao.contrato?.percentual_retencao ?? 5)
                         const retTfoot = totaisInformacon?.retencao ?? ((mat + serv) * pctRet / 100)
-                        const liquidoTfoot = serv - retTfoot
+                        // Compensação de material faturado a mais em medições
+                        // anteriores (migration 074). O desconto de NF é travado
+                        // no material medido, então este é o único caminho pro
+                        // líquido divergir de (serviço − retenção).
+                        const ajusteMatAnterior = Number(medicao.ajuste_material_anterior || 0)
+                        const liquidoTfoot = serv - retTfoot - ajusteMatAnterior
                         return (
                           <>
                             <tr className="border-t-2 border-[var(--border-hover)]">
@@ -1488,6 +1509,13 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                               <td colSpan={2} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ Retenção contratual <span className="text-[10px] font-medium opacity-75">({pctRet.toFixed(0)}%)</span></td>
                               <td className="text-right text-sm font-semibold tabular-nums" style={{ color: '#818CF8' }}>− {formatCurrency(retTfoot)}</td>
                             </tr>
+                            {ajusteMatAnterior !== 0 && (
+                              <tr>
+                                <td colSpan={3} />
+                                <td colSpan={2} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ Ajuste de material de medições anteriores</td>
+                                <td className="text-right text-sm font-semibold tabular-nums" style={{ color: '#F59E0B' }}>− {formatCurrency(ajusteMatAnterior)}</td>
+                              </tr>
+                            )}
                             <tr>
                               <td colSpan={3} />
                               <td colSpan={2} className="text-sm font-bold text-right pr-4" style={{ color: '#10B981' }}>

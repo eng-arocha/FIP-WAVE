@@ -8,6 +8,54 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { isSchemaMissingError } from '@/lib/db/resilient'
 import { getCodigoInformakon } from '@/lib/data/informakon-codigos'
 
+// CNPJ da Wave — os pedidos criados na aprovação da medição para a NF de
+// SERVIÇO ficam na mesma tabela dos pedidos de material. Eles NÃO podem
+// entrar no desconto de material. A partir da migration 074 existe a coluna
+// `tipo`; o CNPJ segue como rede de segurança pra base antiga.
+const CNPJ_WAVE_SERVICO = '65.528.046/0001-23'
+
+export function ehPedidoDeServicoWave(sol: {
+  tipo?: string | null
+  fornecedor_cnpj?: string | null
+  fornecedor_razao_social?: string | null
+}): boolean {
+  if (sol.tipo === 'wave_servico') return true
+  if (sol.fornecedor_cnpj === CNPJ_WAVE_SERVICO) return true
+  return /^WAVE INSTALACOES SPE/i.test((sol.fornecedor_razao_social ?? '').trim())
+}
+
+/**
+ * Quanto de NF de material já foi abatido em cada detalhamento nas medições
+ * APROVADAS do contrato, excluindo a medição corrente. É o saldo corrido que
+ * garante que cada nota seja descontada uma única vez (migration 074).
+ *
+ * Resiliente: se `nf_material_descontada` não existe ainda, devolve mapa
+ * vazio — o cálculo volta ao comportamento anterior (NF acumulada inteira
+ * disponível), sem quebrar a página.
+ */
+async function carregarNfJaAbatida(
+  admin: SupabaseClient,
+  medicaoIdsAnteriores: string[],
+): Promise<Record<string, number>> {
+  const out: Record<string, number> = {}
+  if (medicaoIdsAnteriores.length === 0) return out
+  const { data, error } = await admin
+    .from('medicao_itens')
+    .select('detalhamento_id, nf_material_descontada')
+    .in('medicao_id', medicaoIdsAnteriores)
+  if (error) {
+    if (!isSchemaMissingError(error, ['nf_material_descontada'])) {
+      console.warn('[informacon] falha ao carregar nf_material_descontada:', error.message)
+    }
+    return out
+  }
+  for (const r of (data || []) as any[]) {
+    if (!r.detalhamento_id) continue
+    out[r.detalhamento_id] = (out[r.detalhamento_id] || 0) + Number(r.nf_material_descontada || 0)
+  }
+  return out
+}
+
 export interface AjusteAdmin {
   quantidade_anterior: number
   quantidade_nova: number
@@ -44,6 +92,10 @@ export interface InformaconLinha {
   material_medido: number
   servico_medido: number
   nf_terceiro: number
+  /** NF de material deste item já abatida em medições aprovadas anteriores. */
+  nf_ja_abatida: number
+  /** NF de material ainda disponível pra abater = nf_terceiro − nf_ja_abatida. */
+  nf_disponivel: number
   saldo_aprovado: number
   nf_descontavel: number
   gap_material: number
@@ -200,13 +252,17 @@ export async function calcularBoletimSimulado(
   {
     const { data: solRaw } = await admin
       .from('solicitacoes_fat_direto')
-      .select(`id, status, deletado_em,
+      .select(`id, status, deletado_em, fornecedor_cnpj, fornecedor_razao_social,
         itens:itens_solicitacao_fat_direto ( detalhamento_id, valor_total ),
         nfs:notas_fiscais_fat_direto!solicitacao_id ( valor, status )`)
       .eq('contrato_id', contratoId)
       .eq('status', 'aprovado')
       .is('deletado_em', null)
     for (const sol of (solRaw || []) as any[]) {
+      // NF de SERVIÇO da Wave não abate material (ver calcularInformaconData).
+      // Aqui a coluna `tipo` não é selecionada de propósito: a simulação roda
+      // no caminho crítico da tela de nova medição e o CNPJ já resolve.
+      if (ehPedidoDeServicoWave(sol)) continue
       const itensVal = ((sol.itens || []) as any[])
         .map(it => ({ detId: it.detalhamento_id as string | null, valor: Number(it.valor_total || 0) }))
         .filter(x => x.detId)
@@ -222,6 +278,16 @@ export async function calcularBoletimSimulado(
     }
   }
 
+  // Saldo corrido: numa medição nova, todas as aprovadas são "anteriores".
+  const nfJaAbatidaPorDet = await (async () => {
+    const { data: aprovadas } = await admin
+      .from('medicoes')
+      .select('id')
+      .eq('contrato_id', contratoId)
+      .eq('status', 'aprovado')
+    return carregarNfJaAbatida(admin, (aprovadas || []).map((m: any) => m.id))
+  })()
+
   const linhas: BoletimSimuladoLinha[] = []
   for (const item of itensValidos) {
     const det = detMap.get(item.detalhamento_id)
@@ -235,7 +301,8 @@ export async function calcularBoletimSimulado(
     const nfTerceiroItem = nfAlocadaPorDet[det.id] || 0
     const aprovadoItem = aprovadoPorDet[det.id] || 0
     const saldoAprovDisponivel = Math.max(0, aprovadoItem - nfTerceiroItem)
-    const nfDescontavel = Math.min(matMedido, nfTerceiroItem)
+    const nfDisponivel = Math.max(0, nfTerceiroItem - (nfJaAbatidaPorDet[det.id] || 0))
+    const nfDescontavel = Math.min(matMedido, nfDisponivel)
     const gapMaterial = Math.max(0, matMedido - nfDescontavel)
     const fatDiretoEmAberto = Math.min(gapMaterial, saldoAprovDisponivel)
     const fipFaturar = Math.max(0, gapMaterial - fatDiretoEmAberto)
@@ -476,23 +543,52 @@ export async function calcularInformaconData(
 
   const pctRetencao = Number(contrato?.percentual_retencao ?? 5)
 
+  // Saldo corrido: o que já foi abatido nas medições aprovadas anteriores
+  // (migration 074). Sem isto a mesma NF volta a ser descontável todo mês.
+  const nfJaAbatidaPorDet = await carregarNfJaAbatida(
+    admin,
+    (medicoesDoContrato || [])
+      .filter((m: any) => m.status === 'aprovado' && m.id !== medicaoId)
+      .map((m: any) => m.id),
+  )
+
   // 4) Solicitações fat-direto APROVADAS + NFs alocadas por detalhamento
   const aprovadoPorDet: Record<string, number> = {}
   const nfAlocadaPorDet: Record<string, number> = {}
   {
-    const { data: solRaw, error: solErr } = await admin
-      .from('solicitacoes_fat_direto')
-      .select(`
-        id, status, deletado_em,
+    const SELECT_SOL = `
+        id, status, deletado_em, fornecedor_cnpj, fornecedor_razao_social,
         itens:itens_solicitacao_fat_direto ( detalhamento_id, valor_total ),
         nfs:notas_fiscais_fat_direto!solicitacao_id ( valor, status )
-      `)
-      .eq('contrato_id', contratoId)
-      .eq('status', 'aprovado')
-      .is('deletado_em', null)
-    if (solErr) throw solErr
+    `
+    let solRaw: any[] = []
+    {
+      const tryFull = await admin
+        .from('solicitacoes_fat_direto')
+        .select(`tipo, ${SELECT_SOL}`)
+        .eq('contrato_id', contratoId)
+        .eq('status', 'aprovado')
+        .is('deletado_em', null)
+      if (!tryFull.error) {
+        solRaw = tryFull.data || []
+      } else if (isSchemaMissingError(tryFull.error, ['tipo'])) {
+        const fallback = await admin
+          .from('solicitacoes_fat_direto')
+          .select(SELECT_SOL)
+          .eq('contrato_id', contratoId)
+          .eq('status', 'aprovado')
+          .is('deletado_em', null)
+        if (fallback.error) throw fallback.error
+        solRaw = fallback.data || []
+      } else {
+        throw tryFull.error
+      }
+    }
 
-    for (const sol of (solRaw || []) as any[]) {
+    for (const sol of solRaw as any[]) {
+      // NF de SERVIÇO da Wave não abate material — ela É o faturamento da
+      // Wave, não uma nota de material de terceiro.
+      if (ehPedidoDeServicoWave(sol)) continue
       const itens = (sol.itens || []) as any[]
       const itensVal = itens.map(it => ({
         detId: it.detalhamento_id as string | null,
@@ -534,7 +630,13 @@ export async function calcularInformaconData(
       const aprovadoItem = aprovadoPorDet[det.id] || 0
       const saldoAprovDisponivel = Math.max(0, aprovadoItem - nfTerceiroItem)
 
-      const nfDescontavel  = Math.min(matMedido, nfTerceiroItem)
+      // Saldo corrido (migration 074): a NF já abatida em medições aprovadas
+      // anteriores não volta a descontar. Uma nota que não foi abatida no mês
+      // certo continua no saldo e aparece na medição seguinte.
+      const nfJaAbatida  = nfJaAbatidaPorDet[det.id] || 0
+      const nfDisponivel = Math.max(0, nfTerceiroItem - nfJaAbatida)
+
+      const nfDescontavel  = Math.min(matMedido, nfDisponivel)
       const gapMaterial    = Math.max(0, matMedido - nfDescontavel)
       const faturamentoDiretoEmAberto = Math.min(gapMaterial, saldoAprovDisponivel)
       const fipFaturar     = Math.max(0, gapMaterial - faturamentoDiretoEmAberto)
@@ -587,6 +689,8 @@ export async function calcularInformaconData(
         material_medido: matMedido,
         servico_medido: servMedido,
         nf_terceiro: nfTerceiroItem,
+        nf_ja_abatida: nfJaAbatida,
+        nf_disponivel: nfDisponivel,
         saldo_aprovado: saldoAprovDisponivel,
         nf_descontavel: nfDescontavel,
         gap_material: gapMaterial,
@@ -651,6 +755,8 @@ export async function calcularInformaconData(
       material_medido: 0,
       servico_medido: 0,
       nf_terceiro: 0,
+      nf_ja_abatida: nfJaAbatidaPorDet[det.id] || 0,
+      nf_disponivel: Math.max(0, (nfAlocadaPorDet[det.id] || 0) - (nfJaAbatidaPorDet[det.id] || 0)),
       saldo_aprovado: Math.max(0, (aprovadoPorDet[det.id] || 0) - (nfAlocadaPorDet[det.id] || 0)),
       nf_descontavel: 0,
       gap_material: 0,
