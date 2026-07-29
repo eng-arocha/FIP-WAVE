@@ -1,5 +1,26 @@
 // lib/db/wbs-utils.ts
 
+/**
+ * Comparador numérico hierárquico de códigos WBS: '10.2' vs '2.10' ordena
+ * primeiro pelo primeiro segmento (10 > 2), depois pelo segundo, etc.
+ * Segmentos faltantes são tratados como 0 (assim '1' < '1.1').
+ *
+ * Ordenação de texto (`localeCompare`, `ORDER BY codigo` no Postgres) coloca
+ * '1.10.1' antes de '1.2.1' e '10.1.1' antes de '2.1.1' — a lista fica
+ * ilegível justamente onde o usuário procura um item pelo número.
+ */
+export function compareCodigo(a: string, b: string): number {
+  const partsA = String(a ?? '').split('.').map(s => Number(s) || 0)
+  const partsB = String(b ?? '').split('.').map(s => Number(s) || 0)
+  const len = Math.max(partsA.length, partsB.length)
+  for (let i = 0; i < len; i++) {
+    const va = partsA[i] ?? 0
+    const vb = partsB[i] ?? 0
+    if (va !== vb) return va - vb
+  }
+  return 0
+}
+
 export type WbsNode = {
   id: string
   pai_id: string | null

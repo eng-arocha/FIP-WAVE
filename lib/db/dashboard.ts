@@ -19,41 +19,26 @@
  *   - Embedding de NFs em solicitações usa hint `!solicitacao_id` por
  *     causa da FK extra adicionada na migration 054 (PGRST201 silencioso
  *     sem o hint).
- *   - Tabela `notas_fiscais_wave` (criada na migration 059) pode estar
- *     vazia em prod inicial — o try/catch absorve "relation does not
- *     exist" e devolve lista vazia, fazendo saldo_medicao_servico
- *     coincidir com realizado_servico.
- *   - Ordenação: comparação numérica hierárquica de `codigo` (split por
- *     '.' e compara cada nível como Number). Não usa localeCompare porque
- *     '10' viria antes de '2' em ordem lexicográfica simples.
+ *   - A NF de SERVIÇO real é o pedido `wave_servico` em
+ *     `solicitacoes_fat_direto` (migration 074), não `notas_fiscais_wave`
+ *     — essa tabela é esqueleto da migration 059 e nunca recebeu INSERT.
+ *     Ela segue sendo lida como fonte COMPLEMENTAR; o try/catch absorve
+ *     "relation does not exist".
+ *   - Ordenação: `compareCodigo` (lib/db/wbs-utils), comparação numérica
+ *     hierárquica. Não usa localeCompare porque '10' viria antes de '2'
+ *     em ordem lexicográfica simples.
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { nfReservaSaldo } from '@/lib/db/nf-status'
 import { withSchemaFallback } from '@/lib/db/resilient'
 import { ehPedidoDeServicoWave } from '@/lib/db/saldo-detalhamento'
+import { compareCodigo } from '@/lib/db/wbs-utils'
 import type {
   DashboardItem,
   DashboardNivel,
   DashboardResponse,
 } from '@/types/dashboard'
-
-/**
- * Comparador numérico hierárquico de códigos: '10.2' vs '2.10' ordena
- * primeiro pelo primeiro segmento (10 > 2), depois pelo segundo, etc.
- * Segmentos faltantes são tratados como 0 (assim '1' < '1.1').
- */
-function compareCodigo(a: string, b: string): number {
-  const partsA = a.split('.').map(s => Number(s) || 0)
-  const partsB = b.split('.').map(s => Number(s) || 0)
-  const len = Math.max(partsA.length, partsB.length)
-  for (let i = 0; i < len; i++) {
-    const va = partsA[i] ?? 0
-    const vb = partsB[i] ?? 0
-    if (va !== vb) return va - vb
-  }
-  return 0
-}
 
 interface RawDetalhamento {
   id: string
@@ -224,6 +209,10 @@ export async function getDashboardData(
   // --------------------------------------------------------------------
   const aprovadoMaterialDet = new Map<string, number>()
   const realizadoMaterialDet = new Map<string, number>()
+  // NFs de SERVIÇO por detalhamento. Alimentado no mesmo passo dos pedidos
+  // (os `wave_servico` moram na mesma tabela) e, complementarmente, por
+  // `notas_fiscais_wave` no passo 4.
+  const nfWaveServicoDet = new Map<string, number>()
 
   // `tipo` (migration 074) separa a NF de serviço da Wave dos pedidos de
   // material. Sem esse filtro, o pedido `wave_servico` entrava como material
@@ -259,8 +248,9 @@ export async function getDashboardData(
     itens: Array<{ detalhamento_id: string | null; valor_total: number | string | null; valor_devolvido?: number | string | null }> | null
     nfs: Array<{ valor: number | string | null; status: string | null }> | null
   }>) {
-    // Pedido de serviço da Wave não consome nem realiza MATERIAL.
-    if (ehPedidoDeServicoWave(sol)) continue
+    // Pedido de serviço da Wave não consome nem realiza MATERIAL — mas a NF
+    // dele é a NF de SERVIÇO, e é ela que abate `saldo_medicao_servico`.
+    const ehServico = ehPedidoDeServicoWave(sol)
 
     const itensVal = (sol.itens || [])
       .map(it => ({
@@ -273,11 +263,13 @@ export async function getDashboardData(
     if (itensVal.length === 0) continue
 
     const totalSol = itensVal.reduce((s, it) => s + it.valor, 0)
-    for (const it of itensVal) {
-      aprovadoMaterialDet.set(
-        it.detId,
-        (aprovadoMaterialDet.get(it.detId) || 0) + it.valor,
-      )
+    if (!ehServico) {
+      for (const it of itensVal) {
+        aprovadoMaterialDet.set(
+          it.detId,
+          (aprovadoMaterialDet.get(it.detId) || 0) + it.valor,
+        )
+      }
     }
 
     // NFs que contam: tudo exceto cancelada (NF pendente/aprovada conta).
@@ -286,18 +278,16 @@ export async function getDashboardData(
       .reduce((s, nf) => s + Number(nf.valor || 0), 0)
 
     if (totalSol > 0 && totalNfsSol > 0) {
+      const alvo = ehServico ? nfWaveServicoDet : realizadoMaterialDet
       for (const it of itensVal) {
         const share = it.valor / totalSol
-        realizadoMaterialDet.set(
-          it.detId,
-          (realizadoMaterialDet.get(it.detId) || 0) + totalNfsSol * share,
-        )
+        alvo.set(it.detId, (alvo.get(it.detId) || 0) + totalNfsSol * share)
       }
     }
   }
 
   // --------------------------------------------------------------------
-  // 4) NFs Wave (lado serviço) → nf_wave_servico_det
+  // 4) NFs Wave (lado serviço) → nfWaveServicoDet — FONTE COMPLEMENTAR
   //
   //    Pra cada NF Wave com `medicao_id` preenchido e `status` em
   //    ('pendente','validada'):
@@ -305,11 +295,16 @@ export async function getDashboardData(
   //      - distribuir o `valor` da NF proporcionalmente entre os
   //        detalhamentos daqueles itens (peso = valor_medido)
   //
-  //    Tabela criada na migration 059 — pode estar vazia ou ausente em
-  //    prod. Try/catch garante que ausência da tabela degrada graciosamente.
+  //    `notas_fiscais_wave` nasceu como ESQUELETO na migration 059 e nunca
+  //    recebeu INSERT no produto — a NF de serviço real é gravada como pedido
+  //    `wave_servico` em `solicitacoes_fat_direto` (tratado no passo 3). Ler
+  //    só daqui deixava `nfWaveServicoDet` sempre vazio, e o resultado era
+  //    `saldo_medicao_servico == realizado_servico`: a coluna "Saldo med."
+  //    repetia o realizado e a NF emitida nunca abatia nada.
+  //
+  //    Segue consultada pra quando a UI de cadastro existir. Try/catch
+  //    garante que ausência da tabela degrada graciosamente.
   // --------------------------------------------------------------------
-  const nfWaveServicoDet = new Map<string, number>()
-
   let nfWaveRows: Array<{
     medicao_id: string | null
     valor: number | string | null

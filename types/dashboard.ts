@@ -59,11 +59,11 @@ export interface DashboardItem {
    */
   saldo_aprovado_material: number
   /**
-   * realizado_servico − Σ(NFs Wave de serviço lançadas).
+   * realizado_servico − Σ(NFs de serviço lançadas).
    * Zera quando a Wave emite NF correspondente à medição aprovada.
-   * Tabela notas_fiscais_wave criada na migration 059 — vazia inicialmente,
-   * então saldo_medicao_servico = realizado_servico até a UI de NF Wave existir.
-   * PODE ser negativo (NF de serviço maior que o medido aprovado).
+   * A NF de serviço vem dos pedidos `wave_servico` de solicitacoes_fat_direto
+   * (migration 074); `notas_fiscais_wave` (migration 059) entra como fonte
+   * complementar. PODE ser negativo (NF de serviço maior que o medido aprovado).
    */
   saldo_medicao_servico: number
 }
