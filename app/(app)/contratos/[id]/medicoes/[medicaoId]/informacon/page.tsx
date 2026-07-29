@@ -44,6 +44,17 @@ interface Linha {
   nf_terceiro: number
   saldo_aprovado: number
   nf_descontavel: number
+  /**
+   * Parte de `nf_descontavel` coberta por NF ociosa de OUTRO detalhamento do
+   * mesmo grupo macro. Explica por que uma linha com `nf_terceiro` = 0 pode
+   * ter `nf_descontavel` > 0. Ausente em respostas antigas.
+   */
+  nf_transbordo_grupo?: number
+  /**
+   * Parte de `nf_descontavel` que excede o material medido NO PERÍODO — nota
+   * de medições anteriores recuperada pela régua acumulada.
+   */
+  nf_recuperacao_anterior?: number
   gap_material: number
   faturamento_direto_em_aberto: number
   fip_faturar: number
@@ -201,7 +212,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
     if (!data) return
     const headers = [
       'Código', 'Item Informakon', 'Descrição', '% Informakon',
-      'Mat. Medido', 'NF Terceiro', 'Saldo Aprov.', 'NF Desc.', 'Gap', 'Retido', 'FIP Fat-Dir',
+      'Mat. Medido', 'NF Terceiro', 'Saldo Aprov.', 'NF Desc.', 'NF Desc. do grupo', 'Gap', 'Retido', 'FIP Fat-Dir',
       'Wave (Serv.)', '% Serv. Med.', 'Valor Total Medido', 'Dados Informakon', 'Retenção',
     ]
     const rows = linhasExibidas.map(l => [
@@ -213,6 +224,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
       l.nf_terceiro.toFixed(2).replace('.', ','),
       l.saldo_aprovado.toFixed(2).replace('.', ','),
       l.nf_descontavel.toFixed(2).replace('.', ','),
+      Number(l.nf_transbordo_grupo || 0).toFixed(2).replace('.', ','),
       l.gap_material.toFixed(2).replace('.', ','),
       l.faturamento_direto_em_aberto.toFixed(2).replace('.', ','),
       l.fip_faturar.toFixed(2).replace('.', ','),
@@ -701,6 +713,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   { header: 'NF Terceiro', get: (l: any) => Number(l.nf_terceiro) },
                   { header: 'Saldo Aprov.', get: (l: any) => Number(l.saldo_aprovado) },
                   { header: 'NF Desc.', get: (l: any) => Number(l.nf_descontavel) },
+                  { header: 'NF Desc. do grupo', get: (l: any) => Number(l.nf_transbordo_grupo || 0) },
                   { header: 'Gap', get: (l: any) => Number(l.gap_material) },
                   { header: 'Retido', get: (l: any) => Number(l.faturamento_direto_em_aberto) },
                   { header: 'FIP Fat-Dir', get: (l: any) => Number(l.fip_faturar) },
@@ -961,6 +974,12 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>NF Terceiro</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>Saldo Aprov.</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>NF Desc.</th>
+                  <th
+                    style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}
+                    title="Quanto do NF Desc. veio de nota alocada a OUTRO item do mesmo grupo macro. A FIP compra por lote e a medição é por pavimento — sem isso, a nota fica parada num item enquanto o vizinho aparece sem cobertura."
+                  >
+                    ↳ do grupo
+                  </th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(245,158,11,0.05)' }}>Gap</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(245,158,11,0.05)' }}>Retido</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.05)' }}>FIP Fat-Dir</th>
@@ -1063,7 +1082,23 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                       <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(l.material_medido)}</td>
                       <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.nf_terceiro)}</td>
                       <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.saldo_aprovado)}</td>
-                      <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.nf_descontavel)}</td>
+                      <td
+                        style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}
+                        title={tituloNfDesc(l)}
+                      >
+                        {formatCurrency(l.nf_descontavel)}
+                      </td>
+                      <td
+                        style={{
+                          ...td('tabular-nums'),
+                          textAlign: 'right',
+                          background: 'rgba(15,118,110,0.04)',
+                          color: Number(l.nf_transbordo_grupo || 0) > 0 ? '#0F766E' : 'var(--text-3)',
+                        }}
+                        title={tituloNfDesc(l)}
+                      >
+                        {formatCurrency(Number(l.nf_transbordo_grupo || 0))}
+                      </td>
                       <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(245,158,11,0.04)', color: 'var(--text-3)' }}>{formatCurrency(l.gap_material)}</td>
                       <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(245,158,11,0.04)', color: l.faturamento_direto_em_aberto > 0 ? '#F59E0B' : 'var(--text-3)' }}>{formatCurrency(l.faturamento_direto_em_aberto)}</td>
                       <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(59,130,246,0.04)', color: l.fip_faturar > 0 ? '#3B82F6' : 'var(--text-3)' }}>{formatCurrency(l.fip_faturar)}</td>
@@ -1116,6 +1151,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.nf_terceiro, 0))}</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.saldo_aprovado, 0))}</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.nf_descontavel, 0))}</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)', color: '#0F766E' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + Number(l.nf_transbordo_grupo || 0), 0))}</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(245,158,11,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.gap_material, 0))}</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(245,158,11,0.06)', color: '#F59E0B' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.faturamento_direto_em_aberto, 0))}</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(59,130,246,0.06)', color: '#3B82F6' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.fip_faturar, 0))}</td>
@@ -1606,6 +1642,39 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
   )
 }
 
+/**
+ * Explica de onde veio o NF Desc. da linha.
+ *
+ * Sem isto o usuário vê "NF Terceiro R$ 0,00" ao lado de "NF Desc.
+ * R$ 1.868,28" na mesma linha, sem nenhum caminho na tela pra descobrir a
+ * origem da cobertura.
+ */
+function tituloNfDesc(l: Linha): string {
+  const fmt = (v: number) => `R$ ${v.toFixed(2).replace('.', ',')}`
+  const transbordo = Number(l.nf_transbordo_grupo || 0)
+  const recuperacao = Number(l.nf_recuperacao_anterior || 0)
+  const partes: string[] = []
+
+  if (transbordo > 0) {
+    partes.push(
+      `${fmt(transbordo)} vieram de nota alocada a outro item do mesmo grupo macro. ` +
+      'A FIP compra por lote (prumada inteira) e a Wave mede por pavimento — o saldo ' +
+      'de NF é apurado no nível do grupo, então a nota parada num item cobre o vizinho.',
+    )
+  }
+  if (recuperacao > 0) {
+    partes.push(
+      `${fmt(recuperacao)} são recuperação de medições anteriores: nota que não ` +
+      'descontou no mês certo e voltou agora, porque o desconto é apurado sobre o ' +
+      'acumulado do grupo. É por isso que este valor pode superar o material medido no período.',
+    )
+  }
+  if (partes.length === 0) {
+    return `NF de material abatida nesta medição. Coberta pela nota do próprio item (${fmt(l.nf_terceiro)} alocados).`
+  }
+  return partes.join(' ')
+}
+
 /** % Serv. Med. exibido — usa o ajustado se disponível, senão o físico. */
 function pctServMedExibido(l: Linha): number {
   if (typeof l.pct_serv_med === 'number' && Number.isFinite(l.pct_serv_med)) return l.pct_serv_med
@@ -1648,7 +1717,26 @@ function HelpModal({ onClose, pctRetencao }: { onClose: () => void; pctRetencao:
               <li><strong>Mat. Medido</strong> = qtd × <code>valor_material_unit</code> do contrato.</li>
               <li><strong>NF Terceiro</strong> = ∑ NFs (validadas/pendentes) de fat-direto APROVADO vinculadas ao item, alocadas proporcionalmente por valor dentro de cada solicitação.</li>
               <li><strong>Saldo Aprov.</strong> = ∑ aprovado em fat-direto − NFs já lançadas (saldo aguardando NF).</li>
-              <li><strong>NF Desc.</strong> = MIN(Mat. Medido, NF Terceiro). É o quanto desconta no Informakon.</li>
+              <li>
+                <strong>NF Desc.</strong> = o que a nota de material abate nesta medição. <em>Não</em> é
+                MIN(Mat. Medido, NF Terceiro) do próprio item: o saldo de NF é apurado no nível do{' '}
+                <strong>grupo macro</strong>, não do item. A FIP compra por lote (a prumada inteira) e a
+                Wave mede por pavimento — sem isso a nota fica parada num detalhamento enquanto o vizinho
+                do mesmo grupo aparece sem cobertura. Fora do grupo nada transborda: Hidráulica não paga
+                material de Elétrica.
+              </li>
+              <li>
+                <strong>↳ do grupo</strong> = quanto do NF Desc. veio de nota alocada a OUTRO item do
+                mesmo grupo macro. É por isso que uma linha pode ter NF Terceiro R$ 0,00 e NF Desc.
+                maior que zero.
+              </li>
+              <li>
+                O desconto é apurado sobre o <strong>acumulado</strong> do grupo — MENOR(material
+                executado acumulado, nota lançada) menos o que as medições anteriores já abateram. Por
+                isso o NF Desc. de um período pode <em>superar</em> o material medido nesse período:
+                é nota que ficou para trás voltando de uma vez. Passe o mouse sobre o valor pra ver a
+                composição.
+              </li>
               <li><strong>Gap</strong> = Mat. Medido − NF Desc. (parte do material não coberta por NF).</li>
               <li><strong>Retido</strong> = MIN(Gap, Saldo Aprov.). Não pago nesta medição — aguarda chegar NF terceiro.</li>
               <li><strong>FIP Fat-Dir</strong> = Gap − Retido. Solicitação de fat-direto criada automaticamente em nome da FIP (status: aprovado). <em>Ainda assim NÃO entra no Dados Informakon</em> — a NF ainda não foi emitida.</li>
