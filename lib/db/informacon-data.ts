@@ -14,21 +14,13 @@ import {
 } from '@/lib/db/desconto-transbordo'
 import { getCodigoInformakon } from '@/lib/data/informakon-codigos'
 
-// CNPJ da Wave — os pedidos criados na aprovação da medição para a NF de
-// SERVIÇO ficam na mesma tabela dos pedidos de material. Eles NÃO podem
-// entrar no desconto de material. A partir da migration 074 existe a coluna
-// `tipo`; o CNPJ segue como rede de segurança pra base antiga.
-const CNPJ_WAVE_SERVICO = '65.528.046/0001-23'
-
-export function ehPedidoDeServicoWave(sol: {
-  tipo?: string | null
-  fornecedor_cnpj?: string | null
-  fornecedor_razao_social?: string | null
-}): boolean {
-  if (sol.tipo === 'wave_servico') return true
-  if (sol.fornecedor_cnpj === CNPJ_WAVE_SERVICO) return true
-  return /^WAVE INSTALACOES SPE/i.test((sol.fornecedor_razao_social ?? '').trim())
-}
+// A classificação "pedido é NF de serviço da Wave" mora em
+// `lib/db/saldo-detalhamento.ts` (módulo sem dependências), porque além do
+// desconto de material ela decide contra qual base contratual — material ou
+// mão de obra — o pedido consome saldo. Re-exportado aqui pra não quebrar os
+// importadores existentes.
+export { ehPedidoDeServicoWave } from '@/lib/db/saldo-detalhamento'
+import { ehPedidoDeServicoWave } from '@/lib/db/saldo-detalhamento'
 
 /**
  * Quanto de NF de material já foi abatido em cada detalhamento nas medições

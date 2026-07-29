@@ -2,6 +2,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { isSchemaMissingError, withSchemaFallback } from '@/lib/db/resilient'
 import { log } from '@/lib/log'
 import { nfReservaSaldo, nfPendente, statusInicialNf } from '@/lib/db/nf-status'
+import {
+  basesDoDetalhamento,
+  baseParaNatureza,
+  naturezaDoPedido,
+  type NaturezaPedido,
+} from '@/lib/db/saldo-detalhamento'
 
 export async function listarSolicitacoes(contratoId: string) {
   const admin = createAdminClient()
@@ -256,43 +262,59 @@ export async function criarSolicitacao(input: {
     throw err
   }
 
-  // Verificar limite por detalhamento (nível 3)
+  // Verificar limite por detalhamento (nível 3).
+  // O limite é POR NATUREZA: um pedido de material consome `subtotal_material`
+  // e um pedido de serviço da Wave consome `subtotal_mo`. Usar `valor_total`
+  // (material + MO) pra qualquer natureza inflava o teto de material e, do
+  // outro lado, fazia a NF de serviço estourar a base de material.
   const detIdsReq = input.itens.map(i => i.detalhamento_id).filter(Boolean) as string[]
   if (detIdsReq.length > 0) {
+    const naturezaNova = naturezaDoPedido({
+      fornecedor_cnpj: input.fornecedor_cnpj,
+      fornecedor_razao_social: input.fornecedor_razao_social,
+    })
+
     const { data: detsData } = await admin
       .from('detalhamentos')
-      .select('id, codigo, descricao, valor_total, quantidade_contratada, valor_unitario')
+      .select('id, codigo, descricao, valor_total, quantidade_contratada, valor_unitario, valor_material_unit, valor_servico_unit, subtotal_material, subtotal_mo')
       .in('id', detIdsReq)
 
-    // Inclui valor_devolvido pra desconsiderar dos comprometimentos.
-    // withSchemaFallback: durante janela de schema cache stale (após migration 050),
-    // cai pra select sem valor_devolvido — soma normal sem subtrair (degradação OK).
+    // Inclui valor_devolvido pra desconsiderar dos comprometimentos e `tipo`
+    // pra separar por natureza. withSchemaFallback: durante janela de schema
+    // cache stale (migrations 050/074), cai pro select enxuto — a natureza
+    // ainda é inferida por CNPJ / razão social (degradação OK).
+    const SOL_COMPLETA = 'solicitacoes_fat_direto!inner(status, deletado_em, tipo, fornecedor_cnpj, fornecedor_razao_social)'
+    const SOL_ENXUTA = 'solicitacoes_fat_direto!inner(status, deletado_em, fornecedor_cnpj, fornecedor_razao_social)'
     const itensExistRes = await withSchemaFallback({
       primary: () => admin
         .from('itens_solicitacao_fat_direto')
-        .select('detalhamento_id, valor_total, valor_devolvido, solicitacoes_fat_direto!inner(status)')
+        .select(`detalhamento_id, valor_total, valor_devolvido, ${SOL_COMPLETA}`)
         .in('detalhamento_id', detIdsReq)
-        .in('solicitacoes_fat_direto.status', ['aprovado', 'aguardando_aprovacao']),
+        .in('solicitacoes_fat_direto.status', ['aprovado', 'aguardando_aprovacao'])
+        .is('solicitacoes_fat_direto.deletado_em', null),
       fallback: () => admin
         .from('itens_solicitacao_fat_direto')
-        .select('detalhamento_id, valor_total, solicitacoes_fat_direto!inner(status)')
+        .select(`detalhamento_id, valor_total, ${SOL_ENXUTA}`)
         .in('detalhamento_id', detIdsReq)
-        .in('solicitacoes_fat_direto.status', ['aprovado', 'aguardando_aprovacao']),
-      missingColumns: ['valor_devolvido'],
+        .in('solicitacoes_fat_direto.status', ['aprovado', 'aguardando_aprovacao'])
+        .is('solicitacoes_fat_direto.deletado_em', null),
+      missingColumns: ['valor_devolvido', 'tipo'],
       context: 'criarSolicitacao_itensExist',
     })
     const itensExist = itensExistRes.data
 
+    // Só o consumo da MESMA natureza do pedido novo disputa a mesma base.
     const aprovByDet: Record<string, number> = {}
     const pendByDet: Record<string, number> = {}
     ;(itensExist || []).forEach((it: any) => {
       if (!it.detalhamento_id) return
-      const s = it.solicitacoes_fat_direto?.status
+      const sol = it.solicitacoes_fat_direto
+      if (!sol || naturezaDoPedido(sol) !== naturezaNova) return
       // Saldo efetivo = valor_total − valor_devolvido (devoluções liberam o saldo do item)
       const efetivo = (it.valor_total || 0) - (it.valor_devolvido || 0)
       if (efetivo <= 0) return
-      if (s === 'aprovado') aprovByDet[it.detalhamento_id] = (aprovByDet[it.detalhamento_id] || 0) + efetivo
-      else if (s === 'aguardando_aprovacao') pendByDet[it.detalhamento_id] = (pendByDet[it.detalhamento_id] || 0) + efetivo
+      if (sol.status === 'aprovado') aprovByDet[it.detalhamento_id] = (aprovByDet[it.detalhamento_id] || 0) + efetivo
+      else if (sol.status === 'aguardando_aprovacao') pendByDet[it.detalhamento_id] = (pendByDet[it.detalhamento_id] || 0) + efetivo
     })
 
     // Group new items by detalhamento
@@ -302,7 +324,7 @@ export async function criarSolicitacao(input: {
     })
 
     for (const det of (detsData || [])) {
-      const limite = det.valor_total || (det.quantidade_contratada || 0) * (det.valor_unitario || 0)
+      const limite = baseParaNatureza(basesDoDetalhamento(det), naturezaNova)
       if (limite <= 0) continue
       const aprovado = aprovByDet[det.id] || 0
       const emAprovacao = pendByDet[det.id] || 0
@@ -312,6 +334,7 @@ export async function criarSolicitacao(input: {
         ;(err as any).itemViolation = {
           codigo: det.codigo,
           descricao: det.descricao,
+          natureza: naturezaNova,
           limite,
           aprovado,
           emAprovacao,
@@ -1008,42 +1031,50 @@ export async function criarNotaFiscal(input: {
 export async function verificarSaldoDetalhamento(input: {
   detalhamento_id: string
   valor_extra: number
+  /** Natureza do pedido sendo ajustado. Default: material. */
+  natureza?: NaturezaPedido
 }): Promise<{ limite: number; aprovado: number; pendente: number; saldo: number } | null> {
   const admin = createAdminClient()
+  const natureza: NaturezaPedido = input.natureza ?? 'material'
 
-  // Carrega o detalhamento (limite contratual = qtde × valor_unitario)
+  // Carrega o detalhamento. O limite é o da NATUREZA do pedido:
+  // subtotal_material pra material, subtotal_mo pra serviço.
   const { data: det, error: detErr } = await admin
     .from('detalhamentos')
-    .select('id, valor_total, quantidade_contratada, valor_unitario')
+    .select('id, valor_total, quantidade_contratada, valor_unitario, valor_material_unit, valor_servico_unit, subtotal_material, subtotal_mo')
     .eq('id', input.detalhamento_id)
     .single()
   if (detErr || !det) return null // sem detalhamento, sem checagem possível
-  const limite = Number((det as any).valor_total ?? (Number((det as any).quantidade_contratada || 0) * Number((det as any).valor_unitario || 0)))
+  const limite = baseParaNatureza(basesDoDetalhamento(det as any), natureza)
 
   // Soma valor_total dos itens com esse detalhamento_id em solicitações
-  // aprovadas/pendentes (descontando devoluções)
+  // aprovadas/pendentes DA MESMA NATUREZA (descontando devoluções)
+  const SOL_COMPLETA = 'solicitacoes_fat_direto!inner(status, deletado_em, tipo, fornecedor_cnpj, fornecedor_razao_social)'
+  const SOL_ENXUTA = 'solicitacoes_fat_direto!inner(status, deletado_em, fornecedor_cnpj, fornecedor_razao_social)'
   const itensRes = await withSchemaFallback({
     primary: () => admin
       .from('itens_solicitacao_fat_direto')
-      .select('valor_total, valor_devolvido, solicitacoes_fat_direto!inner(status, deletado_em)')
+      .select(`valor_total, valor_devolvido, ${SOL_COMPLETA}`)
       .eq('detalhamento_id', input.detalhamento_id)
       .in('solicitacoes_fat_direto.status', ['aprovado', 'aguardando_aprovacao'])
       .is('solicitacoes_fat_direto.deletado_em', null),
     fallback: () => admin
       .from('itens_solicitacao_fat_direto')
-      .select('valor_total, solicitacoes_fat_direto!inner(status, deletado_em)')
+      .select(`valor_total, ${SOL_ENXUTA}`)
       .eq('detalhamento_id', input.detalhamento_id)
       .in('solicitacoes_fat_direto.status', ['aprovado', 'aguardando_aprovacao'])
       .is('solicitacoes_fat_direto.deletado_em', null),
-    missingColumns: ['valor_devolvido'],
+    missingColumns: ['valor_devolvido', 'tipo'],
     context: 'verificarSaldoDetalhamento',
   })
 
   let aprovado = 0
   let pendente = 0
   for (const it of (itensRes.data || []) as any[]) {
+    const sol = it.solicitacoes_fat_direto
+    if (!sol || naturezaDoPedido(sol) !== natureza) continue
     const efetivo = Number(it.valor_total || 0) - Number(it.valor_devolvido || 0)
-    if (it.solicitacoes_fat_direto?.status === 'aprovado') aprovado += efetivo
+    if (sol.status === 'aprovado') aprovado += efetivo
     else pendente += efetivo
   }
 
@@ -1091,6 +1122,7 @@ export async function ajustarSaldoPedidoPorDivergencia(input: {
     .from('solicitacoes_fat_direto')
     .select(`
       id, numero_pedido_fip, contrato_id, status, valor_total,
+      fornecedor_cnpj, fornecedor_razao_social,
       itens:itens_solicitacao_fat_direto ( tarefa_id, detalhamento_id, local )
     `)
     .eq('id', input.pedido_id)
@@ -1103,11 +1135,15 @@ export async function ajustarSaldoPedidoPorDivergencia(input: {
   if (!itemBase) throw new Error('Pedido sem itens — não dá pra herdar tarefa/detalhamento pro ajuste.')
 
   // 2) Verifica saldo POR DETALHAMENTO (não global) — limite contratual
-  //    do item não pode ser estourado.
+  //    do item, na natureza do pedido (material ou serviço), não pode ser
+  //    estourado. `tipo` não é selecionado aqui de propósito: CNPJ / razão
+  //    social já identificam a NF de serviço da Wave sem depender do schema
+  //    cache conhecer a coluna da migration 074.
   if (itemBase.detalhamento_id) {
     const violation = await verificarSaldoDetalhamento({
       detalhamento_id: itemBase.detalhamento_id,
       valor_extra: input.excedente,
+      natureza: naturezaDoPedido(pedido as any),
     })
     if (violation) {
       const err = new Error('SALDO_DETALHAMENTO_INSUFICIENTE')
