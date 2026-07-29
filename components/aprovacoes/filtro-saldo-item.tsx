@@ -6,11 +6,17 @@
  * Comportamento:
  *   1. Seleciona contrato (dropdown)
  *   2. Busca código de item (ex: 1.1.1) com autocomplete
- *   3. Ao selecionar item, card de saldo aparece com:
- *      - Valor contratado (material) do item
- *      - Já solicitado (aprovado + pendente)
+ *   3. Ao selecionar item, card de saldo aparece com dois blocos —
+ *      MATERIAL e SERVIÇO (mão de obra) — cada um com:
+ *      - Valor contratado da natureza (subtotal_material / subtotal_mo)
+ *      - Já solicitado (aprovado + pendente) daquela natureza
  *      - Saldo disponível + % de utilização + barra colorida
- *      - Lista de pedidos FIP-XXXX que consumiram o item (clicáveis)
+ *      e a lista de pedidos FIP-XXXX que consumiram o item (clicáveis),
+ *      marcados como MATERIAL ou SERVIÇO.
+ *
+ *   Pedidos `wave_servico` (NF de serviço da Wave) consomem a base de MO,
+ *   não a de material — antes eram debitados do material e faziam o item
+ *   aparecer como "esgotado" com saldo negativo.
  *
  * Dados vêm de GET /api/contratos/[id]/saldo-por-item?codigo=X.
  */
@@ -19,6 +25,8 @@ import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { Package, Search, ExternalLink, X } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+
+type Alerta = 'ok' | 'atencao' | 'critico' | 'esgotado'
 
 interface ItemSaldo {
   detalhamento_id: string
@@ -32,11 +40,24 @@ interface ItemSaldo {
   valor_unitario_mo: number
   contratado_material: number
   contratado_mo: number
+  contratado_total: number
+  /** true = contrato sem quebra material/MO; as duas naturezas dividem `contratado_total` */
+  base_unica: boolean
+  solicitado_aprovado_material: number
+  solicitado_pendente_material: number
+  solicitado_aprovado_servico: number
+  solicitado_pendente_servico: number
   solicitado_aprovado: number
   solicitado_pendente: number
   saldo_material: number
+  saldo_servico: number
+  saldo_total: number
+  pct_utilizado_material: number
+  pct_utilizado_servico: number
   pct_utilizado: number
-  alerta: 'ok' | 'atencao' | 'critico' | 'esgotado'
+  alerta_material: Alerta
+  alerta_servico: Alerta
+  alerta: Alerta
   tarefa_codigo?: string
   grupo_codigo?: string
   pedidos?: Array<{
@@ -44,6 +65,8 @@ interface ItemSaldo {
     numero_pedido_fip?: number
     numero: number
     status: string
+    tipo?: string | null
+    natureza: 'material' | 'servico'
     fornecedor: string
     valor_no_item: number
     data_solicitacao: string
@@ -52,6 +75,79 @@ interface ItemSaldo {
 }
 
 interface ContratoMin { id: string; numero: string; descricao?: string }
+
+const palette: Record<Alerta, { bg: string; border: string; text: string }> = {
+  ok:       { bg: 'rgba(16,185,129,0.10)',  border: '#10B981', text: '#10B981' },
+  atencao:  { bg: 'rgba(245,158,11,0.10)',  border: '#F59E0B', text: '#F59E0B' },
+  critico:  { bg: 'rgba(239,68,68,0.12)',   border: '#EF4444', text: '#EF4444' },
+  esgotado: { bg: 'rgba(239,68,68,0.22)',   border: '#EF4444', text: '#EF4444' },
+}
+
+/** Bloco de saldo de uma natureza (material ou serviço) do item. */
+function BlocoNatureza({
+  titulo, contratado, aprovado, pendente, saldo, pct, alerta,
+}: {
+  titulo: string
+  contratado: number
+  aprovado: number
+  pendente: number
+  saldo: number
+  pct: number
+  alerta: Alerta
+}) {
+  const p = palette[alerta]
+  const barra = Math.min(100, Math.max(0, pct || 0))
+  // Item sem valor contratado nessa natureza: nada a controlar aqui.
+  const semBase = contratado <= 0 && aprovado === 0 && pendente === 0
+
+  return (
+    <div className="rounded-lg p-3" style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-2)' }}>
+          {titulo}
+        </p>
+        {!semBase && (
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase"
+            style={{ background: p.bg, color: p.text, border: `1px solid ${p.border}` }}>
+            {alerta}
+          </span>
+        )}
+      </div>
+
+      {semBase ? (
+        <p className="text-[11px] py-2" style={{ color: 'var(--text-3)' }}>Não contratado neste item.</p>
+      ) : (
+        <>
+          <div className="grid grid-cols-4 gap-2 mb-2">
+            <div>
+              <p className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Contratado</p>
+              <p className="text-xs font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(contratado)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Aprovado</p>
+              <p className="text-xs font-bold" style={{ color: '#10B981' }}>{formatCurrency(aprovado)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Pendente</p>
+              <p className="text-xs font-bold" style={{ color: '#F59E0B' }}>{formatCurrency(pendente)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Saldo</p>
+              <p className="text-xs font-bold" style={{ color: p.text }}>{formatCurrency(saldo)}</p>
+            </div>
+          </div>
+
+          <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--surface-2)' }}>
+            <div className="h-full transition-all" style={{ width: `${barra}%`, background: p.border }} />
+          </div>
+          <p className="text-[10px] mt-1 text-right" style={{ color: 'var(--text-3)' }}>
+            {(pct || 0).toFixed(1)}% do contratado utilizado
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
 
 export function FiltroSaldoItem({
   onFilterChange,
@@ -115,13 +211,6 @@ export function FiltroSaldoItem({
     setSelected(null)
     setQuery('')
     onFilterChange?.(null)
-  }
-
-  const palette = {
-    ok:       { bg: 'rgba(16,185,129,0.10)',  border: '#10B981', text: '#10B981' },
-    atencao:  { bg: 'rgba(245,158,11,0.10)',  border: '#F59E0B', text: '#F59E0B' },
-    critico:  { bg: 'rgba(239,68,68,0.12)',   border: '#EF4444', text: '#EF4444' },
-    esgotado: { bg: 'rgba(239,68,68,0.22)',   border: '#EF4444', text: '#EF4444' },
   }
 
   return (
@@ -194,13 +283,13 @@ export function FiltroSaldoItem({
                     {it.local && <span className="ml-1 text-[10px] opacity-70">· {it.local}</span>}
                   </span>
                   <span className="tabular-nums min-w-[100px] text-right" style={{ color: 'var(--text-2)' }}>
-                    {formatCurrency(it.contratado_material)}
+                    {formatCurrency(it.contratado_total)}
                   </span>
                   <span
                     className="min-w-[60px] text-right tabular-nums text-[11px] font-semibold"
                     style={{ color: p.text }}
                   >
-                    {it.pct_utilizado.toFixed(0)}%
+                    {(it.pct_utilizado ?? 0).toFixed(0)}%
                   </span>
                 </button>
               )
@@ -212,7 +301,6 @@ export function FiltroSaldoItem({
       {/* Card de saldo detalhado (quando tem seleção) */}
       {selected && (() => {
         const p = palette[selected.alerta]
-        const pct = Math.min(100, Math.max(0, selected.pct_utilizado))
         return (
           <div className="space-y-3" style={loadingSel ? { opacity: 0.5 } : {}}>
             <div className="rounded-lg p-4" style={{ background: p.bg, border: `1px solid ${p.border}` }}>
@@ -233,31 +321,57 @@ export function FiltroSaldoItem({
                 </span>
               </div>
 
-              <div className="grid grid-cols-4 gap-3 mb-3">
-                <div>
-                  <p className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Contratado (mat)</p>
-                  <p className="text-sm font-bold" style={{ color: 'var(--text-1)' }}>{formatCurrency(selected.contratado_material)}</p>
+              {selected.base_unica ? (
+                <>
+                  <BlocoNatureza
+                    titulo="Contratado (item)"
+                    contratado={selected.contratado_total}
+                    aprovado={selected.solicitado_aprovado}
+                    pendente={selected.solicitado_pendente}
+                    saldo={selected.saldo_material}
+                    pct={selected.pct_utilizado_material}
+                    alerta={selected.alerta_material}
+                  />
+                  <p className="text-[10px] mt-2" style={{ color: 'var(--text-3)' }}>
+                    Este item não tem quebra de material / mão de obra no orçamento —
+                    material e serviço dividem a mesma base contratual.
+                  </p>
+                </>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <BlocoNatureza
+                    titulo="Material"
+                    contratado={selected.contratado_material}
+                    aprovado={selected.solicitado_aprovado_material}
+                    pendente={selected.solicitado_pendente_material}
+                    saldo={selected.saldo_material}
+                    pct={selected.pct_utilizado_material}
+                    alerta={selected.alerta_material}
+                  />
+                  <BlocoNatureza
+                    titulo="Serviço (MO)"
+                    contratado={selected.contratado_mo}
+                    aprovado={selected.solicitado_aprovado_servico}
+                    pendente={selected.solicitado_pendente_servico}
+                    saldo={selected.saldo_servico}
+                    pct={selected.pct_utilizado_servico}
+                    alerta={selected.alerta_servico}
+                  />
                 </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Aprovado</p>
-                  <p className="text-sm font-bold" style={{ color: '#10B981' }}>{formatCurrency(selected.solicitado_aprovado)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Pendente</p>
-                  <p className="text-sm font-bold" style={{ color: '#F59E0B' }}>{formatCurrency(selected.solicitado_pendente)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>Saldo</p>
-                  <p className="text-sm font-bold" style={{ color: p.text }}>{formatCurrency(selected.saldo_material)}</p>
-                </div>
-              </div>
+              )}
 
-              <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--surface-1)' }}>
-                <div className="h-full transition-all" style={{ width: `${pct}%`, background: p.border }} />
-              </div>
-              <p className="text-[10px] mt-1 text-right" style={{ color: 'var(--text-3)' }}>
-                {pct.toFixed(1)}% do contratado utilizado
-              </p>
+              {!selected.base_unica && (
+                <div className="flex items-center justify-between mt-3 pt-3 border-t text-[11px]" style={{ borderColor: 'var(--border)' }}>
+                  <span style={{ color: 'var(--text-3)' }}>Total do item (material + MO)</span>
+                  <span className="tabular-nums" style={{ color: 'var(--text-2)' }}>
+                    {formatCurrency(selected.contratado_total)} contratado ·{' '}
+                    <strong style={{ color: selected.saldo_total < 0 ? '#EF4444' : 'var(--text-1)' }}>
+                      {formatCurrency(selected.saldo_total)}
+                    </strong>{' '}
+                    de saldo
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Pedidos que consumiram o item */}
@@ -279,6 +393,15 @@ export function FiltroSaldoItem({
                         FIP-{String(ped.numero_pedido_fip ?? ped.numero).padStart(4, '0')}
                       </span>
                       <span className="flex-1 truncate" style={{ color: 'var(--text-2)' }}>{ped.fornecedor}</span>
+                      <span
+                        className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase"
+                        style={{
+                          background: ped.natureza === 'servico' ? 'rgba(139,92,246,0.15)' : 'rgba(59,130,246,0.15)',
+                          color:      ped.natureza === 'servico' ? '#8B5CF6' : '#3B82F6',
+                        }}
+                      >
+                        {ped.natureza === 'servico' ? 'Serviço' : 'Material'}
+                      </span>
                       <span
                         className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase"
                         style={{
