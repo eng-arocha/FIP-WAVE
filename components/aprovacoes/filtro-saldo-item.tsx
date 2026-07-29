@@ -18,7 +18,8 @@
  *   não a de material — antes eram debitados do material e faziam o item
  *   aparecer como "esgotado" com saldo negativo.
  *
- * Dados vêm de GET /api/contratos/[id]/saldo-por-item?codigo=X.
+ * Dados vêm de GET /api/contratos/[id]/saldo-por-item?codigo=X, já em ordem
+ * hierárquica de código (a rota ordena com `compareCodigo`).
  */
 
 import { useState, useEffect, useMemo } from 'react'
@@ -183,14 +184,19 @@ export function FiltroSaldoItem({
       .finally(() => setLoadingLista(false))
   }, [contratoId])
 
-  const filtrados = useMemo(() => {
+  // Cap alto o bastante pra caber o contrato inteiro (WAVE-2025-001 tem 335
+  // detalhamentos). O corte antigo era 30 — sem busca, a lista parava em
+  // "10.2.1" e parecia que o contrato tinha só 30 itens.
+  const LIMITE_LISTA = 500
+
+  const { visiveis, totalCasando } = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return itens.slice(0, 30)
-    return itens.filter(i =>
+    const casando = !q ? itens : itens.filter(i =>
       i.codigo.toLowerCase().includes(q) ||
       (i.descricao || '').toLowerCase().includes(q) ||
       (i.local || '').toLowerCase().includes(q),
-    ).slice(0, 30)
+    )
+    return { visiveis: casando.slice(0, LIMITE_LISTA), totalCasando: casando.length }
   }, [itens, query])
 
   async function selecionarItem(it: ItemSaldo) {
@@ -260,15 +266,16 @@ export function FiltroSaldoItem({
 
       {/* Lista de itens filtrados (quando não tem seleção) */}
       {contratoId && !selected && (
+        <>
         <div className="max-h-64 overflow-auto rounded-lg" style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
           {loadingLista ? (
             <div className="text-xs text-center py-6" style={{ color: 'var(--text-3)' }}>Carregando itens...</div>
-          ) : filtrados.length === 0 ? (
+          ) : visiveis.length === 0 ? (
             <div className="text-xs text-center py-6" style={{ color: 'var(--text-3)' }}>
               {query ? 'Nenhum item encontrado.' : 'Digite pra filtrar (ex: 1.1.1, ÁGUA PLUVIAL).'}
             </div>
           ) : (
-            filtrados.map(it => {
+            visiveis.map(it => {
               const p = palette[it.alerta]
               return (
                 <button
@@ -296,6 +303,16 @@ export function FiltroSaldoItem({
             })
           )}
         </div>
+        {!loadingLista && itens.length > 0 && (
+          <p className="text-[10px] mt-1.5 text-right" style={{ color: 'var(--text-3)' }}>
+            {visiveis.length < totalCasando
+              ? `Mostrando ${visiveis.length} de ${totalCasando} itens — refine a busca.`
+              : query
+                ? `${totalCasando} de ${itens.length} itens do contrato`
+                : `${itens.length} itens do contrato`}
+          </p>
+        )}
+        </>
       )}
 
       {/* Card de saldo detalhado (quando tem seleção) */}

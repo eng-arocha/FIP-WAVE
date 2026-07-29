@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
 import { uuid } from '@/lib/api/schema'
 import { withSchemaFallback } from '@/lib/db/resilient'
+import { compareCodigo } from '@/lib/db/wbs-utils'
 import {
   basesDoDetalhamento,
   baseParaNatureza,
@@ -35,6 +36,10 @@ import {
  * Se `?codigo=X.Y.Z` for passado, retorna só esse item (com lista detalhada
  * de pedidos). Sem filtro, retorna todos os detalhamentos (resumo, sem
  * lista detalhada de pedidos — pra listagem rápida).
+ *
+ * Itens saem em ordem hierárquica de código (1.1.1 → 1.2.1 → … → 1.10.1),
+ * via `compareCodigo`. `ORDER BY codigo` no Postgres é ordenação de texto e
+ * intercalava 1.10.1 entre 1.1.1 e 1.2.1.
  */
 
 const ParamsSchema = z.object({ id: uuid() })
@@ -53,7 +58,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     const admin = createAdminClient()
 
-    // 1) Carrega detalhamentos do contrato (filtra por código se houver)
+    // 1) Carrega detalhamentos do contrato (filtra por código se houver).
+    //    `range` explícito: sem ele o PostgREST corta em 1000 linhas por
+    //    default, e um contrato grande perderia o final da lista em silêncio.
     let detQuery: any = admin
       .from('detalhamentos')
       .select(`
@@ -66,13 +73,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         )
       `)
       .eq('tarefa.grupo.contrato_id', id)
-      .order('codigo', { ascending: true })
+      .range(0, 9999)
 
     if (codigoFiltro) detQuery = detQuery.eq('codigo', codigoFiltro)
 
     const { data: detsRaw, error: detErr } = await detQuery
     if (detErr) throw detErr
-    const dets = (detsRaw || []) as any[]
+    // Ordenação hierárquica no Node, não no Postgres: `codigo` é texto, então
+    // `ORDER BY codigo` devolve 1.10.1 antes de 1.2.1 e 10.1.1 antes de 2.1.1.
+    const dets = ((detsRaw || []) as any[]).sort((a, b) => compareCodigo(a.codigo, b.codigo))
     if (dets.length === 0) {
       return NextResponse.json({ itens: [], resumo: { total: 0 } })
     }
