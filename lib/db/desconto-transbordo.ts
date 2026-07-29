@@ -1,5 +1,5 @@
 /**
- * Desconto de NF de material apurado por grupo macro, sobre o ACUMULADO.
+ * Desconto de NF de material apurado por TAREFA, sobre o ACUMULADO.
  *
  * O PORQUÊ (não apague este comentário sem ler):
  *
@@ -16,8 +16,31 @@
  *
  * A regra aqui alinha as duas réguas: a nota continua alocada ao seu
  * detalhamento (o rastreio por item não se perde), mas o saldo é apurado no
- * nível do GRUPO MACRO. Fora do grupo nada transborda — Hidráulica não paga
- * material de Elétrica.
+ * nível da TAREFA — o segundo nível da WBS (contratos → grupos_macro →
+ * tarefas → detalhamentos), que é o código de dois níveis que o usuário vê:
+ * "14.2 TUBOS E CONEXÕES - SPRINKLER", "16.1 INFRA SDAI".
+ *
+ * POR QUE TAREFA E NÃO GRUPO MACRO:
+ *
+ * A primeira versão apurava pelo grupo macro inteiro, para espelhar o
+ * Informakon (que desconta por macro item). Só que o grupo macro mistura
+ * materiais de naturezas diferentes: o grupo 16 (SDAI) contém tanto
+ * "16.1 INFRA — eletrodutos e caixas" quanto "16.2 CABEAMENTO — cabo
+ * blindado". Na medição 005/2026 isso ficou visível: itens de cabeamento sem
+ * nota nenhuma apareciam cobertos por nota de eletroduto, e o sistema não
+ * pedia NF à FIP por material que de fato não tinha nota.
+ *
+ * A tarefa é a menor fronteira que ainda resolve o problema original: no caso
+ * que motivou o transbordo — sprinkler comprado por prumada e medido por
+ * pavimento — origem e destino são ambos "14.2 SPRINKLER", mesma tarefa. O
+ * transbordo continua funcionando ali e para de funcionar onde não deveria.
+ *
+ * CONSEQUÊNCIA ACEITA: a apuração fica mais restritiva que a do Informakon,
+ * que continua descontando por macro item. Onde uma tarefa tem material sem
+ * nota e a tarefa vizinha tem nota sobrando, nós vamos apontar "FIP a criar"
+ * e eles não. É uma divergência deliberada — decisão do usuário em 29/07/2026,
+ * ciente do trade-off: prefere-se cobrar nota a mais do que dar por coberto
+ * material que não tem nota própria.
  *
  * A RÉGUA ACUMULADA (por que não se apura sobre o material do período):
  *
@@ -52,7 +75,13 @@
 
 export interface ItemDesconto {
   detalhamentoId: string
-  /** Grupo macro do detalhamento. Sem grupo, o item se resolve sozinho. */
+  /**
+   * Tarefa do detalhamento — o balde onde o saldo de NF é apurado.
+   * Quando ausente (dado incompleto), cai para o grupo macro, que era o
+   * comportamento anterior; nunca fica sem balde por falta deste campo.
+   */
+  tarefaId?: string | null
+  /** Grupo macro do detalhamento. Sem grupo nem tarefa, o item se resolve sozinho. */
   grupoId: string | null
   /** Material medido nesta medição. Zero para detalhamentos não medidos. */
   matMedido: number
@@ -71,7 +100,7 @@ export interface ItemDesconto {
 export interface ResultadoDesconto {
   /** Desconto que a NF do próprio detalhamento cobre. */
   direto: number
-  /** Desconto coberto por NF de outro detalhamento do mesmo grupo. */
+  /** Desconto coberto por NF de outro detalhamento da mesma tarefa. */
   transbordo: number
   /**
    * Parte do total que excede o material medido NO PERÍODO — nota de meses
@@ -84,7 +113,7 @@ export interface ResultadoDesconto {
 }
 
 /**
- * Apura o desconto acumulado por grupo macro e distribui entre os itens medidos.
+ * Apura o desconto acumulado por tarefa e distribui entre os itens medidos.
  *
  * A distribuição é proporcional ao material medido de cada item — nunca por
  * ordem de chegada, que faria o resultado depender da ordenação da query.
@@ -97,8 +126,13 @@ export function calcularDescontoComTransbordo(
   const resultado = new Map<string, ResultadoDesconto>()
 
   const norm = (v: number) => Math.max(0, Number(v) || 0)
-  /** Itens sem grupo não compartilham saldo; cada um vira seu próprio balde. */
-  const chave = (it: ItemDesconto) => it.grupoId ?? `__sem_grupo__${it.detalhamentoId}`
+  /**
+   * O balde é a TAREFA. Sem tarefa cai para o grupo macro (comportamento
+   * anterior); sem nenhum dos dois, o item vira seu próprio balde e não
+   * compartilha saldo com ninguém.
+   */
+  const chave = (it: ItemDesconto) =>
+    it.tarefaId ?? it.grupoId ?? `__sem_balde__${it.detalhamentoId}`
 
   // 1) Soma alocada, abatida, material do período e material acumulado.
   const grupos = new Map<string, {
@@ -117,7 +151,7 @@ export function calcularDescontoComTransbordo(
     grupos.set(k, g)
   }
 
-  // 2) Régua acumulada: o desconto de toda a obra no grupo é o menor entre o
+  // 2) Régua acumulada: o desconto de toda a obra na tarefa é o menor entre o
   //    material executado e a nota lançada. O do período é o que falta abater.
   const descontoGrupo = new Map<string, number>()
   for (const [k, g] of grupos) {
@@ -135,7 +169,7 @@ export function calcularDescontoComTransbordo(
     const total = g.medido > 0 ? (matMedido / g.medido) * doGrupo : 0
 
     // "Direto" é o quanto a própria nota do item cobriria sozinha; o resto
-    // veio do grupo. Serve só para exibição e auditoria.
+    // veio dos vizinhos da mesma tarefa. Serve só para exibição e auditoria.
     const proprio = Math.max(0, norm(it.nfAlocada) - norm(it.nfJaAbatida))
     const direto = Math.min(total, proprio)
 
@@ -152,6 +186,8 @@ export function calcularDescontoComTransbordo(
 
 export interface ItemSaldoAprovado {
   detalhamentoId: string
+  /** Mesma regra de balde do desconto — ver `ItemDesconto.tarefaId`. */
+  tarefaId?: string | null
   grupoId: string | null
   /** Material medido que a NF não cobriu — o que precisa ser classificado. */
   gapMaterial: number
@@ -163,12 +199,14 @@ export interface ItemSaldoAprovado {
 
 /**
  * Classifica o gap de material entre "pedido aprovado, NF pendente" e
- * "FIP precisa criar nota nova" — também no nível do grupo macro.
+ * "FIP precisa criar nota nova" — também no nível da tarefa.
  *
  * Sem isto, o mesmo descasamento lote-x-pavimento que travava o desconto trava
  * a classificação: a Geração tem centenas de milhares em pedido aprovado sem
  * NF, mas alocados a detalhamentos diferentes dos medidos, então o sistema
  * pedia "NF nova" para material que já está comprado e só aguarda a nota.
+ *
+ * Usa o mesmo balde do desconto (tarefa), pelos mesmos motivos.
  *
  * É classificação de exibição, não saldo corrido: nada aqui é gravado, e o
  * total classificado nunca passa do gap do próprio período.
@@ -178,7 +216,8 @@ export function calcularSaldoAprovadoComTransbordo(
 ): Map<string, number> {
   const resultado = new Map<string, number>()
   const norm = (v: number) => Math.max(0, Number(v) || 0)
-  const chave = (it: ItemSaldoAprovado) => it.grupoId ?? `__sem_grupo__${it.detalhamentoId}`
+  const chave = (it: ItemSaldoAprovado) =>
+    it.tarefaId ?? it.grupoId ?? `__sem_balde__${it.detalhamentoId}`
 
   const grupos = new Map<string, { aprovado: number; nf: number; gap: number }>()
   for (const it of itens) {
