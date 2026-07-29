@@ -359,14 +359,17 @@ export async function calcularBoletimSimulado(
     ...Object.keys(matAcumAprovadoPorDet),
   ]))
   const grupoPorDet: Record<string, string> = {}
+  /** Balde do saldo de NF — ver lib/db/desconto-transbordo.ts. */
+  const tarefaPorDet: Record<string, string> = {}
   if (detIdsRelevantes.length > 0) {
     const { data: dets } = await admin
       .from('detalhamentos')
-      .select('id, tarefa:tarefas ( grupo_macro_id )')
+      .select('id, tarefa_id, tarefa:tarefas ( grupo_macro_id )')
       .in('id', detIdsRelevantes)
     for (const d of (dets || []) as any[]) {
       const grupo = d.tarefa?.grupo_macro_id
       if (d.id && grupo) grupoPorDet[d.id] = grupo
+      if (d.id && d.tarefa_id) tarefaPorDet[d.id] = d.tarefa_id
     }
   }
 
@@ -380,11 +383,12 @@ export async function calcularBoletimSimulado(
     )
   }
 
-  // Transbordo dentro do grupo macro — mesma regra da medição real, senão a
+  // Transbordo dentro da tarefa — mesma regra da medição real, senão a
   // simulação prometeria um número e a medição entregaria outro.
   const descontoSimulado = calcularDescontoComTransbordo(
     detIdsRelevantes.map(detId => ({
       detalhamentoId: detId,
+      tarefaId: tarefaPorDet[detId] ?? null,
       grupoId: grupoPorDet[detId] ?? null,
       matMedido: medidoPorDet.get(detId) ?? 0,
       matAcumulado: (matAcumAprovadoPorDet[detId] || 0) + (medidoPorDet.get(detId) ?? 0),
@@ -404,6 +408,7 @@ export async function calcularBoletimSimulado(
   const saldoAprovadoSimulado = calcularSaldoAprovadoComTransbordo(
     detIdsRelevantes.map(detId => ({
       detalhamentoId: detId,
+      tarefaId: tarefaPorDet[detId] ?? null,
       grupoId: grupoPorDet[detId] ?? null,
       gapMaterial: gapPorDet.get(detId) ?? 0,
       aprovado: aprovadoPorDet[detId] || 0,
@@ -612,6 +617,10 @@ export async function calcularInformaconData(
   // Grupo macro de cada detalhamento — necessário pro transbordo do desconto
   // dentro do grupo (ver lib/db/desconto-transbordo.ts).
   const grupoPorDetalhamento: Record<string, string> = {}
+  // Tarefa de cada detalhamento — é ELA o balde do saldo de NF (o grupo macro
+  // misturava naturezas diferentes: INFRA e CABEAMENTO no mesmo grupo 16).
+  // Ver lib/db/desconto-transbordo.ts.
+  const tarefaPorDetalhamento: Record<string, string> = {}
   try {
     // 1) grupos_macro do contrato
     const { data: gruposRows, error: gruposErr } = await admin
@@ -663,6 +672,7 @@ export async function calcularInformaconData(
             for (const d of todosDetalhamentos as any[]) {
               const grupo = d.tarefa_id ? grupoPorTarefa[d.tarefa_id] : undefined
               if (d.id && grupo) grupoPorDetalhamento[d.id] = grupo
+              if (d.id && d.tarefa_id) tarefaPorDetalhamento[d.id] = d.tarefa_id
             }
           }
         }
@@ -801,9 +811,9 @@ export async function calcularInformaconData(
   })()
 
 
-  // === Transbordo do desconto dentro do grupo macro ===
+  // === Transbordo do desconto dentro da tarefa ===
   // A NF fica alocada ao seu detalhamento, mas o saldo ocioso cobre o material
-  // medido dos vizinhos do mesmo grupo. Sem isto, material comprado por lote
+  // medido dos vizinhos da mesma tarefa. Sem isto, material comprado por lote
   // (prumada) e medido por pavimento aparece como "sem NF" enquanto a nota
   // está parada ao lado. Ver lib/db/desconto-transbordo.ts.
   //
@@ -813,7 +823,7 @@ export async function calcularInformaconData(
   //
   // Além dos detalhamentos com NF, entram também os que já foram medidos em
   // medições anteriores: é o material acumulado deles que forma o teto da
-  // régua do grupo.
+  // régua da tarefa.
   const descontoPorDet = (() => {
     const vistos = new Set<string>()
     const itensDesconto: ItemDesconto[] = []
@@ -825,6 +835,7 @@ export async function calcularInformaconData(
       const matMedido = Number(it.quantidade_medida || 0) * Number(det.valor_material_unit || 0)
       itensDesconto.push({
         detalhamentoId: det.id,
+        tarefaId: tarefaPorDetalhamento[det.id] ?? null,
         grupoId: grupoPorDetalhamento[det.id] ?? null,
         matMedido,
         matAcumulado: matAcumuladoDe(det.id),
@@ -839,6 +850,7 @@ export async function calcularInformaconData(
       if (vistos.has(detId)) continue
       itensDesconto.push({
         detalhamentoId: detId,
+        tarefaId: tarefaPorDetalhamento[detId] ?? null,
         grupoId: grupoPorDetalhamento[detId] ?? null,
         matMedido: 0,
         matAcumulado: matAcumuladoDe(detId),
@@ -885,7 +897,7 @@ export async function calcularInformaconData(
     })
   }
 
-  // Pedido aprovado sem NF, com transbordo dentro do grupo macro. A FIP compra
+  // Pedido aprovado sem NF, com transbordo dentro da tarefa. A FIP compra
   // por lote: o pedido costuma estar alocado a um detalhamento diferente do
   // medido, e sem isto o sistema pede "NF nova" para material já comprado.
   const saldoAprovadoPorDet = (() => {
@@ -895,6 +907,7 @@ export async function calcularInformaconData(
       vistos.add(detId)
       entrada.push({
         detalhamentoId: detId,
+        tarefaId: tarefaPorDetalhamento[detId] ?? null,
         grupoId: grupoPorDetalhamento[detId] ?? null,
         gapMaterial: c.gapMaterial,
         aprovado: aprovadoPorDet[detId] || 0,
@@ -905,6 +918,7 @@ export async function calcularInformaconData(
       if (vistos.has(detId)) continue
       entrada.push({
         detalhamentoId: detId,
+        tarefaId: tarefaPorDetalhamento[detId] ?? null,
         grupoId: grupoPorDetalhamento[detId] ?? null,
         gapMaterial: 0,
         aprovado: aprovadoPorDet[detId] || 0,

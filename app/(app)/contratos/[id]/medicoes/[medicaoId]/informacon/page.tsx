@@ -46,7 +46,7 @@ interface Linha {
   nf_descontavel: number
   /**
    * Parte de `nf_descontavel` coberta por NF ociosa de OUTRO detalhamento do
-   * mesmo grupo macro. Explica por que uma linha com `nf_terceiro` = 0 pode
+   * mesma tarefa. Explica por que uma linha com `nf_terceiro` = 0 pode
    * ter `nf_descontavel` > 0. Ausente em respostas antigas.
    */
   nf_transbordo_grupo?: number
@@ -212,7 +212,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
     if (!data) return
     const headers = [
       'Código', 'Item Informakon', 'Descrição', '% Informakon',
-      'Mat. Medido', 'NF Terceiro', 'Saldo Aprov.', 'NF Desc.', 'NF Desc. do grupo', 'Gap', 'Retido', 'FIP Fat-Dir',
+      'Mat. Medido', 'NF Terceiro', 'Saldo Aprov.', 'NF Desc.', 'NF Desc. da tarefa', 'Gap', 'Retido', 'FIP Fat-Dir',
       'Wave (Serv.)', '% Serv. Med.', 'Valor Total Medido', 'Dados Informakon', 'Retenção',
     ]
     const rows = linhasExibidas.map(l => [
@@ -713,7 +713,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   { header: 'NF Terceiro', get: (l: any) => Number(l.nf_terceiro) },
                   { header: 'Saldo Aprov.', get: (l: any) => Number(l.saldo_aprovado) },
                   { header: 'NF Desc.', get: (l: any) => Number(l.nf_descontavel) },
-                  { header: 'NF Desc. do grupo', get: (l: any) => Number(l.nf_transbordo_grupo || 0) },
+                  { header: 'NF Desc. da tarefa', get: (l: any) => Number(l.nf_transbordo_grupo || 0) },
                   { header: 'Gap', get: (l: any) => Number(l.gap_material) },
                   { header: 'Retido', get: (l: any) => Number(l.faturamento_direto_em_aberto) },
                   { header: 'FIP Fat-Dir', get: (l: any) => Number(l.fip_faturar) },
@@ -976,9 +976,9 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>NF Desc.</th>
                   <th
                     style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}
-                    title="Quanto do NF Desc. veio de nota alocada a OUTRO item do mesmo grupo macro. A FIP compra por lote e a medição é por pavimento — sem isso, a nota fica parada num item enquanto o vizinho aparece sem cobertura."
+                    title="Quanto do NF Desc. veio de nota alocada a OUTRO item da mesma tarefa (o código de dois níveis: 14.2 SPRINKLER, 16.1 INFRA SDAI). A FIP compra por lote e a medição é por pavimento — sem isso, a nota fica parada num item enquanto o vizinho aparece sem cobertura. Fora da tarefa nada transborda: cabo não é coberto por nota de eletroduto."
                   >
-                    ↳ do grupo
+                    ↳ da tarefa
                   </th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(245,158,11,0.05)' }}>Gap</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(245,158,11,0.05)' }}>Retido</th>
@@ -1657,16 +1657,17 @@ function tituloNfDesc(l: Linha): string {
 
   if (transbordo > 0) {
     partes.push(
-      `${fmt(transbordo)} vieram de nota alocada a outro item do mesmo grupo macro. ` +
+      `${fmt(transbordo)} vieram de nota alocada a outro item da MESMA TAREFA. ` +
       'A FIP compra por lote (prumada inteira) e a Wave mede por pavimento — o saldo ' +
-      'de NF é apurado no nível do grupo, então a nota parada num item cobre o vizinho.',
+      'de NF é apurado no nível da tarefa, então a nota parada num item cobre o vizinho. ' +
+      'Fora da tarefa nada transborda.',
     )
   }
   if (recuperacao > 0) {
     partes.push(
       `${fmt(recuperacao)} são recuperação de medições anteriores: nota que não ` +
       'descontou no mês certo e voltou agora, porque o desconto é apurado sobre o ' +
-      'acumulado do grupo. É por isso que este valor pode superar o material medido no período.',
+      'acumulado da tarefa. É por isso que este valor pode superar o material medido no período.',
     )
   }
   if (partes.length === 0) {
@@ -1719,19 +1720,22 @@ function HelpModal({ onClose, pctRetencao }: { onClose: () => void; pctRetencao:
               <li><strong>Saldo Aprov.</strong> = ∑ aprovado em fat-direto − NFs já lançadas (saldo aguardando NF).</li>
               <li>
                 <strong>NF Desc.</strong> = o que a nota de material abate nesta medição. <em>Não</em> é
-                MIN(Mat. Medido, NF Terceiro) do próprio item: o saldo de NF é apurado no nível do{' '}
-                <strong>grupo macro</strong>, não do item. A FIP compra por lote (a prumada inteira) e a
-                Wave mede por pavimento — sem isso a nota fica parada num detalhamento enquanto o vizinho
-                do mesmo grupo aparece sem cobertura. Fora do grupo nada transborda: Hidráulica não paga
-                material de Elétrica.
+                MIN(Mat. Medido, NF Terceiro) do próprio item: o saldo de NF é apurado no nível da{' '}
+                <strong>tarefa</strong> (o código de dois níveis — 14.2 SPRINKLER, 16.1 INFRA SDAI), não
+                do item. A FIP compra por lote (a prumada inteira) e a Wave mede por pavimento — sem isso
+                a nota fica parada num detalhamento enquanto o vizinho da mesma tarefa aparece sem
+                cobertura. Fora da tarefa nada transborda: nota de eletroduto (16.1) não cobre cabo
+                (16.2), e Hidráulica não paga material de Elétrica.
               </li>
               <li>
-                <strong>↳ do grupo</strong> = quanto do NF Desc. veio de nota alocada a OUTRO item do
-                mesmo grupo macro. É por isso que uma linha pode ter NF Terceiro R$ 0,00 e NF Desc.
-                maior que zero.
+                <strong>↳ da tarefa</strong> = quanto do NF Desc. veio de nota alocada a OUTRO item da
+                mesma tarefa. É por isso que uma linha pode ter NF Terceiro R$ 0,00 e NF Desc. maior que
+                zero. Note que o Informakon desconta por <em>macro item</em> (grupo), uma fronteira mais
+                larga — então pode haver material que aqui aparece como "FIP a criar" e lá já está
+                coberto.
               </li>
               <li>
-                O desconto é apurado sobre o <strong>acumulado</strong> do grupo — MENOR(material
+                O desconto é apurado sobre o <strong>acumulado</strong> da tarefa — MENOR(material
                 executado acumulado, nota lançada) menos o que as medições anteriores já abateram. Por
                 isso o NF Desc. de um período pode <em>superar</em> o material medido nesse período:
                 é nota que ficou para trás voltando de uma vez. Passe o mouse sobre o valor pra ver a

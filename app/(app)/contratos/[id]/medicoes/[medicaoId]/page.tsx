@@ -215,7 +215,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
     nf_descontavel: number
     /**
      * Do `nf_descontavel` acima, quanto veio de saldo ocioso de NF de OUTRO
-     * detalhamento do mesmo grupo macro ("transbordo"). Já está incluído em
+     * detalhamento da mesma tarefa ("transbordo"). Já está incluído em
      * `nf_descontavel` — não somar de novo em lugar nenhum, é só um detalhamento
      * visual de origem.
      */
@@ -1544,14 +1544,14 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                         colSpan={6}
                                         className="text-xs text-right pr-4"
                                         style={{ color: 'var(--text-3)' }}
-                                        title="Material medido cujo desconto veio de nota alocada em outro item do mesmo grupo macro. A FIP compra por lote e a medição é por pavimento — sem isso, a nota fica parada num item enquanto o vizinho aparece sem cobertura."
+                                        title="Material medido cujo desconto veio de nota alocada em outro item da mesma tarefa (o código de dois níveis: 14.2 SPRINKLER, 16.1 INFRA SDAI). A FIP compra por lote e a medição é por pavimento — sem isso, a nota fica parada num item enquanto o vizinho aparece sem cobertura. Fora da tarefa nada transborda."
                                       >
-                                        ↳ dos quais cobertos por NF do mesmo grupo macro
+                                        ↳ dos quais cobertos por NF da mesma tarefa
                                       </td>
                                       <td
                                         className="text-right text-xs tabular-nums"
                                         style={{ color: 'var(--text-3)' }}
-                                        title="Material medido cujo desconto veio de nota alocada em outro item do mesmo grupo macro. A FIP compra por lote e a medição é por pavimento — sem isso, a nota fica parada num item enquanto o vizinho aparece sem cobertura."
+                                        title="Material medido cujo desconto veio de nota alocada em outro item da mesma tarefa (o código de dois níveis: 14.2 SPRINKLER, 16.1 INFRA SDAI). A FIP compra por lote e a medição é por pavimento — sem isso, a nota fica parada num item enquanto o vizinho aparece sem cobertura. Fora da tarefa nada transborda."
                                       >
                                         {formatCurrency(nfTransbordoGrupo)}
                                       </td>
@@ -1563,14 +1563,14 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                         colSpan={6}
                                         className="text-xs text-right pr-4"
                                         style={{ color: 'var(--text-3)' }}
-                                        title="Nota de medições anteriores que não descontou na época e está sendo recuperada agora. O saldo de NF é apurado sobre o acumulado do grupo macro (menor entre material executado e nota lançada), então o desconto de um mês pode superar o material medido nesse mês."
+                                        title="Nota de medições anteriores que não descontou na época e está sendo recuperada agora. O saldo de NF é apurado sobre o acumulado da tarefa (menor entre material executado e nota lançada), então o desconto de um mês pode superar o material medido nesse mês."
                                       >
                                         ↳ dos quais recuperação de NF de medições anteriores
                                       </td>
                                       <td
                                         className="text-right text-xs tabular-nums"
                                         style={{ color: 'var(--text-3)' }}
-                                        title="Nota de medições anteriores que não descontou na época e está sendo recuperada agora. O saldo de NF é apurado sobre o acumulado do grupo macro (menor entre material executado e nota lançada), então o desconto de um mês pode superar o material medido nesse mês."
+                                        title="Nota de medições anteriores que não descontou na época e está sendo recuperada agora. O saldo de NF é apurado sobre o acumulado da tarefa (menor entre material executado e nota lançada), então o desconto de um mês pode superar o material medido nesse mês."
                                       >
                                         {formatCurrency(nfRecuperacao)}
                                       </td>
@@ -1701,14 +1701,14 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                   colSpan={2}
                                   className="text-xs text-right pr-4"
                                   style={{ color: 'var(--text-3)' }}
-                                  title="Material medido cujo desconto veio de nota alocada em outro item do mesmo grupo macro. A FIP compra por lote e a medição é por pavimento — sem isso, a nota fica parada num item enquanto o vizinho aparece sem cobertura."
+                                  title="Material medido cujo desconto veio de nota alocada em outro item da mesma tarefa (o código de dois níveis: 14.2 SPRINKLER, 16.1 INFRA SDAI). A FIP compra por lote e a medição é por pavimento — sem isso, a nota fica parada num item enquanto o vizinho aparece sem cobertura. Fora da tarefa nada transborda."
                                 >
-                                  ↳ dos quais cobertos por NF do mesmo grupo macro
+                                  ↳ dos quais cobertos por NF da mesma tarefa
                                 </td>
                                 <td
                                   className="text-right text-xs tabular-nums"
                                   style={{ color: 'var(--text-3)' }}
-                                  title="Material medido cujo desconto veio de nota alocada em outro item do mesmo grupo macro. A FIP compra por lote e a medição é por pavimento — sem isso, a nota fica parada num item enquanto o vizinho aparece sem cobertura."
+                                  title="Material medido cujo desconto veio de nota alocada em outro item da mesma tarefa (o código de dois níveis: 14.2 SPRINKLER, 16.1 INFRA SDAI). A FIP compra por lote e a medição é por pavimento — sem isso, a nota fica parada num item enquanto o vizinho aparece sem cobertura. Fora da tarefa nada transborda."
                                 >
                                   {formatCurrency(nfTransbordoGrupo)}
                                 </td>
@@ -1721,14 +1721,14 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                   colSpan={2}
                                   className="text-xs text-right pr-4"
                                   style={{ color: 'var(--text-3)' }}
-                                  title="Nota de medições anteriores que não descontou na época e está sendo recuperada agora. O saldo de NF é apurado sobre o acumulado do grupo macro (menor entre material executado e nota lançada), então o desconto de um mês pode superar o material medido nesse mês."
+                                  title="Nota de medições anteriores que não descontou na época e está sendo recuperada agora. O saldo de NF é apurado sobre o acumulado da tarefa (menor entre material executado e nota lançada), então o desconto de um mês pode superar o material medido nesse mês."
                                 >
                                   ↳ dos quais recuperação de NF de medições anteriores
                                 </td>
                                 <td
                                   className="text-right text-xs tabular-nums"
                                   style={{ color: 'var(--text-3)' }}
-                                  title="Nota de medições anteriores que não descontou na época e está sendo recuperada agora. O saldo de NF é apurado sobre o acumulado do grupo macro (menor entre material executado e nota lançada), então o desconto de um mês pode superar o material medido nesse mês."
+                                  title="Nota de medições anteriores que não descontou na época e está sendo recuperada agora. O saldo de NF é apurado sobre o acumulado da tarefa (menor entre material executado e nota lançada), então o desconto de um mês pode superar o material medido nesse mês."
                                 >
                                   {formatCurrency(nfRecuperacao)}
                                 </td>
