@@ -4,7 +4,16 @@ import type { DashboardItem, DashboardModo } from '@/types/dashboard'
 
 export interface FlatRow { item: DashboardItem; level: number }
 
-/** Valores exibidos conforme o modo (mesma regra da tabela/linha). */
+/**
+ * Valores exibidos conforme o modo.
+ *
+ * FONTE ÚNICA — a tabela, o gráfico, o painel de filtro, o Excel e o PDF
+ * importam daqui. Antes a mesma regra estava copiada em 4 arquivos, e os
+ * rótulos já tinham divergido entre eles.
+ *
+ * Saldo NÃO é clampado em zero: valor negativo significa item estourado, e
+ * é exatamente o que precisa aparecer.
+ */
 export function valoresPorModo(item: DashboardItem, modo: DashboardModo) {
   if (modo === 'material') {
     return {
@@ -25,12 +34,28 @@ export function valoresPorModo(item: DashboardItem, modo: DashboardModo) {
   return {
     contratado: item.valor_contratado_total,
     realizado: item.realizado_total,
-    saldo: Math.max(0, item.valor_contratado_total - item.realizado_total),
+    saldo: item.valor_contratado_total - item.realizado_total,
     saldoLabel: 'Saldo a executar',
   }
 }
 
-/** Aplica filtro por texto (código/nome) e por saldo > 0. */
+/**
+ * Rótulo da coluna de saldo. Não depende de nenhuma linha — antes o PDF e o
+ * Excel derivavam de `rows[0]`, passando `{}` quando a lista estava vazia.
+ */
+export function rotuloSaldo(modo: DashboardModo): string {
+  if (modo === 'material') return 'Saldo aprov.'
+  if (modo === 'servico') return 'Saldo med.'
+  return 'Saldo a executar'
+}
+
+/**
+ * Aplica filtro por texto (código/nome) e por saldo.
+ *
+ * "Somente com saldo" descarta apenas o saldo EXATAMENTE zerado. Antes usava
+ * `saldo <= 0`, o que escondia justamente os itens estourados (saldo
+ * negativo) — os que mais precisam de atenção.
+ */
 export function filtrarRows(
   rows: FlatRow[],
   modo: DashboardModo,
@@ -43,10 +68,36 @@ export function filtrarRows(
       if (!alvo.includes(t)) return false
     }
     if (opts.somenteSaldo) {
-      if (valoresPorModo(item, modo).saldo <= 0) return false
+      if (Math.abs(valoresPorModo(item, modo).saldo) < 0.005) return false
     }
     return true
   })
+}
+
+/**
+ * Soma os totais de um conjunto de linhas SEM dupla contagem.
+ *
+ * As linhas misturam níveis (grupo, tarefa, detalhamento), então somar tudo
+ * contaria o mesmo dinheiro 2-3 vezes. Só entram as linhas "raiz" do
+ * conjunto: aquelas cujo ancestral não sobreviveu ao filtro.
+ *
+ * Antes o total somava apenas `level === 0`; ao filtrar por "1.6" nenhum
+ * grupo casava e o rodapé TOTAL saía 0,00 com o corpo cheio de valores.
+ */
+export function totalizarRows(rows: FlatRow[], modo: DashboardModo) {
+  const idsPresentes = new Set(rows.map(r => r.item.id))
+  let contratado = 0
+  let realizado = 0
+  let saldo = 0
+  for (const { item } of rows) {
+    // Se o pai está na lista, este item já foi contado dentro dele.
+    if (item.pai_id && idsPresentes.has(item.pai_id)) continue
+    const v = valoresPorModo(item, modo)
+    contratado += v.contratado
+    realizado += v.realizado
+    saldo += v.saldo
+  }
+  return { contratado, realizado, saldo }
 }
 
 function nomeArquivo(base: string, ext: string) {
@@ -63,7 +114,7 @@ export async function exportarExcelVisaoGeral(
 ) {
   const XLSX = await import('xlsx-js-style')
   const modoLabel = modo === 'material' ? 'Material' : modo === 'servico' ? 'Serviço' : 'Total'
-  const saldoLabel = valoresPorModo(rows[0]?.item ?? ({} as DashboardItem), modo).saldoLabel
+  const saldoLabel = rotuloSaldo(modo)
 
   const azul = '1E3A8A'
   const headerStyle = {
@@ -101,9 +152,10 @@ export async function exportarExcelVisaoGeral(
       { v: `${'    '.repeat(level)}${item.nome}`, s: base },
       num(v.contratado), num(v.realizado), num(v.saldo),
     ])
-    if (level === 0) { totC += v.contratado; totR += v.realizado; totS += v.saldo }
   }
-  // Totais (só grupos, pra não duplicar)
+  // Totais: raízes do conjunto filtrado, pra não duplicar entre níveis.
+  const tot = totalizarRows(rows, modo)
+  totC = tot.contratado; totR = tot.realizado; totS = tot.saldo
   const totStyle = { font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: azul } }, alignment: { horizontal: 'right' }, border: bordas('CBD5E1') }
   aoa.push([
     { v: 'TOTAL', s: { ...totStyle, alignment: { horizontal: 'left' } } }, { v: '', s: totStyle },

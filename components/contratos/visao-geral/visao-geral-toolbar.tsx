@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Search, FileSpreadsheet, FileText, Loader2, X } from 'lucide-react'
 import type { DashboardModo } from '@/types/dashboard'
 import {
-  filtrarRows, valoresPorModo, exportarExcelVisaoGeral, type FlatRow,
+  filtrarRows, valoresPorModo, rotuloSaldo, totalizarRows,
+  exportarExcelVisaoGeral, type FlatRow,
 } from '@/lib/export/visao-geral'
 
 const fmt = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -65,6 +66,7 @@ export function VisaoGeralToolbar({
     () => filtrarRows(rows, modo, { texto, somenteSaldo }),
     [rows, modo, texto, somenteSaldo],
   )
+  const totais = useMemo(() => totalizarRows(filtradas, modo), [filtradas, modo])
   const filtrando = texto.trim() !== '' || somenteSaldo
 
   async function baixarExcel() {
@@ -149,7 +151,7 @@ export function VisaoGeralToolbar({
                   <th className="text-left py-1 px-2 font-semibold">Item</th>
                   <th className="text-right py-1 px-2 font-semibold">Contratado</th>
                   <th className="text-right py-1 px-2 font-semibold">Realizado</th>
-                  <th className="text-right py-1 px-2 font-semibold">Saldo</th>
+                  <th className="text-right py-1 px-2 font-semibold">{rotuloSaldo(modo)}</th>
                 </tr>
               </thead>
               <tbody>
@@ -161,11 +163,29 @@ export function VisaoGeralToolbar({
                       <td className="py-1 px-2 text-[var(--text-2)]" style={{ paddingLeft: 8 + level * 12 }}>{item.nome}</td>
                       <td className="py-1 px-2 text-right tabular-nums text-[var(--text-2)]">{fmt(v.contratado)}</td>
                       <td className="py-1 px-2 text-right tabular-nums text-[var(--text-2)]">{fmt(v.realizado)}</td>
-                      <td className="py-1 px-2 text-right tabular-nums" style={{ color: v.saldo > 0 ? '#eab308' : 'var(--text-3)' }}>{fmt(v.saldo)}</td>
+                      <td
+                        className="py-1 px-2 text-right tabular-nums"
+                        style={{ color: v.saldo < 0 ? '#EF4444' : v.saldo > 0 ? '#eab308' : 'var(--text-3)' }}
+                        title={v.saldo < 0 ? 'Realizado maior que o contratado' : undefined}
+                      >
+                        {fmt(v.saldo)}
+                      </td>
                     </tr>
                   )
                 })}
               </tbody>
+              {/* Total das RAÍZES do resultado — somar todas as linhas
+                  contaria o mesmo dinheiro em grupo, tarefa e detalhamento. */}
+              <tfoot>
+                <tr className="border-t-2 border-[var(--border)] font-semibold bg-[var(--surface-2)]">
+                  <td className="py-1 px-2 text-[10px] uppercase text-[var(--text-3)]" colSpan={2}>Total do resultado</td>
+                  <td className="py-1 px-2 text-right tabular-nums text-[var(--text-1)]">{fmt(totais.contratado)}</td>
+                  <td className="py-1 px-2 text-right tabular-nums text-[var(--text-1)]">{fmt(totais.realizado)}</td>
+                  <td className="py-1 px-2 text-right tabular-nums" style={{ color: totais.saldo < 0 ? '#EF4444' : 'var(--text-1)' }}>
+                    {fmt(totais.saldo)}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>

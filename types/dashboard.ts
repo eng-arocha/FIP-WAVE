@@ -53,7 +53,9 @@ export interface DashboardItem {
   /**
    * Σ(pedidos fat-direto aprovados, valor_total da solicitação) − realizado_material.
    * Zera quando todas as NFs do pedido são lançadas.
-   * Sempre >= 0 (Math.max(0, ...) aplicado server-side).
+   * PODE ser negativo: valor negativo significa que as NFs lançadas superam
+   * o aprovado do item (estouro). O clamp em zero foi removido porque
+   * escondia exatamente o caso que precisa de atenção.
    */
   saldo_aprovado_material: number
   /**
@@ -61,7 +63,7 @@ export interface DashboardItem {
    * Zera quando a Wave emite NF correspondente à medição aprovada.
    * Tabela notas_fiscais_wave criada na migration 059 — vazia inicialmente,
    * então saldo_medicao_servico = realizado_servico até a UI de NF Wave existir.
-   * Sempre >= 0.
+   * PODE ser negativo (NF de serviço maior que o medido aprovado).
    */
   saldo_medicao_servico: number
 }

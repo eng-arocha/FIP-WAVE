@@ -1,6 +1,6 @@
 import { Document, Page, View, Text, StyleSheet, Image } from '@react-pdf/renderer'
 import type { DashboardModo } from '@/types/dashboard'
-import { valoresPorModo, type FlatRow } from '@/lib/export/visao-geral'
+import { valoresPorModo, rotuloSaldo, totalizarRows, type FlatRow } from '@/lib/export/visao-geral'
 
 const BLU = '#1e3a8a'
 const BLU_LT = '#dbeafe'
@@ -27,13 +27,9 @@ export function VisaoGeralPDF({
   rows, modo, contratoNome, chartImage,
 }: { rows: FlatRow[]; modo: DashboardModo; contratoNome: string; chartImage?: string | null }) {
   const modoLabel = modo === 'material' ? 'Material' : modo === 'servico' ? 'Serviço' : 'Total'
-  const saldoLabel = valoresPorModo(rows[0]?.item ?? ({} as any), modo).saldoLabel
-  let totC = 0, totR = 0, totS = 0
-  for (const { item, level } of rows) {
-    if (level !== 0) continue
-    const v = valoresPorModo(item, modo)
-    totC += v.contratado; totR += v.realizado; totS += v.saldo
-  }
+  const saldoLabel = rotuloSaldo(modo)
+  // Raízes do conjunto filtrado, pra não somar o mesmo dinheiro em 2-3 níveis.
+  const { contratado: totC, realizado: totR, saldo: totS } = totalizarRows(rows, modo)
   return (
     <Document>
       <Page size="A4" style={s.page} wrap>

@@ -1,9 +1,11 @@
 'use client'
 
+import { useMemo } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import type { DashboardItem, DashboardModo } from '@/types/dashboard'
+import { valoresPorModo } from '@/lib/export/visao-geral'
 
 type FlatItem = { item: DashboardItem; level: number }
 
@@ -24,24 +26,15 @@ const COLORS = {
 
 function buildRows(itens: FlatItem[], modo: DashboardModo) {
   return itens.map(({ item, level }) => {
-    let contratado = item.valor_contratado_total
-    let realizado = item.realizado_total
-    let saldo = Math.max(0, item.valor_contratado_total - item.realizado_total)
-    if (modo === 'material') {
-      contratado = item.valor_contratado_material
-      realizado = item.realizado_material
-      saldo = item.saldo_aprovado_material
-    } else if (modo === 'servico') {
-      contratado = item.valor_contratado_servico
-      realizado = item.realizado_servico
-      saldo = item.saldo_medicao_servico
-    }
+    const v = valoresPorModo(item, modo)
     return {
       id: item.id,
       label: `${'  '.repeat(level)}${item.codigo} ${item.nome}`,
-      contratado,
-      realizado,
-      saldo,
+      contratado: v.contratado,
+      realizado: v.realizado,
+      // A barra não representa valor negativo; o número real (com o
+      // estouro) fica na tabela, que é a fonte de leitura.
+      saldo: Math.max(0, v.saldo),
       _item: item,
     }
   })
@@ -66,7 +59,7 @@ export function DashboardBarChart({
   onClickSaldo,
   height = 320,
 }: Props) {
-  const rows = buildRows(itens, modo)
+  const rows = useMemo(() => buildRows(itens, modo), [itens, modo])
 
   return (
     <div style={{ width: '100%', height: Math.max(height, rows.length * 32 + 48) }}>
@@ -77,7 +70,7 @@ export function DashboardBarChart({
           margin={{ top: 8, right: 16, left: 8, bottom: 8 }}
         >
           <CartesianGrid
-            stroke="var(--border-1)"
+            stroke="var(--border)"
             strokeDasharray="3 3"
             horizontal={false}
           />
@@ -92,7 +85,7 @@ export function DashboardBarChart({
           <Tooltip
             contentStyle={{
               background: 'var(--surface-2)',
-              border: '1px solid var(--border-1)',
+              border: '1px solid var(--border)',
               fontSize: 12,
             }}
             formatter={(v: unknown) => {

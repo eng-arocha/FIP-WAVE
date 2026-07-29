@@ -31,7 +31,7 @@ export const NumeroClicavel = forwardRef<HTMLButtonElement, Props>(function Nume
       aria-label={ariaLabel}
       className={[
         className ?? '',
-        'cursor-pointer underline decoration-dotted underline-offset-2 hover:opacity-80 hover:decoration-solid focus:outline-none focus:ring-1 focus:ring-[var(--accent-1)] rounded-sm',
+        'cursor-pointer underline decoration-dotted underline-offset-2 hover:opacity-80 hover:decoration-solid focus:outline-none focus:ring-1 focus:ring-[var(--accent)] rounded-sm',
       ].join(' ')}
     >
       {format(value)}

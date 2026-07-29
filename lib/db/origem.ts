@@ -1,6 +1,8 @@
 // lib/db/origem.ts
 import { createAdminClient } from '@/lib/supabase/admin'
 import { nfReservaSaldo } from '@/lib/db/nf-status'
+import { withSchemaFallback } from '@/lib/db/resilient'
+import { ehPedidoDeServicoWave } from '@/lib/db/saldo-detalhamento'
 import { descendantDetalhamentoIds, type WbsNode } from './wbs-utils'
 import type {
   OrigemItem,
@@ -36,27 +38,64 @@ export function allocateNfToScope(
   return valorTotalNf * (totalNoEscopo / totalSol)
 }
 
+type PedidoComNfs = {
+  id: string
+  numero: number | string
+  tipo?: string | null
+  fornecedor_cnpj?: string | null
+  fornecedor_razao_social?: string | null
+  itens: Array<{ detalhamento_id: string | null; valor_total: number }> | null
+  nfs: Array<{ id: string; numero_nf: string; data_emissao: string; valor: number; status: string }> | null
+}
+
+/**
+ * Pedidos fat-direto aprovados do contrato, com itens e NFs.
+ *
+ * Fonte comum de material E serviço: material e a NF de serviço da Wave
+ * convivem em `solicitacoes_fat_direto`, separados por `tipo` (migration
+ * 074). Quem chama decide o lado via `ehPedidoDeServicoWave`.
+ */
+async function carregarPedidosComNfs(contratoId: string): Promise<PedidoComNfs[]> {
+  const admin = createAdminClient()
+  const CORPO = `
+      id,
+      numero,
+      fornecedor_cnpj,
+      fornecedor_razao_social,
+      itens:itens_solicitacao_fat_direto ( detalhamento_id, valor_total ),
+      nfs:notas_fiscais_fat_direto!solicitacao_id ( id, numero_nf, data_emissao, valor, status )
+    `
+  const res = await withSchemaFallback({
+    primary: () => admin
+      .from('solicitacoes_fat_direto')
+      .select(`tipo, ${CORPO}`)
+      .eq('contrato_id', contratoId)
+      .eq('status', 'aprovado')
+      .is('deletado_em', null),
+    fallback: () => admin
+      .from('solicitacoes_fat_direto')
+      .select(CORPO)
+      .eq('contrato_id', contratoId)
+      .eq('status', 'aprovado')
+      .is('deletado_em', null),
+    missingColumns: ['tipo'],
+    context: 'origem_pedidosComNfs',
+  })
+  if (res.error || !res.data) return []
+  return res.data as unknown as PedidoComNfs[]
+}
+
 export async function listOrigemRealizadoMaterial(
   contratoId: string,
   alvosDetIds: Set<string>,
 ): Promise<OrigemNotaFatDireto[]> {
-  const admin = createAdminClient()
-  const { data: solicitacoes, error } = await admin
-    .from('solicitacoes_fat_direto')
-    .select(`
-      id,
-      numero,
-      itens:itens_solicitacao_fat_direto ( detalhamento_id, valor_total ),
-      nfs:notas_fiscais_fat_direto!solicitacao_id ( id, numero_nf, data_emissao, valor, status )
-    `)
-    .eq('contrato_id', contratoId)
-    .eq('status', 'aprovado')
-    .is('deletado_em', null)
-
-  if (error || !solicitacoes) return []
+  const solicitacoes = await carregarPedidosComNfs(contratoId)
 
   const out: OrigemNotaFatDireto[] = []
   for (const sol of solicitacoes) {
+    // A NF de serviço da Wave mora na mesma tabela — sem esse filtro ela
+    // aparecia na lista de MATERIAL (e o modo serviço ficava vazio).
+    if (ehPedidoDeServicoWave(sol)) continue
     const itens = (sol.itens ?? []) as Array<{ detalhamento_id: string | null; valor_total: number }>
     const nfs = (sol.nfs ?? []) as Array<{ id: string; numero_nf: string; data_emissao: string; valor: number; status: string }>
 
@@ -80,12 +119,52 @@ export async function listOrigemRealizadoMaterial(
   return out
 }
 
+/**
+ * NFs de SERVIÇO alocadas ao escopo.
+ *
+ * Fonte primária: pedidos `wave_servico` em `solicitacoes_fat_direto` — é
+ * onde a NF de serviço da Wave realmente é gravada na aprovação da medição.
+ *
+ * Antes esta função lia apenas `notas_fiscais_wave`, tabela criada como
+ * ESQUELETO na migration 059 e que nunca recebeu nenhum INSERT no produto.
+ * Ela estava sempre vazia, então a função retornava `[]` na primeira guarda
+ * e a página exibia "Nenhum item encontrado" — enquanto o modo material,
+ * lendo a tabela certa, funcionava. `notas_fiscais_wave` segue sendo
+ * consultada como fonte complementar, para quando a UI de cadastro existir.
+ */
 export async function listOrigemRealizadoServico(
   contratoId: string,
   alvosDetIds: Set<string>,
 ): Promise<OrigemNotaWave[]> {
   const admin = createAdminClient()
+  const out: OrigemNotaWave[] = []
 
+  // --- Fonte primária: pedidos wave_servico + suas NFs ---
+  for (const sol of await carregarPedidosComNfs(contratoId)) {
+    if (!ehPedidoDeServicoWave(sol)) continue
+    const itens = (sol.itens ?? []) as Array<{ detalhamento_id: string | null; valor_total: number }>
+    for (const nf of (sol.nfs ?? [])) {
+      if (!nfReservaSaldo(nf.status)) continue
+      const valorAlocado = allocateNfToScope(itens, alvosDetIds, Number(nf.valor) || 0)
+      if (valorAlocado <= 0) continue
+      out.push({
+        tipo: 'nf-wave',
+        id: nf.id,
+        numero: String(nf.numero_nf ?? ''),
+        data: String(nf.data_emissao ?? ''),
+        valorAlocado,
+        valorTotalNf: Number(nf.valor) || 0,
+        status: String(nf.status ?? ''),
+        // A NF de serviço nasce de uma medição, mas o vínculo direto que
+        // temos aqui é o pedido; expomos o pedido no lugar da medição.
+        medicaoId: sol.id,
+        medicaoNumero: `FIP-${String(sol.numero ?? '').padStart(4, '0')}`,
+        pedidoId: sol.id,
+      })
+    }
+  }
+
+  // --- Fonte complementar: notas_fiscais_wave (hoje sem UI de cadastro) ---
   let nfWaveData: Array<{ id: string; numero_nf: string; data_emissao: string; valor: number; status: string; medicao_id: string }> = []
   try {
     const { data, error } = await admin
@@ -95,12 +174,12 @@ export async function listOrigemRealizadoServico(
       .in('status', ['pendente', 'validada'])
     if (!error && data) nfWaveData = data
   } catch {
-    return []
+    return out
   }
-  if (nfWaveData.length === 0) return []
+  if (nfWaveData.length === 0) return out
 
   const medicaoIds = Array.from(new Set(nfWaveData.map(n => n.medicao_id))).filter(Boolean)
-  if (medicaoIds.length === 0) return []
+  if (medicaoIds.length === 0) return out
 
   const [{ data: medicoes }, { data: itensMed }] = await Promise.all([
     admin.from('medicoes').select('id, numero').in('id', medicaoIds),
@@ -120,7 +199,6 @@ export async function listOrigemRealizadoServico(
     itensPorMedicao.set(it.medicao_id, arr)
   }
 
-  const out: OrigemNotaWave[] = []
   for (const nf of nfWaveData) {
     const itens = itensPorMedicao.get(nf.medicao_id) ?? []
     const valorAlocado = allocateNfToScope(itens, alvosDetIds, Number(nf.valor) || 0)
@@ -151,6 +229,8 @@ export async function listOrigemSaldoMaterial(
       id,
       numero,
       data_aprovacao,
+      fornecedor_cnpj,
+      fornecedor_razao_social,
       itens:itens_solicitacao_fat_direto ( detalhamento_id, valor_total ),
       nfs:notas_fiscais_fat_direto!solicitacao_id ( valor, status )
     `)
@@ -162,6 +242,8 @@ export async function listOrigemSaldoMaterial(
 
   const out: OrigemPedidoSaldo[] = []
   for (const sol of solicitacoes) {
+    // Saldo de MATERIAL não inclui o pedido de serviço da Wave.
+    if (ehPedidoDeServicoWave(sol)) continue
     const itens = (sol.itens ?? []) as Array<{ detalhamento_id: string | null; valor_total: number }>
     const aprovadoEscopo = itens.reduce((s, it) => {
       if (it.detalhamento_id && alvosDetIds.has(it.detalhamento_id)) {
@@ -343,13 +425,18 @@ export async function getOrigemPageData(
 
   let resumoStatus: OrigemResumoStatus | undefined = undefined
   if (origem === 'realizado') {
+    // Vocabulário atual de `notas_fiscais_fat_direto` (migration 065):
+    // aguardando_aprovacao | aprovada | em_correcao | cancelada. Os antigos
+    // validada/pendente/rejeitada seguem aceitos pra `notas_fiscais_wave` e
+    // registros legados — antes só eles eram testados, então os contadores
+    // ficavam sempre zerados e os chips nunca apareciam.
     resumoStatus = { validadas: 0, pendentes: 0, rejeitadas: 0 }
     for (const it of itens) {
       if (it.tipo === 'nf-fat-direto' || it.tipo === 'nf-wave') {
         const s = String(it.status ?? '').toLowerCase()
-        if (s === 'validada') resumoStatus.validadas! += 1
-        else if (s === 'pendente') resumoStatus.pendentes! += 1
-        else if (s === 'rejeitada') resumoStatus.rejeitadas! += 1
+        if (s === 'aprovada' || s === 'validada') resumoStatus.validadas! += 1
+        else if (s === 'aguardando_aprovacao' || s === 'em_correcao' || s === 'pendente') resumoStatus.pendentes! += 1
+        else if (s === 'cancelada' || s === 'rejeitada') resumoStatus.rejeitadas! += 1
       }
     }
   }
