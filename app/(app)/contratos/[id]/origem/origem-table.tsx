@@ -12,11 +12,25 @@ export function OrigemTable({ data, contratoId }: { data: OrigemResponse; contra
     if (item.tipo === 'nf-fat-direto' || item.tipo === 'pedido-saldo') {
       const id = item.tipo === 'nf-fat-direto' ? item.pedidoId : item.id
       router.push(`/contratos/${contratoId}/fat-direto/${id}`)
+    } else if (item.tipo === 'nf-wave' && item.pedidoId) {
+      // NF de serviço vinda de um pedido `wave_servico`.
+      router.push(`/contratos/${contratoId}/fat-direto/${item.pedidoId}`)
     } else if (item.tipo === 'nf-wave' || item.tipo === 'medicao-saldo') {
       const id = item.tipo === 'nf-wave' ? item.medicaoId : item.id
       router.push(`/contratos/${contratoId}/medicoes/${id}`)
     }
   }
+
+  const corStatusNf = (s: string) =>
+    s === 'aprovada' || s === 'validada' ? 'bg-emerald-500/15 text-emerald-500'
+    : s === 'aguardando_aprovacao' || s === 'em_correcao' || s === 'pendente' ? 'bg-amber-500/15 text-amber-500'
+    : s === 'cancelada' || s === 'rejeitada' ? 'bg-red-500/15 text-red-400'
+    : 'bg-zinc-500/15 text-zinc-400'
+
+  const rotuloStatusNf = (s: string) =>
+    s === 'aguardando_aprovacao' ? 'aguardando'
+    : s === 'em_correcao' ? 'em correção'
+    : s
 
   if (data.itens.length === 0) {
     return (
@@ -31,7 +45,7 @@ export function OrigemTable({ data, contratoId }: { data: OrigemResponse; contra
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
-        <thead className="text-[10px] uppercase text-[var(--text-3)] border-b border-[var(--border-1)] bg-[var(--surface-2)]">
+        <thead className="text-[10px] uppercase text-[var(--text-3)] border-b border-[var(--border)] bg-[var(--surface-2)]">
           {isNotasView ? (
             <tr>
               <th className="text-left px-3 py-2">NF</th>
@@ -57,25 +71,23 @@ export function OrigemTable({ data, contratoId }: { data: OrigemResponse; contra
             <tr
               key={`${it.tipo}-${it.id}`}
               onDoubleClick={() => onDouble(it)}
-              className="border-b border-[var(--border-1)] hover:bg-[var(--surface-2)] cursor-pointer"
+              className="border-b border-[var(--border)] hover:bg-[var(--surface-2)] cursor-pointer"
               title="Duplo-clique abre o pedido/medição de origem"
             >
               {isNotasView ? (
                 <>
                   <td className="px-3 py-2 font-mono text-xs">{('numero' in it) ? it.numero : ''}</td>
                   <td className="px-3 py-2 text-xs text-[var(--text-3)]">{('data' in it) ? it.data : ''}</td>
-                  <td className="px-3 py-2 text-xs text-[var(--accent-1)]">
+                  <td className="px-3 py-2 text-xs text-[var(--accent)]">
                     {it.tipo === 'nf-fat-direto' ? it.pedidoNumero : it.tipo === 'nf-wave' ? it.medicaoNumero : ''}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">{('valorAlocado' in it) ? fmt(it.valorAlocado) : ''}</td>
                   <td className="px-3 py-2 text-xs">
-                    <span className={['inline-block px-1.5 py-0.5 rounded text-[10px]',
-                      ('status' in it ? it.status : '') === 'validada' ? 'bg-emerald-500/15 text-emerald-500'
-                      : ('status' in it ? it.status : '') === 'pendente' ? 'bg-amber-500/15 text-amber-500'
-                      : 'bg-zinc-500/15 text-zinc-400',
-                    ].join(' ')}>{('status' in it) ? it.status : ''}</span>
+                    <span className={['inline-block px-1.5 py-0.5 rounded text-[10px]', corStatusNf('status' in it ? it.status : '')].join(' ')}>
+                      {('status' in it) ? rotuloStatusNf(it.status) : ''}
+                    </span>
                   </td>
-                  <td className="px-3 py-2 text-[10px] uppercase text-[var(--text-3)]">{it.tipo === 'nf-fat-direto' ? 'FAT direto' : 'Medição'}</td>
+                  <td className="px-3 py-2 text-[10px] uppercase text-[var(--text-3)]">{it.tipo === 'nf-fat-direto' ? 'Material' : 'Serviço'}</td>
                 </>
               ) : (
                 <>

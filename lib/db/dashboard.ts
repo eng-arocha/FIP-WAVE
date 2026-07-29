@@ -30,6 +30,8 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { nfReservaSaldo } from '@/lib/db/nf-status'
+import { withSchemaFallback } from '@/lib/db/resilient'
+import { ehPedidoDeServicoWave } from '@/lib/db/saldo-detalhamento'
 import type {
   DashboardItem,
   DashboardNivel,
@@ -159,19 +161,53 @@ export async function getDashboardData(
   const medicaoIdsAprov = (medicoesAprov || []).map(m => m.id as string)
 
   if (medicaoIdsAprov.length > 0) {
-    const { data: itensMed, error: itensErr } = await admin
-      .from('medicao_itens')
-      .select('detalhamento_id, valor_medido, medicao_id')
-      .in('medicao_id', medicaoIdsAprov)
-    if (itensErr) throw itensErr
+    // `valor_medido` é GENERATED = quantidade_medida × valor_unitario, e
+    // `valor_unitario` é o preço GLOBAL (material + MO). Usá-lo como
+    // "realizado de serviço" fazia a parcela de material entrar duas vezes
+    // no realizado_total (uma pela NF de material, outra dentro do medido),
+    // estourando o contratado e zerando o saldo pelo clamp.
+    //
+    // A fonte correta é `valor_servico_correspondente` (snapshot congelado
+    // na aprovação, migration 052). Fallback: quantidade × valor_servico_unit
+    // do detalhamento, pra medições anteriores à 052.
+    const SELECT_COM_SNAPSHOT = 'detalhamento_id, valor_medido, quantidade_medida, valor_servico_correspondente, medicao_id'
+    const SELECT_SEM_SNAPSHOT = 'detalhamento_id, valor_medido, quantidade_medida, medicao_id'
+    const itensMedRes = await withSchemaFallback({
+      primary: () => admin
+        .from('medicao_itens')
+        .select(SELECT_COM_SNAPSHOT)
+        .in('medicao_id', medicaoIdsAprov),
+      fallback: () => admin
+        .from('medicao_itens')
+        .select(SELECT_SEM_SNAPSHOT)
+        .in('medicao_id', medicaoIdsAprov),
+      missingColumns: ['valor_servico_correspondente'],
+      context: 'dashboard_medicaoItens',
+    })
+    if (itensMedRes.error) throw itensMedRes.error
 
-    for (const it of (itensMed || []) as Array<{
+    for (const it of (itensMedRes.data || []) as Array<{
       detalhamento_id: string | null
       valor_medido: number | string | null
+      quantidade_medida: number | string | null
+      valor_servico_correspondente?: number | string | null
     }>) {
       const detId = it.detalhamento_id
       if (!detId) continue
-      const v = Number(it.valor_medido || 0)
+
+      const snapshot = Number(it.valor_servico_correspondente || 0)
+      let v: number
+      if (snapshot > 0) {
+        v = snapshot
+      } else {
+        const det = detPorId.get(detId)
+        const servUnit = Number(det?.valor_servico_unit || 0)
+        v = servUnit > 0
+          ? Number(it.quantidade_medida || 0) * servUnit
+          // Item sem quebra material/MO no orçamento: `valor_medido` é a
+          // única grandeza disponível e representa o item inteiro.
+          : Number(it.valor_medido || 0)
+      }
       realizadoServicoDet.set(detId, (realizadoServicoDet.get(detId) || 0) + v)
     }
   }
@@ -189,26 +225,48 @@ export async function getDashboardData(
   const aprovadoMaterialDet = new Map<string, number>()
   const realizadoMaterialDet = new Map<string, number>()
 
-  const { data: solRaw, error: solErr } = await admin
-    .from('solicitacoes_fat_direto')
-    .select(`
-      id, status, deletado_em,
-      itens:itens_solicitacao_fat_direto ( detalhamento_id, valor_total ),
+  // `tipo` (migration 074) separa a NF de serviço da Wave dos pedidos de
+  // material. Sem esse filtro, o pedido `wave_servico` entrava como material
+  // aprovado — e a NF dele como material realizado. Fallback pra janela de
+  // schema cache stale: CNPJ / razão social identificam o mesmo pedido.
+  const SOL_SELECT = `
+      id, status, deletado_em, fornecedor_cnpj, fornecedor_razao_social,
+      itens:itens_solicitacao_fat_direto ( detalhamento_id, valor_total, valor_devolvido ),
       nfs:notas_fiscais_fat_direto!solicitacao_id ( valor, status )
-    `)
-    .eq('contrato_id', contratoId)
-    .eq('status', 'aprovado')
-    .is('deletado_em', null)
-  if (solErr) throw solErr
+    `
+  const solRes = await withSchemaFallback({
+    primary: () => admin
+      .from('solicitacoes_fat_direto')
+      .select(`tipo, ${SOL_SELECT}`)
+      .eq('contrato_id', contratoId)
+      .eq('status', 'aprovado')
+      .is('deletado_em', null),
+    fallback: () => admin
+      .from('solicitacoes_fat_direto')
+      .select(SOL_SELECT)
+      .eq('contrato_id', contratoId)
+      .eq('status', 'aprovado')
+      .is('deletado_em', null),
+    missingColumns: ['tipo', 'valor_devolvido'],
+    context: 'dashboard_solicitacoes',
+  })
+  if (solRes.error) throw solRes.error
 
-  for (const sol of (solRaw || []) as Array<{
-    itens: Array<{ detalhamento_id: string | null; valor_total: number | string | null }> | null
+  for (const sol of (solRes.data || []) as Array<{
+    tipo?: string | null
+    fornecedor_cnpj?: string | null
+    fornecedor_razao_social?: string | null
+    itens: Array<{ detalhamento_id: string | null; valor_total: number | string | null; valor_devolvido?: number | string | null }> | null
     nfs: Array<{ valor: number | string | null; status: string | null }> | null
   }>) {
+    // Pedido de serviço da Wave não consome nem realiza MATERIAL.
+    if (ehPedidoDeServicoWave(sol)) continue
+
     const itensVal = (sol.itens || [])
       .map(it => ({
         detId: it.detalhamento_id as string | null,
-        valor: Number(it.valor_total || 0),
+        // Devoluções (migration 050) liberam o saldo do item.
+        valor: Math.max(0, Number(it.valor_total || 0) - Number(it.valor_devolvido || 0)),
       }))
       .filter((x): x is { detId: string; valor: number } => x.detId !== null)
 
@@ -369,8 +427,10 @@ export async function getDashboardData(
       realizado_total: realizadoMaterial + realizadoServico,
       realizado_material: realizadoMaterial,
       realizado_servico: realizadoServico,
-      saldo_aprovado_material: Math.max(0, aprovadoMaterial - realizadoMaterial),
-      saldo_medicao_servico: Math.max(0, realizadoServico - nfWaveServico),
+      // Sem clamp: saldo negativo = item estourado. Esconder atrás de 0,00
+      // fazia o estouro passar despercebido justamente onde ele importa.
+      saldo_aprovado_material: aprovadoMaterial - realizadoMaterial,
+      saldo_medicao_servico: realizadoServico - nfWaveServico,
     }
   }
 
@@ -394,17 +454,24 @@ export async function getDashboardData(
       nfWaveServico += nfWaveServicoDet.get(d.id) || 0
     }
 
-    // Preferimos os campos diretos da tarefa pra contratado (mais
-    // confiáveis que somar detalhamentos, que podem ter unitários
-    // arredondados). Mas se a tarefa não tiver valor_material/valor_servico
-    // populado (migration 018 não rodada), caímos pra soma.
-    const tarefaMat = Number(t.valor_material || 0)
-    const tarefaServ = Number(t.valor_servico || 0)
-    const tarefaTotal = Number(t.valor_total || 0)
+    // O pai TEM que fechar com a soma dos filhos, senão o drill-down não
+    // reconcilia (era o caso de tarefas cujo `valor_total` de cabeçalho
+    // divergia dos detalhamentos — ver vw_orcamento_divergencias, mig. 040).
+    // Só caímos pro valor de cabeçalho quando a tarefa não tem filhos.
+    let valorContratadoTotal = 0
+    for (const d of dets) {
+      const qtdContr = Number(d.quantidade_contratada || 0)
+      const matUnit = Number(d.valor_material_unit || 0)
+      const servUnit = Number(d.valor_servico_unit || 0)
+      const valorUnit = Number(d.valor_unitario || (matUnit + servUnit))
+      valorContratadoTotal += qtdContr * valorUnit
+    }
 
-    const valorContratadoTotal = tarefaTotal > 0
-      ? tarefaTotal
-      : valorContratadoMaterial + valorContratadoServico
+    if (dets.length === 0) {
+      valorContratadoTotal = Number(t.valor_total || 0)
+      valorContratadoMaterial = Number(t.valor_material || 0)
+      valorContratadoServico = Number(t.valor_servico || 0)
+    }
 
     return {
       id: t.id,
@@ -414,13 +481,13 @@ export async function getDashboardData(
       pai_id: t.grupo_macro_id,
       tem_filhos: dets.length > 0,
       valor_contratado_total: valorContratadoTotal,
-      valor_contratado_material: tarefaMat > 0 ? tarefaMat : valorContratadoMaterial,
-      valor_contratado_servico: tarefaServ > 0 ? tarefaServ : valorContratadoServico,
+      valor_contratado_material: valorContratadoMaterial,
+      valor_contratado_servico: valorContratadoServico,
       realizado_total: realizadoMaterial + realizadoServico,
       realizado_material: realizadoMaterial,
       realizado_servico: realizadoServico,
-      saldo_aprovado_material: Math.max(0, aprovadoMaterial - realizadoMaterial),
-      saldo_medicao_servico: Math.max(0, realizadoServico - nfWaveServico),
+      saldo_aprovado_material: aprovadoMaterial - realizadoMaterial,
+      saldo_medicao_servico: realizadoServico - nfWaveServico,
     }
   }
 
@@ -430,14 +497,36 @@ export async function getDashboardData(
     let realizadoServico = 0
     let aprovadoMaterial = 0
     let nfWaveServico = 0
+    // Mesmo princípio do nível 2: o grupo fecha com a soma dos filhos.
+    // Antes lia `grupos_macro.valor_contratado` puro, sem fallback nenhum —
+    // grupo com valor de cabeçalho zerado mostrava Contratado 0 com
+    // Realizado > 0.
+    let valorContratadoTotal = 0
+    let valorContratadoMaterial = 0
+    let valorContratadoServico = 0
+    let temDets = false
     for (const t of tarefas) {
       const dets = detsPorTarefa.get(t.id) || []
       for (const d of dets) {
+        temDets = true
+        const qtdContr = Number(d.quantidade_contratada || 0)
+        const matUnit = Number(d.valor_material_unit || 0)
+        const servUnit = Number(d.valor_servico_unit || 0)
+        const valorUnit = Number(d.valor_unitario || (matUnit + servUnit))
+        valorContratadoTotal += qtdContr * valorUnit
+        valorContratadoMaterial += qtdContr * matUnit
+        valorContratadoServico += qtdContr * servUnit
         realizadoMaterial += realizadoMaterialDet.get(d.id) || 0
         realizadoServico += realizadoServicoDet.get(d.id) || 0
         aprovadoMaterial += aprovadoMaterialDet.get(d.id) || 0
         nfWaveServico += nfWaveServicoDet.get(d.id) || 0
       }
+    }
+
+    if (!temDets) {
+      valorContratadoTotal = Number(g.valor_contratado || 0)
+      valorContratadoMaterial = Number(g.valor_material || 0)
+      valorContratadoServico = Number(g.valor_servico || 0)
     }
 
     return {
@@ -447,14 +536,14 @@ export async function getDashboardData(
       nivel: 1,
       pai_id: null,
       tem_filhos: tarefas.length > 0,
-      valor_contratado_total: Number(g.valor_contratado || 0),
-      valor_contratado_material: Number(g.valor_material || 0),
-      valor_contratado_servico: Number(g.valor_servico || 0),
+      valor_contratado_total: valorContratadoTotal,
+      valor_contratado_material: valorContratadoMaterial,
+      valor_contratado_servico: valorContratadoServico,
       realizado_total: realizadoMaterial + realizadoServico,
       realizado_material: realizadoMaterial,
       realizado_servico: realizadoServico,
-      saldo_aprovado_material: Math.max(0, aprovadoMaterial - realizadoMaterial),
-      saldo_medicao_servico: Math.max(0, realizadoServico - nfWaveServico),
+      saldo_aprovado_material: aprovadoMaterial - realizadoMaterial,
+      saldo_medicao_servico: realizadoServico - nfWaveServico,
     }
   }
 

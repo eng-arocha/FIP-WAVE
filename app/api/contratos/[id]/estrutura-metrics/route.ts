@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
+import { ehPedidoDeServicoWave } from '@/lib/db/saldo-detalhamento'
 
 /**
  * GET /api/contratos/[id]/estrutura-metrics
@@ -45,23 +46,27 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     if (detErr) throw detErr
     const dets = (detsRaw || []) as any[]
 
-    // 2) Medição: valor_medido de medicao_itens em medicoes APROVADAS
+    // 2) Medição: parcela de SERVIÇO medida em medicoes APROVADAS.
+    //    `valor_medido` é qtde × valor_unitario (preço GLOBAL, material+MO);
+    //    compará-lo com subtotal_mo inflava o serviço medido pela parcela de
+    //    material. A fonte certa é `valor_servico_correspondente` (mig. 052).
     const { data: miRaw } = await admin
       .from('medicao_itens')
       .select(`
-        detalhamento_id, valor_medido, medicao_id,
+        detalhamento_id, valor_medido, quantidade_medida, valor_servico_correspondente, medicao_id,
         medicao:medicoes!inner ( id, contrato_id, status, tipo )
       `)
       .eq('medicao.contrato_id', id)
       .eq('medicao.status', 'aprovado')
     const mItens = (miRaw || []) as any[]
 
-    // 3) Fat. Aprovados: itens das solicitações APROVADAS não deletadas
+    // 3) Fat. Aprovados: itens das solicitações de MATERIAL aprovadas e não
+    //    deletadas. Pedido `wave_servico` consome MO, não material.
     const { data: fatRaw } = await admin
       .from('itens_solicitacao_fat_direto')
       .select(`
         detalhamento_id, valor_total,
-        solicitacao:solicitacoes_fat_direto!inner ( id, contrato_id, status, deletado_em )
+        solicitacao:solicitacoes_fat_direto!inner ( id, contrato_id, status, deletado_em, tipo, fornecedor_cnpj, fornecedor_razao_social )
       `)
       .eq('solicitacao.contrato_id', id)
       .eq('solicitacao.status', 'aprovado')
@@ -86,12 +91,23 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     }
 
     // Agrega por detalhamento
+    const detPorId = new Map<string, Record<string, unknown>>(
+      dets.map((d: Record<string, unknown>) => [String(d.id), d]),
+    )
     const servMedidoDet: Record<string, number> = {}
     const medicoesPorDet: Record<string, Set<string>> = {}
     for (const it of mItens) {
       const detId = it.detalhamento_id
       if (!detId) continue
-      servMedidoDet[detId] = (servMedidoDet[detId] || 0) + Number(it.valor_medido || 0)
+      const det = detPorId.get(detId)
+      const snapshot = Number(it.valor_servico_correspondente || 0)
+      const servUnit = Number(det?.valor_servico_unit || 0)
+      const vServ = snapshot > 0
+        ? snapshot
+        : servUnit > 0
+          ? Number(it.quantidade_medida || 0) * servUnit
+          : Number(it.valor_medido || 0)
+      servMedidoDet[detId] = (servMedidoDet[detId] || 0) + vServ
       if (!medicoesPorDet[detId]) medicoesPorDet[detId] = new Set()
       medicoesPorDet[detId].add(it.medicao_id)
     }
@@ -99,6 +115,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     for (const it of fatItens) {
       const detId = it.detalhamento_id
       if (!detId) continue
+      if (ehPedidoDeServicoWave(it.solicitacao || {})) continue
       fatAprovDet[detId] = (fatAprovDet[detId] || 0) + Number(it.valor_total || 0)
     }
 

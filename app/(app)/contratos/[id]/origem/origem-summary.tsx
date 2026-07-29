@@ -7,7 +7,7 @@ export function OrigemSummary({ data }: { data: OrigemResponse }) {
   const fmt = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   return (
-    <div className="flex flex-wrap items-center gap-4 px-3 py-2 border-b border-[var(--border-1)] bg-[var(--surface-2)] text-sm">
+    <div className="flex flex-wrap items-center gap-4 px-3 py-2 border-b border-[var(--border)] bg-[var(--surface-2)] text-sm">
       <div>📊 <strong>{fmt(data.total)}</strong> total</div>
       <div>📄 <strong>{data.count}</strong> {data.origem === 'realizado' ? 'notas' : 'pedidos/medições'}</div>
       {data.resumoStatus && (

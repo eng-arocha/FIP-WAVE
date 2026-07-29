@@ -23,8 +23,14 @@ export type OrigemNotaWave = {
   valorAlocado: number
   valorTotalNf: number
   status: string
+  /** Id de navegação: medição (`notas_fiscais_wave`) ou pedido (`wave_servico`). */
   medicaoId: string
   medicaoNumero: string
+  /**
+   * Quando a NF veio de um pedido `wave_servico` (fonte primária), o
+   * drill-down abre o pedido em vez da medição.
+   */
+  pedidoId?: string
 }
 
 export type OrigemPedidoSaldo = {

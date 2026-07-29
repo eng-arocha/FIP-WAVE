@@ -54,11 +54,11 @@ export default async function OrigemPage({
     return (
       <div className="p-6 max-w-[1400px] mx-auto">
         <div className="flex items-center gap-2 mb-4 text-sm">
-          <Link href={backHref} className="inline-flex items-center gap-1 text-[var(--accent-1)] hover:underline">
+          <Link href={backHref} className="inline-flex items-center gap-1 text-[var(--accent)] hover:underline">
             <ChevronLeft className="w-4 h-4" /> Voltar à Visão Geral
           </Link>
         </div>
-        <div className="rounded-md border border-[var(--border-1)] bg-[var(--surface-1)] p-8 text-center">
+        <div className="rounded-md border border-[var(--border)] bg-[var(--surface-1)] p-8 text-center">
           <p className="text-sm text-[var(--text-2)]">Não foi possível carregar os dados desta página.</p>
           {errorDigest && (
             <p className="mt-2 text-xs text-[var(--text-3)]">Detalhe técnico: {errorDigest}</p>
@@ -77,7 +77,7 @@ export default async function OrigemPage({
   return (
     <div className="p-4 lg:p-6 max-w-[1400px] mx-auto">
       <div className="flex items-center gap-2 mb-4 text-sm">
-        <Link href={backHref} className="inline-flex items-center gap-1 text-[var(--accent-1)] hover:underline">
+        <Link href={backHref} className="inline-flex items-center gap-1 text-[var(--accent)] hover:underline">
           <ChevronLeft className="w-4 h-4" /> Voltar à Visão Geral
         </Link>
       </div>
@@ -85,7 +85,7 @@ export default async function OrigemPage({
         <h1 className="text-xl font-semibold text-[var(--text-1)]">{titulo}</h1>
         <p className="text-xs text-[var(--text-3)] mt-1">Escopo: {escopoLabel}</p>
       </div>
-      <div className="border border-[var(--border-1)] rounded-md overflow-hidden bg-[var(--surface-1)]">
+      <div className="border border-[var(--border)] rounded-md overflow-hidden bg-[var(--surface-1)]">
         <OrigemSummary data={data} />
         <OrigemTable data={data} contratoId={id} />
       </div>

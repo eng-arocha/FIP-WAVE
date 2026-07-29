@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isSchemaMissingError, withSchemaFallback } from '@/lib/db/resilient'
+import { ehPedidoDeServicoWave, type SolicitacaoClassificavel } from '@/lib/db/saldo-detalhamento'
 
 /**
  * Resumo financeiro consolidado da obra (contrato), no contexto de uma
@@ -163,11 +164,17 @@ export async function calcularResumoFinanceiroObra(args: CalcArgs): Promise<Resu
   // 4) Material — NFs recebidas (acumulado + período)
   // Em vez de join inline (frágil em PostgREST), 2 queries: pega ids de
   // solicitações do contrato, depois NFs com solicitacao_id IN (...).
+  // Só pedidos de MATERIAL ativos: a NF de serviço da Wave não entra no
+  // desconto de material (é o defeito que a migration 074 documenta), e
+  // pedidos soft-deleted não deviam contar.
   const { data: solsDoContrato } = await admin
     .from('solicitacoes_fat_direto')
-    .select('id')
+    .select('id, tipo, fornecedor_cnpj, fornecedor_razao_social')
     .eq('contrato_id', args.contrato_id)
-  const solIds = (solsDoContrato || []).map((s: any) => s.id)
+    .is('deletado_em', null)
+  const solIds = (solsDoContrato || [])
+    .filter((s: SolicitacaoClassificavel) => !ehPedidoDeServicoWave(s))
+    .map((s: { id: string }) => s.id)
 
   let nfsDoContrato: Array<{ valor: number; created_at: string | null }> = []
   if (solIds.length > 0) {
@@ -194,8 +201,9 @@ export async function calcularResumoFinanceiroObra(args: CalcArgs): Promise<Resu
   try {
     const res = await admin
       .from('solicitacoes_fat_direto')
-      .select('id, valor_total, status, data_aprovacao')
+      .select('id, valor_total, status, data_aprovacao, tipo, fornecedor_cnpj, fornecedor_razao_social')
       .eq('contrato_id', args.contrato_id)
+      .is('deletado_em', null)
       .in('status', ['aprovado', 'encerrado'])
     solsAprovadas = res.data || []
   } catch (e: any) {
@@ -203,14 +211,18 @@ export async function calcularResumoFinanceiroObra(args: CalcArgs): Promise<Resu
     if (isSchemaMissingError(e, ['encerrado'])) {
       const res = await admin
         .from('solicitacoes_fat_direto')
-        .select('id, valor_total, status, data_aprovacao')
+        .select('id, valor_total, status, data_aprovacao, tipo, fornecedor_cnpj, fornecedor_razao_social')
         .eq('contrato_id', args.contrato_id)
+        .is('deletado_em', null)
         .eq('status', 'aprovado')
       solsAprovadas = res.data || []
     } else {
       throw e
     }
   }
+
+  // Fora os pedidos de serviço da Wave — não consomem o teto de material.
+  solsAprovadas = solsAprovadas.filter((s: SolicitacaoClassificavel) => !ehPedidoDeServicoWave(s))
 
   const aprovadoAcumulado = solsAprovadas.reduce((s: number, x: any) => s + Number(x.valor_total || 0), 0)
   const aprovadoPeriodo = inicioPeriodo

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
 import { nfReservaSaldo } from '@/lib/db/nf-status'
+import { ehPedidoDeServicoWave } from '@/lib/db/saldo-detalhamento'
 
 /**
  * GET /api/contratos/[id]/acompanhamento
@@ -60,15 +61,20 @@ export async function GET(
     })
 
     // ── 5. Load fat direto solicitations (items level) ────────────────────
-    const { data: solicitacoes } = await admin
+    // Só pedidos de MATERIAL (o `wave_servico` consome MO) e não deletados —
+    // o filtro de soft-delete (migration 025) faltava aqui.
+    const { data: solicitacoesRaw } = await admin
       .from('solicitacoes_fat_direto')
-      .select('id, status, valor_total')
+      .select('id, status, valor_total, tipo, fornecedor_cnpj, fornecedor_razao_social')
       .eq('contrato_id', id)
       .neq('status', 'cancelado')
       .neq('status', 'rejeitado')
+      .is('deletado_em', null)
 
-    const solIds = (solicitacoes || []).map((s: any) => s.id)
-    const approvedSolIds = (solicitacoes || [])
+    const solicitacoes = (solicitacoesRaw || []).filter((s: any) => !ehPedidoDeServicoWave(s))
+
+    const solIds = solicitacoes.map((s: any) => s.id)
+    const approvedSolIds = solicitacoes
       .filter((s: any) => s.status === 'aprovado')
       .map((s: any) => s.id)
 
@@ -108,18 +114,6 @@ export async function GET(
         nfBySol[nf.solicitacao_id] = (nfBySol[nf.solicitacao_id] || 0) + (nf.valor || 0)
       }
     })
-    // Map tarefa → NF total (via approved sol items)
-    const nfByTarefa: Record<string, number> = {}
-    ;(itens || []).forEach((item: any) => {
-      if (approvedSolSet.has(item.solicitacao_id)) {
-        const nfVal = nfBySol[item.solicitacao_id] || 0
-        // Pro-rate NF by item proportion within the solicitation
-        // Simple approach: accumulate per tarefa
-        nfByTarefa[item.tarefa_id] = (nfByTarefa[item.tarefa_id] || 0)
-        // We'll use direct sol NF totals by tarefa ratio
-      }
-    })
-
     // ── 6. Build result structure ─────────────────────────────────────────
     const detsByTarefa = (dets || []).reduce((acc: Record<string, any[]>, d: any) => {
       const arr = acc[d.tarefa_id] || []

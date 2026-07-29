@@ -7,6 +7,8 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import type { DashboardItem, DashboardModo } from '@/types/dashboard'
 import { useTreeExpansion } from '@/lib/hooks/use-tree-expansion'
 import { useDashboardTreeData } from '@/lib/hooks/use-dashboard-tree-data'
+import { useTableLayout, type ColumnDef } from '@/lib/hooks/use-table-layout'
+import { valoresPorModo, rotuloSaldo } from '@/lib/export/visao-geral'
 import { DashboardTreeRow } from './dashboard-tree-row'
 import { DashboardBarChart } from './dashboard-bar-chart'
 
@@ -19,10 +21,23 @@ type FlatItem = { item: DashboardItem; level: number }
 
 const DOUBLE_CLICK_GUARD_MS = 250
 
+type ColunaVisaoGeral = 'item' | 'contratado' | 'realizado' | 'saldo'
+
+const COLUNAS_VISAO_GERAL: Array<ColumnDef<ColunaVisaoGeral> & { label: string }> = [
+  { key: 'item', label: 'Item', defaultWidth: 280, min: 160, max: 900, type: 'string' },
+  { key: 'contratado', label: 'Contratado', defaultWidth: 130, min: 90, type: 'number' },
+  { key: 'realizado', label: 'Realizado', defaultWidth: 130, min: 90, type: 'number' },
+  // O rótulo desta muda com o modo — ver rotuloSaldo().
+  { key: 'saldo', label: 'Saldo', defaultWidth: 130, min: 90, type: 'number' },
+]
+
 export function DashboardTree({ contratoId, modo }: Props) {
   const router = useRouter()
   const pathname = usePathname()
   const params = useSearchParams()
+
+  const { gridTemplateColumns, startResize, reset: resetLayout } =
+    useTableLayout<ColunaVisaoGeral>('contrato:visao-geral:v1', COLUNAS_VISAO_GERAL)
 
   const scopeRaw = params.get('scope')
   const rootScope = scopeRaw === null || scopeRaw === '' || scopeRaw === 'null' ? null : scopeRaw
@@ -109,7 +124,7 @@ export function DashboardTree({ contratoId, modo }: Props) {
           <button
             type="button"
             onClick={() => updateScope(null)}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-[var(--surface-2)] text-[var(--accent-1)]"
+            className="inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-[var(--surface-2)] text-[var(--accent)]"
           >
             <ArrowLeft className="w-3 h-3" /> Voltar a todos
           </button>
@@ -118,45 +133,66 @@ export function DashboardTree({ contratoId, modo }: Props) {
         </div>
       )}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <div className="border border-[var(--border-1)] rounded-md overflow-hidden bg-[var(--surface-1)]">
-          <div className="grid grid-cols-[minmax(220px,2fr)_1fr_1fr_1fr] items-center gap-2 px-2 py-1.5 text-[10px] uppercase text-[var(--text-3)] border-b border-[var(--border-1)] bg-[var(--surface-2)]">
-            <div>Item</div>
-            <div className="text-right">Contratado</div>
-            <div className="text-right">Realizado</div>
-            <div className="text-right">{modo === 'material' ? 'Saldo aprov.' : modo === 'servico' ? 'Saldo med.' : 'Saldo'}</div>
+        <div className="border border-[var(--border)] rounded-md overflow-hidden bg-[var(--surface-1)]">
+          <div className="flex items-center justify-end px-2 py-1">
+            <button
+              type="button"
+              onClick={resetLayout}
+              className="text-[10px] px-1.5 py-0.5 rounded text-[var(--text-3)] hover:bg-[var(--surface-2)]"
+              title="Voltar as colunas à largura padrão"
+            >
+              Resetar colunas
+            </button>
           </div>
-          <div className="max-h-[60vh] overflow-y-auto">
-            {flat.length === 0 ? (
-              <div className="p-6 text-center text-sm text-[var(--text-3)]">Carregando…</div>
-            ) : flat.map(({ item, level }) => {
-              const realizadoVal =
-                modo === 'material' ? item.realizado_material
-                : modo === 'servico' ? item.realizado_servico
-                : item.realizado_total
-              const saldoVal =
-                modo === 'material' ? item.saldo_aprovado_material
-                : modo === 'servico' ? item.saldo_medicao_servico
-                // Total: saldo = quanto ainda falta executar do contratado
-                // (Contratado − Realizado). Informativo (não abre origem).
-                : Math.max(0, item.valor_contratado_total - item.realizado_total)
-              return (
-                <DashboardTreeRow
-                  key={`${item.id}-${level}`}
-                  item={item}
-                  level={level}
-                  expanded={isExpanded(item.id)}
-                  loading={isLoading(item.id)}
-                  modo={modo}
-                  onToggle={() => onToggle(item)}
-                  onZoom={() => onZoom(item)}
-                  onClickRealizado={realizadoVal > 0 ? () => goToOrigem(item, 'realizado') : undefined}
-                  onClickSaldo={modo !== 'total' && saldoVal > 0 ? () => goToOrigem(item, 'saldo') : undefined}
-                />
-              )
-            })}
+          {/* Header + corpo compartilham o mesmo overflow-x pra rolarem juntos */}
+          <div className="overflow-x-auto">
+            <div
+              className="grid items-center gap-2 px-2 py-1.5 text-[10px] uppercase text-[var(--text-3)] border-b border-[var(--border)] bg-[var(--surface-2)] sticky top-0 z-10"
+              style={{ gridTemplateColumns, minWidth: 'max-content' }}
+            >
+              {COLUNAS_VISAO_GERAL.map((col, i) => (
+                <div
+                  key={col.key}
+                  className={`relative ${i === 0 ? '' : 'text-right'}`}
+                >
+                  {col.key === 'saldo' ? rotuloSaldo(modo) : col.label}
+                  <span
+                    onMouseDown={e => startResize(col.key, e)}
+                    onClick={e => e.stopPropagation()}
+                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize"
+                    style={{ background: 'transparent' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                    title="Arraste para redimensionar"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto">
+              {flat.length === 0 ? (
+                <div className="p-6 text-center text-sm text-[var(--text-3)]">Carregando…</div>
+              ) : flat.map(({ item, level }) => {
+                const v = valoresPorModo(item, modo)
+                return (
+                  <DashboardTreeRow
+                    key={`${item.id}-${level}`}
+                    item={item}
+                    level={level}
+                    expanded={isExpanded(item.id)}
+                    loading={isLoading(item.id)}
+                    modo={modo}
+                    gridTemplateColumns={gridTemplateColumns}
+                    onToggle={() => onToggle(item)}
+                    onZoom={() => onZoom(item)}
+                    onClickRealizado={v.realizado > 0 ? () => goToOrigem(item, 'realizado') : undefined}
+                    onClickSaldo={modo !== 'total' && v.saldo > 0 ? () => goToOrigem(item, 'saldo') : undefined}
+                  />
+                )
+              })}
+            </div>
           </div>
         </div>
-        <div className="border border-[var(--border-1)] rounded-md p-2 bg-[var(--surface-1)] overflow-x-auto">
+        <div className="border border-[var(--border)] rounded-md p-2 bg-[var(--surface-1)] overflow-x-auto">
           <DashboardBarChart
             itens={flat}
             modo={modo}

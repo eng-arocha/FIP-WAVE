@@ -4,6 +4,7 @@
 import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react'
 import { memo } from 'react'
 import type { DashboardItem, DashboardModo } from '@/types/dashboard'
+import { valoresPorModo } from '@/lib/export/visao-geral'
 import { NumeroClicavel } from './numero-clicavel'
 
 type Props = {
@@ -12,42 +13,19 @@ type Props = {
   expanded: boolean
   loading: boolean
   modo: DashboardModo
+  /** Template do grid, vindo do useTableLayout. String pra preservar o memo. */
+  gridTemplateColumns: string
   onToggle: () => void
   onZoom?: () => void
   onClickRealizado?: () => void
   onClickSaldo?: () => void
 }
 
-function getValores(item: DashboardItem, modo: DashboardModo) {
-  if (modo === 'material') {
-    return {
-      contratado: item.valor_contratado_material,
-      realizado: item.realizado_material,
-      saldo: item.saldo_aprovado_material,
-      saldoLabel: 'Saldo aprovado',
-    }
-  }
-  if (modo === 'servico') {
-    return {
-      contratado: item.valor_contratado_servico,
-      realizado: item.realizado_servico,
-      saldo: item.saldo_medicao_servico,
-      saldoLabel: 'Saldo medição',
-    }
-  }
-  return {
-    contratado: item.valor_contratado_total,
-    realizado: item.realizado_total,
-    // Total: saldo = quanto falta executar do contratado (Contratado − Realizado).
-    saldo: Math.max(0, item.valor_contratado_total - item.realizado_total),
-    saldoLabel: 'Saldo a executar',
-  }
-}
-
 export const DashboardTreeRow = memo(function DashboardTreeRow({
-  item, level, expanded, loading, modo, onToggle, onZoom, onClickRealizado, onClickSaldo,
+  item, level, expanded, loading, modo, gridTemplateColumns,
+  onToggle, onZoom, onClickRealizado, onClickSaldo,
 }: Props) {
-  const v = getValores(item, modo)
+  const v = valoresPorModo(item, modo)
   const podeExpandir = item.tem_filhos
   const indent = level * 16
 
@@ -56,13 +34,18 @@ export const DashboardTreeRow = memo(function DashboardTreeRow({
       role="treeitem"
       aria-level={level + 1}
       aria-expanded={podeExpandir ? expanded : undefined}
-      className="grid grid-cols-[minmax(220px,2fr)_1fr_1fr_1fr] items-center gap-2 px-2 py-1.5 hover:bg-[var(--surface-2)] border-b border-[var(--border-1)]"
-      style={{ paddingLeft: `${indent + 8}px` }}
+      className="grid items-center gap-2 px-2 py-1.5 hover:bg-[var(--surface-2)] border-b border-[var(--border)]"
+      style={{ gridTemplateColumns, minWidth: 'max-content' }}
     >
-      {/* Coluna 1: chevron + código + nome */}
+      {/* Coluna 1: chevron + código + nome.
+          O recuo hierárquico vai DENTRO da célula — quando ficava como
+          paddingLeft do container do grid, cada nível estreitava e deslocava
+          a linha inteira, e as colunas numéricas paravam de bater com o
+          cabeçalho. */}
       {/* 1x click = expand/collapse, 2x click = zoom */}
       <div
         className={`flex items-center gap-1.5 min-w-0 ${podeExpandir || onZoom ? 'cursor-pointer' : ''}`}
+        style={{ paddingLeft: `${indent}px` }}
         onClick={() => { if (podeExpandir) onToggle() }}
         onDoubleClick={() => { if (onZoom) onZoom() }}
         title={podeExpandir ? '1× clique = expandir · 2× clique = zoom' : ''}
@@ -98,7 +81,12 @@ export const DashboardTreeRow = memo(function DashboardTreeRow({
       </div>
       <div className="text-right tabular-nums text-sm text-[var(--text-1)]">
         {modo === 'total' ? (
-          <span className="text-[var(--text-3)]">
+          // Saldo negativo = item estourado. Vermelho, nunca escondido.
+          <span
+            style={v.saldo < 0 ? { color: '#EF4444', fontWeight: 600 } : undefined}
+            className={v.saldo < 0 ? '' : 'text-[var(--text-3)]'}
+            title={v.saldo < 0 ? 'Realizado maior que o contratado' : undefined}
+          >
             {v.saldo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </span>
         ) : (
