@@ -1,6 +1,10 @@
-// Grupos macro do contrato WAVE-2025-001 (1-19, com 11 ausente).
-// Usado pra agrupar somatórios por categoria no email de liberação
-// e em relatórios.
+// Grupos macro do contrato WAVE-2025-001. Usado pra agrupar somatórios por
+// categoria no email de liberação e em relatórios.
+//
+// A numeração vai de 1 a 19 mas PULA O 11 — são 18 grupos (1–10 e 12–19).
+// Isso é o orçamento contratado, não um grupo perdido na importação: a
+// migration 005_full_data_seed.sql insere exatamente esses 18. Se aparecer
+// como "item faltando" em alguma tela, é a numeração do contrato, não um bug.
 
 export const GRUPOS_MACRO: Record<number, string> = {
   1:  'ELÉTRICA SUBESTAÇÃO',

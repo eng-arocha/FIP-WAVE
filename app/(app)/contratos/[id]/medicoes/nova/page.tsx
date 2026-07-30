@@ -12,7 +12,8 @@ import { formatCurrency } from '@/lib/utils'
 import { TipoAnexo } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 import { detectarPavRange, listarPavimentos, somarPavimentos, normalizarPct, PAV_PCTS, type PavRange } from '@/lib/pavimentos'
-import { detectarVaos, nomeVao } from '@/lib/vaos'
+import { nomeVao } from '@/lib/vaos'
+import { detectarGradeBinaria } from '@/lib/grade-binaria'
 
 const MESES = [
   { v: '01', l: 'Janeiro' }, { v: '02', l: 'Fevereiro' }, { v: '03', l: 'Março' },
@@ -96,22 +97,24 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
     })
   }
 
-  // Modal de backfill de vãos
+  // Modal de backfill da grade binária (vãos ou parcelas mensais)
   const [backfillModal, setBackfillModal] = useState<{
     detId: string
     descricao: string
-    vaoNomes: string[]
+    nomes: string[]
+    /** "vãos" / "meses" — só pro texto do modal. */
+    termoPlural: string
     qtdeAnt: number
     pcts: Record<string, number>
   } | null>(null)
   const [backfillSaving, setBackfillSaving] = useState(false)
 
-  function openBackfill(det: any, vaoNomesArg: string[]) {
+  function openBackfill(det: any, nomes: string[], termoPlural: string) {
     const qtdeAnt = getAcumQtde(det.id)
-    const n = Math.min(Math.round(qtdeAnt), vaoNomesArg.length)
+    const n = Math.min(Math.round(qtdeAnt), nomes.length)
     const pcts: Record<string, number> = {}
-    for (let i = 1; i <= vaoNomesArg.length; i++) pcts[String(i)] = i <= n ? 100 : 0
-    setBackfillModal({ detId: det.id, descricao: det.descricao, vaoNomes: vaoNomesArg, qtdeAnt, pcts })
+    for (let i = 1; i <= nomes.length; i++) pcts[String(i)] = i <= n ? 100 : 0
+    setBackfillModal({ detId: det.id, descricao: det.descricao, nomes, termoPlural, qtdeAnt, pcts })
   }
 
   async function saveBackfill() {
@@ -231,12 +234,23 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
     }
   }, [step, contratoId])
 
-  // Todos os grupos 1–18 (grupo 19 = só material, excluído)
-  const estruturaServico = estrutura.filter(g => {
-    if (g.tipo_medicao === 'faturamento_direto') return false
-    const num = parseInt((g.codigo || '').toString().split('.')[0])
-    return isNaN(num) || num <= 18
-  })
+  // Todos os grupos do contrato que tenham algo a medir.
+  //
+  // Antes havia dois filtros que escondiam o grupo 19 (SERVIÇOS
+  // COMPLEMENTARES): `tipo_medicao === 'faturamento_direto'` e um
+  // `num <= 18` hardcoded. O 19 é 100% material e faturado direto, mas ele
+  // TEM avanço físico a medir — a administração de obra é apropriada mês a
+  // mês (19.1.1, 17 parcelas). `tipo_medicao` descreve como o grupo é
+  // FATURADO, não se ele é medido; usá-lo pra filtrar a tela de medição
+  // confundia as duas coisas.
+  //
+  // Nota sobre a numeração: o contrato WAVE-2025-001 não tem grupo 11 — a
+  // migration 005 insere 18 grupos (1–10 e 12–19) e lib/data/grupos-macro.ts
+  // registra a ausência. O salto de 10 para 12 na tela é o orçamento, não um
+  // item sumido.
+  const estruturaServico = estrutura.filter(g =>
+    (g.tarefas || []).some((t: any) => (t.detalhamentos || []).length > 0),
+  )
 
   // Acumulado em qtde absoluta. Helpers convenientes:
   function getAcumQtde(detId: string): number {
@@ -373,10 +387,11 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
           const acumQtde = getAcumQtde(det.id)
           const deltaQtde = qtdeAtual - acumQtde
           if (deltaQtde > 0) {
-            // Para PAV TIPO e vãos, anexa o breakdown acumulado.
+            // Para PAV TIPO e grades binárias (vãos, meses), anexa o
+            // breakdown acumulado.
             const pavRange = detectarPavRange(det.descricao, Number(det.quantidade_contratada || 0))
-            const vaoNomesItem = !pavRange ? detectarVaos(det.descricao, Number(det.quantidade_contratada || 0)) : null
-            const pavto = (pavRange || vaoNomesItem) ? pavPctMap[det.id] : null
+            const gradeItem = !pavRange ? detectarGradeBinaria(det.descricao, Number(det.quantidade_contratada || 0)) : null
+            const pavto = (pavRange || gradeItem) ? pavPctMap[det.id] : null
             itens.push({
               detalhamento_id: det.id,
               quantidade_medida: deltaQtde,
@@ -639,13 +654,14 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                               {(tarefa.detalhamentos || []).map((det: any) => {
                                 const qtdeContratada = Number(det.quantidade_contratada || 0)
                                 const pavRange = detectarPavRange(det.descricao, qtdeContratada)
-                                const vaoNomes = !pavRange ? detectarVaos(det.descricao, qtdeContratada) : null
-                                // PAV TIPO e vãos: qtdeMedicao deriva da soma do breakdown
-                                const qtdeAtual = (pavRange || vaoNomes)
+                                const grade = !pavRange ? detectarGradeBinaria(det.descricao, qtdeContratada) : null
+                                const gradeNomes = grade?.nomes ?? null
+                                // PAV TIPO e grade binária: qtdeMedicao deriva da soma do breakdown
+                                const qtdeAtual = (pavRange || grade)
                                   ? somarPavimentos(pavPctMap[det.id])
                                   : (qtdeMedicao[det.id] ?? getAcumQtde(det.id))
                                 const qtdeAnt = getAcumQtde(det.id)
-                                const needsBackfill = !!(vaoNomes && qtdeAnt > 0 && !acumulado[det.id]?.pavimentos_pct)
+                                const needsBackfill = !!(grade && qtdeAnt > 0 && !acumulado[det.id]?.pavimentos_pct)
                                 const deltaQtde = qtdeAtual - qtdeAnt
                                 const valorDelta = deltaQtde > 0 ? deltaQtde * (det.valor_unitario || 0) : 0
                                 const pctAtual = qtdeContratada > 0 ? (qtdeAtual / qtdeContratada) * 100 : 0
@@ -693,8 +709,8 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                             </p>
                                           )}
                                         </div>
-                                      ) : vaoNomes ? (
-                                        // VÃO: resumo + botao expandir grade binária (0/100)
+                                      ) : grade && gradeNomes ? (
+                                        // Grade binária (0/100): vãos ou parcelas mensais
                                         <div>
                                           <button
                                             type="button"
@@ -705,16 +721,16 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                               {isPavGridOpen
                                                 ? <ChevronUp className="w-3 h-3" />
                                                 : <ChevronDown className="w-3 h-3" />}
-                                              Medir por vão ({vaoNomes.length} un.)
+                                              Medir por {grade.termo} ({gradeNomes.length} un.)
                                             </span>
                                             <span className="tabular-nums text-slate-300">
-                                              {Math.round(qtdeAtual)} / {vaoNomes.length}
+                                              {Math.round(qtdeAtual)} / {gradeNomes.length}
                                             </span>
                                           </button>
                                           {needsBackfill && (
                                             <button
                                               type="button"
-                                              onClick={() => openBackfill(det, vaoNomes)}
+                                              onClick={() => openBackfill(det, gradeNomes, grade.termoPlural)}
                                               className="mt-0.5 text-[9px] text-amber-400 hover:text-amber-300 text-left"
                                             >
                                               ⚠ Histórico sem breakdown — configurar backfill
@@ -722,7 +738,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                           )}
                                           {qtdeAnt > 0 && (
                                             <p className="text-[9px] text-slate-400 mt-0.5">
-                                              mín. (acumulado anterior): <strong>{Math.round(qtdeAnt)}</strong> vãos
+                                              mín. (acumulado anterior): <strong>{Math.round(qtdeAnt)}</strong> {grade.termoPlural}
                                             </p>
                                           )}
                                         </div>
@@ -900,14 +916,14 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                       </div>
                                     </div>
                                   )}
-                                  {/* Grade de vãos (binária 0/100) */}
-                                  {vaoNomes && isPavGridOpen && (
+                                  {/* Grade binária 0/100 — vãos ou parcelas mensais */}
+                                  {grade && gradeNomes && isPavGridOpen && (
                                     <div className="mt-1.5 ml-6 p-3 rounded-lg bg-[var(--surface-1)] border border-[var(--border)]">
                                       <p className="text-[10px] text-slate-400 mb-2">
-                                        Selecione os vãos concluídos. Cada vão vale 1 {det.unidade}.
+                                        Selecione os {grade.termoPlural} concluídos. Cada {grade.termo} vale 1 {det.unidade}.
                                       </p>
                                       <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-1.5">
-                                        {vaoNomes.map((nome, idx) => {
+                                        {gradeNomes.map((nome, idx) => {
                                           const vaoIdx = idx + 1
                                           const pctAnt = getPavPctAnterior(det.id, vaoIdx)
                                           const pctAtu = getPavPctAtual(det.id, vaoIdx)
@@ -1272,19 +1288,21 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
           <div className="relative z-10 w-full max-w-2xl max-h-[80vh] overflow-y-auto rounded-xl border p-5 space-y-4"
             style={{ background: 'var(--surface-1)', borderColor: 'var(--border)' }}>
             <div>
-              <h3 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>Backfill de Vãos</h3>
+              <h3 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
+                Backfill de {backfillModal.termoPlural}
+              </h3>
               <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>{backfillModal.descricao}</p>
               <p className="text-xs mt-1 text-amber-400">
-                Selecione os vãos já concluídos antes desta medição.
+                Selecione os {backfillModal.termoPlural} já concluídos antes desta medição.
                 Sugestão: {Math.round(backfillModal.qtdeAnt)} marcados (acumulado anterior).
               </p>
             </div>
             <div>
               <p className="text-xs font-medium mb-2" style={{ color: 'var(--text-2)' }}>
-                Selecionados: {Object.values(backfillModal.pcts).filter(v => v === 100).length} / {backfillModal.vaoNomes.length}
+                Selecionados: {Object.values(backfillModal.pcts).filter(v => v === 100).length} / {backfillModal.nomes.length}
               </p>
               <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
-                {backfillModal.vaoNomes.map((nome, idx) => {
+                {backfillModal.nomes.map((nome, idx) => {
                   const key = String(idx + 1)
                   const isDone = (backfillModal.pcts[key] ?? 0) === 100
                   return (

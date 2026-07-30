@@ -1,5 +1,6 @@
 import { Document, Page, View, Text, StyleSheet } from '@react-pdf/renderer'
-import { detectarVaos, nomeVao } from '@/lib/vaos'
+import { nomeVao } from '@/lib/vaos'
+import { detectarGradeBinaria } from '@/lib/grade-binaria'
 
 const BLU = '#1e3a8a'
 const BLU_LT = '#dbeafe'
@@ -206,18 +207,20 @@ export function MedicaoPDF({ medicao, itens, aprovacoes, planilha, somentePeriod
     }
   })()
 
-  // Pav/vão breakdown: only entries with pct > 0 (compact)
+  // Pav / grade binária (vãos, meses) breakdown: only entries with pct > 0
   function renderPavBreakdown(
     pavimentos_pct: Record<string, number>,
     pavimentos_pct_anterior?: Record<string, number> | null,
-    vaos?: string[] | null,
+    grade?: { nomes: string[]; termo: string } | null,
   ) {
     const floors = Object.entries(pavimentos_pct)
       .map(([k, v]) => ({ num: Number(k), pct: Number(v) }))
       .sort((a, b) => a.num - b.num)
     const active = floors.filter(f => f.pct > 0)
     if (active.length === 0) return null
-    const title = vaos ? 'Breakdown por vão (acumulado ao fim desta medição)' : 'Breakdown por pavimento (acumulado ao fim desta medição)'
+    const title = grade
+      ? `Breakdown por ${grade.termo} (acumulado ao fim desta medição)`
+      : 'Breakdown por pavimento (acumulado ao fim desta medição)'
     return (
       <View style={s.pavBox}>
         <Text style={s.pavTitle}>{title}</Text>
@@ -228,7 +231,7 @@ export function MedicaoPDF({ medicao, itens, aprovacoes, planilha, somentePeriod
             const isDone = f.pct >= 100
             // isDelta takes priority: new/increased this period shows amber even if 100%
             const cellStyle = isDelta ? s.pavCellDelta : isDone ? s.pavCellDone : s.pavCell
-            const label = vaos ? nomeVao(vaos, f.num) : `${f.num}º pav`
+            const label = grade ? nomeVao(grade.nomes, f.num) : `${f.num}º pav`
             return (
               <View key={f.num} style={cellStyle}>
                 <Text style={s.pavNum}>{label}</Text>
@@ -408,9 +411,10 @@ export function MedicaoPDF({ medicao, itens, aprovacoes, planilha, somentePeriod
                     {t.detalhamentos.map((d: any) => {
                       const alt = detIdx++ % 2 === 0
                       const hasPav = d.pavimentos_pct && Object.keys(d.pavimentos_pct).length > 0
-                      const vaoNomesD = hasPav ? detectarVaos(d.descricao, d.quantidade_contratada) : null
-                      // Mostrar quantidade para multi-unidade não-PAV, e também para vãos (breakdown é só qual, não quantos)
-                      const showQtd = d.quantidade_contratada > 1 && (!hasPav || !!vaoNomesD)
+                      const gradeD = hasPav ? detectarGradeBinaria(d.descricao, d.quantidade_contratada) : null
+                      // Mostrar quantidade para multi-unidade não-PAV, e também para grade
+                      // binária (o breakdown diz só quais, não quantos)
+                      const showQtd = d.quantidade_contratada > 1 && (!hasPav || !!gradeD)
                       const qtdUnit = d.quantidade_contratada > 0
                         ? `${d.quantidade_contratada} × ${R(d.valor_unitario_contratual)}`
                         : R(d.valor_global_item)
@@ -456,7 +460,7 @@ export function MedicaoPDF({ medicao, itens, aprovacoes, planilha, somentePeriod
                             <Text style={[s.dtTxt, { width: COL.salPct, textAlign: 'right', color: GRY }]}>{rPctQtd(d.pct_saldo, d.qtd_saldo, showQtd)}</Text>
                             <Text style={[s.dtTxt, { width: COL.sal, textAlign: 'right', color: GRY }]}>{rVal(d.valor_saldo)}</Text>
                           </View>
-                          {hasPav && renderPavBreakdown(d.pavimentos_pct, d.pavimentos_pct_anterior, vaoNomesD)}
+                          {hasPav && renderPavBreakdown(d.pavimentos_pct, d.pavimentos_pct_anterior, gradeD)}
                         </View>
                       )
                     })}
