@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, use } from 'react'
+import { useState, useEffect, useMemo, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { Topbar } from '@/components/layout/topbar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -53,6 +53,27 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
   } | null>(null)
   const [estrutura, setEstrutura] = useState<any[]>([])
   const [loadingEstrutura, setLoadingEstrutura] = useState(true)
+
+  // Placar de conciliação do faturamento direto, por detalhamento.
+  //
+  // Grupos `faturamento_direto` (o 19 — SERVIÇOS COMPLEMENTARES) são medidos
+  // pelo avanço físico, mas a nota é emitida por terceiro (administração de
+  // obra). O que impede a FIP de ser cobrada indevidamente é a régua de
+  // desconto: NF do fornecedor já lançada abate o material medido e o
+  // `fip_a_emitir` sai zero sozinho. Se a NF ainda não chegou, sobra gap e o
+  // sistema passa a cobrar a FIP — erro que só aparecia DEPOIS, no boletim,
+  // quando o pedido já havia nascido.
+  //
+  // Este placar antecipa a conta pra hora da medição. Os números vêm do MESMO
+  // endpoint /simular que o boletim usa — a régua de desconto (apurada por
+  // tarefa, sobre o acumulado, cf. lib/db/desconto-transbordo.ts) NÃO é
+  // reimplementada aqui, justamente pra as duas telas não divergirem.
+  const [concil, setConcil] = useState<Record<string, {
+    material_medido: number
+    nf_material_lancada: number
+    fip_a_emitir: number
+  }>>({})
+  const [concilLoading, setConcilLoading] = useState(false)
   // Acumulado de medicoes anteriores. Cada entry tem qtde absoluta + qtde
   // contratada + pct calculado. Vem do endpoint /medicoes/acumulado.
   // pavimentos_pct: MAX por pavto entre medicoes aprovadas (so PAV TIPO).
@@ -472,6 +493,69 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
     return itens
   }
 
+  /** Detalhamentos que pertencem a grupo `faturamento_direto` (NF de terceiro). */
+  const detsFatDireto = useMemo(() => {
+    const s = new Set<string>()
+    for (const g of estrutura) {
+      if (g.tipo_medicao !== 'faturamento_direto') continue
+      for (const t of (g.tarefas || [])) {
+        for (const d of (t.detalhamentos || [])) s.add(d.id)
+      }
+    }
+    return s
+  }, [estrutura])
+
+  // Dispara o dry-run só quando há item de grupo `faturamento_direto` sendo
+  // medido. Debounce porque a grade de meses/vãos emite um evento por clique.
+  useEffect(() => {
+    if (step !== 2) return
+    const medidos = coletarItensMedidos()
+    if (!medidos.some(i => detsFatDireto.has(i.detalhamento_id))) {
+      setConcil({})
+      setConcilLoading(false)
+      return
+    }
+    let cancelado = false
+    setConcilLoading(true)
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/contratos/${contratoId}/medicoes/simular`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ itens: medidos }),
+        })
+        if (!res.ok) throw new Error('simular falhou')
+        const data = await res.json()
+        if (cancelado) return
+        const map: Record<string, { material_medido: number; nf_material_lancada: number; fip_a_emitir: number }> = {}
+        for (const l of (data.linhas || [])) {
+          map[l.detalhamento_id] = {
+            material_medido: Number(l.material_medido || 0),
+            nf_material_lancada: Number(l.nf_material_lancada || 0),
+            fip_a_emitir: Number(l.fip_a_emitir || 0),
+          }
+        }
+        setConcil(map)
+      } catch {
+        if (!cancelado) setConcil({})
+      } finally {
+        if (!cancelado) setConcilLoading(false)
+      }
+    }, 700)
+    return () => { cancelado = true; clearTimeout(timer) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, contratoId, qtdeMedicao, acumulado, detsFatDireto])
+
+  /** Total ainda sem NF de terceiro nos itens de faturamento direto medidos. */
+  const faltaFatDireto = useMemo(() => {
+    let falta = 0
+    for (const [detId, c] of Object.entries(concil)) {
+      if (!detsFatDireto.has(detId)) continue
+      falta += Math.max(0, c.fip_a_emitir)
+    }
+    return falta
+  }, [concil, detsFatDireto])
+
   // Roda o cálculo REAL (dry-run) no servidor e abre a simulação.
   async function simular() {
     if (simulando) { setSimulando(false); return }
@@ -632,6 +716,15 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                       <CardTitle className="text-sm flex items-center gap-2 text-[var(--text-1)]">
                         <span className="text-[var(--text-3)] font-mono">{grupo.codigo}</span>
                         <span className="flex-1">{grupo.nome}</span>
+                        {grupo.tipo_medicao === 'faturamento_direto' && (
+                          <span
+                            className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                            style={{ background: 'rgba(99,102,241,0.15)', color: '#818CF8' }}
+                            title="Medido pelo avanço físico; a nota é emitida por terceiro (faturamento direto)."
+                          >
+                            Faturamento direto
+                          </span>
+                        )}
                         {deltaCount > 0 && (
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(245,158,11,0.15)', color: '#F59E0B' }}>
                             {deltaCount} item(ns) selecionado(s)
@@ -954,6 +1047,61 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                       </div>
                                     </div>
                                   )}
+
+                                  {/* Placar de faturamento direto — grupo 19 e afins.
+                                      Mostra na hora se a NF do terceiro já cobre o
+                                      medido, em vez de descobrir no boletim depois
+                                      que o pedido no nome da FIP já nasceu. */}
+                                  {grupo.tipo_medicao === 'faturamento_direto' && deltaQtde > 0 && (() => {
+                                    const c = concil[det.id]
+                                    if (!c) {
+                                      return (
+                                        <div className="mt-1.5 ml-6 px-3 py-2 rounded-lg text-[10px] flex items-center gap-2"
+                                          style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>
+                                          {concilLoading && <Loader2 className="w-3 h-3 animate-spin" />}
+                                          {concilLoading ? 'Conferindo notas já lançadas...' : 'Conciliação de faturamento direto indisponível.'}
+                                        </div>
+                                      )
+                                    }
+                                    const falta = Math.max(0, c.fip_a_emitir)
+                                    const ok = falta < 0.01
+                                    return (
+                                      <div
+                                        className="mt-1.5 ml-6 px-3 py-2 rounded-lg"
+                                        style={{
+                                          background: ok ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.10)',
+                                          border: `1px solid ${ok ? 'rgba(16,185,129,0.35)' : 'rgba(245,158,11,0.45)'}`,
+                                        }}
+                                      >
+                                        <div className="flex items-center gap-2 flex-wrap text-[10px]">
+                                          <span className="font-bold uppercase tracking-wide" style={{ color: ok ? '#10B981' : '#F59E0B' }}>
+                                            Faturamento direto
+                                          </span>
+                                          <span style={{ color: 'var(--text-3)' }}>
+                                            medido <strong className="tabular-nums" style={{ color: 'var(--text-1)' }}>{formatCurrency(c.material_medido)}</strong>
+                                            {' · '}NF lançada <strong className="tabular-nums" style={{ color: '#3B82F6' }}>{formatCurrency(c.nf_material_lancada)}</strong>
+                                            {' · '}falta <strong className="tabular-nums" style={{ color: ok ? '#10B981' : '#F59E0B' }}>{formatCurrency(falta)}</strong>
+                                          </span>
+                                        </div>
+                                        <p className="text-[10px] mt-1" style={{ color: ok ? '#10B981' : '#F59E0B' }}>
+                                          {ok
+                                            ? '✓ Nota do fornecedor já cobre o medido — nada será cobrado da FIP.'
+                                            : 'Lançar o faturamento direto ANTES de autorizar, senão este valor vira pedido de NF no nome da FIP.'}
+                                        </p>
+                                        {!ok && (
+                                          <a
+                                            href={`/contratos/${contratoId}/fat-direto`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-block mt-1 text-[10px] font-semibold underline"
+                                            style={{ color: '#F59E0B' }}
+                                          >
+                                            Abrir faturamento direto ↗
+                                          </a>
+                                        )}
+                                      </div>
+                                    )
+                                  })()}
                                   </div>
                                 )
                               })}
@@ -965,6 +1113,27 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                   </Card>
                 )
               })
+            )}
+
+            {/* Aviso consolidado: soma do que ainda não tem NF de terceiro nos
+                itens de faturamento direto medidos. */}
+            {faltaFatDireto > 0.01 && (
+              <Card style={{ borderColor: 'rgba(245,158,11,0.45)', background: 'rgba(245,158,11,0.08)' }}>
+                <CardContent className="p-4 flex items-start gap-3">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: '#F59E0B' }} />
+                  <div className="text-xs">
+                    <p className="font-semibold" style={{ color: '#F59E0B' }}>
+                      Faturamento direto pendente: {formatCurrency(faltaFatDireto)}
+                    </p>
+                    <p className="mt-1" style={{ color: 'var(--text-2)' }}>
+                      Há itens de faturamento direto medidos cuja nota do fornecedor ainda não
+                      foi lançada. Se a medição for autorizada assim, esse valor vira pedido de
+                      NF de material no nome da FIP. Lance as notas primeiro — o placar de cada
+                      item acima fecha em zero quando estiver tudo conciliado.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
             )}
 
             <Card className="border-blue-500/20 bg-blue-500/5">
@@ -1171,17 +1340,35 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                         </tr>
                       </thead>
                       <tbody>
-                        {simResult.linhas.map(l => (
-                          <tr key={l.detalhamento_id} className="border-b border-[var(--border)]/50">
+                        {simResult.linhas.map(l => {
+                          // Item de faturamento direto cobrando a FIP = NF do
+                          // terceiro ainda não lançada. É erro de ordem, não de
+                          // valor, então destaca a linha em vez de só exibi-la.
+                          const fatDiretoSemNf = detsFatDireto.has(l.detalhamento_id) && l.fip_a_emitir > 0.01
+                          return (
+                          <tr
+                            key={l.detalhamento_id}
+                            className="border-b border-[var(--border)]/50"
+                            style={fatDiretoSemNf ? { background: 'rgba(245,158,11,0.10)' } : undefined}
+                          >
                             <td className="py-1.5 pr-2 font-mono text-[10px] text-[var(--text-3)]">{l.codigo}</td>
-                            <td className="py-1.5 pr-2 text-[var(--text-2)]">{l.descricao}</td>
+                            <td className="py-1.5 pr-2 text-[var(--text-2)]">
+                              {l.descricao}
+                              {fatDiretoSemNf && (
+                                <span className="ml-1.5 text-[9px] font-bold uppercase" style={{ color: '#F59E0B' }}
+                                  title="Grupo de faturamento direto: lance a NF do fornecedor antes de autorizar, senão este valor vira pedido no nome da FIP.">
+                                  ⚠ falta NF do fornecedor
+                                </span>
+                              )}
+                            </td>
                             <td className="py-1.5 px-2 text-right tabular-nums text-[var(--text-2)]">{formatCurrency(l.material_medido)}</td>
                             <td className="py-1.5 px-2 text-right tabular-nums" style={{ color: '#3B82F6' }}>{formatCurrency(l.nf_material_lancada)}</td>
                             <td className="py-1.5 px-2 text-right tabular-nums" style={{ color: '#6366F1' }}>{formatCurrency(l.fat_direto_em_aberto)}</td>
                             <td className="py-1.5 px-2 text-right tabular-nums" style={{ color: '#F59E0B' }}>{formatCurrency(l.fip_a_emitir)}</td>
                             <td className="py-1.5 pl-2 text-right tabular-nums font-semibold" style={{ color: '#10B981' }}>{formatCurrency(l.servico_liquido)}</td>
                           </tr>
-                        ))}
+                          )
+                        })}
                       </tbody>
                       <tfoot>
                         <tr className="border-t-2 border-[var(--border-hover)] font-bold">
