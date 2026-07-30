@@ -251,8 +251,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         // Retrocompat: fluxo antigo (sem portão 1) ainda cria o rascunho FIP
         // material aqui se nenhum pedido foi vinculado mas há material a faturar.
         if (!solicitacaoFipId) {
-          const itensFip = informacon.linhas
-            .filter(l => l.fip_faturar > 0)
+          const { detalhamentosDeFaturamentoDireto, separarLinhasFipMaterial } =
+            await import('@/lib/db/fat-direto-grupos')
+          // Mesma regra do portão 1: grupo `faturamento_direto` é medido mas
+          // não gera pedido de NF material FIP — quem fatura é o terceiro.
+          const detsFatDireto = await detalhamentosDeFaturamentoDireto(admin, contratoId)
+          const separado = separarLinhasFipMaterial(informacon.linhas, detsFatDireto)
+          if (separado.totalTerceiro > 0) {
+            log.warn('fip_material_excluido_faturamento_direto', {
+              medicao_id: medicaoId,
+              total: separado.totalTerceiro,
+              itens: separado.terceiro.map(l => l.codigo),
+            })
+          }
+          const itensFip = separado.fip
             .map(l => ({
               detalhamento_id: l.detalhamento_id,
               descricao: l.descricao,

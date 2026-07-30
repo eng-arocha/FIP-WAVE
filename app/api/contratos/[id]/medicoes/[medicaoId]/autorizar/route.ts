@@ -129,9 +129,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         // Caminho padrão: cria rascunho fip_material a partir do Informakon
         const { calcularInformaconData } = await import('@/lib/db/informacon-data')
         const { criarSolicitacaoRascunhoDeMedicao } = await import('@/lib/db/fat-direto')
+        const { detalhamentosDeFaturamentoDireto, separarLinhasFipMaterial } =
+          await import('@/lib/db/fat-direto-grupos')
         const informacon = await calcularInformaconData(admin, contratoId, medicaoId)
-        const itensFip = (informacon?.linhas ?? [])
-          .filter(l => l.fip_faturar > 0)
+        // Itens de grupo `faturamento_direto` (grupo 19 — administração de obra)
+        // são medidos, mas quem emite a nota é o fornecedor. Não geram pedido
+        // no nome da FIP. Ver lib/db/fat-direto-grupos.ts.
+        const detsFatDireto = await detalhamentosDeFaturamentoDireto(admin, contratoId)
+        const separado = separarLinhasFipMaterial(informacon?.linhas ?? [], detsFatDireto)
+        if (separado.totalTerceiro > 0) {
+          log.warn('fip_material_excluido_faturamento_direto', {
+            medicao_id: medicaoId,
+            total: separado.totalTerceiro,
+            itens: separado.terceiro.map(l => l.codigo),
+          })
+        }
+        const itensFip = separado.fip
           .map(l => ({
             detalhamento_id: l.detalhamento_id,
             descricao: l.descricao,
