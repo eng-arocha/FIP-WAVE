@@ -194,9 +194,12 @@ export async function PATCH(
     if (
       msg.includes('Solicitação não encontrada') ||
       msg.includes('já foi decidida') ||
-      msg.includes('Motivo de rejeição obrigatório')
+      msg.includes('Motivo de rejeição obrigatório') ||
+      msg.includes('Rejeite esta solicitação')
     ) {
-      const isConflict = msg.includes('já foi decidida')
+      // 409: o estado do pedido/solicitação conflita com a ação pedida —
+      // o aprovador precisa rejeitar em vez de aprovar.
+      const isConflict = msg.includes('já foi decidida') || msg.includes('Rejeite esta solicitação')
       return apiError(e, { status: isConflict ? 409 : 400 })
     }
     return apiError(e)
