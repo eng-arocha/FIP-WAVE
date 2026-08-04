@@ -125,7 +125,8 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
     const temNFvalida = (s.notas_fiscais || []).some(n => nfReservaSaldo(n.status))
     return !temNFvalida
   })
-  const totalNFs = solicitacoes.reduce((sum, s) => sum + (s.notas_fiscais?.filter(n => n.status !== 'rejeitada').reduce((a, n) => a + n.valor, 0) || 0), 0)
+  // Só NFs que reservam saldo — canceladas não somam no total lançado.
+  const totalNFs = solicitacoes.reduce((sum, s) => sum + (s.notas_fiscais?.filter(n => nfReservaSaldo(n.status)).reduce((a, n) => a + n.valor, 0) || 0), 0)
   const teto = resumo?.valor_material_direto ?? 0
   const saldoDisponivel = teto - totalAprovado
   const pctUsado = teto > 0 ? Math.round((totalAprovado / teto) * 100) : 0
@@ -165,7 +166,7 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
   // Base set for the active KPI card
   const baseSet = useMemo(() => {
     if (!activeKpi) return solicitacoes
-    if (activeKpi === 'nf') return solicitacoes.filter(s => (s.notas_fiscais || []).some(n => n.status !== 'rejeitada'))
+    if (activeKpi === 'nf') return solicitacoes.filter(s => (s.notas_fiscais || []).some(n => nfReservaSaldo(n.status)))
     const meta = KPI_META[activeKpi]
     if (meta.statusFilter) return solicitacoes.filter(s => s.status === meta.statusFilter)
     return solicitacoes

@@ -1301,7 +1301,7 @@ export async function criarPedidoCoberturaDivergencia(input: {
 /**
  * Recusa NF por divergência sem saldo de teto (caminho C).
  *
- * Marca a NF com status='rejeitada' + tipo_rejeicao='divergencia_sem_saldo'
+ * Marca a NF com status='cancelada' + tipo_rejeicao='divergencia_sem_saldo'
  * + motivo_divergencia (auditoria). NÃO cria pedido novo.
  *
  * O email de notificação à FIP é responsabilidade do chamador (rota
@@ -1316,7 +1316,10 @@ export async function recusarNotaFiscalPorDivergencia(input: {
 
   // Atualiza a NF — usa fallback se schema cache não tem as colunas novas
   const updatePayload: any = {
-    status: 'rejeitada',
+    // 'cancelada' = estado terminal do workflow (migration 065). O legado
+    // 'rejeitada' viola o CHECK da tabela; quem discrimina este caso é o
+    // tipo_rejeicao abaixo.
+    status: 'cancelada',
     tipo_rejeicao: 'divergencia_sem_saldo',
     motivo_divergencia: input.motivo,
     validado_por_id: input.aprovador_id ?? null,
