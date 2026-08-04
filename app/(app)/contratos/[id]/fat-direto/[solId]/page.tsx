@@ -155,6 +155,8 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
     pedido_valor: number
     total_nf_validadas: number
     total_nf_pendentes: number
+    /** Soma das NFs que reservam saldo (aprovadas + pendentes). */
+    total_nf_ativas: number
     saldo_liquido: number
     pct_utilizado: number
     alerta: 'ok' | 'atencao' | 'critico' | 'esgotado'
@@ -168,8 +170,10 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
       const data = await res.json()
       setSaldo({
         pedido_valor: data.pedido?.valor_total ?? 0,
-        total_nf_validadas: data.total_nf_validadas,
-        total_nf_pendentes: data.total_nf_pendentes,
+        total_nf_validadas: data.total_nf_aprovadas ?? data.total_nf_validadas ?? 0,
+        total_nf_pendentes: data.total_nf_pendentes ?? 0,
+        total_nf_ativas: data.total_nf_ativas
+          ?? ((data.total_nf_aprovadas ?? data.total_nf_validadas ?? 0) + (data.total_nf_pendentes ?? 0)),
         saldo_liquido: data.saldo_liquido,
         pct_utilizado: data.pct_utilizado,
         alerta: data.alerta,
@@ -906,7 +910,9 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                   </p>
                   <p className="text-xs text-[var(--text-3)]">
                     Quando o fornecedor confirmar que não emitirá mais NF para este pedido, peça o
-                    cancelamento do saldo de <strong className="text-amber-400">{formatCurrency(saldo.saldo_liquido)}</strong>.
+                    encerramento do <strong className="text-amber-400">saldo a devolver de {formatCurrency(saldo.saldo_liquido)}</strong>{' '}
+                    ({formatCurrency(saldo.pedido_valor)} do pedido − {formatCurrency(saldo.total_nf_ativas)} já em NF).
+                    O pedido não é excluído e as NFs lançadas continuam valendo.
                     O aprovador receberá a solicitação e poderá aprovar ou rejeitar.
                   </p>
                   {encerramentoSucesso && (
@@ -1441,14 +1447,33 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
               Solicitar encerramento de saldo do pedido FIP-{String(sol.numero).padStart(4, '0')}
             </DialogTitle>
             <DialogDescription className="text-[var(--text-2)]">
-              Você está pedindo cancelamento do saldo de{' '}
-              <strong className="text-amber-400">
-                {formatCurrency(saldo?.saldo_liquido ?? 0)}
-              </strong>{' '}
-              que ainda não virou NF. O aprovador será notificado e poderá aprovar ou rejeitar.
+              O pedido <strong>não</strong> é excluído e as NFs já lançadas
+              (<strong>{formatCurrency(saldo?.total_nf_ativas ?? 0)}</strong>) continuam valendo.
+              Só o <strong className="text-amber-400">saldo a devolver</strong> — a parte do pedido
+              que ainda não virou NF — volta para os itens de origem. O aprovador será notificado
+              e poderá aprovar ou rejeitar.
             </DialogDescription>
           </DialogHeader>
           <div className="py-2 space-y-3">
+            {/* Composição do saldo — deixa explícito que só a sobra é encerrada,
+                não a totalidade do pedido. */}
+            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+              <div className="flex items-center justify-between px-3 py-2 text-xs" style={{ background: 'var(--surface-1)' }}>
+                <span className="text-[var(--text-3)]">Valor do pedido</span>
+                <span className="tabular-nums text-[var(--text-1)]">{formatCurrency(saldo?.pedido_valor ?? 0)}</span>
+              </div>
+              <div className="flex items-center justify-between px-3 py-2 text-xs" style={{ background: 'var(--surface-2)', borderTop: '1px solid var(--border)' }}>
+                <span className="text-[var(--text-3)]">(−) NFs já lançadas — permanecem</span>
+                <span className="tabular-nums text-[var(--text-1)]">{formatCurrency(saldo?.total_nf_ativas ?? 0)}</span>
+              </div>
+              <div
+                className="flex items-center justify-between px-3 py-2 text-xs font-bold"
+                style={{ background: 'rgba(245,158,11,0.10)', borderTop: '1px solid rgba(245,158,11,0.35)' }}
+              >
+                <span className="text-amber-400 uppercase tracking-wide">Saldo a devolver</span>
+                <span className="tabular-nums text-amber-400">{formatCurrency(saldo?.saldo_liquido ?? 0)}</span>
+              </div>
+            </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wider">
                 Motivo *

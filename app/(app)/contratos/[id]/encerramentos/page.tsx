@@ -292,7 +292,7 @@ export default function EncerramentosPage({ params }: { params: Promise<{ id: st
               <DialogHeader>
                 <DialogTitle className="text-emerald-400 flex items-center gap-2">
                   <CheckCircle2 className="w-5 h-5" />
-                  Aprovar encerramento de {formatCurrency(aprovarItem.saldo ?? 0)} do pedido {formatPedido(aprovarItem)}?
+                  Aprovar encerramento do saldo de {formatCurrency(aprovarItem.saldo ?? 0)} do pedido {formatPedido(aprovarItem)}?
                 </DialogTitle>
                 <DialogDescription className="text-[var(--text-2)]">
                   Solicitado por {aprovarItem.solicitante?.nome || '—'}
@@ -309,7 +309,8 @@ export default function EncerramentosPage({ params }: { params: Promise<{ id: st
                     <AlertTriangle className="inline w-3.5 h-3.5 mr-1" />
                     Aviso
                   </p>
-                  O saldo será cancelado e devolvido ao teto do contrato.
+                  Apenas o saldo ({formatCurrency(aprovarItem.saldo ?? 0)}) será cancelado e devolvido
+                  ao teto do contrato. O pedido não é excluído e as NFs já lançadas continuam valendo.
                   <strong> Esta ação não pode ser desfeita.</strong>
                 </div>
                 {aprovarItem.motivo && (
