@@ -2,6 +2,7 @@
  * Tipos, constantes e helpers puros compartilhados entre a página
  * /nf-fat-direto e seus componentes extraídos.
  */
+import { nfReservaSaldo } from '@/lib/db/nf-status'
 
 // ── Tolerância de saldo ─────────────────────────────────────────────────────
 export const TOLERANCE = 100 // R$ 100,00
@@ -67,7 +68,7 @@ export interface Solicitacao {
 }
 
 // ── Cálculos de saldo (puros) ────────────────────────────────────────────────
-export const getNfsValidas = (sol: Solicitacao) => sol.notas_fiscais.filter(n => n.status !== 'rejeitada')
+export const getNfsValidas = (sol: Solicitacao) => sol.notas_fiscais.filter(n => nfReservaSaldo(n.status))
 export const getTotalNfs   = (sol: Solicitacao) => getNfsValidas(sol).reduce((a, n) => a + n.valor, 0)
 export const getSaldo      = (sol: Solicitacao) => sol.valor_total - getTotalNfs(sol)
 

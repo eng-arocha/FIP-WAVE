@@ -12,6 +12,25 @@
 export type NfStatus = 'aguardando_aprovacao' | 'aprovada' | 'em_correcao' | 'cancelada'
 
 /**
+ * Os únicos valores que o CHECK de `notas_fiscais_fat_direto.status` aceita
+ * (migration 065). Gravar qualquer outro — como o legado 'rejeitada' — quebra
+ * o INSERT/UPDATE com violação de constraint (23514).
+ *
+ * `tests/nf-status-schema.test.ts` compara esta lista com o SQL da migration.
+ */
+export const NF_STATUS_VALIDOS: readonly NfStatus[] = [
+  'aguardando_aprovacao',
+  'aprovada',
+  'em_correcao',
+  'cancelada',
+] as const
+
+/** True se `status` pode ser gravado na coluna sem violar o CHECK. */
+export function nfStatusGravavel(status: string | null | undefined): status is NfStatus {
+  return NF_STATUS_VALIDOS.includes(status as NfStatus)
+}
+
+/**
  * Status inicial da NF no lançamento. Quem tem permissão de aprovar
  * (admin / representante do contratante) lança direto como aprovada —
  * não faz sentido aprovar a si mesmo.

@@ -13,6 +13,7 @@ import {
   verificarTeto,
   NFMatchError,
 } from '@/lib/db/fat-direto'
+import { nfReservaSaldo } from '@/lib/db/nf-status'
 import {
   templateDivergenciaAviso,
   templateDivergenciaRecusa,
@@ -52,7 +53,7 @@ const Body = z.object({
  *                   pelo excedente (auto-aprovado, vinculado ao pedido pai)
  *                   + dispara email de aviso "controle rigoroso FIP".
  *
- *   acao='recusar' → registra NF como rejeitada (tipo='divergencia_sem_saldo')
+ *   acao='recusar' → registra NF como cancelada (tipo='divergencia_sem_saldo')
  *                   + dispara email de recusa exigindo pagamento direto FIP.
  *
  * Modo dry_run=true: NÃO persiste nada. Calcula valores, gera HTML do
@@ -129,7 +130,7 @@ export async function POST(
       .select('valor, status')
       .eq('solicitacao_id', solId)
     const somaAtivas = (nfsAtivas || [])
-      .filter((n: any) => n.status !== 'rejeitada')
+      .filter((n: any) => nfReservaSaldo(n.status))
       .reduce((s: number, n: any) => s + Number(n.valor || 0), 0)
     const saldoPedido = Number((pai as any).valor_total || 0) - somaAtivas
     const excedente = nf.valor - saldoPedido
@@ -326,7 +327,10 @@ export async function POST(
     // acao === 'recusar'
     // 1) Cadastra a NF tentando o caminho normal — mas sabemos que vai falhar
     //    pelo VALOR_EXCEDE_SALDO. Estratégia: persiste DIRETO via insert com
-    //    status='rejeitada' (sem passar pelo 3-way match completo).
+    //    status='cancelada' (sem passar pelo 3-way match completo). 'cancelada'
+    //    é o estado terminal do workflow (migration 065) — o legado
+    //    'rejeitada' viola o CHECK da tabela. O que marca ESTE caso é o
+    //    tipo_rejeicao='divergencia_sem_saldo', gravado logo abaixo.
     const insertPayload: any = {
       solicitacao_id: solId,
       numero_nf: nf.numero_nf,
@@ -338,7 +342,7 @@ export async function POST(
       data_vencimento: nf.data_vencimento ?? null,
       descricao: nf.descricao,
       url_arquivo: nf.arquivo_url ?? null,
-      status: 'rejeitada',
+      status: 'cancelada',
     }
     let nfId: string
     {

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { ArrowLeft, CheckCircle, XCircle, FileText, Plus, Package, Trash2, Mail, Send, PlayCircle, RotateCcw, Ban, Paperclip, ExternalLink, Eye, Upload, X } from 'lucide-react'
 import { usePermissoes } from '@/lib/context/permissoes-context'
+import { nfReservaSaldo } from '@/lib/db/nf-status'
 import { uploadAnexosPedido } from '@/lib/fat-direto-upload'
 import { EmailEnvolvidosModal } from '@/components/fat-direto/email-envolvidos-modal'
 import { EncerrarPedidoModal } from '@/components/fat-direto/encerrar-pedido-modal'
@@ -470,7 +471,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
   const statusColor = STATUS_COLORS[sol.status] ?? '#475569'
   // Total recebido = NFs que reservam saldo (exclui cancelada / rejeitada legada).
   const totalNF = (sol.notas_fiscais || [])
-    .filter(n => n.status !== 'rejeitada' && n.status !== 'cancelada')
+    .filter(n => nfReservaSaldo(n.status))
     .reduce((s, n) => s + n.valor, 0)
 
   return (
@@ -1417,7 +1418,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
         numeroPedidoFip={(sol as any)?.numero_pedido_fip ?? sol.numero}
         valorTotalPedido={Number(sol.valor_total || 0)}
         totalNfsRecebidas={(sol.notas_fiscais || [])
-          .filter(nf => nf.status !== 'rejeitada' && nf.status !== 'cancelada')
+          .filter(nf => nfReservaSaldo(nf.status))
           .reduce((s, nf) => s + Number(nf.valor || 0), 0)}
         itens={(sol.itens || []).map(it => ({
           id: it.id,

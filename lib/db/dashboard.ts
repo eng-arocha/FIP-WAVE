@@ -10,8 +10,9 @@
  * Decisões importantes:
  *   - Itens de solicitação ou de medição com `detalhamento_id NULL` são
  *     ignorados (não há onde alocar — não impactam saldo).
- *   - NFs material (fat-direto) com `status='rejeitada'` NÃO contam como
- *     realizado_material; pendente e validada contam.
+ *   - NFs material (fat-direto) com `status='cancelada'` NÃO contam como
+ *     realizado_material; aguardando_aprovacao, em_correcao e aprovada
+ *     contam (vocabulário da migration 065 — ver `nfReservaSaldo`).
  *   - NFs Wave com `status='rejeitada'` ou `'cancelada'` NÃO contam;
  *     pendente e validada contam.
  *   - Pedidos fat-direto contam como aprovado_material apenas com
@@ -202,7 +203,7 @@ export async function getDashboardData(
   //
   //    Pra cada solicitação aprovada (não-deletada):
   //      - itens com detalhamento_id contam pra `aprovado_material_det`
-  //      - NFs (status != 'rejeitada') são distribuídas
+  //      - NFs que reservam saldo (tudo menos 'cancelada') são distribuídas
   //        proporcionalmente entre os itens (por valor_total do item /
   //        valor_total da solicitação) — alocado em
   //        `realizado_material_det`.

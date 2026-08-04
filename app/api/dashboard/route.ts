@@ -52,7 +52,8 @@ export async function GET() {
       totalNfFatDireto = (nfsAprov || []).reduce((acc: number, nf: any) => acc + (nf.valor || 0), 0)
     }
 
-    // Soma de TODAS as NFs lançadas (status != rejeitada)
+    // Soma de TODAS as NFs lançadas que reservam saldo (a query já exclui
+    // 'cancelada' — o estado terminal do workflow desde a migration 065).
     const totalNfsLancadas = (allNfs || []).reduce((acc: number, nf: any) => acc + (nf.valor || 0), 0)
 
     // Soma de solicitações aprovadas (valor_total)
