@@ -41,6 +41,7 @@ export default function EncerramentosPage({ params }: { params: Promise<{ id: st
   const [motivoRejeicao, setMotivoRejeicao] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [erroAcao, setErroAcao] = useState('')
+  const [aviso, setAviso] = useState('')
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -97,6 +98,12 @@ export default function EncerramentosPage({ params }: { params: Promise<{ id: st
         setErroAcao(body?.error || `Falha (HTTP ${res.status}).`)
         return
       }
+      // O pedido já estava encerrado (encerramento direto pelo admin, ou
+      // aprovação anterior que falhou no meio) — a solicitação só foi baixada
+      // da fila. Sem avisar, o aprovador não entende por que nada mudou.
+      setAviso(body?.reconciliado
+        ? 'Este pedido já estava encerrado — a solicitação foi baixada da fila, sem novo cancelamento de saldo.'
+        : '')
       setAprovarItem(null)
       await carregar()
     } catch (e: any) {
@@ -130,6 +137,7 @@ export default function EncerramentosPage({ params }: { params: Promise<{ id: st
       }
       setRejeitarItem(null)
       setMotivoRejeicao('')
+      setAviso('')
       await carregar()
     } catch (e: any) {
       setErroAcao(e?.message || 'Erro de rede.')
@@ -169,6 +177,15 @@ export default function EncerramentosPage({ params }: { params: Promise<{ id: st
             </div>
           </div>
         </div>
+
+        {/* Aviso de reconciliação */}
+        {aviso && (
+          <div className="rounded-lg px-3 py-2 text-sm flex items-start gap-2"
+            style={{ background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.35)', color: '#F59E0B' }}>
+            <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <span>{aviso}</span>
+          </div>
+        )}
 
         {/* Erro de carga */}
         {erro && (

@@ -6,6 +6,7 @@ import { apiError } from '@/lib/api/error-response'
 import { sendEmail } from '@/lib/email/send'
 import { templatePedidoEncerrado } from '@/lib/email/templates-fat-direto'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { reconciliarEncerramentosPendentes } from '@/lib/db/encerramento-saldo'
 import { log } from '@/lib/log'
 
 const Body = z.object({
@@ -55,6 +56,28 @@ export async function POST(
       devolucoes: body.devolucoes,
     })
 
+    // Encerrar por aqui atende, na prática, qualquer solicitação formal de
+    // encerramento aberta pra este pedido. Sem fechar essas solicitações elas
+    // ficariam presas em 'pendente' na fila de /encerramentos e o aprovador
+    // levaria 422 ao tentar aprovar (o pedido já não está mais 'aprovado').
+    // Best-effort: falhar aqui não desfaz o encerramento, que já está gravado.
+    let solicitacoes_reconciliadas = 0
+    try {
+      solicitacoes_reconciliadas = await reconciliarEncerramentosPendentes({
+        solicitacao_fat_direto_id: solId,
+        decidido_por_id: user.id,
+        saldo_devolvido: resultado.saldo_devolvido,
+      })
+      if (solicitacoes_reconciliadas > 0) {
+        log.info('encerramento_solicitacoes_reconciliadas', {
+          solId,
+          qtd: solicitacoes_reconciliadas,
+        })
+      }
+    } catch (e: any) {
+      log.warn('encerramento_reconciliacao_falhou', { solId, error: e?.message })
+    }
+
     // Notificação interna (opcional)
     let email: { ok: boolean; qtd?: number; erro?: string } = { ok: false }
     const TOLERANCE = 100 // R$100: tolerância para "saldo zerado" — sob esse valor, não pergunta sobre email
@@ -83,6 +106,7 @@ export async function POST(
       total_nfs: resultado.total_nfs,
       valor_original: resultado.valor_original,
       qtd_itens_devolvidos: resultado.devolucoes_aplicadas.length,
+      solicitacoes_reconciliadas,
       email,
     })
   } catch (e: any) {
