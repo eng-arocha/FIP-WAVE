@@ -222,7 +222,10 @@ export function EncerrarPedidoModal(props: EncerrarPedidoModalProps) {
             Encerrar pedido e devolver saldo
           </DialogTitle>
           <DialogDescription className="text-xs" style={{ color: 'var(--text-3)' }}>
-            Saldo do pedido (R$ {valorTotalPedido.toFixed(2).replace('.', ',')} − NFs R$ {totalNfsRecebidas.toFixed(2).replace('.', ',')}) será distribuído de volta aos itens originais. Ação irreversível.
+            Apenas o <strong style={{ color: '#F59E0B' }}>saldo a devolver de {formatCurrency(saldoPedido)}</strong>{' '}
+            ({formatCurrency(valorTotalPedido)} do pedido − {formatCurrency(totalNfsRecebidas)} já em NF) será
+            distribuído de volta aos itens originais. O pedido não é excluído e as NFs lançadas
+            continuam valendo. Ação irreversível.
           </DialogDescription>
         </DialogHeader>
 
