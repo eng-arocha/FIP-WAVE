@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
-import { requirePermissao } from '@/lib/api/auth'
+import { getUsuarioLogado } from '@/lib/api/auth'
+import { usuarioPodeAtuarNoContrato } from '@/lib/db/usuarios-contrato'
 import { z } from 'zod'
-import { createClient } from '@/lib/supabase/server'
 import {
   criarSolicitacaoEncerramento,
   listarSolicitacoesPendentes,
@@ -35,17 +35,24 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const negado = await requirePermissao('contratos', 'editar')
-  if (negado) return negado
   try {
     const { id: contratoId } = await params
 
-    // Autenticação user-scoped (qualquer usuário com vínculo no contrato pode
-    // SOLICITAR — a permissão restritiva é só na decisão, na rota PATCH).
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    // SOLICITAR não é editar o contrato: o usuário só abre um pedido que um
+    // aprovador (admin) decide depois, na rota PATCH — essa sim restrita a
+    // `medicoes:aprovar`. Exigir `contratos:editar` aqui barrava o Engenheiro
+    // FIP com "Sem permissão para editar em contratos" justamente no fluxo em
+    // que ele é o solicitante. A regra correta é a mesma da visibilidade do
+    // contrato: admin ou usuário vinculado.
+    const user = await getUsuarioLogado()
     if (!user) {
       return apiError('Não autenticado.', { status: 401 })
+    }
+    if (!(await usuarioPodeAtuarNoContrato(user.id, contratoId))) {
+      return apiError(
+        'Você não tem vínculo com este contrato para solicitar encerramento de saldo.',
+        { status: 403 },
+      )
     }
 
     const parsed = await parseBody(PostBody, req)
@@ -177,10 +184,13 @@ export async function GET(
   try {
     const { id: contratoId } = await params
 
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getUsuarioLogado()
     if (!user) {
       return apiError('Não autenticado.', { status: 401 })
+    }
+    // Mesma regra do POST: a fila é do contrato, não pública entre contratos.
+    if (!(await usuarioPodeAtuarNoContrato(user.id, contratoId))) {
+      return apiError('Você não tem vínculo com este contrato.', { status: 403 })
     }
 
     const data = await listarSolicitacoesPendentes(contratoId)
