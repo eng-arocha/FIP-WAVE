@@ -49,11 +49,18 @@ NUNCA misturar com APP-GESTAO-OBRAS ou qualquer outro projeto.
 - A feature ou fix está completo e testável em isolamento
 - Migration nova, se houver, é idempotente e o código é resiliente à sua ausência
 
-Branch de desenvolvimento: `claude/improve-scrollbar-visibility-MI3PH`
+Branch de desenvolvimento: a branch designada da tarefa em curso (varia por task).
 Deploy vai para: `main` → Vercel `fip-wave.vercel.app`
 
-## REGRA 5 — Avaliação sempre em produção (main)
-O usuário **sempre avalia em produção (main)** — não apenas no preview do Vercel.
-- Não é necessário aguardar validação no preview antes de subir para `main`
-- Seguir a REGRA 4 (deploy automático) diretamente ao concluir alterações em estado estável
-- Informar o commit hash e o que foi deployado para que o usuário valide direto em `fip-wave.vercel.app`
+## REGRA 5 — Deploy SEMPRE direto em produção (main)
+O usuário **sempre avalia em produção (main)** — nunca no preview do Vercel.
+
+- **Nunca** parar na branch de desenvolvimento esperando validação em preview
+- **Nunca** aguardar aprovação de PR pra subir: o merge em `main` é o caminho padrão
+- Ao concluir qualquer alteração em estado estável, executar a REGRA 4 na mesma
+  resposta — commitar, pushar a dev branch E mergear em `main`
+- Informar o commit hash e o resumo pro usuário validar direto em `fip-wave.vercel.app`
+- Se um PR existir, ele é registro/histórico — não porta de entrada. O que vale é `main`
+
+Só não subir em `main` nos casos listados na REGRA 4 (WIP, build quebrado, pedido
+explícito de espera, migration pendente com código não resiliente).
