@@ -93,3 +93,63 @@ export async function rejeitarNotaFiscal(
     metadata: { numero_nf: nf.numero_nf, solicitacao_id: nf.solicitacao_id, motivo: motivoLimpo },
   })
 }
+
+/**
+ * Cancela uma NF lançada por engano — é o "excluir" do produto.
+ *
+ * NÃO apaga a linha: move pra 'cancelada', o estado terminal do workflow.
+ * Cancelada não reserva saldo (`nfReservaSaldo`), então o valor volta na
+ * hora pro saldo do pedido, que é o efeito prático esperado. Manter o
+ * registro preserva a trilha de auditoria de um lançamento financeiro — e
+ * apagar de vez deixaria o histórico do pedido sem explicação pro buraco.
+ *
+ * A máquina de estados permite cancelar de qualquer situação, inclusive de
+ * 'aprovada' (NF aprovada por engano). Só não se cancela o que já está
+ * cancelado.
+ */
+export async function cancelarNotaFiscal(
+  nfId: string, motivo: string, ator: AtorAudit,
+): Promise<{ numero_nf: string; valor: number; solicitacao_id: string }> {
+  const motivoLimpo = (motivo ?? '').trim()
+  if (!motivoLimpo) throw new Error('Motivo do cancelamento é obrigatório.')
+
+  const admin = createAdminClient()
+  const { data: nf, error } = await admin
+    .from('notas_fiscais_fat_direto')
+    .select('id, solicitacao_id, numero_nf, valor, status')
+    .eq('id', nfId)
+    .single()
+  if (error || !nf) throw new Error('NF não encontrada.')
+  if (nf.status === 'cancelada') {
+    throw new Error('Esta NF já está cancelada.')
+  }
+  if (!podeTransicionar(nf.status as NfStatus, 'cancelada')) {
+    throw new Error(`NF no status "${nf.status}" não pode ser cancelada.`)
+  }
+
+  const { error: upErr } = await admin
+    .from('notas_fiscais_fat_direto')
+    .update({
+      status: 'cancelada',
+      motivo_rejeicao: motivoLimpo,
+      validado_por_id: ator.actor_id,
+      validado_em: new Date().toISOString(),
+    })
+    .eq('id', nfId)
+  if (upErr) throw upErr
+
+  await audit({
+    event: 'nf.cancelada', entity_type: 'nota_fiscal_fat_direto', entity_id: nfId,
+    actor_id: ator.actor_id, actor_email: ator.actor_email ?? null,
+    metadata: {
+      numero_nf: nf.numero_nf, solicitacao_id: nf.solicitacao_id,
+      valor: Number(nf.valor || 0), status_anterior: nf.status, motivo: motivoLimpo,
+    },
+  })
+
+  return {
+    numero_nf: nf.numero_nf,
+    valor: Number(nf.valor || 0),
+    solicitacao_id: nf.solicitacao_id,
+  }
+}

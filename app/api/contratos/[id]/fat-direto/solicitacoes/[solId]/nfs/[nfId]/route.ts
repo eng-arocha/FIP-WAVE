@@ -4,6 +4,7 @@ import { assertPermissao } from '@/lib/api/auth'
 import { apiError } from '@/lib/api/error-response'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { validarNotaFiscal3Way, NFMatchError } from '@/lib/db/fat-direto'
+import { cancelarNotaFiscal } from '@/lib/db/nf-workflow'
 import { podeTransicionar, type NfStatus } from '@/lib/db/nf-status'
 import { audit } from '@/lib/api/audit'
 import { sendEmail } from '@/lib/email/send'
@@ -110,6 +111,76 @@ export async function PATCH(
   } catch (e: any) {
     if (e instanceof NFMatchError) {
       return NextResponse.json({ error: e.message, code: e.code, detail: e.detail }, { status: 422 })
+    }
+    return apiError(e)
+  }
+}
+
+/**
+ * DELETE — cancela uma NF lançada por engano (o "excluir" do produto).
+ *
+ * Body: { motivo: string }
+ *
+ * Não apaga a linha: move pra 'cancelada', que não reserva saldo — o valor
+ * volta pro saldo do pedido na hora. Ver `cancelarNotaFiscal`.
+ *
+ * Quem pode: quem aprova NF (contratante), ou quem lançou a NF enquanto ela
+ * ainda não foi aprovada — corrigir o próprio erro antes da aprovação não
+ * deveria exigir o aprovador.
+ */
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string; solId: string; nfId: string }> },
+) {
+  try {
+    const { solId, nfId } = await params
+
+    const podeAprovar = await assertPermissao('nf_fat_direto', 'aprovar')
+    const podeLancar = podeAprovar.ok ? podeAprovar : await assertPermissao('nf_fat_direto', 'lancar')
+    const auth = podeAprovar.ok ? podeAprovar : podeLancar
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
+
+    const raw = await req.json().catch(() => ({}))
+    const parsed = z.object({ motivo: z.string().trim().min(3).max(1000) }).safeParse(raw)
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Informe o motivo do cancelamento (mín. 3 caracteres).' }, { status: 400 })
+    }
+
+    const admin = createAdminClient()
+    const { data: nf } = await admin
+      .from('notas_fiscais_fat_direto')
+      .select('id, status, lancado_por_id, solicitacao_id')
+      .eq('id', nfId)
+      .single()
+    if (!nf) return NextResponse.json({ error: 'NF não encontrada.' }, { status: 404 })
+    if ((nf as any).solicitacao_id !== solId) {
+      return NextResponse.json({ error: 'NF não pertence a este pedido.' }, { status: 400 })
+    }
+
+    // Sem permissão de aprovar: só o próprio lançador, e só antes da aprovação.
+    if (!podeAprovar.ok) {
+      const ehDono = (nf as any).lancado_por_id === auth.userId
+      if (!ehDono) {
+        return NextResponse.json(
+          { error: 'Você só pode cancelar NFs que você mesmo lançou.' }, { status: 403 })
+      }
+      if ((nf as any).status === 'aprovada') {
+        return NextResponse.json(
+          { error: 'NF já aprovada — peça o cancelamento a quem aprova NF.' }, { status: 403 })
+      }
+    }
+
+    const info = await cancelarNotaFiscal(nfId, parsed.data.motivo, {
+      actor_id: auth.userId, actor_email: auth.userEmail,
+    })
+
+    log.info('nf_cancelada', { nfId, solId, numero_nf: info.numero_nf, valor: info.valor })
+    return NextResponse.json({ ok: true, ...info })
+  } catch (e: any) {
+    const msg = e?.message || ''
+    if (msg.includes('já está cancelada') || msg.includes('não pode ser cancelada')) {
+      return NextResponse.json({ error: msg }, { status: 409 })
     }
     return apiError(e)
   }

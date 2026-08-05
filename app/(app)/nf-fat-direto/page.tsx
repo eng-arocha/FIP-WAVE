@@ -11,7 +11,7 @@ import {
   Receipt, Clock, CheckCircle2, Plus,
   ArrowRight, Package, Loader2, ChevronDown, ChevronUp,
   Upload, FileText, AlertTriangle, X, Download,
-  ChevronsUpDown, RotateCcw,
+  ChevronsUpDown, RotateCcw, Trash2, Paperclip,
 } from 'lucide-react'
 import { useTableLayout, type ColumnDef } from '@/lib/hooks/use-table-layout'
 import {
@@ -56,6 +56,11 @@ export default function NfFatDiretoPage() {
   const [savingNf, setSavingNf] = useState(false)
   const [nfError, setNfError] = useState('')
   const [dragOver, setDragOver] = useState(false)
+  // Cancelamento de NF lançada por engano (o "excluir" do produto).
+  const [cancelandoNf, setCancelandoNf] = useState<{ nfId: string; solId: string; contratoId: string; numero: string } | null>(null)
+  const [motivoCancelNf, setMotivoCancelNf] = useState('')
+  const [salvandoCancelNf, setSalvandoCancelNf] = useState(false)
+  const [erroCancelNf, setErroCancelNf] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const reload = useCallback(() => {
@@ -67,6 +72,44 @@ export default function NfFatDiretoPage() {
   }, [])
 
   useEffect(() => { reload() }, [reload])
+
+  /**
+   * Cancela a NF selecionada. Não apaga a linha — move pra 'cancelada', que
+   * não reserva saldo, então o valor volta pro saldo do pedido na hora e o
+   * lançamento continua auditável.
+   */
+  async function confirmarCancelamentoNf() {
+    if (!cancelandoNf) return
+    if (motivoCancelNf.trim().length < 3) {
+      setErroCancelNf('Informe o motivo do cancelamento (mín. 3 caracteres).')
+      return
+    }
+    setSalvandoCancelNf(true)
+    setErroCancelNf('')
+    try {
+      const { contratoId, solId, nfId } = cancelandoNf
+      const res = await fetch(
+        `/api/contratos/${contratoId}/fat-direto/solicitacoes/${solId}/nfs/${nfId}`,
+        {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ motivo: motivoCancelNf.trim() }),
+        },
+      )
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setErroCancelNf(body?.error || `Falha (HTTP ${res.status}).`)
+        return
+      }
+      setCancelandoNf(null)
+      setMotivoCancelNf('')
+      reload()
+    } catch (e: any) {
+      setErroCancelNf(e?.message || 'Erro de rede.')
+    } finally {
+      setSalvandoCancelNf(false)
+    }
+  }
 
   const totalAprovado   = solicitacoes.filter(s => s.status === 'aprovado').reduce((a, s) => a + s.valor_total, 0)
   const totalAguardando = solicitacoes.filter(s => s.status === 'aguardando_aprovacao').reduce((a, s) => a + s.valor_total, 0)
@@ -905,9 +948,40 @@ export default function NfFatDiretoPage() {
                             <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: '#06B6D4' }}>NFs Registradas</p>
                             <div className="space-y-1">
                               {nfsValidas.map(nf => (
-                                <div key={nf.id} className="flex justify-between items-center text-xs gap-2">
-                                  <span style={{ color: 'var(--text-2)' }} className="inline-flex items-center gap-1">
+                                <div key={nf.id} className="flex justify-between items-start text-xs gap-2">
+                                  <span style={{ color: 'var(--text-2)' }} className="inline-flex items-center gap-1 flex-wrap">
                                     NF {nf.numero_nf}
+                                    {/* Arquivo enviado no lançamento — sem isso não havia
+                                        como chegar no PDF/XML depois de registrar a NF. */}
+                                    {nf.arquivo_url ? (
+                                      <a
+                                        href={nf.arquivo_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={e => e.stopPropagation()}
+                                        title="Abrir arquivo da NF"
+                                        className="inline-flex items-center gap-0.5 text-blue-500 hover:text-blue-400 underline"
+                                      >
+                                        <Paperclip className="w-3 h-3" /> arquivo
+                                      </a>
+                                    ) : (
+                                      <span title="Nenhum arquivo enviado no lançamento desta NF"
+                                        style={{ color: 'var(--text-3)' }}>
+                                        (sem arquivo)
+                                      </span>
+                                    )}
+                                    {nf.status === 'aguardando_aprovacao' && (
+                                      <span className="inline-flex items-center px-1.5 rounded text-[9px] font-bold uppercase tracking-wider"
+                                        style={{ background: 'rgba(245,158,11,0.18)', color: '#F59E0B' }}>
+                                        aguardando
+                                      </span>
+                                    )}
+                                    {nf.status === 'em_correcao' && (
+                                      <span className="inline-flex items-center px-1.5 rounded text-[9px] font-bold uppercase tracking-wider"
+                                        style={{ background: 'rgba(239,68,68,0.18)', color: '#EF4444' }}>
+                                        em correção
+                                      </span>
+                                    )}
                                     {nf.divergencia_valor && (
                                       <span
                                         title={
@@ -925,7 +999,25 @@ export default function NfFatDiretoPage() {
                                       </span>
                                     )}
                                   </span>
-                                  <span className="font-bold" style={{ color: '#06B6D4' }}>{formatCurrency(nf.valor)}</span>
+                                  <span className="inline-flex items-center gap-1.5 flex-shrink-0">
+                                    <span className="font-bold" style={{ color: '#06B6D4' }}>{formatCurrency(nf.valor)}</span>
+                                    <button
+                                      onClick={e => {
+                                        e.stopPropagation()
+                                        setCancelandoNf({
+                                          nfId: nf.id, solId: sol.id,
+                                          contratoId: sol.contrato_id, numero: nf.numero_nf,
+                                        })
+                                        setMotivoCancelNf('')
+                                        setErroCancelNf('')
+                                      }}
+                                      title="Cancelar esta NF (devolve o valor ao saldo do pedido)"
+                                      className="p-0.5 rounded hover:bg-red-500/15"
+                                      style={{ color: '#EF4444' }}
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </span>
                                 </div>
                               ))}
                               <div className="flex justify-between text-xs pt-1 border-t" style={{ borderColor: 'rgba(6,182,212,0.2)' }}>
@@ -1357,6 +1449,74 @@ export default function NfFatDiretoPage() {
                 {savingNf
                   ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Salvando...</>
                   : <>{previewDivergencia.acao === 'cobrir' ? 'Confirmar e enviar' : 'Recusar e enviar'}</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal — cancelar NF lançada por engano */}
+      {cancelandoNf && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.55)' }}>
+          <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+            <div className="px-5 py-3 flex items-center gap-2" style={{ borderBottom: '1px solid var(--border)' }}>
+              <Trash2 className="w-4 h-4" style={{ color: '#EF4444' }} />
+              <h3 className="text-sm font-bold" style={{ color: 'var(--text-1)' }}>
+                Cancelar NF {cancelandoNf.numero}
+              </h3>
+            </div>
+
+            <div className="px-5 py-4 space-y-3">
+              <p className="text-xs" style={{ color: 'var(--text-2)' }}>
+                O valor volta para o saldo do pedido imediatamente. A NF não é apagada:
+                fica registrada como <strong>cancelada</strong>, para manter a trilha de
+                auditoria do lançamento. Se ela já foi aprovada, o cancelamento também
+                desfaz esse efeito no saldo.
+              </p>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-3)' }}>
+                  Motivo do cancelamento *
+                </label>
+                <textarea
+                  value={motivoCancelNf}
+                  onChange={e => setMotivoCancelNf(e.target.value)}
+                  rows={3}
+                  maxLength={1000}
+                  placeholder="Ex.: NF lançada em duplicidade; arquivo enviado era de outro pedido."
+                  className="w-full rounded-lg px-3 py-2 text-sm border bg-[var(--surface-2)] border-[var(--border)] text-[var(--text-1)] placeholder:text-[var(--text-3)] outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500/20"
+                />
+              </div>
+
+              {erroCancelNf && (
+                <div className="rounded-lg px-3 py-2 text-xs flex items-start gap-2"
+                  style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.30)', color: '#EF4444' }}>
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                  <span className="break-words">{erroCancelNf}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="px-5 py-3 flex items-center justify-end gap-2" style={{ borderTop: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+              <button
+                type="button"
+                onClick={() => { setCancelandoNf(null); setMotivoCancelNf(''); setErroCancelNf('') }}
+                disabled={salvandoCancelNf}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50"
+                style={{ color: 'var(--text-2)', border: '1px solid var(--border)' }}
+              >
+                Voltar
+              </button>
+              <button
+                type="button"
+                onClick={confirmarCancelamentoNf}
+                disabled={salvandoCancelNf || motivoCancelNf.trim().length < 3}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white inline-flex items-center gap-1.5 disabled:opacity-50"
+                style={{ background: '#EF4444' }}
+              >
+                {salvandoCancelNf
+                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Cancelando...</>
+                  : <><Trash2 className="w-3.5 h-3.5" /> Cancelar NF</>}
               </button>
             </div>
           </div>
