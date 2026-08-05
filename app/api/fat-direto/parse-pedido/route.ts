@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { rateLimit, clientIp } from '@/lib/api/rate-limit'
 import { requireAlgumaPermissao } from '@/lib/api/auth'
+import { log } from '@/lib/log'
 
 // pdf-parse precisa do runtime Node.js (não funciona no Edge Runtime)
 export const runtime = 'nodejs'
@@ -75,6 +76,20 @@ export async function POST(req: Request) {
       fornBlock.match(/Vendedor\s+(.*?)(?:\s+E-mail|\s+Representante|\n)/i)?.[1]?.trim() ?? ''
     const vendedor = vendedorRaw.toLowerCase().startsWith('e-mail') ? '' : vendedorRaw
 
+    // PDF sem camada de texto (digitalizado/imagem) devolve tudo vazio. Antes
+    // isso virava um ok:true silencioso e a tela parecia "não ler" o pedido.
+    const achouAlgo = !!(pedido || razao || cnpj)
+    if (!achouAlgo) {
+      const semTexto = text.trim().length < 20
+      return NextResponse.json({
+        ok: false,
+        code: semTexto ? 'PDF_SEM_TEXTO' : 'LAYOUT_NAO_RECONHECIDO',
+        error: semTexto
+          ? 'Este PDF não tem texto selecionável (parece digitalizado/imagem). Preencha os campos manualmente ou envie o PDF original do pedido.'
+          : 'Não foi possível reconhecer o layout deste pedido. Confira se é o PDF do pedido de compra ou preencha os campos manualmente.',
+      }, { status: 422 })
+    }
+
     return NextResponse.json({
       ok: true,
       numero_pedido: pedido,
@@ -84,6 +99,18 @@ export async function POST(req: Request) {
       contato: vendedor,
     })
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e.message }, { status: 500 })
+    const msg = e?.message || 'Falha ao ler o PDF.'
+    log.error('parse_pedido_falhou', { erro: msg })
+    // MODULE_NOT_FOUND aqui = pdf-parse fora do bundle do deploy (ver
+    // serverExternalPackages no next.config.ts). Não é erro do usuário, e a
+    // mensagem crua não ajudava ninguém a entender o que fazer.
+    const infra = e?.code === 'MODULE_NOT_FOUND' || /Cannot find module/i.test(msg)
+    return NextResponse.json({
+      ok: false,
+      code: infra ? 'LEITOR_INDISPONIVEL' : 'ERRO_LEITURA',
+      error: infra
+        ? 'O leitor de PDF está indisponível no servidor. Preencha os campos manualmente — já registramos a falha.'
+        : `Não foi possível ler este PDF: ${msg}`,
+    }, { status: infra ? 503 : 500 })
   }
 }

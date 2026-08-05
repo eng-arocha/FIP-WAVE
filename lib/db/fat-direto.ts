@@ -11,9 +11,7 @@ import {
 
 export async function listarSolicitacoes(contratoId: string) {
   const admin = createAdminClient()
-  const { data, error } = await admin
-    .from('solicitacoes_fat_direto')
-    .select(`
+  const baseSelect = `
       id, numero, numero_pedido_fip, status, data_solicitacao, data_aprovacao,
       observacoes, motivo_rejeicao, valor_total, created_at,
       fornecedor_razao_social, fornecedor_cnpj, fornecedor_contato,
@@ -23,9 +21,26 @@ export async function listarSolicitacoes(contratoId: string) {
         id, descricao, local, qtde_solicitada, valor_unitario, valor_total,
         tarefa:tarefa_id(codigo, nome)
       )
-    `)
-    .eq('contrato_id', contratoId)
-    .order('created_at', { ascending: false })
+    `
+  // pedido_anexos alimenta o indicador de anexo na listagem — sem ele o
+  // usuário não tinha como saber QUAIS pedidos têm arquivo, e os uploads
+  // pareciam ter sumido. pedido_pdf_url/nome cobrem os pedidos pré-016.
+  const comAnexos = `${baseSelect}, pedido_anexos, pedido_pdf_url, pedido_pdf_nome`
+
+  const { data, error } = await withSchemaFallback({
+    primary: () => admin
+      .from('solicitacoes_fat_direto')
+      .select(comAnexos)
+      .eq('contrato_id', contratoId)
+      .order('created_at', { ascending: false }),
+    fallback: () => admin
+      .from('solicitacoes_fat_direto')
+      .select(baseSelect)
+      .eq('contrato_id', contratoId)
+      .order('created_at', { ascending: false }),
+    missingColumns: ['pedido_anexos', 'pedido_pdf_url', 'pedido_pdf_nome'],
+    context: 'listarSolicitacoes',
+  })
   if (error) throw error
   return data || []
 }
