@@ -29,6 +29,10 @@ export function FilaAprovacaoNf({
   const [rejeitandoNfId, setRejeitandoNfId] = useState<string | null>(null)
   const [motivoRejeicao, setMotivoRejeicao] = useState('')
   const [filaErro, setFilaErro] = useState('')
+  // Aprovação em lote: confirmação, progresso e relatório do que falhou.
+  const [confirmandoLote, setConfirmandoLote] = useState(false)
+  const [loteProgresso, setLoteProgresso] = useState<{ feitas: number; total: number } | null>(null)
+  const [loteFalhas, setLoteFalhas] = useState<Array<{ numero_nf: string; erro: string }>>([])
 
   // NFs aguardando aprovação, achatadas com o pedido de origem.
   const nfsAguardando = useMemo(() => {
@@ -79,6 +83,51 @@ export function FilaAprovacaoNf({
     }
   }
 
+  /**
+   * Aprova todas as NFs da fila, UMA POR VEZ.
+   *
+   * Sequencial de propósito: cada aprovação revalida o 3-way match contra o
+   * saldo do pedido, e o saldo muda a cada NF aprovada. Em paralelo, duas NFs
+   * do mesmo pedido validariam contra o mesmo saldo e poderiam estourá-lo
+   * juntas. Uma falha não aborta o lote — a NF é reportada no fim e as
+   * demais seguem.
+   */
+  async function aprovarTodas() {
+    if (nfAcaoId || loteProgresso) return
+    setFilaErro('')
+    setLoteFalhas([])
+    setConfirmandoLote(false)
+
+    const alvos = [...nfsAguardando]
+    setLoteProgresso({ feitas: 0, total: alvos.length })
+    const falhas: Array<{ numero_nf: string; erro: string }> = []
+
+    for (let i = 0; i < alvos.length; i++) {
+      const { nf, sol } = alvos[i]
+      try {
+        const res = await fetch(
+          `/api/contratos/${sol.contrato_id}/fat-direto/solicitacoes/${sol.id}/nfs/${nf.id}/aprovar`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ acao: 'aprovar' }),
+          },
+        )
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          falhas.push({ numero_nf: nf.numero_nf, erro: data.error || `HTTP ${res.status}` })
+        }
+      } catch (e: any) {
+        falhas.push({ numero_nf: nf.numero_nf, erro: e?.message || 'Erro de rede.' })
+      }
+      setLoteProgresso({ feitas: i + 1, total: alvos.length })
+    }
+
+    setLoteFalhas(falhas)
+    setLoteProgresso(null)
+    reload()
+  }
+
   function confirmarRejeicao(sol: Solicitacao, nfId: string) {
     if (!motivoRejeicao.trim()) {
       setFilaErro('Informe o motivo da rejeição (obrigatório).')
@@ -102,7 +151,66 @@ export function FilaAprovacaoNf({
         >
           {nfsAguardando.length}
         </span>
+
+        {/* Aprovar todas — some quando há só uma NF (o botão da linha basta) */}
+        {nfsAguardando.length > 1 && (
+          <div className="ml-auto flex items-center gap-2">
+            {loteProgresso ? (
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--text-2)' }}>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Aprovando {loteProgresso.feitas}/{loteProgresso.total}...
+              </span>
+            ) : confirmandoLote ? (
+              <>
+                <span className="text-xs font-semibold" style={{ color: 'var(--text-2)' }}>
+                  Aprovar as {nfsAguardando.length} NFs?
+                </span>
+                <button
+                  onClick={aprovarTodas}
+                  className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg text-white"
+                  style={{ background: '#10B981' }}
+                >
+                  <CheckCircle className="w-3.5 h-3.5" /> Confirmar
+                </button>
+                <button
+                  onClick={() => setConfirmandoLote(false)}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+                  style={{ color: 'var(--text-2)', border: '1px solid var(--border)' }}
+                >
+                  Cancelar
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => { setConfirmandoLote(true); setFilaErro(''); setLoteFalhas([]) }}
+                disabled={!!nfAcaoId}
+                className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg text-white disabled:opacity-50"
+                style={{ background: '#10B981' }}
+              >
+                <CheckCircle className="w-3.5 h-3.5" /> Aprovar todas ({nfsAguardando.length})
+              </button>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Relatório do lote: só o que NÃO passou (o resto some da fila sozinho) */}
+      {loteFalhas.length > 0 && (
+        <div
+          className="mx-5 mt-3 rounded-lg px-3 py-2 text-xs"
+          style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.30)', color: '#EF4444' }}
+        >
+          <p className="font-bold flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+            {loteFalhas.length} NF(s) não puderam ser aprovadas — as demais foram:
+          </p>
+          <ul className="mt-1 space-y-0.5 pl-5 list-disc">
+            {loteFalhas.map(f => (
+              <li key={f.numero_nf}><span className="font-semibold">NF {f.numero_nf}</span>: {f.erro}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {filaErro && (
         <div
