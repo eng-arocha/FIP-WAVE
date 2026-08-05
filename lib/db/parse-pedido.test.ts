@@ -22,6 +22,62 @@ const TEXTO_PEDIDO = [
   'Insumo 1 CABO 10MM',
 ].join('\n')
 
+/**
+ * Layout real do SIENGE (Ordem de Compra), como o pdf-parse devolve: rótulo e
+ * valor em LINHAS SEPARADAS, e a seção "Informações para faturamento" da WAVE
+ * vindo ANTES da do fornecedor — com CNPJ e telefone próprios.
+ * Reproduzido de um PDF de produção (pedido 1488).
+ */
+const TEXTO_SIENGE = [
+  'Pedido de Compra',
+  'Pedido',
+  '1488',
+  'Data do pedido',
+  '30/07/2026',
+  'Informações para faturamento',
+  'NomeWAVE',
+  'CNPJ',
+  '50.682.110/0001-59',
+  'IE',
+  'Telefone',
+  '(85) 3300-1861',
+  'Fax',
+  'Dados do fornecedor',
+  'Razão social',
+  '1075 - SALVABRAS SOLUCOES EM PROTECAO LTDA',
+  'Endereço',
+  'AVENIDA MARGINAL DO RIBEIRAO, 5183 - Carapicuíba/SP',
+  'CNPJ/CPF',
+  '16.557.984/0004-99',
+  'IE',
+  '255801911114',
+  'Telefone',
+  '(11)36027185',
+  'Fax',
+  'VendedorE-mail',
+  'Informações para entrega',
+].join('\n')
+
+describe('extrairDadosPedido — layout SIENGE (rótulo e valor em linhas separadas)', () => {
+  it('extrai os campos do pedido real', () => {
+    const d = extrairDadosPedido(TEXTO_SIENGE)
+    expect(d.numero_pedido).toBe('1488')
+    expect(d.razao_social).toBe('SALVABRAS SOLUCOES EM PROTECAO LTDA')
+    expect(d.cnpj).toBe('16.557.984/0004-99')
+    expect(d.telefone).toBe('(11)36027185')
+  })
+
+  it('não confunde o CNPJ da WAVE (faturamento) com o do fornecedor', () => {
+    const d = extrairDadosPedido(TEXTO_SIENGE)
+    expect(d.cnpj).not.toBe('50.682.110/0001-59')
+    expect(d.telefone).not.toContain('3300')
+  })
+
+  it('reconhece os três campos-chave', () => {
+    expect(camposReconhecidos(extrairDadosPedido(TEXTO_SIENGE))).toBe(3)
+  })
+})
+
 describe('extrairDadosPedido', () => {
   it('extrai os campos do bloco do fornecedor', () => {
     const d = extrairDadosPedido(TEXTO_PEDIDO)

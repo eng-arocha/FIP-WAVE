@@ -124,9 +124,9 @@ export async function PATCH(
  * Não apaga a linha: move pra 'cancelada', que não reserva saldo — o valor
  * volta pro saldo do pedido na hora. Ver `cancelarNotaFiscal`.
  *
- * Quem pode: quem aprova NF (contratante), ou quem lançou a NF enquanto ela
- * ainda não foi aprovada — corrigir o próprio erro antes da aprovação não
- * deveria exigir o aprovador.
+ * Quem pode: qualquer usuário com permissão de NF no faturamento direto
+ * (`nf_fat_direto` lancar OU aprovar), sobre qualquer NF do pedido —
+ * inclusive já aprovada. Motivo obrigatório e tudo registrado em audit_log.
  */
 export async function DELETE(
   req: Request,
@@ -135,9 +135,12 @@ export async function DELETE(
   try {
     const { solId, nfId } = await params
 
+    // Quem opera NF no contrato pode cancelar QUALQUER NF do pedido, não só as
+    // que lançou. O caso normal é justamente esse: o fornecedor lança, emite
+    // errado, e quem cancela é a FIP. Amarrar ao autor travava o fluxo real.
+    // O controle aqui é o motivo obrigatório + o registro em audit_log.
     const podeAprovar = await assertPermissao('nf_fat_direto', 'aprovar')
-    const podeLancar = podeAprovar.ok ? podeAprovar : await assertPermissao('nf_fat_direto', 'lancar')
-    const auth = podeAprovar.ok ? podeAprovar : podeLancar
+    const auth = podeAprovar.ok ? podeAprovar : await assertPermissao('nf_fat_direto', 'lancar')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
     const raw = await req.json().catch(() => ({}))
@@ -150,25 +153,12 @@ export async function DELETE(
     const admin = createAdminClient()
     const { data: nf } = await admin
       .from('notas_fiscais_fat_direto')
-      .select('id, status, lancado_por_id, solicitacao_id')
+      .select('id, status, solicitacao_id')
       .eq('id', nfId)
       .single()
     if (!nf) return NextResponse.json({ error: 'NF não encontrada.' }, { status: 404 })
     if ((nf as any).solicitacao_id !== solId) {
       return NextResponse.json({ error: 'NF não pertence a este pedido.' }, { status: 400 })
-    }
-
-    // Sem permissão de aprovar: só o próprio lançador, e só antes da aprovação.
-    if (!podeAprovar.ok) {
-      const ehDono = (nf as any).lancado_por_id === auth.userId
-      if (!ehDono) {
-        return NextResponse.json(
-          { error: 'Você só pode cancelar NFs que você mesmo lançou.' }, { status: 403 })
-      }
-      if ((nf as any).status === 'aprovada') {
-        return NextResponse.json(
-          { error: 'NF já aprovada — peça o cancelamento a quem aprova NF.' }, { status: 403 })
-      }
     }
 
     const info = await cancelarNotaFiscal(nfId, parsed.data.motivo, {
