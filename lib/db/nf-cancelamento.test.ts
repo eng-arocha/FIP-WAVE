@@ -10,13 +10,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
  */
 
 const fromMock = vi.fn()
-const auditMock = vi.fn(async () => {})
+const auditMock = vi.fn(async (_evt: Record<string, any>) => {})
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({ from: fromMock }),
 }))
 vi.mock('@/lib/api/audit', () => ({
-  audit: (...args: unknown[]) => auditMock(...(args as [])),
+  audit: (evt: Record<string, any>) => auditMock(evt),
 }))
 vi.mock('@/lib/db/fat-direto', () => ({
   validarNotaFiscal3Way: vi.fn(),
@@ -90,7 +90,7 @@ describe('cancelarNotaFiscal', () => {
     await cancelarNotaFiscal(NF_ID, 'arquivo errado', ATOR)
 
     expect(auditMock).toHaveBeenCalledOnce()
-    const evt = auditMock.mock.calls[0][0] as any
+    const evt = auditMock.mock.calls[0][0]
     expect(evt.event).toBe('nf.cancelada')
     expect(evt.entity_id).toBe(NF_ID)
     expect(evt.metadata.status_anterior).toBe('em_correcao')

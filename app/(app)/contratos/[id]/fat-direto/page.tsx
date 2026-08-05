@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { nfReservaSaldo } from '@/lib/db/nf-status'
-import { Plus, ArrowLeft, FileText, CheckCircle, Clock, XCircle, Package, ClipboardList, Timer, BadgeCheck, Receipt, Undo2, ChevronDown, X, BarChart2, ArrowUpDown, ArrowUp, ArrowDown, AlertCircle, Upload } from 'lucide-react'
+import { Plus, ArrowLeft, FileText, CheckCircle, Clock, XCircle, Package, ClipboardList, Timer, BadgeCheck, Receipt, Undo2, ChevronDown, X, BarChart2, ArrowUpDown, ArrowUp, ArrowDown, AlertCircle, Upload, Paperclip } from 'lucide-react'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 
 interface Solicitacao {
@@ -25,6 +25,18 @@ interface Solicitacao {
   solicitante?: { nome: string }
   itens?: Array<{ id: string; descricao: string; qtde_solicitada: number; valor_total: number }>
   notas_fiscais?: Array<{ id: string; valor: number; status: string }>
+  pedido_anexos?: Array<{ nome: string; url: string }> | null
+  /** Campos legados pre-016 — fallback quando pedido_anexos esta vazio. */
+  pedido_pdf_url?: string | null
+  pedido_pdf_nome?: string | null
+}
+
+/** Quantos arquivos o pedido tem anexados (conta o legado pre-016). */
+function qtdeAnexos(sol: Solicitacao): number {
+  if (Array.isArray(sol.pedido_anexos) && sol.pedido_anexos.length > 0) {
+    return sol.pedido_anexos.length
+  }
+  return sol.pedido_pdf_url ? 1 : 0
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -462,8 +474,21 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
                       return (
                         <Link key={sol.id} href={`/contratos/${id}/fat-direto/${sol.id}`} className="block">
                           <div className="grid grid-cols-[2fr_1fr_2fr_1fr_1.5fr_1.2fr] gap-3 px-5 py-3 items-center hover:bg-[var(--surface-2)] transition-colors text-sm">
-                            <span className="font-semibold" style={{ color: 'var(--text-1)' }}>
+                            <span className="font-semibold inline-flex items-center gap-1.5" style={{ color: 'var(--text-1)' }}>
                               FIP-{String(sol.numero).padStart(4, '0')}
+                              {/* Anexos ficam no Storage e sao listados na pagina do
+                                  pedido; sem este indicador nao havia como saber
+                                  QUAIS pedidos tinham arquivo. */}
+                              {qtdeAnexos(sol) > 0 && (
+                                <span
+                                  title={`${qtdeAnexos(sol)} arquivo(s) anexado(s) — abra o pedido para ver`}
+                                  className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded"
+                                  style={{ background: 'rgba(59,130,246,0.15)', color: '#3B82F6' }}
+                                >
+                                  <Paperclip className="w-2.5 h-2.5" />
+                                  {qtdeAnexos(sol)}
+                                </span>
+                              )}
                             </span>
                             <span className="text-xs text-[var(--text-3)]">{formatDate(sol.data_solicitacao)}</span>
                             <div className="min-w-0">
