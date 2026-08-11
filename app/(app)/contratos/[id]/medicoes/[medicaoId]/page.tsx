@@ -183,7 +183,6 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState<MedicaoStatus | null>(null)
 
-  const [historicoMedicoes, setHistoricoMedicoes] = useState<any[]>([])
   // Ações do modo SIMULAÇÃO (rascunho). PRECISA ficar aqui no topo, antes do
   // early-return do loader — hook depois de return condicional quebra a ordem
   // dos hooks entre renders (React #310).
@@ -347,10 +346,6 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
     fetchTotaisInformacon()
     fetchPlanilha()
     fetchConciliacaoInformakon()
-    // Load historical measurements for anomaly detection
-    fetch(`/api/contratos/${contratoId}/medicoes`)
-      .then(r => r.ok ? r.json() : [])
-      .then((lista: any[]) => setHistoricoMedicoes(lista.filter((m: any) => m.status === 'aprovado' && m.id !== medicaoId)))
   }, [contratoId, medicaoId])
 
   useEffect(() => {
@@ -415,15 +410,6 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
     return { material, servico: Math.max(0, total - material) }
   }
   const criadorPodeExcluir = isCriador && !['aprovado', 'autorizado', 'em_analise', 'cancelado'].includes(status)
-
-  // Anomaly detection: flag if value is >2x the average of approved measurements
-  const anomalia = (() => {
-    if (historicoMedicoes.length < 2) return null
-    const media = historicoMedicoes.reduce((s, m) => s + (m.valor_total || 0), 0) / historicoMedicoes.length
-    if (media > 0 && medicao.valor_total > media * 2)
-      return { media, fator: (medicao.valor_total / media).toFixed(1) }
-    return null
-  })()
 
   // === Ações do modo SIMULAÇÃO (rascunho) ===
   async function submeterRascunho() {
@@ -659,18 +645,6 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                       ? <><Loader2 className="w-4 h-4 animate-spin mr-1" />Excluindo...</>
                       : <><Trash2 className="w-4 h-4 mr-1" />Descartar simulação</>}
                   </Button>
-                </div>
-              </div>
-            )}
-            {/* Anomaly alert */}
-            {anomalia && (
-              <div className="flex items-start gap-3 p-4 rounded-xl border border-red-800/50 bg-red-900/20">
-                <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-semibold text-red-400">Valor atípico detectado</p>
-                  <p className="text-xs text-red-300/70 mt-0.5">
-                    Esta medição ({formatCurrency(medicao.valor_total)}) é <strong className="text-red-300">{anomalia.fator}×</strong> a média histórica de medições aprovadas ({formatCurrency(anomalia.media)}). Revise os itens antes de aprovar.
-                  </p>
                 </div>
               </div>
             )}
