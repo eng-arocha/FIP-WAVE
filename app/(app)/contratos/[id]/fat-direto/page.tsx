@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { nfReservaSaldo } from '@/lib/db/nf-status'
-import { Plus, ArrowLeft, FileText, CheckCircle, Clock, XCircle, Package, ClipboardList, Timer, BadgeCheck, Receipt, Undo2, ChevronDown, X, BarChart2, ArrowUpDown, ArrowUp, ArrowDown, AlertCircle, Upload, Paperclip } from 'lucide-react'
+import { Plus, ArrowLeft, FileText, CheckCircle, Clock, XCircle, Package, ClipboardList, Timer, BadgeCheck, Receipt, Undo2, ChevronDown, X, BarChart2, ArrowUpDown, ArrowUp, ArrowDown, Upload, Paperclip } from 'lucide-react'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 
 interface Solicitacao {
@@ -126,17 +126,6 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
 
   const totalAprovado = solicitacoes.filter(s => s.status === 'aprovado').reduce((sum, s) => sum + s.valor_total, 0)
   const totalPendente = solicitacoes.filter(s => s.status === 'aguardando_aprovacao').reduce((sum, s) => sum + s.valor_total, 0)
-  // Pedidos auto-criados pela aprovacao de medicoes (FIP material + Wave
-  // servico) que ainda aguardam emissao da NF do fornecedor. Detectados
-  // por: observacao bate com 'Aprovacao da medicao MED-', status nao
-  // cancelado, e sem nenhuma NF nao-rejeitada lancada. Mostra banner
-  // destacado com link pra cada um.
-  const rascunhosAutoMedicao = solicitacoes.filter(s => {
-    if (!/Aprova[çc][aã]o da medi[çc][aã]o MED-/i.test(s.observacoes || '')) return false
-    if (s.status === 'cancelado' || s.status === 'rejeitado') return false
-    const temNFvalida = (s.notas_fiscais || []).some(n => nfReservaSaldo(n.status))
-    return !temNFvalida
-  })
   // Só NFs que reservam saldo — canceladas não somam no total lançado.
   const totalNFs = solicitacoes.reduce((sum, s) => sum + (s.notas_fiscais?.filter(n => nfReservaSaldo(n.status)).reduce((a, n) => a + n.valor, 0) || 0), 0)
   const teto = resumo?.valor_material_direto ?? 0
@@ -235,62 +224,6 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
             </Link>
           </div>
         </div>
-
-        {/* Alerta de rascunhos auto-criados pela aprovacao de medicao */}
-        {rascunhosAutoMedicao.length > 0 && (
-          <div
-            className="rounded-xl p-4"
-            style={{
-              background: 'rgba(245,158,11,0.10)',
-              border: '2px solid rgba(245,158,11,0.40)',
-            }}
-          >
-            <div className="flex items-start gap-3">
-              <div
-                className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ background: 'rgba(245,158,11,0.20)' }}
-              >
-                <AlertCircle className="w-5 h-5" style={{ color: '#F59E0B' }} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-bold mb-1" style={{ color: '#F59E0B' }}>
-                  {rascunhosAutoMedicao.length} pedido{rascunhosAutoMedicao.length > 1 ? 's' : ''} aguardando emissão da NF do fornecedor
-                </h3>
-                <p className="text-xs mb-3" style={{ color: 'var(--text-2)' }}>
-                  Pedidos auto-aprovados pela aprovação de medição. Quando o fornecedor emitir a NF, abra o pedido abaixo e clique em "Lançar NF" pra anexar o documento.
-                </p>
-                <div className="grid sm:grid-cols-2 gap-2">
-                  {rascunhosAutoMedicao.map(s => {
-                    const isFip = (s.fornecedor_cnpj || '').replace(/\D/g, '') === '26736376000152'
-                    return (
-                      <Link
-                        key={s.id}
-                        href={`/contratos/${id}/fat-direto/${s.id}`}
-                        className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg transition-all hover:translate-x-0.5"
-                        style={{
-                          background: 'var(--surface-1)',
-                          border: '1px solid rgba(245,158,11,0.30)',
-                        }}
-                      >
-                        <div className="min-w-0">
-                          <p className="text-xs font-semibold truncate" style={{ color: 'var(--text-1)' }}>
-                            #{s.numero} · {isFip ? 'NF FIP — Material' : 'NF Wave — Serviço (líquido)'}
-                          </p>
-                          <p className="text-[10px] truncate" style={{ color: 'var(--text-3)' }}>
-                            {s.fornecedor_razao_social}
-                          </p>
-                        </div>
-                        <span className="text-sm font-bold tabular-nums flex-shrink-0" style={{ color: '#F59E0B' }}>
-                          {formatCurrency(s.valor_total)}
-                        </span>
-                      </Link>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Teto consumption bar */}
         {teto > 0 && (
