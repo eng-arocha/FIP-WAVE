@@ -15,7 +15,7 @@ import {
 import {
   ArrowLeft, CheckCircle2, XCircle, MessageSquare, Download,
   FileText, User, Calendar, Hash, Clock, Paperclip, AlertCircle, Loader2, Trash2, Undo2,
-  Mail, TrendingUp, ChevronRight, ChevronDown, Pencil, Building2,
+  Mail, TrendingUp, ChevronRight, ChevronDown, Pencil, Building2, Table2,
 } from 'lucide-react'
 import { detectarPavRange, listarPavimentos } from '@/lib/pavimentos'
 import { nomeVao } from '@/lib/vaos'
@@ -34,6 +34,9 @@ type ItemPlanilha = {
   detalhamento_id: string | null
   codigo: string
   descricao: string
+  unidade?: string | null
+  disciplina?: string | null
+  local?: string | null
   quantidade_contratada: number
   valor_unitario_contratual: number
   valor_global_item: number
@@ -84,6 +87,8 @@ type TarefaPlanilha = {
   id: string
   codigo: string
   nome: string
+  disciplina?: string | null
+  local?: string | null
   valor_global: number
   valor_anterior: number
   valor_atual: number
@@ -103,6 +108,7 @@ type GrupoPlanilha = {
   id: string
   codigo: string
   nome: string
+  disciplina?: string | null
   valor_global: number
   valor_anterior: number
   valor_atual: number
@@ -267,6 +273,9 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
   const [expandedTarefas, setExpandedTarefas] = useState<Set<string>>(new Set())
   // Detalhamentos com grade de pavimentos expandida (por medicao_item_id ou detalhamento_id).
   const [expandedPavItems, setExpandedPavItems] = useState<Set<string>>(new Set())
+  // Exportação Excel filtrável (por pavimento/vão/mês) — ver downloadExcel().
+  const [exportandoExcel, setExportandoExcel] = useState(false)
+  const [erroExcel, setErroExcel] = useState('')
   // Toggle "mostrar todos vs só os com medição"; default = só com medição.
   const [mostrarTodos, setMostrarTodos] = useState(false)
 
@@ -582,6 +591,30 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
     URL.revokeObjectURL(url)
   }
 
+  /**
+   * Excel "de campo": uma linha por (item × pavimento/vão/mês), com AutoFiltro.
+   * Filtrar Local = "3º pav" mostra tudo que foi medido ali, em qualquer
+   * disciplina — sem ter que abrir item por item na árvore da tela.
+   */
+  async function downloadExcel() {
+    setExportandoExcel(true)
+    try {
+      let dados = planilha
+      if (!dados) {
+        const res = await fetch(`/api/contratos/${contratoId}/medicoes/${medicaoId}/planilha`, { cache: 'no-store' })
+        if (!res.ok) throw new Error('Não foi possível carregar a planilha da medição.')
+        dados = await res.json()
+      }
+      if (!dados?.grupos?.length) throw new Error('Esta medição não tem itens para exportar.')
+      const { exportarExcelMedicao } = await import('@/lib/export/medicao-excel')
+      await exportarExcelMedicao({ medicao, grupos: dados.grupos, totais: dados.totais })
+    } catch (e: any) {
+      setErroExcel(e?.message || 'Falha ao gerar o Excel.')
+    } finally {
+      setExportandoExcel(false)
+    }
+  }
+
   return (
     <div className="flex-1">
       <Topbar
@@ -603,11 +636,35 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
               <FileText className="w-4 h-4" />
               Exportar Acumulado
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={downloadExcel}
+              disabled={exportandoExcel}
+              title="Excel com uma linha por pavimento/vão/mês — filtre por local no campo"
+            >
+              {exportandoExcel
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <Table2 className="w-4 h-4" />}
+              Exportar Excel
+            </Button>
           </div>
         }
       />
 
       <div className="p-3 sm:p-6">
+        {erroExcel && (
+          <div
+            className="flex items-start gap-2 mb-4 p-3 rounded-lg border text-sm"
+            style={{ background: 'rgba(239,68,68,0.10)', borderColor: 'rgba(239,68,68,0.4)', color: '#FCA5A5' }}
+          >
+            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <span className="flex-1">{erroExcel}</span>
+            <button onClick={() => setErroExcel('')} className="text-xs underline opacity-80 hover:opacity-100">
+              fechar
+            </button>
+          </div>
+        )}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           {/* Main content */}
           <div className="xl:col-span-2 space-y-5">

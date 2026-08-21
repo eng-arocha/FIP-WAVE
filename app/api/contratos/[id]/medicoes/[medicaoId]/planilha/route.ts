@@ -33,6 +33,10 @@ type ItemPlanilha = {
   codigo: string
   descricao: string
   unidade: string | null
+  /** Disciplina herdada (detalhamento → tarefa → grupo). Filtro do Excel. */
+  disciplina: string | null
+  /** Local contratual do detalhamento (texto livre, ex.: "3º PAV"). */
+  local: string | null
   quantidade_contratada: number
   valor_unitario_contratual: number
   valor_global_item: number
@@ -79,6 +83,8 @@ export type TarefaPlanilha = {
   id: string
   codigo: string
   nome: string
+  disciplina: string | null
+  local: string | null
   // agregados (somatório dos detalhamentos filhos)
   valor_global: number
   valor_anterior: number
@@ -101,6 +107,7 @@ export type GrupoPlanilha = {
   id: string
   codigo: string
   nome: string
+  disciplina: string | null
   // agregados (somatório das tarefas filhas)
   valor_global: number
   valor_anterior: number
@@ -169,6 +176,8 @@ function calcularItem(args: {
   codigo: string
   descricao: string
   unidade: string | null
+  disciplina: string | null
+  local: string | null
   qtdContratada: number
   vUnitContratual: number
   matUnit: number
@@ -187,6 +196,8 @@ function calcularItem(args: {
     codigo,
     descricao,
     unidade,
+    disciplina,
+    local,
     qtdContratada: qtdContr,
     vUnitContratual,
     matUnit,
@@ -224,6 +235,8 @@ function calcularItem(args: {
     codigo,
     descricao,
     unidade,
+    disciplina,
+    local,
     quantidade_contratada: qtdContr,
     valor_unitario_contratual: vUnitContratual,
     valor_global_item: valorGlobalItem,
@@ -315,7 +328,7 @@ export async function GET(
         .select(`
           id, quantidade_medida, valor_unitario, detalhamento_id, pavimentos_pct,
           detalhamento:detalhamentos (
-            id, codigo, descricao, unidade, quantidade_contratada,
+            id, codigo, descricao, unidade, disciplina, local, quantidade_contratada,
             valor_unitario, valor_material_unit, valor_servico_unit
           )
         `)
@@ -328,7 +341,7 @@ export async function GET(
           .select(`
             id, quantidade_medida, valor_unitario, detalhamento_id, pavimentos_pct,
             detalhamento:detalhamentos (
-              id, codigo, descricao, unidade, quantidade_contratada, valor_unitario
+              id, codigo, descricao, unidade, disciplina, local, quantidade_contratada, valor_unitario
             )
           `)
           .eq('medicao_id', medicaoId)
@@ -392,6 +405,8 @@ export async function GET(
           codigo: det.codigo,
           descricao: det.descricao,
           unidade: det.unidade ?? null,
+          disciplina: det.disciplina ?? null,
+          local: det.local ?? null,
           qtdContratada: qtdContr,
           vUnitContratual,
           matUnit,
@@ -435,11 +450,11 @@ export async function GET(
       const tryFull = await admin
         .from('grupos_macro')
         .select(`
-          id, codigo, nome, ordem, valor_contratado, valor_material, valor_servico,
+          id, codigo, nome, ordem, disciplina, valor_contratado, valor_material, valor_servico,
           tarefas (
-            id, codigo, nome, ordem, valor_total, valor_material, valor_servico, grupo_macro_id,
+            id, codigo, nome, ordem, disciplina, local, valor_total, valor_material, valor_servico, grupo_macro_id,
             detalhamentos (
-              id, codigo, descricao, unidade, ordem, quantidade_contratada,
+              id, codigo, descricao, unidade, disciplina, local, ordem, quantidade_contratada,
               valor_unitario, valor_material_unit, valor_servico_unit, tarefa_id
             )
           )
@@ -543,6 +558,10 @@ export async function GET(
               codigo: d.codigo,
               descricao: d.descricao,
               unidade: d.unidade ?? null,
+              // Disciplina/local herdam do ancestral mais próximo que os tenha
+              // preenchidos — mesma cascata do template da planilha contratual.
+              disciplina: d.disciplina ?? t.disciplina ?? g.disciplina ?? null,
+              local: d.local ?? t.local ?? null,
               qtdContratada: qtdContr,
               vUnitContratual,
               matUnit,
@@ -586,6 +605,8 @@ export async function GET(
           id: t.id,
           codigo: t.codigo,
           nome: t.nome,
+          disciplina: t.disciplina ?? g.disciplina ?? null,
+          local: t.local ?? null,
           valor_global: tarefaAgg.valor_global,
           valor_anterior: tarefaAgg.valor_anterior,
           valor_atual: tarefaAgg.valor_atual,
@@ -629,6 +650,7 @@ export async function GET(
         id: g.id,
         codigo: g.codigo,
         nome: g.nome,
+        disciplina: g.disciplina ?? null,
         valor_global: grupoAgg.valor_global,
         valor_anterior: grupoAgg.valor_anterior,
         valor_atual: grupoAgg.valor_atual,
