@@ -14,6 +14,7 @@ import { createClient } from '@/lib/supabase/client'
 import { detectarPavRange, listarPavimentos, somarPavimentos, normalizarPct, PAV_PCTS, type PavRange } from '@/lib/pavimentos'
 import { nomeVao } from '@/lib/vaos'
 import { detectarGradeBinaria } from '@/lib/grade-binaria'
+import { arredondarQtde, distribuirAcumuladoEmCelulas } from '@/lib/medicao-breakdown'
 
 const MESES = [
   { v: '01', l: 'Janeiro' }, { v: '02', l: 'Fevereiro' }, { v: '03', l: 'Março' },
@@ -132,9 +133,11 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
 
   function openBackfill(det: any, nomes: string[], termoPlural: string) {
     const qtdeAnt = getAcumQtde(det.id)
-    const n = Math.min(Math.round(qtdeAnt), nomes.length)
-    const pcts: Record<string, number> = {}
-    for (let i = 1; i <= nomes.length; i++) pcts[String(i)] = i <= n ? 100 : 0
+    // Distribui o acumulado EXATO: células cheias + o resto como % parcial na
+    // seguinte. `Math.round` arredondava 5,83 para 6 células a 100% e o
+    // breakdown passava a valer 0,17 un a mais que o histórico — quantidade
+    // medida do nada assim que o usuário tocasse qualquer célula.
+    const pcts = distribuirAcumuladoEmCelulas(qtdeAnt, nomes.length)
     setBackfillModal({ detId: det.id, descricao: det.descricao, nomes, termoPlural, qtdeAnt, pcts })
   }
 
@@ -333,19 +336,25 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
 
   /**
    * Atualiza o pct de um pavto. Regras:
-   *  - Clamp em {0,25,50,75,100}
+   *  - Clamp em {0,25,50,75,100} — a escala dos BOTOES do lancamento
    *  - Nao retroage: pct atual >= pct anterior do mesmo pavto
    *  - Apos atualizar, recalcula qtdeMedicao[detId] = soma(pcts)/100
+   *
+   * O piso NAO passa pelo clamp. O ajuste do admin pode ter gravado 83% numa
+   * celula, e `normalizarPct` so arredonda pra cima (83 -> 100): quantizar o
+   * piso faria o "destoggle" (voltar pro anterior) medir +0,17 un sozinho.
    */
   function setPavPct(detId: string, pavto: number, pctRaw: number) {
-    const pct = normalizarPct(pctRaw)
     const anterior = getPavPctAnterior(detId, pavto)
+    const pct = pctRaw === anterior ? anterior : normalizarPct(pctRaw)
     const efetivo = pct < anterior ? anterior : pct
 
     setPavPctMap(prev => {
       const next = { ...prev, [detId]: { ...(prev[detId] || {}), [String(pavto)]: efetivo } }
       // qtdeMedicao deriva da soma — atualiza em batch pra evitar dessincronia.
-      const novaQtde = somarPavimentos(next[detId])
+      // `arredondarQtde` corta na 6ª casa (o NUMERIC(15,6) da coluna): com %
+      // fora dos quartos, 0.83+0.91+0.07 dá 1.8099999999999998 em float puro.
+      const novaQtde = arredondarQtde(somarPavimentos(next[detId]))
       setQtdeMedicao(prevQ => ({ ...prevQ, [detId]: novaQtde }))
       return next
     })
@@ -360,7 +369,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
     const efetivo = Math.max(anterior, Math.min(100, Math.round(pctRaw)))
     setPavPctMap(prev => {
       const next = { ...prev, [detId]: { ...(prev[detId] || {}), [String(pavto)]: efetivo } }
-      const novaQtde = somarPavimentos(next[detId])
+      const novaQtde = arredondarQtde(somarPavimentos(next[detId]))
       setQtdeMedicao(prevQ => ({ ...prevQ, [detId]: novaQtde }))
       return next
     })
@@ -381,14 +390,46 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
     }
   }
 
+  /**
+   * Quantidade acumulada desejada de um item, na MESMA fonte que a linha da
+   * tela usa: itens de breakdown derivam da soma da grade, os demais do input.
+   * Antes o total e o payload liam `qtdeMedicao` enquanto a linha lia a grade
+   * — as duas so coincidiam por acaso, e um breakdown fora de sincronia com
+   * `quantidade_medida` (backfill, ajuste do admin) fazia a tela mostrar um
+   * numero e o submit enviar outro.
+   */
+  function qtdeDesejadaDoItem(det: any): number {
+    const qtdeContratada = Number(det.quantidade_contratada || 0)
+    const pavRange = detectarPavRange(det.descricao, qtdeContratada)
+    const grade = !pavRange ? detectarGradeBinaria(det.descricao, qtdeContratada) : null
+    if (pavRange || grade) return arredondarQtde(somarPavimentos(pavPctMap[det.id]))
+    return Number(qtdeMedicao[det.id] ?? getAcumQtde(det.id))
+  }
+
+  /**
+   * Delta do periodo. `arredondarQtde` no fim porque pcts fora dos quartos
+   * deixam de ser fracoes binarias exatas: sem isso um item intocado pode
+   * render 1.8e-14 e ser tratado como "medido".
+   */
+  function deltaDoItem(det: any): number {
+    return arredondarQtde(qtdeDesejadaDoItem(det) - getAcumQtde(det.id))
+  }
+
+  /**
+   * Quantidade pra leitura humana. `Math.round` mentia: 5,83 vaos virava
+   * "6 / 48" ao lado de uma grade em que so 5 celulas estao cheias.
+   */
+  function fmtUn(n: number): string {
+    const v = arredondarQtde(n)
+    return Number.isInteger(v) ? String(v) : v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  }
+
   function calcularValorTotal() {
     let total = 0
     for (const grupo of estruturaServico) {
       for (const tarefa of (grupo.tarefas || [])) {
         for (const det of (tarefa.detalhamentos || [])) {
-          const qtdeAtual = qtdeMedicao[det.id] || 0
-          const acumQtde = getAcumQtde(det.id)
-          const deltaQtde = qtdeAtual - acumQtde
+          const deltaQtde = deltaDoItem(det)
           if (deltaQtde > 0) {
             total += deltaQtde * (det.valor_unitario || 0)
           }
@@ -404,9 +445,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
     for (const grupo of estruturaServico) {
       for (const tarefa of (grupo.tarefas || [])) {
         for (const det of (tarefa.detalhamentos || [])) {
-          const qtdeAtual = qtdeMedicao[det.id] || 0
-          const acumQtde = getAcumQtde(det.id)
-          const deltaQtde = qtdeAtual - acumQtde
+          const deltaQtde = deltaDoItem(det)
           if (deltaQtde > 0) {
             // Para PAV TIPO e grades binárias (vãos, meses), anexa o
             // breakdown acumulado.
@@ -749,13 +788,11 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                 const pavRange = detectarPavRange(det.descricao, qtdeContratada)
                                 const grade = !pavRange ? detectarGradeBinaria(det.descricao, qtdeContratada) : null
                                 const gradeNomes = grade?.nomes ?? null
-                                // PAV TIPO e grade binária: qtdeMedicao deriva da soma do breakdown
-                                const qtdeAtual = (pavRange || grade)
-                                  ? somarPavimentos(pavPctMap[det.id])
-                                  : (qtdeMedicao[det.id] ?? getAcumQtde(det.id))
+                                // Mesma fonte usada pelo total e pelo payload (ver qtdeDesejadaDoItem).
+                                const qtdeAtual = qtdeDesejadaDoItem(det)
                                 const qtdeAnt = getAcumQtde(det.id)
                                 const needsBackfill = !!(grade && qtdeAnt > 0 && !acumulado[det.id]?.pavimentos_pct)
-                                const deltaQtde = qtdeAtual - qtdeAnt
+                                const deltaQtde = deltaDoItem(det)
                                 const valorDelta = deltaQtde > 0 ? deltaQtde * (det.valor_unitario || 0) : 0
                                 const pctAtual = qtdeContratada > 0 ? (qtdeAtual / qtdeContratada) * 100 : 0
                                 const isCompleto = qtdeContratada > 0 && qtdeAtual >= qtdeContratada
@@ -817,7 +854,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                               Medir por {grade.termo} ({gradeNomes.length} un.)
                                             </span>
                                             <span className="tabular-nums text-slate-300">
-                                              {Math.round(qtdeAtual)} / {gradeNomes.length}
+                                              {fmtUn(qtdeAtual)} / {gradeNomes.length}
                                             </span>
                                           </button>
                                           {needsBackfill && (
@@ -831,7 +868,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                           )}
                                           {qtdeAnt > 0 && (
                                             <p className="text-[9px] text-slate-400 mt-0.5">
-                                              mín. (acumulado anterior): <strong>{Math.round(qtdeAnt)}</strong> {grade.termoPlural}
+                                              mín. (acumulado anterior): <strong>{fmtUn(qtdeAnt)}</strong> {grade.termoPlural}
                                             </p>
                                           )}
                                         </div>
@@ -916,7 +953,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                       )}
                                       {qtdeAnt > 0 && useUnidades && (
                                         <p className="text-[9px] text-slate-400 mt-0.5">
-                                          mín. (acumulado anterior): <strong>{isInteiro ? Math.round(qtdeAnt) : qtdeAnt.toFixed(2)}</strong> {det.unidade}
+                                          mín. (acumulado anterior): <strong>{fmtUn(qtdeAnt)}</strong> {det.unidade}
                                         </p>
                                       )}
                                     </div>
@@ -924,7 +961,7 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                       {qtdeAnt > 0 && (
                                         <span className="text-[10px] text-slate-400 block">
                                           ant: {useUnidades
-                                            ? `${isInteiro ? Math.round(qtdeAnt) : qtdeAnt.toFixed(2)} ${det.unidade}`
+                                            ? `${fmtUn(qtdeAnt)} ${det.unidade}`
                                             : `${Math.round((qtdeAnt / qtdeContratada) * 100)}%`}
                                         </span>
                                       )}
@@ -955,6 +992,11 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                                 <span className="text-[10px] font-mono text-slate-400">{pavto}º pav</span>
                                                 <span className={`text-[10px] font-bold tabular-nums ${isDeltaPav ? 'text-amber-300' : pctAtu >= 100 ? 'text-emerald-300' : 'text-slate-500'}`}>{pctAtu}%</span>
                                               </div>
+                                              {/* Piso fora da escala de quartos não acende nenhum botão —
+                                                  sem este rótulo o mínimo aprovado ficaria invisível. */}
+                                              {pctAnt > 0 && !PAV_PCTS.includes(pctAnt as any) && (
+                                                <span className="block text-[9px] text-emerald-500/80 -mt-0.5 mb-1">aprovado: {pctAnt}%</span>
+                                              )}
                                               <div className="flex gap-0.5">
                                                 {PAV_PCTS.map(p => {
                                                   const isMin = p < pctAnt
@@ -1009,39 +1051,80 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
                                       </div>
                                     </div>
                                   )}
-                                  {/* Grade binária 0/100 — vãos ou parcelas mensais */}
+                                  {/* Grade de vãos / parcelas mensais.
+                                      O lançamento normal é "concluiu ou não" (o clique alterna
+                                      0 ↔ 100), mas a célula guarda um % — o ajuste do admin pode
+                                      ter gravado 83% ali. Por isso o rótulo mostra o valor real
+                                      em vez de ✓/—, que faria 83% parecer zero, e existe um campo
+                                      de % livre pra lançar parcial direto daqui. */}
                                   {grade && gradeNomes && isPavGridOpen && (
                                     <div className="mt-1.5 ml-6 p-3 rounded-lg bg-[var(--surface-1)] border border-[var(--border)]">
                                       <p className="text-[10px] text-slate-400 mb-2">
-                                        Selecione os {grade.termoPlural} concluídos. Cada {grade.termo} vale 1 {det.unidade}.
+                                        Clique pra marcar o {grade.termo} como concluído, ou digite um % parcial.
+                                        Cada {grade.termo} vale 1 {det.unidade}.
                                       </p>
-                                      <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-1.5">
+                                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
                                         {gradeNomes.map((nome, idx) => {
                                           const vaoIdx = idx + 1
                                           const pctAnt = getPavPctAnterior(det.id, vaoIdx)
                                           const pctAtu = getPavPctAtual(det.id, vaoIdx)
                                           const isLocked = pctAnt >= 100
                                           const isDone = pctAtu >= 100
-                                          const isDelta = isDone && pctAtu > pctAnt
+                                          const isDelta = pctAtu > pctAnt
                                           return (
-                                            <button
+                                            <div
                                               key={vaoIdx}
-                                              type="button"
-                                              disabled={isLocked}
-                                              onClick={() => togglePavPct(det.id, vaoIdx, isDone ? 0 : 100)}
-                                              className={`px-2 py-1.5 rounded text-left border transition-all ${
+                                              className={`px-2 py-1.5 rounded border transition-all ${
                                                 isLocked
-                                                  ? 'bg-emerald-900/30 border-emerald-500/30 text-emerald-300 cursor-not-allowed'
+                                                  ? 'bg-emerald-900/30 border-emerald-500/30'
                                                   : isDelta
-                                                  ? 'bg-amber-500/20 border-amber-500/40 text-amber-200 hover:bg-amber-500/30'
+                                                  ? 'bg-amber-500/20 border-amber-500/40'
                                                   : isDone
-                                                  ? 'bg-emerald-900/20 border-emerald-500/20 text-emerald-300 hover:bg-emerald-900/30'
-                                                  : 'bg-[var(--surface-2)] border-[var(--border)] text-slate-500 hover:border-slate-500 hover:text-slate-300'
+                                                  ? 'bg-emerald-900/20 border-emerald-500/20'
+                                                  : 'bg-[var(--surface-2)] border-[var(--border)]'
                                               }`}
                                             >
-                                              <span className="block text-[9px] text-slate-400">{nome}</span>
-                                              <span className="text-[11px] font-bold">{isDone ? '✓' : '—'}</span>
-                                            </button>
+                                              <button
+                                                type="button"
+                                                disabled={isLocked}
+                                                onClick={() => togglePavPct(det.id, vaoIdx, isDone ? pctAnt : 100)}
+                                                title={isLocked ? `${pctAnt}% já aprovado` : isDone ? 'Desmarcar' : 'Marcar como concluído'}
+                                                className={`w-full text-left ${isLocked ? 'cursor-not-allowed' : ''}`}
+                                              >
+                                                <span className="block text-[9px] text-slate-400 truncate">{nome}</span>
+                                                <span className={`text-[11px] font-bold ${
+                                                  isLocked ? 'text-emerald-300'
+                                                    : isDelta ? 'text-amber-200'
+                                                    : isDone ? 'text-emerald-300'
+                                                    : 'text-slate-500'
+                                                }`}>
+                                                  {pctAtu >= 100 ? '✓ 100%' : pctAtu > 0 ? `${pctAtu}%` : '—'}
+                                                </span>
+                                              </button>
+                                              {pctAnt > 0 && pctAnt < 100 && (
+                                                <span className="block text-[9px] text-emerald-500/80">aprovado: {pctAnt}%</span>
+                                              )}
+                                              <div className="mt-0.5 relative">
+                                                <input
+                                                  key={`vao-${vaoIdx}-${pctAtu}`}
+                                                  type="number"
+                                                  defaultValue={pctAtu}
+                                                  min={pctAnt}
+                                                  max={100}
+                                                  step={1}
+                                                  disabled={isLocked}
+                                                  title={isLocked ? `${pctAnt}% já aprovado` : 'Digite qualquer % de 0 a 100'}
+                                                  onFocus={e => e.currentTarget.select()}
+                                                  onBlur={e => {
+                                                    const v = parseFloat(e.currentTarget.value)
+                                                    setPavPctArbitrario(det.id, vaoIdx, Number.isFinite(v) ? v : pctAtu)
+                                                  }}
+                                                  onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur() }}
+                                                  className="w-full py-0.5 pl-1 pr-3.5 rounded text-[10px] font-bold text-center tabular-nums bg-[#1e293b] text-slate-100 border border-[#334155] focus:border-amber-400 focus:ring-1 focus:ring-amber-400/40 outline-none disabled:opacity-30"
+                                                />
+                                                <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[8px] pointer-events-none text-slate-500">%</span>
+                                              </div>
+                                            </div>
                                           )
                                         })}
                                       </div>
@@ -1480,35 +1563,73 @@ export default function NovaMedicaoPage({ params }: { params: Promise<{ id: stri
               </h3>
               <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>{backfillModal.descricao}</p>
               <p className="text-xs mt-1 text-amber-400">
-                Selecione os {backfillModal.termoPlural} já concluídos antes desta medição.
-                Sugestão: {Math.round(backfillModal.qtdeAnt)} marcados (acumulado anterior).
+                Marque os {backfillModal.termoPlural} já concluídos antes desta medição — ou digite
+                um % parcial. A soma precisa bater com o acumulado anterior de{' '}
+                <strong>{fmtUn(backfillModal.qtdeAnt)}</strong>.
               </p>
             </div>
             <div>
-              <p className="text-xs font-medium mb-2" style={{ color: 'var(--text-2)' }}>
-                Selecionados: {Object.values(backfillModal.pcts).filter(v => v === 100).length} / {backfillModal.nomes.length}
-              </p>
-              <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
+              {(() => {
+                const somaBackfill = arredondarQtde(somarPavimentos(backfillModal.pcts))
+                const bate = Math.abs(somaBackfill - arredondarQtde(backfillModal.qtdeAnt)) < 1e-6
+                return (
+                  <p className="text-xs font-medium mb-2 flex items-center gap-2" style={{ color: 'var(--text-2)' }}>
+                    <span>Soma: <strong className="tabular-nums">{fmtUn(somaBackfill)}</strong> / {backfillModal.nomes.length}</span>
+                    <span className={bate ? 'text-emerald-400' : 'text-amber-400'}>
+                      {bate ? '✓ bate com o acumulado' : `≠ acumulado (${fmtUn(backfillModal.qtdeAnt)})`}
+                    </span>
+                  </p>
+                )
+              })()}
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
                 {backfillModal.nomes.map((nome, idx) => {
                   const key = String(idx + 1)
-                  const isDone = (backfillModal.pcts[key] ?? 0) === 100
+                  const pct = Number(backfillModal.pcts[key] ?? 0)
+                  const isDone = pct >= 100
+                  const setPct = (v: number) => setBackfillModal(prev => prev ? {
+                    ...prev,
+                    pcts: { ...prev.pcts, [key]: Math.max(0, Math.min(100, Math.round(v))) },
+                  } : null)
                   return (
-                    <button
+                    <div
                       key={key}
-                      type="button"
-                      onClick={() => setBackfillModal(prev => prev ? {
-                        ...prev,
-                        pcts: { ...prev.pcts, [key]: isDone ? 0 : 100 },
-                      } : null)}
-                      className={`px-2 py-1.5 rounded text-left border transition-all ${
+                      className={`px-2 py-1.5 rounded border transition-all ${
                         isDone
-                          ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
-                          : 'bg-[var(--surface-2)] border-[var(--border)] text-slate-500 hover:border-slate-400 hover:text-slate-300'
+                          ? 'bg-emerald-500/20 border-emerald-500/40'
+                          : pct > 0
+                          ? 'bg-amber-500/15 border-amber-500/30'
+                          : 'bg-[var(--surface-2)] border-[var(--border)]'
                       }`}
                     >
-                      <span className="block text-[9px] text-slate-400">{nome}</span>
-                      <span className="text-[11px] font-bold">{isDone ? '✓' : '—'}</span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => setPct(isDone ? 0 : 100)}
+                        className="w-full text-left"
+                      >
+                        <span className="block text-[9px] text-slate-400 truncate">{nome}</span>
+                        <span className={`text-[11px] font-bold ${isDone ? 'text-emerald-300' : pct > 0 ? 'text-amber-200' : 'text-slate-500'}`}>
+                          {isDone ? '✓ 100%' : pct > 0 ? `${pct}%` : '—'}
+                        </span>
+                      </button>
+                      <div className="mt-0.5 relative">
+                        <input
+                          key={`bf-${key}-${pct}`}
+                          type="number"
+                          defaultValue={pct}
+                          min={0}
+                          max={100}
+                          step={1}
+                          onFocus={e => e.currentTarget.select()}
+                          onBlur={e => {
+                            const v = parseFloat(e.currentTarget.value)
+                            setPct(Number.isFinite(v) ? v : pct)
+                          }}
+                          onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur() }}
+                          className="w-full py-0.5 pl-1 pr-3.5 rounded text-[10px] font-bold text-center tabular-nums bg-[#1e293b] text-slate-100 border border-[#334155] focus:border-amber-400 outline-none"
+                        />
+                        <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[8px] pointer-events-none text-slate-500">%</span>
+                      </div>
+                    </div>
                   )
                 })}
               </div>

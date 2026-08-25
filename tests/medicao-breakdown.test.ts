@@ -5,6 +5,8 @@ import {
   calcularDeltaBreakdown,
   clampPctCelula,
   arredondarQtde,
+  distribuirAcumuladoEmCelulas,
+  somarPavimentos,
 } from '@/lib/medicao-breakdown'
 
 // Item real do contrato WAVE-2025-001 citado no chamado.
@@ -194,5 +196,32 @@ describe('arredondarQtde', () => {
   it('corta na 6ª casa, como NUMERIC(15,6)', () => {
     expect(arredondarQtde(0.1234567)).toBe(0.123457)
     expect(arredondarQtde(9.000000000000002)).toBe(9)
+  })
+})
+
+describe('distribuirAcumuladoEmCelulas — seed do backfill de histórico', () => {
+  it('gera células cheias + o resto como parcial, sem arredondar pra cima', () => {
+    // 5,83 vãos acumulados: 5 cheios + 1 a 83%. O seed antigo marcava 6
+    // cheios (Math.round) e inflava o histórico em 0,17 un.
+    expect(distribuirAcumuladoEmCelulas(5.83, 48)).toEqual({
+      '1': 100, '2': 100, '3': 100, '4': 100, '5': 100, '6': 83,
+    })
+  })
+
+  it('acumulado inteiro não cria célula parcial', () => {
+    expect(distribuirAcumuladoEmCelulas(3, 10)).toEqual({ '1': 100, '2': 100, '3': 100 })
+  })
+
+  it('a soma reproduz o acumulado', () => {
+    for (const q of [0.25, 1.5, 5.83, 12.07, 36]) {
+      const mapa = distribuirAcumuladoEmCelulas(q, 36)
+      expect(arredondarQtde(somarPavimentos(mapa))).toBe(q)
+    }
+  })
+
+  it('nunca ultrapassa o total de células nem aceita negativo', () => {
+    expect(Object.keys(distribuirAcumuladoEmCelulas(99, 3))).toHaveLength(3)
+    expect(distribuirAcumuladoEmCelulas(-5, 3)).toEqual({})
+    expect(distribuirAcumuladoEmCelulas(2, 0)).toEqual({})
   })
 })
