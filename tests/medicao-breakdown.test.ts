@@ -25,7 +25,8 @@ describe('detectarBreakdown', () => {
     const modo = detectarBreakdown('PRUMADA VERTICAL ( dividida em vãos )', 37)
     expect(modo?.tipo).toBe('grade')
     expect(modo?.binaria).toBe(true)
-    expect(modo?.pctsPermitidos).toEqual([0, 100])
+    // Atalhos de botão iguais aos do PAV TIPO: o ajuste do admin não é binário.
+    expect(modo?.pctsPermitidos).toEqual([0, 25, 50, 75, 100])
     expect(modo?.celulas[0].label).toBe('1T')
   })
 
@@ -60,9 +61,22 @@ describe('clampPctCelula', () => {
     expect(clampPctCelula(pav, 33.4, 0)).toBe(33)
   })
 
-  it('grade binária só admite 0 ou 100', () => {
-    expect(clampPctCelula(grade, 50, 0)).toBe(100)
+  it('aceita qualquer % fora dos atalhos', () => {
+    expect(clampPctCelula(pav, 83, 0)).toBe(83)
+    expect(clampPctCelula(pav, 91, 0)).toBe(91)
+    expect(clampPctCelula(pav, 7, 0)).toBe(7)
+  })
+
+  it('grade binária também aceita % livre no ajuste do admin', () => {
+    expect(clampPctCelula(grade, 83, 0)).toBe(83)
+    expect(clampPctCelula(grade, 50, 0)).toBe(50)
     expect(clampPctCelula(grade, 0, 0)).toBe(0)
+    expect(clampPctCelula(grade, 100, 0)).toBe(100)
+  })
+
+  it('o piso continua valendo com % livre', () => {
+    expect(clampPctCelula(grade, 83, 90)).toBe(90)
+    expect(clampPctCelula(pav, 83, 90)).toBe(90)
   })
 })
 
@@ -115,6 +129,43 @@ describe('normalizarBreakdown — caso do chamado (90% → 50%)', () => {
     expect(r.mapa['5']).toBeUndefined()
     expect(r.somaAcumulada).toBe(0)
     expect(r.alteradas).toEqual([{ chave: '5', label: '5º pav', de: 100, para: 0, anterior: 0 }])
+  })
+})
+
+describe('normalizarBreakdown — % livre', () => {
+  const pav = detectarBreakdown(DESC_16_1_11, QTD_16_1_11)!
+  const grade = detectarBreakdown('PRUMADA VERTICAL ( vãos )', 37)!
+
+  it('grava 83% num pavimento e soma a fração certa', () => {
+    const r = normalizarBreakdown({ modo: pav, pedido: { '7': 83 }, atual: null, anterior: {} })
+    expect(r.mapa['7']).toBe(83)
+    expect(r.somaAcumulada).toBe(0.83)
+    expect(r.alteradas).toEqual([{ chave: '7', label: '7º pav', de: 0, para: 83, anterior: 0 }])
+  })
+
+  it('grava 91% num vão (item de lançamento binário)', () => {
+    const r = normalizarBreakdown({ modo: grade, pedido: { '1': 91 }, atual: { '1': 100 }, anterior: {} })
+    expect(r.mapa['1']).toBe(91)
+    expect(r.somaAcumulada).toBe(0.91)
+  })
+
+  it('eleva ao piso mesmo com % livre', () => {
+    const r = normalizarBreakdown({ modo: grade, pedido: { '1': 83 }, atual: { '1': 100 }, anterior: { '1': 100 } })
+    expect(r.mapa['1']).toBe(100)
+    expect(r.elevadasAoPiso).toEqual([
+      { chave: '1', label: '1T', de: 83, para: 100, anterior: 100 },
+    ])
+  })
+
+  it('soma vários % livres sem erro de ponto flutuante', () => {
+    const r = normalizarBreakdown({
+      modo: pav,
+      pedido: { '1': 83, '2': 91, '3': 7 },
+      atual: null,
+      anterior: {},
+    })
+    expect(r.somaAcumulada).toBe(1.81)
+    expect(calcularDeltaBreakdown(r.somaAcumulada, 0)).toBe(1.81)
   })
 })
 

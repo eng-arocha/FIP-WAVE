@@ -4,8 +4,16 @@
  * Hoje existem dois formatos de breakdown, ambos gravados na mesma coluna
  * `medicao_itens.pavimentos_pct` (migration 066), indexada a partir de 1:
  *
- *   - PAV TIPO  ("... PAV TIPO ( 1o AO 36o PAV )")  -> 0/25/50/75/100 por pavto
- *   - Grade binaria (vaos nomeados, parcelas mensais) -> 0 ou 100 por celula
+ *   - PAV TIPO  ("... PAV TIPO ( 1o AO 36o PAV )")  -> por pavto
+ *   - Grade binaria (vaos nomeados, parcelas mensais) -> por vao / por mes
+ *
+ * O LANCAMENTO (tela de Nova Medicao) mantem as escalas restritas de cada um
+ * — 0/25/50/75/100 no PAV TIPO, 0/100 na grade binaria. O AJUSTE DO ADMIN,
+ * que e o que este modulo governa, aceita qualquer inteiro de 0 a 100 em
+ * QUALQUER celula dos dois formatos: uma correcao de campo nao cabe numa
+ * escala de quartos ("o vao esta 83% executado, nao 75% nem 100%"). Os pcts
+ * de `pctsPermitidos` sao so os atalhos de botao — o input de % livre ao lado
+ * cobre o resto.
  *
  * `lib/pavimentos.ts` e `lib/grade-binaria.ts` detectam cada um separadamente.
  * Este modulo unifica os dois atras de uma unica interface pra que a tela de
@@ -48,7 +56,11 @@ export interface BreakdownCelula {
 export interface BreakdownModo {
   /** 'pavimento' = escala 0/25/50/75/100. 'grade' = binario 0/100. */
   tipo: 'pavimento' | 'grade'
-  /** true quando a celula so aceita 0 ou 100. */
+  /**
+   * true quando o LANCAMENTO daquele item e binario (vaos, parcelas mensais).
+   * No ajuste do admin isso e apenas uma dica de layout e de rotulo — a
+   * escala de valores e livre nos dois modos.
+   */
   binaria: boolean
   /** Singular pra UI: "pavimento", "vão", "mês". */
   termo: string
@@ -102,7 +114,10 @@ export function detectarBreakdown(
       binaria: true,
       termo: grade.termo,
       termoPlural: grade.termoPlural,
-      pctsPermitidos: [0, 100],
+      // Atalhos de botao. A grade binaria ganha os mesmos quartos do PAV TIPO
+      // porque o ajuste do admin nao e binario — 0/100 sozinhos obrigariam a
+      // digitar todo valor intermediario no input livre.
+      pctsPermitidos: [0, 25, 50, 75, 100],
       celulas: grade.nomes.map((_, i) => ({
         num: i + 1,
         chave: String(i + 1),
@@ -126,30 +141,42 @@ export function lerPct(
 }
 
 /**
- * Aplica as regras de uma celula: escala do modo + piso do acumulado anterior.
+ * Aplica as regras de uma celula no ajuste do admin:
+ * qualquer inteiro de 0 a 100, nunca abaixo do piso do acumulado aprovado.
  *
- * - grade binaria: qualquer valor > 0 vira 100
- * - pavimento: aceita qualquer inteiro 0..100 (a UI oferece 0/25/50/75/100 nos
- *   botoes, mas o input livre ja existia na tela de Nova Medicao)
- * - nunca abaixo de `pctAnterior`
+ * A escala e livre nos DOIS modos, grade binaria inclusive: quem ajusta esta
+ * corrigindo o que foi medido em campo, e 83% e um numero legitimo. Quantizar
+ * em 0/100 (ou em quartos) so obrigaria o admin a mentir pra caber na escala.
+ * `modo` fica na assinatura porque a chamada e sempre feita no contexto de um
+ * breakdown e a validacao de chave depende dele.
  */
 export function clampPctCelula(
-  modo: BreakdownModo,
+  _modo: BreakdownModo,
   pctRaw: number,
   pctAnterior: number,
 ): number {
-  const piso = Math.max(0, Math.min(100, Math.round(Number(pctAnterior) || 0)))
-  let pct = Number(pctRaw)
+  const piso = clampPct(pctAnterior)
+  const pct = Number(pctRaw)
   if (!Number.isFinite(pct)) return piso
-  pct = modo.binaria ? (pct > 0 ? 100 : 0) : Math.round(pct)
-  if (pct < 0) pct = 0
-  if (pct > 100) pct = 100
-  return pct < piso ? piso : pct
+  const v = clampPct(pct)
+  return v < piso ? piso : v
 }
 
-/** Normaliza um pct pra escala do modo, sem aplicar piso. */
-export function normalizarPctModo(modo: BreakdownModo, pctRaw: number): number {
-  if (modo.binaria) return Number(pctRaw) > 0 ? 100 : 0
+/** Inteiro 0..100, tolerando lixo. */
+function clampPct(n: number): number {
+  const v = Math.round(Number(n) || 0)
+  if (v < 0) return 0
+  if (v > 100) return 100
+  return v
+}
+
+/**
+ * Normaliza um pct pro atalho mais proximo da escala do modo, sem aplicar
+ * piso. NAO e usado no caminho de gravacao — so onde a UI precisa sugerir um
+ * dos botoes. `normalizarPct` (lib/pavimentos) segue sendo a escala de
+ * quartos do LANCAMENTO.
+ */
+export function normalizarPctModo(_modo: BreakdownModo, pctRaw: number): number {
   return normalizarPct(Number(pctRaw) || 0)
 }
 
@@ -217,7 +244,7 @@ export function normalizarBreakdown(args: {
     if (finalPct !== atualPct) {
       alteradas.push({ chave: celula.chave, label: celula.label, de: atualPct, para: finalPct, anterior: piso })
     }
-    if (temPedido && Number.isFinite(pedidoPct) && normalizarPctModo(modo, pedidoPct) < piso) {
+    if (temPedido && Number.isFinite(pedidoPct) && clampPct(pedidoPct) < piso) {
       elevadasAoPiso.push({ chave: celula.chave, label: celula.label, de: Math.round(pedidoPct), para: finalPct, anterior: piso })
     }
   }

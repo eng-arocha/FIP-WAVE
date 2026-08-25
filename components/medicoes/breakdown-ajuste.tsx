@@ -9,6 +9,11 @@
  * usuário: item "16.1.11 INFRA SDAI - PAV TIPO ( 1° AO 36° PAV )" com um
  * pavimento medido a 90% que deveria estar a 50%.
  *
+ * Qualquer inteiro de 0 a 100 vale em QUALQUER célula — vãos e parcelas
+ * mensais inclusive, que no lançamento são binários (0/100). Correção de campo
+ * não cabe numa escala de quartos: se o executado é 83%, o campo aceita 83%.
+ * Os botões são só atalhos; o input logo abaixo aceita o resto.
+ *
  * O único limite é o piso por célula: o pct acumulado não pode ficar abaixo
  * do que medições APROVADAS anteriores já registraram naquela mesma célula —
  * isso desmediria trabalho aprovado. As células no piso aparecem travadas com
@@ -181,15 +186,16 @@ export function BreakdownAjusteGrid({
 
   const un = unidade || 'un'
   const contratada = estado.detalhamento.quantidade_contratada
-  const gridCols = modo.binaria
-    ? 'grid-cols-3 sm:grid-cols-4 lg:grid-cols-6'
-    : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4'
+  // Uma coluna só: toda célula agora tem os 5 atalhos + o input de % livre,
+  // então a grade binária precisa da mesma largura do PAV TIPO.
+  const gridCols = 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4'
 
   return (
     <div className="space-y-2">
       <div className="flex items-start justify-between gap-2">
         <p className="text-[10px] leading-relaxed" style={{ color: 'var(--text-3)' }}>
-          % <strong>acumulado</strong> de cada {modo.termo} ao fim desta medição.
+          % <strong>acumulado</strong> de cada {modo.termo} ao fim desta medição —
+          os botões são atalhos, o campo abaixo aceita <strong>qualquer valor de 0 a 100</strong> (83, 91…).
           Células em <span className="text-emerald-400">verde</span> já vieram aprovadas de
           medições anteriores e não descem daí; o resto pode subir <em>ou descer</em>.
         </p>
@@ -282,25 +288,34 @@ export function BreakdownAjusteGrid({
                 })}
               </div>
 
-              {!modo.binaria && (
+              {/* % livre — a via principal pra valores fora dos atalhos (83, 91...).
+                  `key` inclui o valor atual pra o campo re-sincronizar quando o
+                  pct muda por um botão. */}
+              <div className="mt-0.5 relative">
                 <input
-                  key={modo.pctsPermitidos.includes(atual) ? 'std' : `livre-${atual}`}
+                  key={`pct-${celula.chave}-${atual}`}
                   type="number"
-                  defaultValue={modo.pctsPermitidos.includes(atual) ? '' : String(atual)}
+                  defaultValue={atual}
                   min={piso}
                   max={100}
                   step={1}
                   disabled={desabilitado || travada}
-                  placeholder="% livre"
+                  title={travada ? `${piso}% já aprovado — sem margem para editar` : 'Digite qualquer % de 0 a 100'}
+                  onFocus={e => e.currentTarget.select()}
                   onBlur={e => {
-                    const v = parseFloat(e.target.value)
-                    if (Number.isFinite(v)) setCelula(celula.chave, v)
-                    e.target.value = ''
+                    const v = parseFloat(e.currentTarget.value)
+                    setCelula(celula.chave, Number.isFinite(v) ? v : atual)
                   }}
-                  onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-                  className="mt-0.5 w-full py-0.5 rounded text-[9px] font-bold text-center tabular-nums bg-[#1e293b] text-slate-300 border border-[#334155] focus:border-blue-400 outline-none placeholder-slate-600 disabled:opacity-30"
+                  onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur() }}
+                  className="w-full py-0.5 pl-1 pr-3.5 rounded text-[10px] font-bold text-center tabular-nums bg-[#1e293b] text-slate-100 border border-[#334155] focus:border-blue-400 focus:ring-1 focus:ring-blue-400/40 outline-none disabled:opacity-30"
                 />
-              )}
+                <span
+                  className="absolute right-1 top-1/2 -translate-y-1/2 text-[8px] pointer-events-none"
+                  style={{ color: 'var(--text-3)' }}
+                >
+                  %
+                </span>
+              </div>
             </div>
           )
         })}
