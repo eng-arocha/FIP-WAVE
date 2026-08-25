@@ -273,4 +273,30 @@ export function calcularDeltaBreakdown(somaAcumulada: number, qtdAnteriorReal: n
   return arredondarQtde(somaAcumulada - (Number(qtdAnteriorReal) || 0))
 }
 
+/**
+ * Distribui uma quantidade acumulada em celulas cheias + um resto parcial.
+ *
+ * Usado pelo backfill de historico: um item com 5,83 un acumuladas vira
+ * 5 celulas a 100% e a sexta a 83%. Arredondar pra 6 celulas cheias (o que o
+ * seed antigo fazia) inflava o breakdown em 0,17 un — e como o breakdown vira
+ * o piso da proxima medicao, essa fracao entrava como quantidade medida do
+ * nada. Nunca ultrapassa `totalCelulas`.
+ */
+export function distribuirAcumuladoEmCelulas(
+  qtdeAcumulada: number,
+  totalCelulas: number,
+): Record<string, number> {
+  const out: Record<string, number> = {}
+  if (!(totalCelulas > 0)) return out
+  const total = Math.min(Math.max(Number(qtdeAcumulada) || 0, 0), totalCelulas)
+  // +1e-9 absorve o residuo de float de somas como 0.83 + 0.17.
+  const cheias = Math.min(Math.floor(total + 1e-9), totalCelulas)
+  const resto = Math.max(0, Math.min(100, Math.round((total - cheias) * 100)))
+  for (let i = 1; i <= totalCelulas; i++) {
+    const pct = i <= cheias ? 100 : i === cheias + 1 ? resto : 0
+    if (pct > 0) out[String(i)] = pct
+  }
+  return out
+}
+
 export { somarPavimentos }
