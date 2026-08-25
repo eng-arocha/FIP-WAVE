@@ -18,6 +18,7 @@ import {
   Mail, TrendingUp, ChevronRight, ChevronDown, Pencil, Building2, Table2,
 } from 'lucide-react'
 import { detectarPavRange, listarPavimentos } from '@/lib/pavimentos'
+import { detectarBreakdown } from '@/lib/medicao-breakdown'
 import { nomeVao } from '@/lib/vaos'
 import { detectarGradeBinaria } from '@/lib/grade-binaria'
 import {
@@ -27,6 +28,9 @@ import {
 import { MEDICAO_STATUS_LABELS, TIPO_MEDICAO_LABELS, MedicaoStatus } from '@/types'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 import { EmailLiberacaoMedicaoModal } from '@/components/medicoes/email-liberacao-medicao-modal'
+import {
+  useBreakdownAjuste, BreakdownAjusteGrid, BreakdownCarregando, fmtQtd,
+} from '@/components/medicoes/breakdown-ajuste'
 
 // Tipos da rota /api/contratos/[id]/medicoes/[medicaoId]/planilha
 type ItemPlanilha = {
@@ -205,11 +209,24 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
     descricao: string
     quantidade_atual: number
     quantidade_contratada: number
+    unidade: string | null
   } | null>(null)
   const [novaQtd, setNovaQtd] = useState('')
   const [motivoAjuste, setMotivoAjuste] = useState('')
   const [salvandoAjuste, setSalvandoAjuste] = useState(false)
   const [erroAjuste, setErroAjuste] = useState('')
+  /**
+   * Escape hatch: item que É de breakdown mas o admin quer mexer só na
+   * quantidade agregada (descartando o breakdown gravado). Serve pra dado
+   * legado inconsistente — o caminho normal é editar célula a célula.
+   */
+  const [forcarAgregado, setForcarAgregado] = useState(false)
+  /**
+   * Estado do breakdown do item aberto no modal (pavimentos / vãos / meses).
+   * Carrega do servidor pra usar exatamente o mesmo piso por célula que o
+   * PATCH aplica — a planilha da tela pode estar um passo atrás.
+   */
+  const breakdown = useBreakdownAjuste(contratoId, medicaoId, modalAjustar?.detalhamento_id ?? null)
 
   // Totais financeiros (mat, serv, retenção) puxados do endpoint /informacon
   // — fonte da verdade pra evitar inconsistência com o Boletim. Cai pra
@@ -492,7 +509,14 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
   // === Ajustar quantidade (admin) — usa rota PATCH por detalhamento_id que
   // faz upsert (cria medicao_item se não existe). Após salvar, recarrega
   // /planilha pra atualizar números na UI sem refresh full.
-  function abrirAjustar(it: { detalhamento_id: string | null; codigo: string; descricao: string; qtd_atual: number; quantidade_contratada: number }) {
+  function abrirAjustar(it: {
+    detalhamento_id: string | null
+    codigo: string
+    descricao: string
+    qtd_atual: number
+    quantidade_contratada: number
+    unidade?: string | null
+  }) {
     if (!it.detalhamento_id) return
     setModalAjustar({
       detalhamento_id: it.detalhamento_id,
@@ -500,27 +524,52 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
       descricao: it.descricao,
       quantidade_atual: Number(it.qtd_atual ?? 0),
       quantidade_contratada: Number(it.quantidade_contratada ?? 0),
+      unidade: it.unidade ?? null,
     })
     setNovaQtd(String(it.qtd_atual ?? 0))
     setMotivoAjuste('')
     setErroAjuste('')
+    setForcarAgregado(false)
   }
+
+  /**
+   * Item medido por breakdown (PAV TIPO, vãos, meses) usa a grade célula a
+   * célula; os demais continuam no input de quantidade agregada. É a grade
+   * que permite baixar um pavimento de 90% pra 50% — a quantidade agregada
+   * não sabe QUAL pavimento mudou.
+   */
+  const usaGradeBreakdown = !!breakdown.estado?.suporta_breakdown && !forcarAgregado
 
   async function salvarAjuste() {
     if (!modalAjustar) return
-    const qtyNum = Number(novaQtd.replace(',', '.'))
-    if (!Number.isFinite(qtyNum) || qtyNum < 0) {
-      setErroAjuste('Quantidade inválida.')
-      return
-    }
-    if (Math.abs(qtyNum - modalAjustar.quantidade_atual) < 1e-6) {
-      setErroAjuste('A quantidade nova é igual à atual.')
-      return
-    }
     if (motivoAjuste.trim().length < 10) {
       setErroAjuste('Motivo precisa ter pelo menos 10 caracteres.')
       return
     }
+
+    let payload: Record<string, any>
+    if (usaGradeBreakdown) {
+      if (breakdown.resumo.totalAlteradas === 0) {
+        setErroAjuste(`Nenhum ${breakdown.estado?.modo?.termo ?? 'item'} foi alterado.`)
+        return
+      }
+      payload = { pavimentos_pct: breakdown.resumo.mapa, motivo: motivoAjuste.trim() }
+    } else {
+      const qtyNum = Number(novaQtd.replace(',', '.'))
+      if (!Number.isFinite(qtyNum) || qtyNum < 0) {
+        setErroAjuste('Quantidade inválida.')
+        return
+      }
+      if (Math.abs(qtyNum - modalAjustar.quantidade_atual) < 1e-6) {
+        setErroAjuste('A quantidade nova é igual à atual.')
+        return
+      }
+      payload = { quantidade_nova: qtyNum, motivo: motivoAjuste.trim() }
+      // Item de breakdown ajustado pela quantidade agregada: confirma o
+      // descarte do breakdown, senão a rota recusa por inconsistência.
+      if (breakdown.estado?.suporta_breakdown) payload.descartar_breakdown = true
+    }
+
     setSalvandoAjuste(true)
     setErroAjuste('')
     try {
@@ -529,7 +578,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ quantidade_nova: qtyNum, motivo: motivoAjuste.trim() }),
+          body: JSON.stringify(payload),
         },
       )
       const body = await res.json().catch(() => ({}))
@@ -540,7 +589,8 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
       setModalAjustar(null)
       setNovaQtd('')
       setMotivoAjuste('')
-      // Recarrega planilha pra refletir o novo qty
+      setForcarAgregado(false)
+      // Recarrega planilha pra refletir a nova quantidade e o novo breakdown
       await fetchPlanilha()
     } catch (e: any) {
       setErroAjuste(e?.message || 'Erro de rede.')
@@ -1298,6 +1348,11 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                           const pctTotalBarI = Math.min(Math.max(it.pct_total, 0), 100)
                                           const pavItemKey = it.medicao_item_id || it.detalhamento_id || ''
                                           const hasPav = !!(it.pavimentos_pct && Object.keys(it.pavimentos_pct).length > 0)
+                                          // Modo de breakdown deduzido da descrição — independe de já
+                                          // existir `pavimentos_pct` gravado, pra o botão de ajuste
+                                          // do admin saber que este item é editável célula a célula.
+                                          const modoBreakdown = detectarBreakdown(it.descricao, it.quantidade_contratada)
+                                          const hasBreakdown = !!modoBreakdown
                                           const isPavExpanded = hasPav && expandedPavItems.has(pavItemKey)
                                           const pavRange = hasPav ? detectarPavRange(it.descricao, it.quantidade_contratada) : null
                                           // Vãos e meses compartilham a grade binária; só muda o rótulo.
@@ -1327,10 +1382,11 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                                           descricao: it.descricao,
                                                           qtd_atual: it.qtd_atual,
                                                           quantidade_contratada: it.quantidade_contratada,
+                                                          unidade: it.unidade ?? null,
                                                         })}
                                                         className="text-[10px] font-medium px-1.5 py-0.5 rounded print:hidden hover:bg-orange-500/10"
                                                         style={{ color: '#F97316', border: '1px solid rgba(249,115,22,0.4)' }}
-                                                        title="Admin: ajustar quantidade medida"
+                                                        title={hasBreakdown ? `Admin: ajustar % por ${modoBreakdown!.termo}` : 'Admin: ajustar quantidade medida'}
                                                       >
                                                         <Pencil className="inline w-3 h-3" />
                                                       </button>
@@ -2029,19 +2085,31 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
         }}
       />
 
-      {/* Modal Ajustar Quantidade (admin) — também disponível aqui na página
-          da medição, não só no Boletim Informakon. */}
+      {/* Modal Ajustar item (admin) — também disponível aqui na página da
+          medição, não só no Boletim Informakon.
+
+          Itens medidos por breakdown (PAV TIPO 0/25/50/75/100 por pavimento,
+          grades binárias de vãos e parcelas mensais) abrem a grade célula a
+          célula. Só ela consegue expressar "o 12º pav foi medido a 90% e o
+          certo era 50%": a quantidade agregada do item não sabe QUAL célula
+          mudou, e mexer nela deixaria `pavimentos_pct` mentindo sobre
+          `quantidade_medida` — a planilha, o PDF e o piso da próxima medição
+          leem esse mapa. */}
       <Dialog
         open={!!modalAjustar}
-        onOpenChange={(open) => { if (!open && !salvandoAjuste) { setModalAjustar(null); setErroAjuste('') } }}
+        onOpenChange={(open) => {
+          if (!open && !salvandoAjuste) { setModalAjustar(null); setErroAjuste(''); setForcarAgregado(false) }
+        }}
       >
-        <DialogContent>
+        <DialogContent className={usaGradeBreakdown ? 'max-w-3xl max-h-[92vh] overflow-y-auto' : undefined}>
           {modalAjustar && (
             <>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2" style={{ color: '#F97316' }}>
                   <Pencil className="w-5 h-5" />
-                  Ajustar quantidade — admin
+                  {usaGradeBreakdown
+                    ? `Ajustar por ${breakdown.estado?.modo?.termo ?? 'célula'} — admin`
+                    : 'Ajustar quantidade — admin'}
                 </DialogTitle>
                 <DialogDescription className="text-[var(--text-2)]">
                   Item <strong className="font-mono">{modalAjustar.codigo}</strong>
@@ -2052,44 +2120,95 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                 </DialogDescription>
               </DialogHeader>
               <div className="py-3 space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-[10px] text-[var(--text-3)] font-medium uppercase tracking-wider">
-                      Quantidade atual
-                    </Label>
-                    <div className="px-3 py-2 rounded-lg font-mono text-sm" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-2)' }}>
-                      {modalAjustar.quantidade_atual}
+                {breakdown.carregando ? (
+                  <BreakdownCarregando />
+                ) : usaGradeBreakdown && breakdown.estado ? (
+                  <>
+                    <BreakdownAjusteGrid
+                      estado={breakdown.estado}
+                      mapa={breakdown.mapa}
+                      setCelula={breakdown.setCelula}
+                      resetar={breakdown.resetar}
+                      resumo={breakdown.resumo}
+                      unidade={modalAjustar.unidade}
+                      desabilitado={salvandoAjuste}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForcarAgregado(true)
+                        setNovaQtd(String(modalAjustar.quantidade_atual))
+                      }}
+                      className="text-[10px] underline hover:no-underline"
+                      style={{ color: 'var(--text-3)' }}
+                    >
+                      Ajustar a quantidade total em vez das células (descarta o breakdown deste item)
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {breakdown.erroCarga && (
+                      <div className="p-2 rounded-lg text-[10px] bg-amber-500/10 border border-amber-500/30 text-amber-300">
+                        {breakdown.erroCarga} — seguindo com o ajuste por quantidade total.
+                      </div>
+                    )}
+                    {forcarAgregado && breakdown.estado?.suporta_breakdown && (
+                      <div className="flex items-start justify-between gap-2 p-2 rounded-lg text-[10px] bg-orange-500/10 border border-orange-500/30 text-orange-300">
+                        <span>
+                          Este item é medido por {breakdown.estado.modo?.termo}. Salvar aqui apaga o
+                          breakdown gravado nesta medição.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setForcarAgregado(false)}
+                          className="shrink-0 underline hover:no-underline"
+                        >
+                          voltar à grade
+                        </button>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-[10px] text-[var(--text-3)] font-medium uppercase tracking-wider">
+                          Quantidade atual
+                        </Label>
+                        <div className="px-3 py-2 rounded-lg font-mono text-sm" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-2)' }}>
+                          {modalAjustar.quantidade_atual}
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] text-[var(--text-3)] font-medium uppercase tracking-wider">
+                          Quantidade contratada
+                        </Label>
+                        <div className="px-3 py-2 rounded-lg font-mono text-sm" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>
+                          {modalAjustar.quantidade_contratada}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px] text-[var(--text-3)] font-medium uppercase tracking-wider">
-                      Quantidade contratada
-                    </Label>
-                    <div className="px-3 py-2 rounded-lg font-mono text-sm" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>
-                      {modalAjustar.quantidade_contratada}
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wider">
+                        Nova quantidade
+                      </Label>
+                      <input
+                        type="number"
+                        step="0.001"
+                        min="0"
+                        value={novaQtd}
+                        onChange={e => setNovaQtd(e.target.value)}
+                        className="w-full bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-1)] rounded-lg px-3 py-2 outline-none font-mono"
+                        autoFocus
+                      />
                     </div>
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wider">
-                    Nova quantidade
-                  </Label>
-                  <input
-                    type="number"
-                    step="0.001"
-                    min="0"
-                    value={novaQtd}
-                    onChange={e => setNovaQtd(e.target.value)}
-                    className="w-full bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-1)] rounded-lg px-3 py-2 outline-none font-mono"
-                    autoFocus
-                  />
-                </div>
+                  </>
+                )}
                 <div className="space-y-1.5">
                   <Label className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wider">
                     Motivo do ajuste <span className="text-red-400">(obrigatório, mín. 10 caracteres)</span>
                   </Label>
                   <Textarea
-                    placeholder="Ex.: 'Incluí item 19.1.1 (Administração) que ficou de fora.'"
+                    placeholder={usaGradeBreakdown
+                      ? "Ex.: 'Vistoria em campo: 12º pav estava a 90% e o executado é 50%.'"
+                      : "Ex.: 'Incluí item 19.1.1 (Administração) que ficou de fora.'"}
                     value={motivoAjuste}
                     onChange={e => setMotivoAjuste(e.target.value)}
                     className="bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-1)] placeholder:text-[var(--text-3)] min-h-[70px]"
@@ -2110,7 +2229,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
               <DialogFooter>
                 <Button
                   variant="ghost"
-                  onClick={() => { setModalAjustar(null); setErroAjuste('') }}
+                  onClick={() => { setModalAjustar(null); setErroAjuste(''); setForcarAgregado(false) }}
                   disabled={salvandoAjuste}
                 >
                   Cancelar
@@ -2120,14 +2239,18 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                   loading={salvandoAjuste}
                   disabled={
                     salvandoAjuste ||
+                    breakdown.carregando ||
                     motivoAjuste.trim().length < 10 ||
-                    !novaQtd ||
-                    !Number.isFinite(Number(novaQtd.replace(',', '.')))
+                    (usaGradeBreakdown
+                      ? breakdown.resumo.totalAlteradas === 0
+                      : !novaQtd || !Number.isFinite(Number(novaQtd.replace(',', '.'))))
                   }
                   style={{ background: '#F97316' }}
                 >
                   <Pencil className="w-4 h-4" />
-                  Salvar ajuste
+                  {usaGradeBreakdown
+                    ? `Salvar ${breakdown.resumo.totalAlteradas || ''} ${breakdown.resumo.totalAlteradas === 1 ? (breakdown.estado?.modo?.termo ?? 'alteração') : (breakdown.estado?.modo?.termoPlural ?? 'alterações')}`.trim()
+                    : 'Salvar ajuste'}
                 </Button>
               </DialogFooter>
             </>

@@ -10,6 +10,9 @@ import { Label } from '@/components/ui/label'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
 } from '@/components/ui/dialog'
+import {
+  useBreakdownAjuste, BreakdownAjusteGrid, BreakdownCarregando,
+} from '@/components/medicoes/breakdown-ajuste'
 import { EmailLiberacaoMedicaoModal } from '@/components/medicoes/email-liberacao-medicao-modal'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 import { formatCurrency, formatDate } from '@/lib/utils'
@@ -179,6 +182,15 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
   const [motivoAjuste, setMotivoAjuste] = useState('')
   const [salvandoAjuste, setSalvandoAjuste] = useState(false)
   const [erroAjuste, setErroAjuste] = useState('')
+  /**
+   * Itens medidos célula a célula (PAV TIPO, vãos, parcelas mensais) ajustam
+   * o % de cada célula, não a quantidade agregada — só assim dá pra corrigir
+   * um pavimento de 90% pra 50%. `forcarAgregado` é o escape hatch pra
+   * descartar o breakdown e voltar aos campos qtd/%/R$.
+   */
+  const [forcarAgregado, setForcarAgregado] = useState(false)
+  const breakdown = useBreakdownAjuste(contratoId, medicaoId, modalAjustar?.item.detalhamento_id ?? null)
+  const usaGradeBreakdown = !!breakdown.estado?.suporta_breakdown && !forcarAgregado
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -522,19 +534,34 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
   async function salvarAjuste() {
     if (!modalAjustar) return
     const { item } = modalAjustar
-    const qtyNum = Number(novaQuantidade.replace(',', '.'))
-    if (!Number.isFinite(qtyNum) || qtyNum < 0) {
-      setErroAjuste('Quantidade inválida.')
-      return
-    }
-    if (Math.abs(qtyNum - item.quantidade_medida) < 1e-6) {
-      setErroAjuste('A quantidade nova é igual à atual.')
-      return
-    }
     if (motivoAjuste.trim().length < 10) {
       setErroAjuste('Motivo precisa ter pelo menos 10 caracteres.')
       return
     }
+
+    let payload: Record<string, any>
+    if (usaGradeBreakdown) {
+      if (breakdown.resumo.totalAlteradas === 0) {
+        setErroAjuste(`Nenhum ${breakdown.estado?.modo?.termo ?? 'item'} foi alterado.`)
+        return
+      }
+      payload = { pavimentos_pct: breakdown.resumo.mapa, motivo: motivoAjuste.trim() }
+    } else {
+      const qtyNum = Number(novaQuantidade.replace(',', '.'))
+      if (!Number.isFinite(qtyNum) || qtyNum < 0) {
+        setErroAjuste('Quantidade inválida.')
+        return
+      }
+      if (Math.abs(qtyNum - item.quantidade_medida) < 1e-6) {
+        setErroAjuste('A quantidade nova é igual à atual.')
+        return
+      }
+      payload = { quantidade_nova: qtyNum, motivo: motivoAjuste.trim() }
+      // Item de breakdown ajustado pela quantidade agregada: confirma o
+      // descarte do breakdown, senão a rota recusa por inconsistência.
+      if (breakdown.estado?.suporta_breakdown) payload.descartar_breakdown = true
+    }
+
     setSalvandoAjuste(true)
     setErroAjuste('')
     try {
@@ -545,7 +572,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ quantidade_nova: qtyNum, motivo: motivoAjuste.trim() }),
+          body: JSON.stringify(payload),
         },
       )
       const body = await res.json().catch(() => ({}))
@@ -559,6 +586,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
       setNovaReais('')
       setNovaInformakon('')
       setMotivoAjuste('')
+      setForcarAgregado(false)
       await carregar()
     } catch (e: any) {
       setErroAjuste(e?.message || 'Erro de rede.')
@@ -1460,15 +1488,17 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
       {/* Modal Ajustar Quantidade (admin durante aprovação) — migration 061 */}
       <Dialog
         open={!!modalAjustar}
-        onOpenChange={(open) => { if (!open && !salvandoAjuste) { setModalAjustar(null); setNovaPct(''); setNovaReais(''); setNovaInformakon(''); setErroAjuste('') } }}
+        onOpenChange={(open) => { if (!open && !salvandoAjuste) { setModalAjustar(null); setNovaPct(''); setNovaReais(''); setNovaInformakon(''); setErroAjuste(''); setForcarAgregado(false) } }}
       >
-        <DialogContent>
+        <DialogContent className={usaGradeBreakdown ? 'max-w-3xl max-h-[92vh] overflow-y-auto' : undefined}>
           {modalAjustar && (
             <>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2" style={{ color: '#F97316' }}>
                   <Pencil className="w-5 h-5" />
-                  Ajustar quantidade — admin
+                  {usaGradeBreakdown
+                    ? `Ajustar por ${breakdown.estado?.modo?.termo ?? 'célula'} — admin`
+                    : 'Ajustar quantidade — admin'}
                 </DialogTitle>
                 <DialogDescription className="text-[var(--text-2)]">
                   Item <strong className="font-mono">{modalAjustar.item.codigo}</strong>
@@ -1517,77 +1547,114 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                     </div>
                   </div>
                 </div>
-                {/* Novos valores — sincronizados */}
-                <div className="p-3 rounded-lg space-y-2" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>
-                    Novo valor — edite qualquer campo, os outros calculam automaticamente
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <Label className="text-[10px] font-medium uppercase tracking-wider" style={{ color: '#F97316' }}>
-                        Quantidade
-                      </Label>
-                      <input
-                        type="number"
-                        step="any"
-                        min="0"
-                        value={novaQuantidade}
-                        onChange={e => handleQtdChange(e.target.value)}
-                        className="w-full bg-[var(--surface-1)] border border-orange-500/40 text-[var(--text-1)] rounded-lg px-2 py-1.5 outline-none font-mono text-sm"
-                        autoFocus
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-[10px] font-medium uppercase tracking-wider" style={{ color: '#F97316' }}>
-                        % Medido
-                      </Label>
-                      <div className="relative">
+                {breakdown.carregando ? (
+                  <BreakdownCarregando />
+                ) : usaGradeBreakdown && breakdown.estado ? (
+                  <>
+                    <BreakdownAjusteGrid
+                      estado={breakdown.estado}
+                      mapa={breakdown.mapa}
+                      setCelula={breakdown.setCelula}
+                      resetar={breakdown.resetar}
+                      resumo={breakdown.resumo}
+                      unidade={modalAjustar.item.unidade}
+                      desabilitado={salvandoAjuste}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setForcarAgregado(true); setNovaQuantidade(String(modalAjustar.item.quantidade_medida)) }}
+                      className="text-[10px] underline hover:no-underline"
+                      style={{ color: 'var(--text-3)' }}
+                    >
+                      Ajustar a quantidade total em vez das células (descarta o breakdown deste item)
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {forcarAgregado && breakdown.estado?.suporta_breakdown && (
+                      <div className="flex items-start justify-between gap-2 p-2 rounded-lg text-[10px] bg-orange-500/10 border border-orange-500/30 text-orange-300">
+                        <span>
+                          Este item é medido por {breakdown.estado.modo?.termo}. Salvar aqui apaga o
+                          breakdown gravado nesta medição.
+                        </span>
+                        <button type="button" onClick={() => setForcarAgregado(false)} className="shrink-0 underline hover:no-underline">
+                          voltar à grade
+                        </button>
+                      </div>
+                    )}
+                  {/* Novos valores — sincronizados */}
+                  <div className="p-3 rounded-lg space-y-2" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>
+                      Novo valor — edite qualquer campo, os outros calculam automaticamente
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-[10px] font-medium uppercase tracking-wider" style={{ color: '#F97316' }}>
+                          Quantidade
+                        </Label>
                         <input
                           type="number"
                           step="any"
                           min="0"
-                          max="100"
-                          value={novaPct}
-                          onChange={e => handlePctChange(e.target.value)}
-                          disabled={modalAjustar.item.quantidade_contratada <= 0}
-                          className="w-full bg-[var(--surface-1)] border border-orange-500/40 text-[var(--text-1)] rounded-lg px-2 py-1.5 outline-none font-mono text-sm pr-5 disabled:opacity-40"
+                          value={novaQuantidade}
+                          onChange={e => handleQtdChange(e.target.value)}
+                          className="w-full bg-[var(--surface-1)] border border-orange-500/40 text-[var(--text-1)] rounded-lg px-2 py-1.5 outline-none font-mono text-sm"
+                          autoFocus
                         />
-                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px]" style={{ color: 'var(--text-3)' }}>%</span>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] font-medium uppercase tracking-wider" style={{ color: '#F97316' }}>
+                          % Medido
+                        </Label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            step="any"
+                            min="0"
+                            max="100"
+                            value={novaPct}
+                            onChange={e => handlePctChange(e.target.value)}
+                            disabled={modalAjustar.item.quantidade_contratada <= 0}
+                            className="w-full bg-[var(--surface-1)] border border-orange-500/40 text-[var(--text-1)] rounded-lg px-2 py-1.5 outline-none font-mono text-sm pr-5 disabled:opacity-40"
+                          />
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px]" style={{ color: 'var(--text-3)' }}>%</span>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] font-medium uppercase tracking-wider" style={{ color: '#F97316' }}>
+                          R$ Wave
+                        </Label>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={novaReais}
+                          onChange={e => handleReaisChange(e.target.value)}
+                          disabled={modalAjustar.item.valor_servico_unit <= 0}
+                          className="w-full bg-[var(--surface-1)] border border-orange-500/40 text-[var(--text-1)] rounded-lg px-2 py-1.5 outline-none font-mono text-sm disabled:opacity-40"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] font-medium uppercase tracking-wider" style={{ color: '#F97316' }}>
+                          R$ Informakon
+                        </Label>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={novaInformakon}
+                          onChange={e => handleInformakonChange(e.target.value)}
+                          disabled={(modalAjustar.item.valor_servico_unit + modalAjustar.item.valor_material_unit) <= 0}
+                          className="w-full bg-[var(--surface-1)] border border-orange-500/40 text-[var(--text-1)] rounded-lg px-2 py-1.5 outline-none font-mono text-sm disabled:opacity-40"
+                        />
                       </div>
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-[10px] font-medium uppercase tracking-wider" style={{ color: '#F97316' }}>
-                        R$ Wave
-                      </Label>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={novaReais}
-                        onChange={e => handleReaisChange(e.target.value)}
-                        disabled={modalAjustar.item.valor_servico_unit <= 0}
-                        className="w-full bg-[var(--surface-1)] border border-orange-500/40 text-[var(--text-1)] rounded-lg px-2 py-1.5 outline-none font-mono text-sm disabled:opacity-40"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-[10px] font-medium uppercase tracking-wider" style={{ color: '#F97316' }}>
-                        R$ Informakon
-                      </Label>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={novaInformakon}
-                        onChange={e => handleInformakonChange(e.target.value)}
-                        disabled={(modalAjustar.item.valor_servico_unit + modalAjustar.item.valor_material_unit) <= 0}
-                        className="w-full bg-[var(--surface-1)] border border-orange-500/40 text-[var(--text-1)] rounded-lg px-2 py-1.5 outline-none font-mono text-sm disabled:opacity-40"
-                      />
-                    </div>
+                    <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
+                      Qtd contratada: <strong className="font-mono">{modalAjustar.item.quantidade_contratada}</strong>
+                      {' · '}
+                      Unit. serviço: <strong className="font-mono">{modalAjustar.item.valor_servico_unit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
+                    </p>
                   </div>
-                  <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
-                    Qtd contratada: <strong className="font-mono">{modalAjustar.item.quantidade_contratada}</strong>
-                    {' · '}
-                    Unit. serviço: <strong className="font-mono">{modalAjustar.item.valor_servico_unit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
-                  </p>
-                </div>
+                  </>
+                )}
                 <div className="space-y-1.5">
                   <Label className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wider">
                     Motivo do ajuste <span className="text-red-400">(obrigatório, mín. 10 caracteres)</span>
@@ -1614,7 +1681,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
               <DialogFooter>
                 <Button
                   variant="ghost"
-                  onClick={() => { setModalAjustar(null); setNovaPct(''); setNovaReais(''); setErroAjuste('') }}
+                  onClick={() => { setModalAjustar(null); setNovaPct(''); setNovaReais(''); setErroAjuste(''); setForcarAgregado(false) }}
                   disabled={salvandoAjuste}
                 >
                   Cancelar
@@ -1624,9 +1691,11 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   loading={salvandoAjuste}
                   disabled={
                     salvandoAjuste ||
+                    breakdown.carregando ||
                     motivoAjuste.trim().length < 10 ||
-                    !novaQuantidade ||
-                    !Number.isFinite(Number(novaQuantidade.replace(',', '.')))
+                    (usaGradeBreakdown
+                      ? breakdown.resumo.totalAlteradas === 0
+                      : !novaQuantidade || !Number.isFinite(Number(novaQuantidade.replace(',', '.'))))
                   }
                   style={{ background: '#F97316' }}
                 >
