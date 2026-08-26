@@ -6,6 +6,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { isSchemaMissingError } from '@/lib/db/resilient'
+import { nfReservaSaldo } from '@/lib/db/nf-status'
 import {
   calcularDescontoComTransbordo,
   calcularSaldoAprovadoComTransbordo,
@@ -69,6 +70,12 @@ export interface InformaconLinha {
    * Nesse caso, ao ajustar, o backend cria o row.
    */
   medicao_item_id: string | null
+  /**
+   * Tarefa dona do detalhamento. É o BALDE em que o desconto de NF é apurado
+   * (ver lib/db/desconto-transbordo.ts): sem ele a UI não consegue mostrar
+   * quais notas alimentam o `nf_descontavel` desta linha.
+   */
+  tarefa_id?: string | null
   /** True quando há row em medicao_itens; false quando é detalhamento puro. */
   existe_no_banco: boolean
   detalhamento_id: string
@@ -773,7 +780,13 @@ export async function calcularInformaconData(
         aprovadoPorDet[it.detId!] = (aprovadoPorDet[it.detId!] || 0) + it.valor
       }
 
+      // NF cancelada não reserva saldo (lib/db/nf-status.ts) e portanto não
+      // pode descontar material. O `status` já vinha no SELECT acima mas nunca
+      // era lido: uma nota cancelada inflava o NF Desc., encolhia o Gap, e o
+      // erro virava snapshot definitivo na aprovação da medição. `lib/db/origem.ts`
+      // sempre filtrou — este era o caminho que faltava.
       const totalNfsSol = ((sol.nfs || []) as any[])
+        .filter((nf: any) => nfReservaSaldo(nf?.status))
         .reduce((s: number, nf: any) => s + Number(nf.valor || 0), 0)
 
       if (totalSol > 0 && totalNfsSol > 0) {
@@ -1000,6 +1013,7 @@ export async function calcularInformaconData(
         medicao_item_id: it.id,
         existe_no_banco: true,
         detalhamento_id: det.id,
+        tarefa_id: tarefaPorDetalhamento[det.id] ?? null,
         codigo: det.codigo,
         codigo_informakon: getCodigoInformakon(det.descricao),
         descricao: det.descricao,
@@ -1068,6 +1082,7 @@ export async function calcularInformaconData(
       medicao_item_id: null,
       existe_no_banco: false,
       detalhamento_id: det.id,
+      tarefa_id: tarefaPorDetalhamento[det.id] ?? null,
       codigo: det.codigo,
       codigo_informakon: getCodigoInformakon(det.descricao),
       descricao: det.descricao,

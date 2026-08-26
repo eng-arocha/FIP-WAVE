@@ -10,6 +10,11 @@ import { audit } from '@/lib/api/audit'
 import { recalcularValorTotalMedicao } from '@/lib/db/medicoes'
 import { isSchemaMissingError } from '@/lib/db/resilient'
 import {
+  calcularTetoMedicao,
+  excedeTeto,
+  mensagemExcedeTeto,
+} from '@/lib/medicao-teto'
+import {
   detectarBreakdown,
   normalizarBreakdown,
   calcularDeltaBreakdown,
@@ -354,6 +359,8 @@ export async function GET(
       pavimentos_pct: item?.pavimentos_pct ?? null,
       pavimentos_pct_anterior: pavAnterior,
       qtd_anterior: qtdAnterior,
+      /** Máximo que ESTA medição pode registrar: contratado − acumulado aprovado. */
+      teto: calcularTetoMedicao(det.quantidade_contratada, qtdAnterior),
       /**
        * true quando o item tem histórico aprovado mas nenhum breakdown gravado
        * nele — a grade não consegue representar o acumulado anterior e o
@@ -478,6 +485,39 @@ export async function PATCH(
     } else {
       // ── MODO AGREGADO ────────────────────────────────────────────────────
       quantidadeNovaFinal = arredondarQtde(quantidade_nova as number)
+
+      // Teto do contrato. `quantidade_medida` é o DELTA do período, então o
+      // limite não é `quantidade_contratada` e sim o que sobra dela depois do
+      // acumulado já aprovado. Sem esta guarda o admin gravava mais de 100%
+      // do contratado — o zod só exigia >= 0 e nada mais no caminho comparava
+      // com o contrato (nem o client, nem um CHECK no banco).
+      //
+      // O ramo de breakdown acima não precisa disto: cada célula vale no
+      // máximo 100% e o número de células é a própria quantidade contratada.
+      {
+        const { qtdAnterior } = await carregarAcumuladoAnterior(
+          admin, contratoId, medicaoId, medicao.numero, detalhamentoId,
+        )
+        const teto = calcularTetoMedicao(det.quantidade_contratada, qtdAnterior)
+        if (excedeTeto(quantidadeNovaFinal, teto)) {
+          return NextResponse.json(
+            {
+              error: mensagemExcedeTeto({
+                codigo: det.codigo,
+                quantidadeContratada: det.quantidade_contratada,
+                qtdAnterior,
+                qtdNova: quantidadeNovaFinal,
+                teto: teto as number,
+              }),
+              code: 'ACIMA_DO_CONTRATADO',
+              teto,
+              qtd_anterior: qtdAnterior,
+              quantidade_contratada: det.quantidade_contratada,
+            },
+            { status: 409 },
+          )
+        }
+      }
 
       if (temBreakdownGravado && !descartar_breakdown) {
         return NextResponse.json(

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
+import { calcularTetoMedicao, excedeTeto, mensagemExcedeTeto } from '@/lib/medicao-teto'
 
 export async function getMedicoes(contratoId: string) {
   const supabase = await createClient()
@@ -125,7 +126,7 @@ export async function createMedicao(input: {
   const detIds = input.itens.map(i => i.detalhamento_id)
   const { data: dets } = await supabase
     .from('detalhamentos')
-    .select('id, valor_material_unit, valor_servico_unit')
+    .select('id, codigo, unidade, quantidade_contratada, valor_material_unit, valor_servico_unit')
     .in('id', detIds)
   const unitMap = new Map<string, { mat: number; serv: number }>()
   for (const d of (dets || []) as any[]) {
@@ -134,6 +135,12 @@ export async function createMedicao(input: {
       serv: Number(d.valor_servico_unit ?? 0),
     })
   }
+
+  // Teto do contrato — nenhum item pode passar de 100% do contratado somando
+  // o que as medições aprovadas anteriores já registraram. A tela de Nova
+  // Medição já clampa, mas o clamp da tela não é garantia: esta rota aceita
+  // POST direto e o zod só exige `nonnegative()`.
+  await assertItensDentroDoContrato(supabase, input.contrato_id, input.itens, (dets || []) as any[])
   const valor_total = input.itens.reduce((acc, i) => {
     const u = unitMap.get(i.detalhamento_id)
     const totalUnit = u ? (u.mat + u.serv) : i.valor_unitario
@@ -559,4 +566,79 @@ export async function recalcularValorTotalMedicao(
     return null
   }
   return valorTotal
+}
+
+/**
+ * Recusa a medição inteira se algum item ultrapassar o contratado.
+ *
+ * `quantidade_medida` é o DELTA do período, então o teto de cada item é
+ * `quantidade_contratada − acumulado aprovado anterior` — a mesma conta de
+ * `/medicoes/acumulado` e da rota de ajuste do admin (lib/medicao-teto.ts).
+ *
+ * Falha em bloco, listando TODOS os itens fora do teto: corrigir um de cada
+ * vez, descobrindo o próximo a cada tentativa, é hostil com uma medição de
+ * centenas de linhas.
+ */
+async function assertItensDentroDoContrato(
+  supabase: SupabaseClient,
+  contratoId: string,
+  itens: { detalhamento_id: string; quantidade_medida: number }[],
+  dets: any[],
+): Promise<void> {
+  const detPorId = new Map<string, any>()
+  for (const d of dets) detPorId.set(d.id, d)
+
+  // Acumulado aprovado por detalhamento (todas as medições aprovadas do
+  // contrato — esta ainda não existe, então não há o que excluir).
+  const { data: meds } = await supabase
+    .from('medicoes')
+    .select('id')
+    .eq('contrato_id', contratoId)
+    .eq('status', 'aprovado')
+  const medIds = (meds || []).map((m: any) => m.id)
+
+  const anteriorPorDet = new Map<string, number>()
+  if (medIds.length > 0) {
+    const { data: rows } = await supabase
+      .from('medicao_itens')
+      .select('detalhamento_id, quantidade_medida')
+      .in('medicao_id', medIds)
+      .in('detalhamento_id', itens.map(i => i.detalhamento_id))
+    for (const r of (rows || []) as any[]) {
+      if (!r.detalhamento_id) continue
+      anteriorPorDet.set(
+        r.detalhamento_id,
+        (anteriorPorDet.get(r.detalhamento_id) || 0) + Number(r.quantidade_medida || 0),
+      )
+    }
+  }
+
+  const erros: string[] = []
+  for (const item of itens) {
+    const det = detPorId.get(item.detalhamento_id)
+    if (!det) continue
+    const qtdAnterior = anteriorPorDet.get(item.detalhamento_id) || 0
+    const teto = calcularTetoMedicao(det.quantidade_contratada, qtdAnterior)
+    if (excedeTeto(item.quantidade_medida, teto)) {
+      erros.push(mensagemExcedeTeto({
+        codigo: det.codigo,
+        unidade: det.unidade,
+        quantidadeContratada: Number(det.quantidade_contratada),
+        qtdAnterior,
+        qtdNova: Number(item.quantidade_medida),
+        teto: teto as number,
+      }))
+    }
+  }
+
+  if (erros.length > 0) {
+    const err: any = new Error(
+      erros.length === 1
+        ? erros[0]
+        : `${erros.length} itens ultrapassam o contratado:\n\n` + erros.map(e => `• ${e}`).join('\n'),
+    )
+    err.status = 400
+    err.code = 'ACIMA_DO_CONTRATADO'
+    throw err
+  }
 }

@@ -56,6 +56,12 @@ export interface BreakdownEstado {
   pavimentos_pct_anterior: Record<string, number>
   /** Soma real de `quantidade_medida` das medições aprovadas anteriores. */
   qtd_anterior: number
+  /**
+   * Máximo que ESTA medição pode registrar: contratado − acumulado aprovado.
+   * `null` quando o item não tem quantidade contratada válida — aí não há
+   * teto que se possa afirmar e o servidor também não bloqueia.
+   */
+  teto: number | null
   /** Histórico aprovado sem breakdown gravado — precisa de backfill antes. */
   historico_sem_breakdown: boolean
 }
