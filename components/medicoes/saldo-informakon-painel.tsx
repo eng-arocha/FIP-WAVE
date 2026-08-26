@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Loader2, ClipboardPaste, AlertTriangle, CheckCircle2, RefreshCw, ExternalLink, Search,
-  ShieldCheck, Undo2,
+  ShieldCheck, Undo2, ListChecks,
 } from 'lucide-react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -649,6 +649,16 @@ export function SaldoInformakonPainel({
               {retrato?.temDados ? 'Atualizar retrato' : 'Colar do Informakon'}
             </button>
           )}
+          <a
+            href="/ajuda/conferencia-informakon"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-lg font-medium border transition-colors hover:bg-[var(--surface-3)]"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}
+            title="Passo a passo da conferência — o mesmo em toda medição"
+          >
+            <ListChecks className="w-3 h-3" /> Passo a passo
+          </a>
         </div>
 
         {aviso && (
