@@ -20,6 +20,8 @@ function calcular(args: {
   matUnit: number
   servUnit: number
   nfDescontavel: number
+  /** Pedido aprovado sem nota — o que fica de fora do valor a lançar. */
+  saldoAprovado?: number
 }) {
   const { qtdMedida, qtdContratada, matUnit, servUnit, nfDescontavel } = args
   const matMedido = qtdMedida * matUnit
@@ -31,7 +33,18 @@ function calcular(args: {
   const dadosInformakon = waveServico + matMedido
   const pctInformakon = valorGlobalItem > 0 ? (dadosInformakon / valorGlobalItem) * 100 : 0
 
-  const informakonALancar = waveServico + nfDescontavel
+  // A lançar = Valor Total Medido − Nota a caminho.
+  // Equivale a `wave + nfDescontavel + fipFaturar`: no momento em que o
+  // percentual é digitado, a nota da FIP JÁ foi emitida e lançada (o
+  // Informakon não desconta nota inexistente), então ela entra no valor.
+  const valorTotalMedido = matMedido + waveServico
+  const gap = Math.max(0, matMedido - nfDescontavel)
+  const notaACaminho = Math.min(gap, args.saldoAprovado ?? 0)
+  const fipFaturar = Math.max(0, gap - notaACaminho)
+  // Soma as parcelas que o Informakon vai descontar. Equivale a
+  // `valorTotalMedido − notaACaminho` sempre que a nota cabe no material do
+  // período; na recuperação (nota > material medido) só esta forma se sustenta.
+  const informakonALancar = waveServico + nfDescontavel + fipFaturar
   const pctALancar = valorGlobalItem > 0 ? (informakonALancar / valorGlobalItem) * 100 : 0
   const correcao = dadosInformakon - informakonALancar
 
@@ -39,18 +52,25 @@ function calcular(args: {
     matMedido, waveServico, valorGlobalItem,
     pctServMed, pctInformakon, pctALancar,
     informakonALancar, correcao,
-    gap: Math.max(0, matMedido - nfDescontavel),
-    /** O que a Wave de fato recebe se este % for lançado. */
-    waveRecebe: (pct: number) => (pct / 100) * valorGlobalItem - nfDescontavel,
+    gap, notaACaminho, fipFaturar,
+    /**
+     * O que a Wave recebe se este % for lançado. Desconta as DUAS notas
+     * presentes no Informakon: a do fornecedor e a que a FIP emitiu.
+     */
+    waveRecebe: (pct: number) => (pct / 100) * valorGlobalItem - nfDescontavel - fipFaturar,
+    /** Cenário de erro: a nota da FIP ainda não foi emitida/lançada. */
+    waveRecebeSemNotaFip: (pct: number) => (pct / 100) * valorGlobalItem - nfDescontavel,
   }
 }
 
 describe('% a lançar no Informakon', () => {
-  // Cenário do usuário: item 1.8.1 medido 100%, parte do material sem nota.
+  // Cenário do usuário: item 1.8.1 medido 100%, parte do material sem nota,
+  // e um pedido aprovado cobrindo parte do que falta.
   const cenario = {
     qtdMedida: 1, qtdContratada: 1,
     matUnit: 100_000, servUnit: 20_000,
-    nfDescontavel: 70_000,          // R$ 30 mil de material sem nota (o Gap)
+    nfDescontavel: 70_000,     // R$ 30 mil de material sem nota (o Gap)
+    saldoAprovado: 18_000,     // desses 30 mil, 18 mil aguardam o fornecedor
   }
 
   it('o serviço continua pago pelo % medido integral', () => {
@@ -59,50 +79,84 @@ describe('% a lançar no Informakon', () => {
     expect(r.waveServico).toBe(20_000)
   })
 
-  it('lançar o % espelho pagaria o Gap à Wave — é o vazamento', () => {
+  it('o Gap se reparte entre o que aguarda o fornecedor e o que é da FIP', () => {
     const r = calcular(cenario)
-    // espelho = (20.000 + 100.000) / 120.000 = 100%
-    expect(r.pctInformakon).toBeCloseTo(100, 6)
-    // ...e a Wave receberia 120.000 − 70.000 = 50.000, R$ 30 mil a mais.
-    expect(r.waveRecebe(r.pctInformakon)).toBeCloseTo(50_000, 2)
-    expect(r.waveRecebe(r.pctInformakon) - r.waveServico).toBeCloseTo(r.gap, 2)
+    expect(r.gap).toBeCloseTo(30_000, 2)
+    expect(r.notaACaminho).toBeCloseTo(18_000, 2)
+    expect(r.fipFaturar).toBeCloseTo(12_000, 2)
+    expect(r.notaACaminho + r.fipFaturar).toBeCloseTo(r.gap, 2)
   })
 
-  it('o % a lançar entrega exatamente o serviço medido', () => {
+  it('a lançar = Valor Total Medido − Nota a caminho', () => {
     const r = calcular(cenario)
-    // (20.000 + 70.000) / 120.000 = 75%
-    expect(r.pctALancar).toBeCloseTo(75, 6)
+    // 120.000 − 18.000 = 102.000
+    expect(r.informakonALancar).toBeCloseTo(102_000, 2)
+    expect(r.pctALancar).toBeCloseTo(85, 6)
+  })
+
+  it('é a mesma conta que Wave + NF Desc. + FIP precisa emitir', () => {
+    const r = calcular(cenario)
+    expect(r.informakonALancar).toBeCloseTo(r.waveServico + cenario.nfDescontavel + r.fipFaturar, 2)
+  })
+
+  it('entrega exatamente o serviço medido — as DUAS notas são descontadas lá', () => {
+    const r = calcular(cenario)
     expect(r.waveRecebe(r.pctALancar)).toBeCloseTo(r.waveServico, 2)
   })
 
-  it('a correção é exatamente o Gap (Retido + FIP Fat-Dir)', () => {
+  it('lançar o % espelho pagaria o "Nota a caminho" à Wave — é o vazamento', () => {
     const r = calcular(cenario)
-    expect(r.correcao).toBeCloseTo(30_000, 2)
-    expect(r.correcao).toBeCloseTo(r.gap, 2)
+    expect(r.pctInformakon).toBeCloseTo(100, 6)
+    // Sobra o que ninguém vai faturar neste mês: o "Nota a caminho".
+    expect(r.waveRecebe(r.pctInformakon) - r.waveServico).toBeCloseTo(r.notaACaminho, 2)
   })
 
-  it('material 100% coberto por nota: as duas colunas coincidem', () => {
+  it('PRÉ-CONDIÇÃO: sem a nota da FIP lançada, a Wave recebe a mais', () => {
+    const r = calcular(cenario)
+    // O percentual está certo, mas o Informakon só desconta a nota do
+    // fornecedor — sobra exatamente o "FIP precisa emitir".
+    expect(r.waveRecebeSemNotaFip(r.pctALancar) - r.waveServico).toBeCloseTo(r.fipFaturar, 2)
+  })
+
+  it('a correção é exatamente o "Nota a caminho"', () => {
+    const r = calcular(cenario)
+    expect(r.correcao).toBeCloseTo(r.notaACaminho, 2)
+  })
+
+  it('material 100% coberto por nota: sem correção, e as colunas coincidem', () => {
     const r = calcular({ ...cenario, nfDescontavel: 100_000 })
+    expect(r.gap).toBeCloseTo(0, 2)
     expect(r.correcao).toBeCloseTo(0, 2)
     expect(r.pctALancar).toBeCloseTo(r.pctInformakon, 6)
     expect(r.waveRecebe(r.pctALancar)).toBeCloseTo(r.waveServico, 2)
   })
 
-  it('nota de meses anteriores voltando: corrige para CIMA, senão a Wave fica negativa', () => {
-    // Régua acumulada devolve mais nota do que o material medido no período.
-    const r = calcular({ ...cenario, qtdMedida: 0.1, nfDescontavel: 70_000 })
-    expect(r.matMedido).toBeCloseTo(10_000, 2)
-    expect(r.correcao).toBeLessThan(0)              // libera MAIS que o executado
-    expect(r.waveRecebe(r.pctInformakon)).toBeLessThan(0)   // o espelho quebraria
+  it('sem pedido aprovado, nada é segurado — a FIP emite tudo', () => {
+    const r = calcular({ ...cenario, saldoAprovado: 0 })
+    expect(r.notaACaminho).toBe(0)
+    expect(r.fipFaturar).toBeCloseTo(30_000, 2)
+    expect(r.correcao).toBe(0)
+    // Libera o executado inteiro — e as duas notas cobrem o material.
+    expect(r.pctALancar).toBeCloseTo(100, 6)
     expect(r.waveRecebe(r.pctALancar)).toBeCloseTo(r.waveServico, 2)
   })
 
-  it('sem nota nenhuma, o Informakon libera só o serviço', () => {
-    const r = calcular({ ...cenario, nfDescontavel: 0 })
-    // (20.000 + 0) / 120.000 = 16,666...%
-    expect(r.pctALancar).toBeCloseTo(16.6667, 3)
+  it('sem nota nenhuma e sem pedido: a FIP emite o material todo', () => {
+    const r = calcular({ ...cenario, nfDescontavel: 0, saldoAprovado: 0 })
+    expect(r.fipFaturar).toBeCloseTo(100_000, 2)
+    expect(r.pctALancar).toBeCloseTo(100, 6)
     expect(r.waveRecebe(r.pctALancar)).toBeCloseTo(20_000, 2)
-    expect(r.correcao).toBeCloseTo(100_000, 2)
+  })
+
+  it('nota de meses anteriores voltando: libera mais que o executado no período', () => {
+    const r = calcular({ ...cenario, qtdMedida: 0.1, nfDescontavel: 70_000, saldoAprovado: 0 })
+    expect(r.matMedido).toBeCloseTo(10_000, 2)
+    // Gap = 0 (a nota supera o material do período), nada é segurado — e o
+    // valor a liberar precisa cobrir a nota inteira, não só o executado.
+    expect(r.gap).toBeCloseTo(0, 2)
+    expect(r.informakonALancar).toBeGreaterThan(r.matMedido + r.waveServico)
+    expect(r.correcao).toBeLessThan(0)
+    expect(r.waveRecebe(r.pctALancar)).toBeCloseTo(r.waveServico, 2)
   })
 
   it('item sem valor global não divide por zero', () => {
