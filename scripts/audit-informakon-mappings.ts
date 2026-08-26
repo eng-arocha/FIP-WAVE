@@ -356,7 +356,7 @@ const ITENS_APP: Array<[string, string]> = [
   ['18.1.14', 'SUBIDAS VERTICAIS ( DIVIDIDA POR VÃOS )'],
 
   ['19.1.1', 'ADMINISTRAÇÃO OBRA ( MÊS )'],
-  ['19.1.2', 'FECHAMENTOS PASSAGENS VERTICAIS EM SHAFTS'],
+  ['19.1.2', 'FURAÇÃO / PASSAGENS VIGAS E LAJES'],
 ]
 
 let resolvidos = 0

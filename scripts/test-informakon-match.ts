@@ -25,7 +25,8 @@ const CASOS: Array<{ desc: string; esperado: string | null; nota?: string }> = [
 
   // Itens com prefixo abreviado
   { desc: 'ADMINISTRAÇÃO OBRA ( MÊS )', esperado: '1382/333', nota: 'Administração de Obras - Engenheiro Instalações' },
-  { desc: 'FECHAMENTOS PASSAGENS VERTICAIS EM SHAFTS', esperado: '1382/334' },
+  { desc: 'FURAÇÃO / PASSAGENS VIGAS E LAJES', esperado: '1382/334' },
+  { desc: 'FECHAMENTOS PASSAGENS VERTICAIS EM SHAFTS', esperado: '1382/334', nota: 'alias histórico — nome do item até a migration 078' },
 
   // Variações com acento removido / case
   { desc: 'subestação pmuc - cabeamento média ( pmt até subestação pmuc )', esperado: '1382/6' },

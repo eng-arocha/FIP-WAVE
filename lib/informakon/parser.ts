@@ -54,7 +54,13 @@ export const DE_PARA_MACRO_ITEM: Record<string, { grupo?: string; detalhamento?:
   'GAS': { grupo: '17' },
   'SISTEMA DE PROTECAO CONTRA DESCARGA ATMOSFERICA': { grupo: '18' },
   'ADMINISTRACAO OBRA': { detalhamento: '19.1.1' },
+  // As duas chaves apontam para o MESMO detalhamento 19.1.2. Aqui a chave é o
+  // texto que o INFORMAKON escreve na coluna Especificação — não o nosso. A
+  // migration 078 renomeou o item deste lado; o Informakon segue mandando
+  // "FECHAMENTOS...", e os relatórios já importados também. Remover a chave
+  // antiga faria a importação parar de reconhecer o item.
   'FECHAMENTOS PASSAGENS VERTICAIS EM SHAFTS': { detalhamento: '19.1.2' },
+  'FURACAO / PASSAGENS VIGAS E LAJES': { detalhamento: '19.1.2' },
 }
 
 /**

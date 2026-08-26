@@ -58,7 +58,7 @@ describe('detectarGradeBinaria', () => {
   })
 
   it('item convencional não tem grade', () => {
-    expect(detectarGradeBinaria('FECHAMENTOS PASSAGENS VERTICAIS EM SHAFTS', 1)).toBeNull()
+    expect(detectarGradeBinaria('FURAÇÃO / PASSAGENS VIGAS E LAJES', 1)).toBeNull()
     expect(detectarGradeBinaria('ENTRADA DE ENERGIA - INFRAESTRUTURA ( Poste ao PMT )', 1)).toBeNull()
   })
 })

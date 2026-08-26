@@ -41,7 +41,8 @@ O Informakon identifica o macro item pelo texto da coluna `Especificação`
 | GÁS | 17 |
 | SISTEMA DE PROTEÇÃO CONTRA DESCARGA ATMOSFÉRICA | 18 |
 | ADMINISTRAÇÃO OBRA | detalhamento **19.1.1** |
-| FECHAMENTOS PASSAGENS VERTICAIS EM SHAFTS | detalhamento **19.1.2** |
+| FECHAMENTOS PASSAGENS VERTICAIS EM SHAFTS | detalhamento **19.1.2** (nome do item até a migration 078; o Informakon ainda usa este texto) |
+| FURAÇÃO / PASSAGENS VIGAS E LAJES | detalhamento **19.1.2** (nome atual deste lado) |
 
 Sem NF no Informakon: grupo **5** (LUMINÁRIAS) e grupo **15** (EXTINTOR E
 SINALIZAÇÃO). Os grupos 11 e demais códigos ausentes não existem no contrato.

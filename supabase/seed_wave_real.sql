@@ -445,7 +445,7 @@ INSERT INTO detalhamentos (id, tarefa_id, codigo, descricao, unidade, quantidade
   ('998c639f-237a-5c3b-9b67-a0f3c5871fe2', '141e3325-4189-5a52-8232-efac10938eed', '18.1.13', 'ANEL COBERTA - SPDA -  HELIPONTO', 'VB', 1.0, 33862.914, 332),
   ('20cbf9b9-4a2e-5fb8-9e38-e56552e03b44', '141e3325-4189-5a52-8232-efac10938eed', '18.1.14', 'SUBIDAS VERTICAIS ( DIVIDIDA POR VÃOS )', 'VB', 48.0, 1119.4565, 333),
   ('bc10005b-ccae-5a0b-9028-1fb1860a1f1f', '2f830ba5-d731-558a-bfe2-17d4dbccfacb', '19.1.1', 'ADMINISTRAÇÃO OBRA ( MÊS )', 'VB', 17.0, 38000.0, 334),
-  ('7691f277-5ae0-56cc-bd4d-c4607666a4f0', '2f830ba5-d731-558a-bfe2-17d4dbccfacb', '19.1.2', 'FECHAMENTOS PASSAGENS VERTICAIS EM SHAFTS', 'VB', 1.0, 220000.0, 335);
+  ('7691f277-5ae0-56cc-bd4d-c4607666a4f0', '2f830ba5-d731-558a-bfe2-17d4dbccfacb', '19.1.2', 'FURAÇÃO / PASSAGENS VIGAS E LAJES', 'VB', 1.0, 220000.0, 335);
 
 COMMIT;
 
