@@ -404,6 +404,12 @@ const MAPEAMENTO: MapEntry[] = [
 
   // === Grupo 19 — Serviços complementares ===
   { codigoApp: '19.1.1', descricao: 'ADMINISTRAÇÃO OBRA ( MÊS )',                                                                          codigoInformakon: '1382/333' },
+  { codigoApp: '19.1.2', descricao: 'FURAÇÃO / PASSAGENS VIGAS E LAJES',                                                                   codigoInformakon: '1382/334' },
+
+  // Alias histórico: 19.1.2 se chamava "FECHAMENTOS PASSAGENS VERTICAIS EM
+  // SHAFTS" até a migration 078. O lookup é por fingerprint da descrição, então
+  // sem esta linha qualquer base ainda não migrada — ou um export antigo —
+  // deixaria de resolver o 1382/334 e o item sumiria da conciliação.
   { codigoApp: '19.1.2', descricao: 'FECHAMENTOS PASSAGENS VERTICAIS EM SHAFTS',                                                           codigoInformakon: '1382/334' },
 ]
 

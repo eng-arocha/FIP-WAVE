@@ -4097,7 +4097,7 @@ const DETALHAMENTOS = [
     "id": "7691f277-5ae0-56cc-bd4d-c4607666a4f0",
     "tarefa_id": "2f830ba5-d731-558a-bfe2-17d4dbccfacb",
     "codigo": "19.1.2",
-    "descricao": "FECHAMENTOS PASSAGENS VERTICAIS EM SHAFTS",
+    "descricao": "FURAÇÃO / PASSAGENS VIGAS E LAJES",
     "unidade": "VB",
     "quantidade_contratada": 1.0,
     "valor_unitario": 220000.0,

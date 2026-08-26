@@ -68,7 +68,10 @@ describe('resolverDePara', () => {
 
   it('mapeia os dois itens do grupo 19 para detalhamento, não para grupo', () => {
     expect(resolverDePara('ADMINISTRACAO OBRA')).toEqual({ detalhamento: '19.1.1' })
+    // 19.1.2 foi renomeado na migration 078, mas o Informakon segue mandando o
+    // texto antigo — as duas grafias precisam resolver o mesmo detalhamento.
     expect(resolverDePara('FECHAMENTOS PASSAGENS VERTICAIS EM SHAFTS')).toEqual({ detalhamento: '19.1.2' })
+    expect(resolverDePara('FURACAO / PASSAGENS VIGAS E LAJES')).toEqual({ detalhamento: '19.1.2' })
   })
 
   it('devolve vazio para macro item desconhecido em vez de chutar', () => {
