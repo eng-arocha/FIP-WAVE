@@ -24,7 +24,7 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import { exportCsv } from '@/lib/utils/csv'
 import {
   ArrowLeft, Loader2, Download, Copy, Check, FileText, TrendingUp, Printer, HelpCircle, X,
-  CheckCircle2, XCircle, Mail, AlertTriangle, Info, Undo2, Pencil,
+  CheckCircle2, XCircle, Mail, AlertTriangle, Info, Undo2, Pencil, ListChecks,
 } from 'lucide-react'
 
 interface Linha {
@@ -836,6 +836,18 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
             >
               <Printer className="w-3.5 h-3.5" /> Imprimir / PDF
             </button>
+            {/* O QUE FAZER. Página única e estável — o procedimento é o mesmo
+                em toda medição, então não depende de contrato nem período. */}
+            <Link href="/ajuda/conferencia-informakon" target="_blank" rel="noopener noreferrer">
+              <button
+                className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium"
+                style={{ background: 'rgba(16,185,129,0.10)', color: '#10B981', border: '1px solid rgba(16,185,129,0.40)' }}
+                title="Passo a passo da conferência contra o Informakon"
+              >
+                <ListChecks className="w-3.5 h-3.5" /> Passo a passo
+              </button>
+            </Link>
+            {/* O PORQUÊ: fórmulas e colunas. */}
             <button
               onClick={() => setShowHelp(true)}
               className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium"
