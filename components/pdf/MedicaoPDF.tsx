@@ -412,9 +412,14 @@ export function MedicaoPDF({ medicao, itens, aprovacoes, planilha, somentePeriod
                       const alt = detIdx++ % 2 === 0
                       const hasPav = d.pavimentos_pct && Object.keys(d.pavimentos_pct).length > 0
                       const gradeD = hasPav ? detectarGradeBinaria(d.descricao, d.quantidade_contratada) : null
-                      // Mostrar quantidade para multi-unidade não-PAV, e também para grade
-                      // binária (o breakdown diz só quais, não quantos)
-                      const showQtd = d.quantidade_contratada > 1 && (!hasPav || !!gradeD)
+                      // Quantidade entre parênteses em todo item multi-unidade, PAV TIPO
+                      // incluído. Antes ela era suprimida nos itens com breakdown de
+                      // pavimento — o detalhamento pavto a pavto logo abaixo bastava
+                      // enquanto cada célula era 0/25/50/75/100. Com % livre por célula
+                      // ("12º pav 83%"), a quantidade agregada voltou a ser o número mais
+                      // legível da linha: "39,6% (14,25)" diz de imediato o que 39,6%
+                      // sozinho obriga a reconstruir somando 36 pavimentos.
+                      const showQtd = d.quantidade_contratada > 1
                       const qtdUnit = d.quantidade_contratada > 0
                         ? `${d.quantidade_contratada} × ${R(d.valor_unitario_contratual)}`
                         : R(d.valor_global_item)
