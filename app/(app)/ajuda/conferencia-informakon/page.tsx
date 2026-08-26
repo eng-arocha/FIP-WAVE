@@ -108,9 +108,20 @@ export default function ConferenciaInformakonPage() {
               </span>
             </Passo>
 
-            <Passo n={4} titulo="Leia só a faixa de cima" icone={<Search className="w-4 h-4" />}>
-              Ela responde a única pergunta com ação possível:{' '}
-              <strong>quais notas nossas não estão no Informakon</strong>, com número e valor.
+            <Passo n={4} titulo="Leia as faixas de cima" icone={<Search className="w-4 h-4" />}>
+              São duas perguntas, e cada uma pede uma ação diferente:
+              <ul className="list-disc pl-5 mt-1 space-y-0.5">
+                <li>
+                  <span style={{ color: '#EF4444' }}>Vermelha</span> —{' '}
+                  <strong>notas nossas que não estão no Informakon</strong>, com pedido, número e
+                  valor (<code>FIP-1085 · NF 546</code>). Resolve-se lançando lá.
+                </li>
+                <li>
+                  <span style={{ color: '#F59E0B' }}>Âmbar</span> —{' '}
+                  <strong>notas que estão no Informakon e não existem no site</strong>. Resolve-se
+                  cadastrando o pedido aqui, ou confirmando que a nota é de outra obra.
+                </li>
+              </ul>
               <span className="block mt-1" style={{ color: 'var(--text-3)' }}>
                 A tabela por macro item, abaixo, é detalhe — ver o porquê no fim desta página.
               </span>
@@ -227,6 +238,22 @@ export default function ConferenciaInformakonPage() {
             macro itens lá, uma delas em sete. Nós rateamos pelos <strong>nossos detalhamentos</strong>.
             Creditar um grupo tira saldo de outro, e o total não anda. Por isso o veredito ficou na
             faixa de cima, que compara nota a nota e ignora macro item.
+          </p>
+
+          <p className="text-[13px] font-semibold mt-3" style={{ color: 'var(--text-1)' }}>
+            E se o Informakon tiver nota que o site não tem?
+          </p>
+          <p className="text-[13px] leading-relaxed mt-0.5" style={{ color: 'var(--text-2)' }}>
+            <strong>Esse é o erro mais caro dos dois</strong>, e por um motivo desagradável: nenhum
+            outro número do boletim o denuncia. Se o pedido de fat-direto não foi cadastrado aqui,
+            <code> NF Terceiro</code> fica baixo, <code>NF Desc.</code> fica baixo, e todas as contas
+            fecham entre si — só que todas para menos. O boletim manda descontar menos do que deveria
+            e a Wave recebe material sem abatimento.
+          </p>
+          <p className="text-[13px] leading-relaxed mt-1" style={{ color: 'var(--text-2)' }}>
+            O outro erro, o de nota não lançada no ERP, pelo menos grita. Este só aparece porque o
+            retrato traz o número da nota. Por isso a faixa âmbar não some sozinha: confira uma a
+            uma e ou cadastre o pedido, ou confirme que a nota é de outra obra.
           </p>
 
           <p className="text-[13px] font-semibold mt-3" style={{ color: 'var(--text-1)' }}>

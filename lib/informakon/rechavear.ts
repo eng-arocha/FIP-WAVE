@@ -45,6 +45,8 @@ import { normalizarNumeroNota } from './conferir-notas'
 /** Quanto de uma nota o FIP-WAVE alocou em um macro item. */
 export interface AlocacaoNossa {
   numeroNf: string
+  /** Nº do pedido de fat-direto que trouxe a nota (ex.: 'FIP-1085'). */
+  pedido?: string | null
   /** '1'..'18' ou '19.1.x' — a mesma chave de `chaveMacroItem`. */
   chave: string
   valor: number

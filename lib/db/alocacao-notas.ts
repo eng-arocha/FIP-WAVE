@@ -26,6 +26,7 @@ export async function carregarAlocacaoDeNotas(
 ): Promise<AlocacaoNossa[]> {
   const CORPO = `
       id,
+      numero,
       itens:itens_solicitacao_fat_direto ( detalhamento_id, valor_total ),
       nfs:notas_fiscais_fat_direto!solicitacao_id ( numero_nf, valor, status )
     `
@@ -48,6 +49,7 @@ export async function carregarAlocacaoDeNotas(
   if (res.error || !res.data) return []
 
   const pedidos = res.data as unknown as Array<{
+    numero?: string | null
     itens?: Array<{ detalhamento_id: string | null; valor_total: number | null }> | null
     nfs?: Array<{ numero_nf: string | null; valor: number | null; status: string | null }> | null
   }>
@@ -86,8 +88,39 @@ export async function carregarAlocacaoDeNotas(
         const chave = chaveMacroItem(codigoPorDet.get(it.detalhamento_id as string))
         if (!chave) continue
         const parte = valorNf * ((Number(it.valor_total) || 0) / base)
-        if (parte > 0) out.push({ numeroNf, chave, valor: parte })
+        if (parte > 0) out.push({ numeroNf, chave, valor: parte, pedido: p.numero ?? null })
       }
+    }
+  }
+  return out
+}
+
+/**
+ * Todos os números de nota de fat-direto que o FIP-WAVE conhece — inclusive
+ * os de pedido ainda não aprovado e os de nota cancelada.
+ *
+ * Serve para a pergunta INVERSA: o Informakon tem uma nota que nós não temos?
+ * Aqui o filtro é de propósito o mais largo possível. A pergunta não é "esta
+ * nota entra no desconto", é "esta nota existe no nosso cadastro" — e
+ * responder "não existe" para uma nota que está lá, só que num pedido em
+ * rascunho, seria um alarme falso mandando cadastrar o que já está cadastrado.
+ */
+export async function carregarNumerosDeNotasConhecidas(
+  admin: SupabaseClient,
+  contratoId: string,
+): Promise<Set<string>> {
+  const { data, error } = await admin
+    .from('solicitacoes_fat_direto')
+    .select('id, nfs:notas_fiscais_fat_direto!solicitacao_id ( numero_nf )')
+    .eq('contrato_id', contratoId)
+    .is('deletado_em', null)
+  if (error || !data) return new Set()
+
+  const out = new Set<string>()
+  for (const p of data as unknown as Array<{ nfs?: Array<{ numero_nf: string | null }> | null }>) {
+    for (const nf of p.nfs ?? []) {
+      const numero = String(nf.numero_nf ?? '').replace(/\D/g, '').replace(/^0+/, '')
+      if (numero) out.add(numero)
     }
   }
   return out

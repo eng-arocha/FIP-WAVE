@@ -9,7 +9,7 @@ import { isSchemaMissingError } from '@/lib/db/resilient'
 import { parseSaldoColado } from '@/lib/informakon/saldo-colado'
 import { rechavearRetrato } from '@/lib/informakon/rechavear'
 import { normalizarNumeroNota } from '@/lib/informakon/conferir-notas'
-import { carregarAlocacaoDeNotas } from '@/lib/db/alocacao-notas'
+import { carregarAlocacaoDeNotas, carregarNumerosDeNotasConhecidas } from '@/lib/db/alocacao-notas'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -302,7 +302,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     let realocadas: Array<{ numero: string; documento: string; deChave: string; paraChaves: string[]; valor: number }> = []
 
     /** Notas que temos e que não existem em lugar nenhum do retrato. */
-    let notasAusentes: Array<{ numero: string; valor: number }> = []
+    let notasAusentes: Array<{ numero: string; pedido: string | null; valor: number }> = []
+    /** O inverso: notas do retrato que o nosso cadastro não conhece. */
+    let notasSoNoErp: Array<{ numero: string; documento: string; macroItem: string; valor: number }> = []
 
     if (notasSaida.length > 0) {
       const alocacao = await carregarAlocacaoDeNotas(admin, contratoId)
@@ -314,15 +316,44 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       const noRetrato = new Set(
         notasSaida.map(n => normalizarNumeroNota(n.numeroNf ?? n.documento)).filter(Boolean),
       )
-      const nossoPorNumero = new Map<string, number>()
+      const nossoPorNumero = new Map<string, { valor: number; pedido: string | null }>()
       for (const a of alocacao) {
         const numero = normalizarNumeroNota(a.numeroNf)
         if (!numero) continue
-        nossoPorNumero.set(numero, (nossoPorNumero.get(numero) || 0) + (Number(a.valor) || 0))
+        const atual = nossoPorNumero.get(numero)
+        if (atual) {
+          atual.valor += Number(a.valor) || 0
+          if (!atual.pedido && a.pedido) atual.pedido = a.pedido
+        } else {
+          nossoPorNumero.set(numero, { valor: Number(a.valor) || 0, pedido: a.pedido ?? null })
+        }
       }
       notasAusentes = [...nossoPorNumero.entries()]
         .filter(([numero]) => !noRetrato.has(numero))
-        .map(([numero, valor]) => ({ numero, valor: Math.round(valor * 100) / 100 }))
+        .map(([numero, v]) => ({ numero, pedido: v.pedido, valor: Math.round(v.valor * 100) / 100 }))
+        .filter(n => n.valor > 0.01)
+        .sort((a, b) => b.valor - a.valor)
+
+      // ── O INVERSO ───────────────────────────────────────────────────
+      //
+      // Nota que o Informakon tem e o nosso cadastro não conhece. Se for
+      // material desta obra, o nosso `NF Terceiro` está subestimado — o
+      // boletim manda descontar MENOS do que deveria e a Wave recebe
+      // material sem abatimento. É o espelho do outro erro, e o mais caro
+      // dos dois, porque nada no boletim denuncia: os números fecham entre
+      // si, só estão todos baixos.
+      const conhecidas = await carregarNumerosDeNotasConhecidas(admin, contratoId)
+      const agregado = new Map<string, { documento: string; macroItem: string; valor: number }>()
+      for (const n of notasSaida) {
+        const numero = normalizarNumeroNota(n.numeroNf ?? n.documento)
+        if (!numero || conhecidas.has(numero)) continue
+        const valor = (Number(n.valorADescontar) || 0) + (Number(n.valorDescontado) || 0)
+        const atual = agregado.get(numero)
+        if (atual) atual.valor += valor
+        else agregado.set(numero, { documento: n.documento, macroItem: n.macroItem, valor })
+      }
+      notasSoNoErp = [...agregado.entries()]
+        .map(([numero, v]) => ({ ...v, numero, valor: Math.round(v.valor * 100) / 100 }))
         .filter(n => n.valor > 0.01)
         .sort((a, b) => b.valor - a.valor)
       const rech = rechavearRetrato(notasSaida, alocacao)
@@ -369,6 +400,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       notas_ausentes: notasAusentes.slice(0, 50),
       total_ausente: Math.round(notasAusentes.reduce((s, n) => s + n.valor, 0) * 100) / 100,
       qtd_ausentes: notasAusentes.length,
+      /**
+       * O inverso: o ERP tem e o nosso cadastro não. Se for material desta
+       * obra, o boletim está mandando descontar MENOS do que deveria.
+       */
+      notas_so_no_erp: notasSoNoErp.slice(0, 50),
+      total_so_no_erp: Math.round(notasSoNoErp.reduce((s, n) => s + n.valor, 0) * 100) / 100,
+      qtd_so_no_erp: notasSoNoErp.length,
     })
   } catch (e: any) {
     return apiError(e)
