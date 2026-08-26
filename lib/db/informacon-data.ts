@@ -1016,10 +1016,15 @@ export async function calcularInformaconData(
       const nfTransbordo   = c?.nfTransbordo ?? 0
       const nfRecuperacao  = c?.nfRecuperacao ?? 0
       const gapMaterial    = c?.gapMaterial ?? 0
-      const faturamentoDiretoEmAberto = Math.min(
-        gapMaterial,
-        saldoAprovadoPorDet.get(det.id) ?? saldoAprovDisponivel,
-      )
+      // "Retido" = parte do Gap que tem pedido aprovado esperando a nota. Se o
+      // aprovador confirmou que NÃO vem mais nota, não há o que esperar: o Gap
+      // inteiro vira "FIP Fat-Dir". Ver o bloco da confirmação logo abaixo.
+      const faturamentoDiretoEmAberto = Boolean(it.confirmacao_sem_nf)
+        ? 0
+        : Math.min(
+            gapMaterial,
+            saldoAprovadoPorDet.get(det.id) ?? saldoAprovDisponivel,
+          )
       const fipFaturar     = Math.max(0, gapMaterial - faturamentoDiretoEmAberto)
 
       const valorGlobalItem = qtdContr * valorUnit
@@ -1027,12 +1032,27 @@ export async function calcularInformaconData(
 
       const pctServMed = qtdContr > 0 ? (qtdMed / qtdContr) * 100 : 0
 
+      // ── Confirmação "sem mais NF" — RECLASSIFICA, não reduz o serviço ──
+      //
+      // Antes esta confirmação abatia o Retido do PERCENTUAL DE SERVIÇO. Isso
+      // fazia sentido enquanto o boletim mandava lançar o % espelho, que
+      // liberava o material inteiro: reduzir o serviço era o único jeito de
+      // não pagar material sem nota.
+      //
+      // Com a coluna "% a lançar", a correção do material passou a viver
+      // inteira do lado do material — ela já exclui o Gap todo, Retido
+      // incluído. Manter o abatimento no serviço descontaria o MESMO Retido
+      // duas vezes: uma no serviço, outra no material.
+      //
+      // Então o serviço volta a pagar sempre o % medido integral, e a
+      // confirmação passa a fazer o que o nome dela diz: se nenhuma nota vai
+      // chegar, aquele material não está "aguardando nota" — é da FIP
+      // faturar. O Gap não muda de tamanho, só de lado. Decisão do usuário
+      // (opção "a"), 26/08/2026.
       const confirmacaoSemNf = Boolean(it.confirmacao_sem_nf)
-      const ajusteAplicado = confirmacaoSemNf && faturamentoDiretoEmAberto > 0
+      const ajusteAplicado = confirmacaoSemNf && gapMaterial > 0
 
-      const pctServMedAjustado = ajusteAplicado && valorServicoTotalItem > 0
-        ? Math.max(0, pctServMed - (faturamentoDiretoEmAberto / valorServicoTotalItem) * 100)
-        : pctServMed
+      const pctServMedAjustado = pctServMed
 
       const waveServico = (pctServMedAjustado / 100) * valorServicoTotalItem
       const valorTotalMedido = (pctServMedAjustado / 100) * valorServicoTotalItem

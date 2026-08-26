@@ -1141,7 +1141,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                           background: 'rgba(16,185,129,0.06)',
                           color: l.alterado_por_retido ? '#DC2626' : undefined,
                         }}
-                        title={l.alterado_por_retido ? `Valor alterado por retido (R$ ${l.faturamento_direto_em_aberto.toFixed(2).replace('.', ',')}). Original sem retido seria maior.` : undefined}
+                        title={l.alterado_por_retido ? `Confirmado "sem mais NF": o Gap de R$ ${l.gap_material.toFixed(2).replace('.', ',')} deixou de aguardar nota e passou inteiro para FIP Fat-Dir. O serviço segue pago pelo % medido integral.` : undefined}
                       >
                         {pctFmt(l.pct_informakon, 4)}
                       </td>
@@ -1262,7 +1262,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                           background: 'rgba(16,185,129,0.06)',
                           color: l.alterado_por_retido ? '#DC2626' : '#10B981',
                         }}
-                        title={l.alterado_por_retido ? `Valor alterado por retido (R$ ${l.faturamento_direto_em_aberto.toFixed(2).replace('.', ',')}). Sem retido seria R$ ${(l.dados_informakon + l.faturamento_direto_em_aberto).toFixed(2).replace('.', ',')}.` : undefined}
+                        title={l.alterado_por_retido ? `Confirmado "sem mais NF": o Gap de R$ ${l.gap_material.toFixed(2).replace('.', ',')} está inteiro em FIP Fat-Dir. Este espelho mostra o executado — quem exclui o Gap do pagamento é a coluna "% a lançar".` : undefined}
                       >
                         {formatCurrency(l.dados_informakon)}
                       </td>
@@ -1952,7 +1952,15 @@ function HelpModal({ onClose, pctRetencao }: { onClose: () => void; pctRetencao:
               </li>
               <li><strong>FIP Fat-Dir</strong> = Gap − Retido. Solicitação de fat-direto criada automaticamente em nome da FIP (status: aprovado). <em>Ainda assim NÃO entra no Dados Informakon</em> — a NF ainda não foi emitida.</li>
               <li><strong>Wave (Serv.)</strong> = qtd × <code>valor_servico_unit</code>. NF da Wave a emitir.</li>
-              <li><strong>% Serv. Med.</strong> = qtd medida ÷ qtd contratada × 100 (físico). Quando o aprovador marca &quot;sem mais NF&quot;, este % é reduzido para coincidir com o % Informakon — protegendo a retenção.</li>
+              <li>
+                <strong>% Serv. Med.</strong> = qtd medida ÷ qtd contratada × 100 (físico).
+                <strong> Sempre integral</strong> — o serviço executado é pago por inteiro.
+                A confirmação &quot;sem mais NF&quot; não mexe mais aqui: ela apenas reclassifica
+                o Gap de <em>Retido</em> para <em>FIP Fat-Dir</em> (se nenhuma nota vem, não há o
+                que aguardar). Quem impede o pagamento do material sem nota é a coluna
+                <strong> % a lançar</strong>, e ela sozinha — descontar também do serviço tiraria
+                o mesmo valor duas vezes.
+              </li>
               <li><strong>Valor Total Medido</strong> = Mat. Medido + Serv. Medido (físico, sem ajuste).</li>
               <li>
                 <strong>Dados Informakon</strong> = Wave + <em>Mat. Medido</em> (o material inteiro,
