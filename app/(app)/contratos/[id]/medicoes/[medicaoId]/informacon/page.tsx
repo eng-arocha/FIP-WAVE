@@ -70,6 +70,12 @@ interface Linha {
   dados_informakon: number
   total_informakon: number
   pct_informakon: number
+  /** Valor que o Informakon deve liberar = serviço medido + material com nota. */
+  informakon_a_lancar?: number
+  /** O percentual que se DIGITA no Informakon. */
+  pct_informakon_a_lancar?: number
+  /** dados_informakon − informakon_a_lancar. Positivo = Gap segurado. */
+  correcao_informakon?: number
   alterado_por_retido?: boolean
   base_retencao: number
   retencao: number
@@ -118,6 +124,8 @@ interface Resp {
     valor_total_medido: number
     dados_informakon: number
     total_informakon: number
+    informakon_a_lancar?: number
+    correcao_informakon?: number
     base_retencao: number
     retencao: number
     material_acumulado: number
@@ -229,15 +237,16 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
   function copiarParaClipboard() {
     if (!data) return
     const headers = [
-      'Código', 'Item Informakon', 'Descrição', '% Informakon',
+      'Código', 'Item Informakon', 'Descrição', '% Informakon (espelho)', '% a lançar',
       'Mat. Medido', 'NF Terceiro', 'Saldo Aprov.', 'NF Desc.', 'NF Desc. da tarefa', 'Gap', 'Retido', 'FIP Fat-Dir',
-      'Wave (Serv.)', '% Serv. Med.', 'Valor Total Medido', 'Dados Informakon', 'Retenção',
+      'Wave (Serv.)', '% Serv. Med.', 'Valor Total Medido', 'Dados Informakon', 'A lançar (R$)', 'Correção', 'Retenção',
     ]
     const rows = linhasExibidas.map(l => [
       l.codigo,
       l.codigo_informakon ?? '',
       l.descricao,
       pctFmt(l.pct_informakon, 4),
+      pctFmt(Number(l.pct_informakon_a_lancar ?? l.pct_informakon), 4),
       l.material_medido.toFixed(2).replace('.', ','),
       l.nf_terceiro.toFixed(2).replace('.', ','),
       l.saldo_aprovado.toFixed(2).replace('.', ','),
@@ -250,6 +259,8 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
       pctFmt(pctServMedExibido(l)),
       l.valor_total_medido.toFixed(2).replace('.', ','),
       l.dados_informakon.toFixed(2).replace('.', ','),
+      Number(l.informakon_a_lancar ?? l.dados_informakon).toFixed(2).replace('.', ','),
+      Number(l.correcao_informakon || 0).toFixed(2).replace('.', ','),
       l.retencao.toFixed(2).replace('.', ','),
     ])
     const tsv = [headers, ...rows].map(r => r.join('\t')).join('\n')
@@ -755,7 +766,9 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   { header: 'Código', get: (l: any) => l.codigo },
                   { header: 'Item Informakon', get: (l: any) => l.codigo_informakon ?? '' },
                   { header: 'Descrição', get: (l: any) => l.descricao },
-                  { header: '% Informakon', get: (l: any) => Number(l.pct_informakon) },
+                  { header: '% Informakon (espelho)', get: (l: any) => Number(l.pct_informakon) },
+                  { header: '% a lançar', get: (l: any) => Number(l.pct_informakon_a_lancar ?? l.pct_informakon) },
+                  { header: 'Correção (não pagar)', get: (l: any) => Number(l.correcao_informakon || 0) },
                   { header: 'Mat. Medido', get: (l: any) => Number(l.material_medido) },
                   { header: 'NF Terceiro', get: (l: any) => Number(l.nf_terceiro) },
                   { header: 'Saldo Aprov.', get: (l: any) => Number(l.saldo_aprovado) },
@@ -1016,7 +1029,8 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   <th style={th()}>Item</th>
                   <th style={{ ...th(), background: 'rgba(16,185,129,0.05)' }}>Item Informakon</th>
                   <th style={{ ...th(), textAlign: 'left' }}>Descrição</th>
-                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(16,185,129,0.05)' }}>% Informakon</th>
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(16,185,129,0.05)' }} title="Espelho do relatório: (serviço medido + material medido) ÷ valor global. NÃO é o número que se lança — ele inclui o Gap.">% Informakon <span style={{ opacity: 0.55, fontWeight: 400 }}>espelho</span></th>
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.10)', color: '#3B82F6' }} title="É ESTE que se digita no Informakon. Libera exatamente o serviço medido + o material que já virou nota — sem pagar Retido nem FIP Fat-Dir.">% a lançar</th>
                   <th style={{ ...th(), textAlign: 'right' }}>Mat. Medido</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }} title="Clique no valor de qualquer linha para ver as notas fiscais alocadas ao item.">NF Terceiro <span style={{ opacity: 0.55, fontWeight: 400 }}>⧉</span></th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }} title="Clique no valor de qualquer linha para ver os pedidos aprovados que ainda aguardam nota.">Saldo Aprov. <span style={{ opacity: 0.55, fontWeight: 400 }}>⧉</span></th>
@@ -1045,7 +1059,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
               <tbody>
                 {linhasExibidas.length === 0 ? (
                   <tr>
-                    <td colSpan={16} style={{ padding: 36, textAlign: 'center', color: 'var(--text-3)' }}>
+                    <td colSpan={17} style={{ padding: 36, textAlign: 'center', color: 'var(--text-3)' }}>
                       <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
                       Nenhum item com quantidade medida nesta medição.
                       {!mostrarTodos && (
@@ -1131,6 +1145,36 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                       >
                         {pctFmt(l.pct_informakon, 4)}
                       </td>
+                      {/* O número que se DIGITA. Difere do espelho pelo Gap:
+                          lançar o espelho faz o Informakon liberar material
+                          sem nota e pagar Retido + FIP Fat-Dir à Wave. */}
+                      {(() => {
+                        const pctLancar = Number(l.pct_informakon_a_lancar ?? l.pct_informakon)
+                        const correcao = Number(l.correcao_informakon || 0)
+                        const temCorrecao = Math.abs(correcao) >= 0.01
+                        return (
+                          <td
+                            style={{
+                              ...td('tabular-nums font-semibold'),
+                              textAlign: 'right',
+                              background: 'rgba(59,130,246,0.08)',
+                              color: '#3B82F6',
+                            }}
+                            title={temCorrecao
+                              ? (correcao > 0
+                                  ? `Corrigido em −${formatCurrency(correcao)} para não pagar material sem nota (Retido ${formatCurrency(l.faturamento_direto_em_aberto)} + FIP Fat-Dir ${formatCurrency(l.fip_faturar)}). Lançar o espelho (${pctFmt(l.pct_informakon, 4)}) pagaria esse valor à Wave.`
+                                  : `Corrigido em +${formatCurrency(Math.abs(correcao))}: há nota de medições anteriores voltando pela régua acumulada. Sem esse acréscimo o desconto do Informakon deixaria a Wave no negativo.`)
+                              : 'Sem correção: todo o material medido já tem nota lançada.'}
+                          >
+                            {pctFmt(pctLancar, 4)}
+                            {temCorrecao && (
+                              <span style={{ display: 'block', fontSize: 9, fontWeight: 400, opacity: 0.8 }}>
+                                {correcao > 0 ? '−' : '+'}{formatCurrency(Math.abs(correcao))}
+                              </span>
+                            )}
+                          </td>
+                        )
+                      })()}
                       <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(l.material_medido)}</td>
                       <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)', padding: 0 }}>
                         {/* Notas alocadas a ESTE item — aqui a soma bate com a célula. */}
@@ -1232,6 +1276,10 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   <tr style={{ background: 'var(--surface-3)', fontWeight: 700, borderTop: '2px solid var(--border)' }}>
                     <td colSpan={3} style={{ ...td(), textAlign: 'right' }}>TOTAIS</td>
                     <td style={{ ...td(), background: 'rgba(16,185,129,0.10)' }}></td>
+                    {/* Total a liberar no Informakon = serviço medido + material com nota. */}
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(59,130,246,0.10)', color: '#3B82F6' }}>
+                      {formatCurrency(linhasExibidas.reduce((s, l) => s + Number(l.informakon_a_lancar ?? l.dados_informakon), 0))}
+                    </td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.material_medido, 0))}</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.nf_terceiro, 0))}</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.saldo_aprovado, 0))}</td>
@@ -1906,8 +1954,33 @@ function HelpModal({ onClose, pctRetencao }: { onClose: () => void; pctRetencao:
               <li><strong>Wave (Serv.)</strong> = qtd × <code>valor_servico_unit</code>. NF da Wave a emitir.</li>
               <li><strong>% Serv. Med.</strong> = qtd medida ÷ qtd contratada × 100 (físico). Quando o aprovador marca &quot;sem mais NF&quot;, este % é reduzido para coincidir com o % Informakon — protegendo a retenção.</li>
               <li><strong>Valor Total Medido</strong> = Mat. Medido + Serv. Medido (físico, sem ajuste).</li>
-              <li><strong>Dados Informakon</strong> = Wave + NF Desc. <em>FIP Fat-Dir NÃO entra</em> (NF ainda não existe; só desconta o que já foi efetivamente lançado).</li>
-              <li><strong>% Informakon</strong> = Dados Informakon ÷ valor global do item × 100. <strong>Use este pra lançar</strong>, não o % físico.</li>
+              <li>
+                <strong>Dados Informakon</strong> = Wave + <em>Mat. Medido</em> (o material inteiro,
+                não só o que virou nota). É o <strong>espelho</strong> do relatório: o Informakon
+                registra o que foi executado. Serve pra conciliar, <strong>não pra lançar</strong>.
+              </li>
+              <li>
+                <strong>% Informakon (espelho)</strong> = Dados Informakon ÷ valor global × 100.
+                Mesma coisa em percentual — também não é o número que se digita.
+              </li>
+              <li>
+                <strong>% a lançar</strong> = (Wave + <strong>NF Desc.</strong>) ÷ valor global × 100.
+                <strong> É ESTE que vai no Informakon.</strong>
+                <br />
+                <span style={{ color: 'var(--text-3)' }}>
+                  Por quê: ao receber um percentual, o Informakon <em>libera</em>{' '}
+                  <code>% × valor global</code> e depois desconta só as notas de material lançadas
+                  lá — ele não conhece nosso saldo de pedido aprovado. Então lançar o % físico num
+                  item 100% medido faz ele liberar o material inteiro e descontar só o que virou
+                  nota, <strong>pagando à Wave o Gap</strong> (Retido + FIP Fat-Dir): material sem
+                  nota de terceiro, cujo dinheiro não é dela e que seria pago de novo quando a nota
+                  chegasse. Isolando o percentual que entrega exatamente o serviço medido:{' '}
+                  <code>% × global − NF Desc. = Wave</code> ⇒{' '}
+                  <code>% = (Wave + NF Desc.) ÷ global</code>. O serviço continua pago pelo{' '}
+                  <strong>% Serv. Med. integral</strong> — a correção sai toda do lado do material.
+                  A diferença entre as duas colunas aparece embaixo do número, e é exatamente o Gap.
+                </span>
+              </li>
               <li><strong>Retenção</strong> = % medido × valor global do item × {pctFmt(pctRetencao)} (= Valor Total Medido × {pctFmt(pctRetencao)}). É abatida da NF da Wave (serviço).</li>
             </ul>
           </section>

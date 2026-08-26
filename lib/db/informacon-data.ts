@@ -120,6 +120,19 @@ export interface InformaconLinha {
   dados_informakon: number
   total_informakon: number
   pct_informakon: number
+  /**
+   * Valor que o Informakon deve LIBERAR para este item = serviço medido +
+   * material que já virou nota. Difere de `dados_informakon` (o espelho do
+   * executado) exatamente pelo Gap. Ver o cálculo em `calcularInformaconData`.
+   */
+  informakon_a_lancar?: number
+  /** `informakon_a_lancar` ÷ valor global × 100 — o número que se digita. */
+  pct_informakon_a_lancar?: number
+  /**
+   * `dados_informakon − informakon_a_lancar`. Positivo = Gap segurado
+   * (Retido + FIP Fat-Dir). Negativo = nota antiga sendo recuperada.
+   */
+  correcao_informakon?: number
   alterado_por_retido: boolean
   base_retencao: number
   retencao: number
@@ -152,6 +165,10 @@ export interface InformaconTotais {
   valor_total_medido: number
   dados_informakon: number
   total_informakon: number
+  /** Soma de `informakon_a_lancar` das linhas — o total a liberar. */
+  informakon_a_lancar: number
+  /** Soma de `correcao_informakon` — o Gap total segurado nesta medição. */
+  correcao_informakon: number
   base_retencao: number
   retencao: number
   material_acumulado: number
@@ -1035,6 +1052,42 @@ export async function calcularInformaconData(
       // era zero nesta obra.
       const dadosInformakon = waveServico + matMedido
       const pctInformakon = valorGlobalItem > 0 ? (dadosInformakon / valorGlobalItem) * 100 : 0
+
+      // ── % A LANÇAR — corrigido para não pagar o Gap ────────────────────
+      //
+      // `dadosInformakon` acima é o ESPELHO: o que o relatório do Informakon
+      // mostra como executado. Não serve para lançar, e é aí que estava o
+      // vazamento de dinheiro.
+      //
+      // Mecânica do Informakon (confirmada pelo usuário): ao receber um
+      // percentual ele LIBERA `% × valor global do item` e depois desconta as
+      // notas de material lançadas LÁ — nada mais. Ele não conhece nosso
+      // "saldo de pedido aprovado".
+      //
+      //     Wave recebe = % × valor global − NF lançada no Informakon
+      //
+      // Lançar o % físico (100% quando o item está 100% medido) faz o
+      // Informakon liberar o material INTEIRO e descontar só o que virou nota
+      // — ou seja, paga à Wave o Gap (Retido + FIP Fat-Dir): material que
+      // ainda não tem nota de terceiro e cujo dinheiro não é dela.
+      //
+      // Isolando o % que entrega exatamente o serviço medido:
+      //
+      //     % × global − nfDescontavel = waveServico
+      //     % = (waveServico + nfDescontavel) / global × 100
+      //
+      // O serviço continua pago pelo % medido integral — a correção sai toda
+      // do lado do material, que é onde o problema está.
+      const informakonALancar = waveServico + nfDescontavel
+      const pctInformakonALancar = valorGlobalItem > 0
+        ? (informakonALancar / valorGlobalItem) * 100
+        : 0
+      // Quanto o espelho tem a mais (ou a menos) que o valor a liberar.
+      // Positivo = Gap segurado (Retido + FIP Fat-Dir), que é o caso comum.
+      // Negativo = nota de meses anteriores voltando pela régua acumulada:
+      // aí é preciso liberar MAIS que o executado no período, senão o
+      // desconto do Informakon deixaria a Wave no negativo.
+      const correcaoInformakon = dadosInformakon - informakonALancar
       // O valor do item só é "alterado por retido" quando a confirmação sem NF
       // efetivamente reduziu o percentual de serviço.
       const alteradoPorRetido = ajusteAplicado
@@ -1082,6 +1135,9 @@ export async function calcularInformaconData(
         dados_informakon: dadosInformakon,
         total_informakon: dadosInformakon,
         pct_informakon: pctInformakon,
+        informakon_a_lancar: informakonALancar,
+        pct_informakon_a_lancar: pctInformakonALancar,
+        correcao_informakon: correcaoInformakon,
         alterado_por_retido: alteradoPorRetido,
         base_retencao: baseRet,
         retencao: retencao5pct,
@@ -1185,6 +1241,8 @@ export async function calcularInformaconData(
     valor_total_medido: acc.valor_total_medido + l.valor_total_medido,
     dados_informakon: acc.dados_informakon + l.dados_informakon,
     total_informakon: acc.total_informakon + l.total_informakon,
+    informakon_a_lancar: acc.informakon_a_lancar + Number(l.informakon_a_lancar || 0),
+    correcao_informakon: acc.correcao_informakon + Number(l.correcao_informakon || 0),
     base_retencao:   acc.base_retencao   + l.base_retencao,
     retencao:        acc.retencao        + l.retencao,
     material_acumulado: acc.material_acumulado + l.material_acumulado,
@@ -1200,6 +1258,7 @@ export async function calcularInformaconData(
     nf_recuperacao_anterior: 0, gap_material: 0,
     faturamento_direto_em_aberto: 0, fip_faturar: 0, wave_servico: 0,
     valor_total_medido: 0, dados_informakon: 0, total_informakon: 0,
+    informakon_a_lancar: 0, correcao_informakon: 0,
     base_retencao: 0, retencao: 0,
     material_acumulado: 0, servico_acumulado: 0,
     ajuste_material_anterior: Number((medicao as any).ajuste_material_anterior || 0),
