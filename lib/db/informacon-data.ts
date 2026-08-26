@@ -72,11 +72,16 @@ export interface InformaconLinha {
    */
   medicao_item_id: string | null
   /**
-   * Tarefa dona do detalhamento. É o BALDE em que o desconto de NF é apurado
-   * (ver lib/db/desconto-transbordo.ts): sem ele a UI não consegue mostrar
-   * quais notas alimentam o `nf_descontavel` desta linha.
+   * Tarefa dona do detalhamento. Balde alternativo, usado nos grupos fixados
+   * em `nivel_apuracao_nf = 'tarefa'`.
    */
   tarefa_id?: string | null
+  /**
+   * Grupo macro dono do detalhamento — o BALDE padrão em que o desconto e o
+   * saldo aprovado são apurados. Sem ele a UI não consegue mostrar quais
+   * pedidos originaram o "Nota a caminho" desta linha.
+   */
+  grupo_id?: string | null
   /** True quando há row em medicao_itens; false quando é detalhamento puro. */
   existe_no_banco: boolean
   detalhamento_id: string
@@ -429,6 +434,10 @@ export async function calcularBoletimSimulado(
       grupoId: grupoPorDet[detId] ?? null,
       matMedido: medidoPorDet.get(detId) ?? 0,
       matAcumulado: (matAcumAprovadoPorDet[detId] || 0) + (medidoPorDet.get(detId) ?? 0),
+      matContratado: (() => {
+        const d = detMap.get(detId)
+        return d ? Number(d.quantidade_contratada || 0) * Number(d.valor_material_unit || 0) : undefined
+      })(),
       nfAlocada: nfAlocadaPorDet[detId] || 0,
       nfJaAbatida: nfJaAbatidaPorDet[detId] || 0,
     })),
@@ -770,6 +779,21 @@ export async function calcularInformaconData(
   const matAcumuladoDe = (detId: string) =>
     (acumulado[detId] || 0) * (matUnitPorDet[detId] || 0)
 
+  /**
+   * Material CONTRATADO do detalhamento — o teto da régua de desconto.
+   * Vem de `todosDetalhamentos` (estrutura completa do contrato); os itens
+   * medidos preenchem direto de `it.detalhamento`. Sem o dado, `undefined`
+   * faz a régua cair no teto antigo (material medido acumulado).
+   */
+  const matContratadoPorDet: Record<string, number> = {}
+  for (const d of todosDetalhamentos as any[]) {
+    if (!d?.id) continue
+    matContratadoPorDet[d.id] =
+      Number(d.quantidade_contratada || 0) * Number(d.valor_material_unit || 0)
+  }
+  const matContratadoDe = (detId: string): number | undefined =>
+    matContratadoPorDet[detId]
+
   const pctRetencao = Number(contrato?.percentual_retencao ?? 5)
 
   // Saldo corrido: o que já foi abatido nas medições aprovadas anteriores
@@ -894,6 +918,9 @@ export async function calcularInformaconData(
         grupoId: grupoPorDetalhamento[det.id] ?? null,
         matMedido,
         matAcumulado: matAcumuladoDe(det.id),
+        // Teto da régua: a nota é consumida até o espaço CONTRATUAL do item,
+        // não até a obra alcançar. Ver desconto-transbordo.ts.
+        matContratado: Number(det.quantidade_contratada || 0) * Number(det.valor_material_unit || 0),
         nfAlocada: nfAlocadaPorDet[det.id] || 0,
         nfJaAbatida: nfJaAbatidaPorDet[det.id] || 0,
       })
@@ -910,6 +937,7 @@ export async function calcularInformaconData(
         grupoId: grupoPorDetalhamento[detId] ?? null,
         matMedido: 0,
         matAcumulado: matAcumuladoDe(detId),
+        matContratado: matContratadoDe(detId),
         nfAlocada: nfAlocadaPorDet[detId] || 0,
         nfJaAbatida: nfJaAbatidaPorDet[detId] || 0,
       })
@@ -1127,6 +1155,7 @@ export async function calcularInformaconData(
         existe_no_banco: true,
         detalhamento_id: det.id,
         tarefa_id: tarefaPorDetalhamento[det.id] ?? null,
+        grupo_id: grupoPorDetalhamento[det.id] ?? null,
         codigo: det.codigo,
         codigo_informakon: getCodigoInformakon(det.descricao),
         descricao: det.descricao,
@@ -1199,6 +1228,7 @@ export async function calcularInformaconData(
       existe_no_banco: false,
       detalhamento_id: det.id,
       tarefa_id: tarefaPorDetalhamento[det.id] ?? null,
+      grupo_id: grupoPorDetalhamento[det.id] ?? null,
       codigo: det.codigo,
       codigo_informakon: getCodigoInformakon(det.descricao),
       descricao: det.descricao,

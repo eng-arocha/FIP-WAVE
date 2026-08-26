@@ -45,14 +45,20 @@ import { formatCurrency, formatDate } from '@/lib/utils'
  *  - `saldo-aprov`  "que pedidos aprovados ainda não viraram nota?" → escopo do
  *                   DETALHAMENTO, modo saldo. A soma bate com a célula quando
  *                   ela é > 0 (a célula é max(0, aprovado − nf alocada)).
+ *  - `nota-a-caminho` "de onde veio o valor retido nesta linha?" → escopo do
+ *                   GRUPO MACRO, modo saldo. É o único que abre o balde certo:
+ *                   a coluna é uma fatia do pool do grupo, rateada pelo Gap de
+ *                   cada item, então os pedidos que a originam quase nunca
+ *                   estão neste detalhamento.
  */
-export type ColunaDrilldown = 'nf-desc' | 'nf-terceiro' | 'saldo-aprov'
+export type ColunaDrilldown = 'nf-desc' | 'nf-terceiro' | 'saldo-aprov' | 'nota-a-caminho'
 
 export interface NfDescLinha {
   codigo: string
   descricao: string
   detalhamento_id: string
   tarefa_id?: string | null
+  grupo_id?: string | null
   material_medido: number
   nf_terceiro: number
   nf_descontavel: number
@@ -114,8 +120,13 @@ export function NfDescDrilldown({
   // próprio item. Sem `tarefa_id` (resposta antiga da API) o NF Desc. cai no
   // detalhamento — mais estreito, mas ainda verdadeiro sobre o próprio item.
   const escopoEhTarefa = coluna === 'nf-desc' && !!linha?.tarefa_id
-  const scope = escopoEhTarefa ? linha!.tarefa_id! : (linha?.detalhamento_id || null)
-  const modoOrigem = coluna === 'saldo-aprov' ? 'saldo' : 'realizado'
+  const escopoEhGrupo = coluna === 'nota-a-caminho' && !!linha?.grupo_id
+  const scope = escopoEhGrupo
+    ? linha!.grupo_id!
+    : escopoEhTarefa
+    ? linha!.tarefa_id!
+    : (linha?.detalhamento_id || null)
+  const modoOrigem = (coluna === 'saldo-aprov' || coluna === 'nota-a-caminho') ? 'saldo' : 'realizado'
 
   useEffect(() => {
     if (!linha || !scope) { setNotas(null); setPedidos(null); return }
@@ -150,6 +161,7 @@ export function NfDescDrilldown({
     'nf-desc':     { titulo: 'De onde vem o NF Desc.',        valor: linha.nf_descontavel },
     'nf-terceiro': { titulo: 'Notas alocadas a este item',    valor: linha.nf_terceiro },
     'saldo-aprov': { titulo: 'Pedidos aprovados sem nota',    valor: linha.saldo_aprovado },
+    'nota-a-caminho': { titulo: 'O que segura este valor',     valor: linha.faturamento_direto_em_aberto },
   }[coluna]
 
   const transbordo = Number(linha.nf_transbordo_grupo || 0)
@@ -221,7 +233,9 @@ export function NfDescDrilldown({
           {/* ── Notas / pedidos do escopo ────────────────────────────── */}
           <section>
             <h4 className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>
-              {coluna === 'saldo-aprov'
+              {coluna === 'nota-a-caminho'
+                ? 'Pedidos aprovados sem nota no grupo macro'
+                : coluna === 'saldo-aprov'
                 ? 'Pedidos aprovados com saldo neste item'
                 : `Notas no balde ${escopoEhTarefa ? 'da tarefa' : 'deste item'}`}
             </h4>
@@ -240,6 +254,14 @@ export function NfDescDrilldown({
                 mesma conta dos dois lados. A nota se liga ao <em>pedido</em>, não ao item — o valor
                 dela é rateado entre os itens do pedido na proporção do valor de cada um, e a coluna
                 &quot;Alocado aqui&quot; é a parcela que coube a este detalhamento.
+              </p>
+            ) : coluna === 'nota-a-caminho' ? (
+              <p className="text-[10px] mb-2" style={{ color: 'var(--text-3)' }}>
+                Estes são os pedidos que originaram os{' '}
+                <strong>{formatCurrency(CFG.valor)}</strong> desta linha. O saldo é apurado no
+                <strong> grupo macro inteiro</strong> e rateado entre os itens na proporção do Gap
+                de cada um — por isso o pedido quase nunca está neste detalhamento, e a soma abaixo
+                é a do grupo, não a da célula.
               </p>
             ) : (
               <p className="text-[10px] mb-2" style={{ color: 'var(--text-3)' }}>

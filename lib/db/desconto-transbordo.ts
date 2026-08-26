@@ -49,6 +49,31 @@
  * apontar "FIP a criar" onde eles dão por coberto, e a diferença aparece na
  * conciliação por grupo (lib/db/informakon-conciliacao.ts).
  *
+ * ATÉ ZERAR A NOTA (o teto da régua):
+ *
+ * O teto era o material MEDIDO acumulado: comprou R$ 200 mil de tubo, instalou
+ * R$ 50 mil, descontava R$ 50 mil e o resto ficava de saldo. A ideia era não
+ * "descontar material que ainda não foi executado".
+ *
+ * Só que o desconto NÃO move o que a Wave recebe. O `% a lançar` é
+ * `(serviço + NF Desc.) / valor global`, então o Informakon libera na mesma
+ * medida em que desconta — a Wave recebe o serviço medido, sempre, qualquer
+ * que seja o desconto. Segurar a nota não protegia ninguém: só empurrava o
+ * material para "FIP precisa emitir" e obrigava a FIP a faturar material que
+ * o fornecedor JÁ faturou, para descontar a nota do fornecedor meses depois.
+ *
+ * O teto passou a ser o material CONTRATADO (`matContratado`). A nota é
+ * consumida assim que existe espaço contratual, não quando a obra alcança.
+ * Efeitos: menos nota da FIP a emitir, e o passivo de material comprado e não
+ * reconhecido encolhe já nas primeiras medições — mais conservador para o
+ * contratante, que era o objetivo.
+ *
+ * O teto por ITEM é obrigatório e não é estético: `% a lançar` não pode passar
+ * de 100%, e como `% = (serviço + NF Desc.) / global`, o item não pode
+ * absorver mais nota do que o material que ele tem em contrato. O que não
+ * couber é redistribuído entre os itens que ainda têm espaço (water-filling);
+ * o que sobrar depois disso continua em saldo, como antes.
+ *
  * A RÉGUA ACUMULADA (por que não se apura sobre o material do período):
  *
  * Apurar mês a mês não recupera o que ficou para trás. Uma nota que deixou de
@@ -128,6 +153,14 @@ export interface ItemDesconto {
   nfAlocada: number
   /** Quanto desta alocação já foi abatido em medições aprovadas anteriores. */
   nfJaAbatida: number
+  /**
+   * Material CONTRATADO do item (qtde contratada × valor material unitário).
+   *
+   * É o novo teto da régua — ver o bloco "ATÉ ZERAR A NOTA" na doc do módulo.
+   * Quando ausente, o cálculo cai no teto antigo (material medido acumulado)
+   * e o comportamento é exatamente o de antes.
+   */
+  matContratado?: number | null
 }
 
 export interface ResultadoDesconto {
@@ -161,42 +194,96 @@ export function calcularDescontoComTransbordo(
   const norm = (v: number) => Math.max(0, Number(v) || 0)
   const chave = baldeDe
 
-  // 1) Soma alocada, abatida, material do período e material acumulado.
+  // 1) Soma por balde: alocada, abatida, material do período e o TETO.
+  //    O teto é o material contratado quando o chamador informa; sem ele,
+  //    cai no material medido acumulado (comportamento anterior).
   const grupos = new Map<string, {
-    alocada: number; abatida: number; medido: number; acumulado: number
+    alocada: number; abatida: number; medido: number; teto: number
   }>()
   for (const it of itens) {
     const k = chave(it)
-    const g = grupos.get(k) ?? { alocada: 0, abatida: 0, medido: 0, acumulado: 0 }
+    const g = grupos.get(k) ?? { alocada: 0, abatida: 0, medido: 0, teto: 0 }
     const medido = norm(it.matMedido)
+    // O teto nunca fica abaixo do que se está medindo agora: dado
+    // inconsistente não pode impedir o desconto do próprio período.
+    const tetoItem = Math.max(
+      it.matContratado != null ? norm(it.matContratado) : norm(it.matAcumulado),
+      medido,
+    )
     g.alocada += norm(it.nfAlocada)
     g.abatida += norm(it.nfJaAbatida)
     g.medido += medido
-    // O acumulado sempre contém o período. Dado inconsistente não pode fazer
-    // o teto ficar abaixo do que se está medindo agora.
-    g.acumulado += Math.max(norm(it.matAcumulado), medido)
+    g.teto += tetoItem
     grupos.set(k, g)
   }
 
-  // 2) Régua acumulada: o desconto de toda a obra na tarefa é o menor entre o
-  //    material executado e a nota lançada. O do período é o que falta abater.
+  // 2) Régua acumulada: o desconto de toda a obra no balde é o menor entre o
+  //    teto e a nota lançada. O do período é o que falta abater.
   const descontoGrupo = new Map<string, number>()
   for (const [k, g] of grupos) {
-    const acumulado = Math.min(g.acumulado, g.alocada)
-    descontoGrupo.set(k, Math.max(0, acumulado - g.abatida))
+    descontoGrupo.set(k, Math.max(0, Math.min(g.teto, g.alocada) - g.abatida))
   }
 
-  // 3) Distribui proporcionalmente ao material medido de cada item.
+  // 3) Distribui proporcionalmente ao material medido, respeitando o espaço
+  //    de cada item (water-filling). Sem o teto por item, um item poderia
+  //    receber mais nota do que o material que tem em contrato — e o
+  //    "% a lançar" dele passaria de 100%, que o Informakon não aceita.
+  const porBalde = new Map<string, ItemDesconto[]>()
+  for (const it of itens) {
+    const k = chave(it)
+    const arr = porBalde.get(k)
+    if (arr) arr.push(it)
+    else porBalde.set(k, [it])
+  }
+
+  const alocado = new Map<string, number>()
+  for (const it of itens) alocado.set(it.detalhamentoId, 0)
+
+  for (const [k, doBalde] of porBalde) {
+    let restante = descontoGrupo.get(k) ?? 0
+    if (restante <= 0) continue
+
+    // Só itens medidos no período recebem: gravar abatimento num item que não
+    // foi medido quebraria o saldo corrido da migration 074.
+    const participantes = doBalde.filter(it => norm(it.matMedido) > 0)
+    if (participantes.length === 0) continue
+
+    const espaco = new Map<string, number>()
+    for (const it of participantes) {
+      const teto = it.matContratado != null
+        ? Math.max(norm(it.matContratado), norm(it.matMedido))
+        : Number.POSITIVE_INFINITY
+      espaco.set(it.detalhamentoId, Math.max(0, teto - norm(it.nfJaAbatida)))
+    }
+
+    // Converge em poucas rodadas: cada rodada ou esgota `restante` ou satura
+    // pelo menos um item, e o número de itens por balde é pequeno.
+    for (let rodada = 0; rodada < 12 && restante > 1e-9; rodada++) {
+      const comEspaco = participantes.filter(it => (espaco.get(it.detalhamentoId) ?? 0) > 1e-9)
+      const somaPesos = comEspaco.reduce((acc, it) => acc + norm(it.matMedido), 0)
+      if (comEspaco.length === 0 || somaPesos <= 0) break
+
+      let distribuido = 0
+      for (const it of comEspaco) {
+        const quota = (norm(it.matMedido) / somaPesos) * restante
+        const cabe = Math.min(quota, espaco.get(it.detalhamentoId) ?? 0)
+        if (cabe <= 0) continue
+        alocado.set(it.detalhamentoId, (alocado.get(it.detalhamentoId) ?? 0) + cabe)
+        espaco.set(it.detalhamentoId, (espaco.get(it.detalhamentoId) ?? 0) - cabe)
+        distribuido += cabe
+      }
+      if (distribuido <= 1e-9) break
+      restante -= distribuido
+    }
+    // O que não coube continua em saldo e volta na próxima medição.
+  }
+
   for (const it of itens) {
     const matMedido = norm(it.matMedido)
-    const k = chave(it)
-    const g = grupos.get(k)!
-    const doGrupo = descontoGrupo.get(k) ?? 0
-
-    const total = g.medido > 0 ? (matMedido / g.medido) * doGrupo : 0
+    const total = alocado.get(it.detalhamentoId) ?? 0
 
     // "Direto" é o quanto a própria nota do item cobriria sozinha; o resto
-    // veio dos vizinhos da mesma tarefa. Serve só para exibição e auditoria.
+    // veio dos vizinhos do balde. Serve só para exibição e auditoria.
     const proprio = Math.max(0, norm(it.nfAlocada) - norm(it.nfJaAbatida))
     const direto = Math.min(total, proprio)
 

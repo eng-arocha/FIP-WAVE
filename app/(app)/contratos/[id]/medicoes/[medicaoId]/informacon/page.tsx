@@ -30,6 +30,8 @@ interface Linha {
   medicao_item_id: string | null
   existe_no_banco?: boolean
   detalhamento_id: string
+  tarefa_id?: string | null
+  grupo_id?: string | null
   codigo: string
   codigo_informakon: string | null
   descricao: string
@@ -203,6 +205,14 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
   const [forcarAgregado, setForcarAgregado] = useState(false)
   /** Linha + coluna abertas no drill-down de origem (NF Desc. / NF Terceiro / Saldo Aprov.). */
   const [drilldownNf, setDrilldownNf] = useState<{ linha: Linha; coluna: ColunaDrilldown } | null>(null)
+  /**
+   * Colunas de CONFERÊNCIA — escondidas por padrão porque nenhuma delas muda
+   * uma decisão: "% Informakon (espelho)" e "Dados Informakon" são o mesmo
+   * número em % e em R$, e ambos repetem o Valor Total Medido; o "Gap" é um
+   * passo intermediário que já se reparte inteiro nas duas colunas seguintes.
+   * Ficam atrás do toggle pra auditoria, sem poluir a leitura do dia a dia.
+   */
+  const [mostrarConferencia, setMostrarConferencia] = useState(false)
   const breakdown = useBreakdownAjuste(contratoId, medicaoId, modalAjustar?.item.detalhamento_id ?? null)
   const usaGradeBreakdown = !!breakdown.estado?.suporta_breakdown && !forcarAgregado
 
@@ -749,6 +759,14 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
               <input type="checkbox" checked={mostrarTodos} onChange={e => setMostrarTodos(e.target.checked)} />
               Mostrar todos os itens (não só medidos)
             </label>
+            <label
+              className="flex items-center gap-1.5 text-xs cursor-pointer px-3 py-1.5 rounded-lg"
+              style={{ color: 'var(--text-2)', border: '1px solid var(--border)' }}
+              title="Reexibe % Informakon (espelho), Gap e Dados Informakon. Nenhuma das três muda uma decisão — servem só para auditar a conta."
+            >
+              <input type="checkbox" checked={mostrarConferencia} onChange={e => setMostrarConferencia(e.target.checked)} />
+              Colunas de conferência
+            </label>
             <button
               onClick={copiarParaClipboard}
               className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium"
@@ -1029,7 +1047,9 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   <th style={th()}>Item</th>
                   <th style={{ ...th(), background: 'rgba(16,185,129,0.05)' }}>Item Informakon</th>
                   <th style={{ ...th(), textAlign: 'left' }}>Descrição</th>
-                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(16,185,129,0.05)' }} title="Espelho do relatório: (serviço medido + material medido) ÷ valor global. NÃO é o número que se lança — ele inclui o Gap.">% Informakon <span style={{ opacity: 0.55, fontWeight: 400 }}>espelho</span></th>
+                  {mostrarConferencia && (
+                    <th style={{ ...th(), textAlign: 'right', background: 'rgba(16,185,129,0.05)' }} title="Espelho do relatório: (serviço medido + material medido) ÷ valor global. NÃO é o número que se lança — ele inclui o Gap.">% Informakon <span style={{ opacity: 0.55, fontWeight: 400 }}>espelho</span></th>
+                  )}
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.10)', color: '#3B82F6' }} title="É ESTE que se digita no Informakon. Libera exatamente o serviço medido + o material que já virou nota — sem pagar Nota a caminho nem FIP precisa emitir.">% a lançar</th>
                   <th style={{ ...th(), textAlign: 'right' }}>Mat. Medido</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }} title="Clique no valor de qualquer linha para ver as notas fiscais alocadas ao item.">NF Terceiro <span style={{ opacity: 0.55, fontWeight: 400 }}>⧉</span></th>
@@ -1046,20 +1066,24 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   >
                     ↳ da tarefa
                   </th>
-                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(245,158,11,0.05)' }}>Gap</th>
-                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(245,158,11,0.05)' }} title="Parte do material sem nota que JÁ TEM pedido aprovado — a nota do fornecedor está a caminho. Antes se chamava 'Retido', que confundia com a retenção contratual de 5%.">Nota a caminho</th>
+                  {mostrarConferencia && (
+                    <th style={{ ...th(), textAlign: 'right', background: 'rgba(245,158,11,0.05)' }} title="Passo intermediário: Mat. Medido − NF Desc. Reparte-se inteiro entre as duas colunas seguintes.">Gap</th>
+                  )}
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(245,158,11,0.05)' }} title="Parte do material sem nota que JÁ TEM pedido aprovado — a nota do fornecedor está a caminho. Antes se chamava 'Retido', que confundia com a retenção contratual de 5%.">Nota a caminho <span style={{ opacity: 0.55, fontWeight: 400 }}>⧉</span></th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.05)' }} title="Material sem nota e sem pedido aprovado: ninguém vai emitir, então a FIP precisa. É tarefa a fazer, não receita. Antes se chamava 'FIP Fat-Dir', que sugeria faturamento já ocorrido.">FIP precisa emitir</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>Wave (Serv.)</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>% Serv. Med.</th>
                   <th style={{ ...th(), textAlign: 'right' }}>Valor Total Medido</th>
-                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(16,185,129,0.05)' }}>Dados Informakon</th>
+                  {mostrarConferencia && (
+                    <th style={{ ...th(), textAlign: 'right', background: 'rgba(16,185,129,0.05)' }} title="Espelho do relatório em R$ — repete o Valor Total Medido.">Dados Informakon</th>
+                  )}
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(99,102,241,0.05)' }}>Retenção</th>
                 </tr>
               </thead>
               <tbody>
                 {linhasExibidas.length === 0 ? (
                   <tr>
-                    <td colSpan={17} style={{ padding: 36, textAlign: 'center', color: 'var(--text-3)' }}>
+                    <td colSpan={mostrarConferencia ? 17 : 14} style={{ padding: 36, textAlign: 'center', color: 'var(--text-3)' }}>
                       <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
                       Nenhum item com quantidade medida nesta medição.
                       {!mostrarTodos && (
@@ -1134,17 +1158,19 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                         {l.codigo_informakon ?? '—'}
                       </td>
                       <td style={{ ...td('break-words'), textAlign: 'left', maxWidth: 240 }}>{l.descricao}</td>
-                      <td
-                        style={{
-                          ...td('tabular-nums font-semibold'),
-                          textAlign: 'right',
-                          background: 'rgba(16,185,129,0.06)',
-                          color: l.alterado_por_retido ? '#DC2626' : undefined,
-                        }}
-                        title={l.alterado_por_retido ? `Confirmado "sem mais NF": o Gap de R$ ${l.gap_material.toFixed(2).replace('.', ',')} deixou de aguardar nota e passou inteiro para FIP precisa emitir. O serviço segue pago pelo % medido integral.` : undefined}
-                      >
-                        {pctFmt(l.pct_informakon, 4)}
-                      </td>
+                      {mostrarConferencia && (
+                        <td
+                          style={{
+                            ...td('tabular-nums font-semibold'),
+                            textAlign: 'right',
+                            background: 'rgba(16,185,129,0.06)',
+                            color: l.alterado_por_retido ? '#DC2626' : undefined,
+                          }}
+                          title={l.alterado_por_retido ? `Confirmado "sem mais NF": o Gap de R$ ${l.gap_material.toFixed(2).replace('.', ',')} deixou de aguardar nota e passou inteiro para FIP precisa emitir. O serviço segue pago pelo % medido integral.` : undefined}
+                        >
+                          {pctFmt(l.pct_informakon, 4)}
+                        </td>
+                      )}
                       {/* O número que se DIGITA. Difere do espelho pelo Gap:
                           lançar o espelho faz o Informakon liberar material
                           sem nota e pagar Nota a caminho + FIP precisa emitir à Wave. */}
@@ -1228,8 +1254,21 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                       >
                         {formatCurrency(Number(l.nf_transbordo_grupo || 0))}
                       </td>
-                      <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(245,158,11,0.04)', color: 'var(--text-3)' }}>{formatCurrency(l.gap_material)}</td>
-                      <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(245,158,11,0.04)', color: l.faturamento_direto_em_aberto > 0 ? '#F59E0B' : 'var(--text-3)' }}>{formatCurrency(l.faturamento_direto_em_aberto)}</td>
+                      {mostrarConferencia && (
+                        <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(245,158,11,0.04)', color: 'var(--text-3)' }} title="Mat. Medido − NF Desc. Reparte-se inteiro nas duas colunas seguintes.">{formatCurrency(l.gap_material)}</td>
+                      )}
+                      <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(245,158,11,0.04)', padding: 0 }}>
+                        {/* Abre os pedidos do GRUPO que originaram este valor. */}
+                        <button
+                          type="button"
+                          onClick={() => setDrilldownNf({ linha: l, coluna: 'nota-a-caminho' })}
+                          className="w-full h-full text-right px-2 py-1 hover:bg-amber-500/10 hover:underline decoration-dotted underline-offset-2 transition-colors print:hover:bg-transparent"
+                          style={{ color: l.faturamento_direto_em_aberto > 0 ? '#F59E0B' : 'var(--text-3)', font: 'inherit', fontWeight: 600 }}
+                          title="Ver os pedidos aprovados do grupo que seguram este valor"
+                        >
+                          {formatCurrency(l.faturamento_direto_em_aberto)}
+                        </button>
+                      </td>
                       <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(59,130,246,0.04)', color: l.fip_faturar > 0 ? '#3B82F6' : 'var(--text-3)' }}>{formatCurrency(l.fip_faturar)}</td>
                       <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(15,118,110,0.04)', color: '#0F766E' }}>{formatCurrency(l.wave_servico)}</td>
                       <td
@@ -1255,17 +1294,19 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                         </span>
                       </td>
                       <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(l.valor_total_medido)}</td>
-                      <td
-                        style={{
-                          ...td('tabular-nums font-bold'),
-                          textAlign: 'right',
-                          background: 'rgba(16,185,129,0.06)',
-                          color: l.alterado_por_retido ? '#DC2626' : '#10B981',
-                        }}
-                        title={l.alterado_por_retido ? `Confirmado "sem mais NF": o Gap de R$ ${l.gap_material.toFixed(2).replace('.', ',')} está inteiro em FIP precisa emitir. Este espelho mostra o executado — quem exclui o Gap do pagamento é a coluna "% a lançar".` : undefined}
-                      >
-                        {formatCurrency(l.dados_informakon)}
-                      </td>
+                      {mostrarConferencia && (
+                        <td
+                          style={{
+                            ...td('tabular-nums font-bold'),
+                            textAlign: 'right',
+                            background: 'rgba(16,185,129,0.06)',
+                            color: l.alterado_por_retido ? '#DC2626' : '#10B981',
+                          }}
+                          title={l.alterado_por_retido ? `Confirmado "sem mais NF": o Gap de R$ ${l.gap_material.toFixed(2).replace('.', ',')} está inteiro em FIP precisa emitir. Este espelho mostra o executado — quem exclui o Gap do pagamento é a coluna "% a lançar".` : undefined}
+                        >
+                          {formatCurrency(l.dados_informakon)}
+                        </td>
+                      )}
                       <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', background: 'rgba(99,102,241,0.06)', color: '#818CF8' }}>{formatCurrency(l.retencao)}</td>
                     </tr>
                   )
@@ -1275,7 +1316,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                 <tfoot>
                   <tr style={{ background: 'var(--surface-3)', fontWeight: 700, borderTop: '2px solid var(--border)' }}>
                     <td colSpan={3} style={{ ...td(), textAlign: 'right' }}>TOTAIS</td>
-                    <td style={{ ...td(), background: 'rgba(16,185,129,0.10)' }}></td>
+                    {mostrarConferencia && <td style={{ ...td(), background: 'rgba(16,185,129,0.10)' }}></td>}
                     {/* Total a liberar no Informakon = serviço medido + material com nota. */}
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(59,130,246,0.10)', color: '#3B82F6' }}>
                       {formatCurrency(linhasExibidas.reduce((s, l) => s + Number(l.informakon_a_lancar ?? l.dados_informakon), 0))}
@@ -1285,13 +1326,17 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.saldo_aprovado, 0))}</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.nf_descontavel, 0))}</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)', color: '#0F766E' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + Number(l.nf_transbordo_grupo || 0), 0))}</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(245,158,11,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.gap_material, 0))}</td>
+                    {mostrarConferencia && (
+                      <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(245,158,11,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.gap_material, 0))}</td>
+                    )}
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(245,158,11,0.06)', color: '#F59E0B' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.faturamento_direto_em_aberto, 0))}</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(59,130,246,0.06)', color: '#3B82F6' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.fip_faturar, 0))}</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)', color: '#0F766E' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.wave_servico, 0))}</td>
                     <td style={{ ...td(), background: 'rgba(15,118,110,0.06)' }}></td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.valor_total_medido, 0))}</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(16,185,129,0.10)', color: '#10B981' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.dados_informakon, 0))}</td>
+                    {mostrarConferencia && (
+                      <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(16,185,129,0.10)', color: '#10B981' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.dados_informakon, 0))}</td>
+                    )}
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(99,102,241,0.10)', color: '#818CF8' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.retencao, 0))}</td>
                   </tr>
                 </tfoot>
