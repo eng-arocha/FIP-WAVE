@@ -56,18 +56,27 @@ async function aplicarRetratoAdotado(
 ): Promise<RetratoAdotado | null> {
   if (!snapshotId) return null
 
+  const vazio = (motivo: string): RetratoAdotado => ({
+    snapshot_id: String(snapshotId),
+    aplicado: false,
+    motivo,
+    referencia: null,
+    informado_em: null,
+    total_reclassificado: 0,
+    por_macro_item: [],
+    total_realocado: 0,
+  })
+
   const snapRes = await admin
     .from('informakon_saldo_snapshots')
     .select('id, referencia, informado_em')
     .eq('id', snapshotId)
     .maybeSingle()
   if (snapRes.error) {
-    if (!isSchemaMissingError(snapRes.error, ['informakon_saldo_snapshots'])) {
-      console.warn('[informacon] falha ao carregar o retrato adotado:', snapRes.error.message)
-    }
-    return null
+    console.warn('[informacon] falha ao carregar o retrato adotado:', snapRes.error.message)
+    return vazio('não foi possível ler o retrato adotado')
   }
-  if (!snapRes.data) return null
+  if (!snapRes.data) return vazio('o retrato adotado não existe mais')
 
   const saldoPorChave = new Map<string, number>()
   let realocado = 0
@@ -105,7 +114,7 @@ async function aplicarRetratoAdotado(
       .eq('snapshot_id', snapshotId)
     if (linhasRes.error) {
       console.warn('[informacon] falha ao carregar as linhas do retrato:', linhasRes.error.message)
-      return null
+      return vazio('não foi possível ler as linhas do retrato')
     }
     for (const l of (linhasRes.data || []) as any[]) {
       const chave = String(l.detalhamento_codigo || l.grupo_codigo || '').trim()
@@ -113,12 +122,13 @@ async function aplicarRetratoAdotado(
       saldoPorChave.set(chave, (saldoPorChave.get(chave) || 0) + Number(l.valor || 0))
     }
   }
-  if (saldoPorChave.size === 0) return null
+  if (saldoPorChave.size === 0) return vazio('nenhum macro item do retrato foi reconhecido')
 
   const resumo = aplicarRetratoNasLinhas(linhas, saldoPorChave)
   const snap = snapRes.data as any
   return {
     snapshot_id: String(snap.id),
+    aplicado: true,
     referencia: snap.referencia ?? null,
     informado_em: snap.informado_em ?? null,
     total_reclassificado: resumo.total,
@@ -332,6 +342,15 @@ export interface InformaconData {
 /** O que a UI mostra sobre o retrato em vigor nesta medição. */
 export interface RetratoAdotado {
   snapshot_id: string
+  /**
+   * false quando a medição APONTA para um retrato mas o boletim não
+   * conseguiu aplicá-lo (retrato apagado, sem linha reconhecida, coluna
+   * ainda fora do schema cache). Silenciar isso fazia o botão "adotar"
+   * parecer que não fez nada.
+   */
+  aplicado: boolean
+  /** Por que não foi aplicado. Só preenchido quando `aplicado` é false. */
+  motivo?: string
   referencia: string | null
   informado_em: string | null
   /** Total reclassificado de "NF Desc." para "não lançada no ERP". */
@@ -1454,8 +1473,25 @@ export async function calcularInformaconData(
   // apurada por macro item, e só o conjunto fecha o número) e antes dos
   // totais e da aprovação, que lê `nf_descontavel` para gravar o saldo
   // corrido de NF abatida.
+  // O id do retrato é lido em consulta PRÓPRIA, e não junto do restante da
+  // medição. No select grande, uma coluna que o schema cache ainda não
+  // conhece derruba a linha inteira para o fallback — que não traz esta
+  // coluna — e a adoção passaria a não fazer nada, em silêncio, para sempre.
+  const snapshotIdAdotado = await (async () => {
+    if ((medicao as any).informakon_snapshot_id !== undefined) {
+      return (medicao as any).informakon_snapshot_id as string | null
+    }
+    const r = await admin
+      .from('medicoes')
+      .select('informakon_snapshot_id')
+      .eq('id', medicaoId)
+      .maybeSingle()
+    if (r.error) return null
+    return ((r.data as any)?.informakon_snapshot_id ?? null) as string | null
+  })()
+
   const retratoAdotado = await aplicarRetratoAdotado(
-    admin, contratoId, (medicao as any).informakon_snapshot_id, linhas,
+    admin, contratoId, snapshotIdAdotado, linhas,
   )
 
   const totais: InformaconTotais = linhas.reduce<InformaconTotais>((acc, l) => ({

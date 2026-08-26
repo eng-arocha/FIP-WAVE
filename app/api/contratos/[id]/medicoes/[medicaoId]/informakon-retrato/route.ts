@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
 import { parseBody } from '@/lib/api/schema'
 import { isSchemaMissingError } from '@/lib/db/resilient'
+import { calcularInformaconData } from '@/lib/db/informacon-data'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -70,7 +71,14 @@ async function medicaoAlteravel(admin: ReturnType<typeof createAdminClient>, med
   return { res: null }
 }
 
-async function gravar(medicaoId: string, snapshotId: string | null) {
+/**
+ * Grava e RECALCULA o boletim, devolvendo o efeito real.
+ *
+ * Devolver só `{ ok: true }` era o pior dos dois mundos: a chamada dava certo
+ * e a tela não mudava, sem ninguém saber por quê. Recalculando aqui, a
+ * resposta já diz quanto foi reclassificado — ou por que não foi.
+ */
+async function gravar(contratoId: string, medicaoId: string, snapshotId: string | null) {
   const admin = createAdminClient()
   const { error } = await admin
     .from('medicoes')
@@ -80,7 +88,27 @@ async function gravar(medicaoId: string, snapshotId: string | null) {
     if (isSchemaMissingError(error, COLUNA_082)) return migrationPendente()
     throw error
   }
-  return NextResponse.json({ ok: true, snapshot_id: snapshotId })
+
+  if (!snapshotId) return NextResponse.json({ ok: true, snapshot_id: null, aplicado: false })
+
+  const boletim = await calcularInformaconData(admin, contratoId, medicaoId)
+  const efeito = boletim?.retrato_adotado ?? null
+  if (!efeito || !efeito.aplicado) {
+    return NextResponse.json(
+      {
+        error: `Retrato gravado, mas o boletim não conseguiu aplicá-lo: ${efeito?.motivo ?? 'motivo desconhecido'}. Desfaça e cole o retrato de novo.`,
+        code: 'RETRATO_NAO_APLICADO',
+      },
+      { status: 409 },
+    )
+  }
+  return NextResponse.json({
+    ok: true,
+    snapshot_id: snapshotId,
+    aplicado: true,
+    total_reclassificado: efeito.total_reclassificado,
+    macro_itens: efeito.por_macro_item.length,
+  })
 }
 
 export async function POST(
@@ -113,7 +141,7 @@ export async function POST(
       return NextResponse.json({ error: 'Retrato não encontrado neste contrato.' }, { status: 404 })
     }
 
-    return await gravar(medicaoId, parsed.data.snapshot_id)
+    return await gravar(contratoId, medicaoId, parsed.data.snapshot_id)
   } catch (e: any) {
     return apiError(e)
   }
@@ -130,7 +158,7 @@ export async function DELETE(
     const admin = createAdminClient()
     const guarda = await medicaoAlteravel(admin, medicaoId, contratoId)
     if (guarda.res) return guarda.res
-    return await gravar(medicaoId, null)
+    return await gravar(contratoId, medicaoId, null)
   } catch (e: any) {
     return apiError(e)
   }
