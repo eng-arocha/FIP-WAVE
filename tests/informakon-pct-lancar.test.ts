@@ -111,3 +111,68 @@ describe('% a lançar no Informakon', () => {
     expect(Number.isFinite(r.pctALancar)).toBe(true)
   })
 })
+
+/**
+ * Opção (a), 26/08/2026: a confirmação "sem mais NF" deixou de abater o
+ * percentual de SERVIÇO. Com o "% a lançar" já excluindo o Gap inteiro do
+ * lado do material, abater também no serviço tirava o mesmo Retido duas
+ * vezes. A confirmação passou a apenas RECLASSIFICAR o Gap.
+ */
+function comConfirmacao(args: {
+  matMedido: number
+  servicoMedido: number
+  nfDescontavel: number
+  saldoAprovado: number
+  confirmacaoSemNf: boolean
+}) {
+  const { matMedido, servicoMedido, nfDescontavel, saldoAprovado, confirmacaoSemNf } = args
+  const gap = Math.max(0, matMedido - nfDescontavel)
+  const retido = confirmacaoSemNf ? 0 : Math.min(gap, saldoAprovado)
+  const fipFaturar = Math.max(0, gap - retido)
+  // Serviço sempre integral — é a mudança da opção (a).
+  const waveServico = servicoMedido
+  return { gap, retido, fipFaturar, waveServico, aLancar: waveServico + nfDescontavel }
+}
+
+describe('confirmação "sem mais NF" — reclassifica, não reduz o serviço', () => {
+  const base = { matMedido: 100_000, servicoMedido: 20_000, nfDescontavel: 70_000, saldoAprovado: 30_000 }
+
+  it('sem confirmação: o Gap se divide entre Retido e FIP Fat-Dir', () => {
+    const r = comConfirmacao({ ...base, confirmacaoSemNf: false })
+    expect(r.gap).toBe(30_000)
+    expect(r.retido).toBe(30_000)
+    expect(r.fipFaturar).toBe(0)
+    expect(r.retido + r.fipFaturar).toBe(r.gap)
+  })
+
+  it('com confirmação: o Gap inteiro vira FIP Fat-Dir', () => {
+    const r = comConfirmacao({ ...base, confirmacaoSemNf: true })
+    expect(r.gap).toBe(30_000)
+    expect(r.retido).toBe(0)
+    expect(r.fipFaturar).toBe(30_000)
+    expect(r.retido + r.fipFaturar).toBe(r.gap)
+  })
+
+  it('o serviço é o mesmo com ou sem confirmação — sem desconto duplo', () => {
+    const sem = comConfirmacao({ ...base, confirmacaoSemNf: false })
+    const com = comConfirmacao({ ...base, confirmacaoSemNf: true })
+    expect(com.waveServico).toBe(sem.waveServico)
+    expect(com.waveServico).toBe(20_000)
+  })
+
+  it('o valor a lançar não muda: o Gap já estava fora nos dois casos', () => {
+    const sem = comConfirmacao({ ...base, confirmacaoSemNf: false })
+    const com = comConfirmacao({ ...base, confirmacaoSemNf: true })
+    expect(com.aLancar).toBe(sem.aLancar)
+    expect(com.aLancar).toBe(90_000)
+  })
+
+  it('a confirmação nunca muda o tamanho do Gap, só o lado', () => {
+    for (const saldo of [0, 10_000, 30_000, 999_999]) {
+      const sem = comConfirmacao({ ...base, saldoAprovado: saldo, confirmacaoSemNf: false })
+      const com = comConfirmacao({ ...base, saldoAprovado: saldo, confirmacaoSemNf: true })
+      expect(com.gap).toBe(sem.gap)
+      expect(com.retido + com.fipFaturar).toBe(sem.retido + sem.fipFaturar)
+    }
+  })
+})
