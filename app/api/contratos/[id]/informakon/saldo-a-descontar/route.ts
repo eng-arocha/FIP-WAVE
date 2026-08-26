@@ -8,6 +8,7 @@ import { parseBody } from '@/lib/api/schema'
 import { isSchemaMissingError } from '@/lib/db/resilient'
 import { parseSaldoColado } from '@/lib/informakon/saldo-colado'
 import { rechavearRetrato } from '@/lib/informakon/rechavear'
+import { normalizarNumeroNota } from '@/lib/informakon/conferir-notas'
 import { carregarAlocacaoDeNotas } from '@/lib/db/alocacao-notas'
 
 export const runtime = 'nodejs'
@@ -300,8 +301,30 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     let totalRealocado = 0
     let realocadas: Array<{ numero: string; documento: string; deChave: string; paraChaves: string[]; valor: number }> = []
 
+    /** Notas que temos e que não existem em lugar nenhum do retrato. */
+    let notasAusentes: Array<{ numero: string; valor: number }> = []
+
     if (notasSaida.length > 0) {
       const alocacao = await carregarAlocacaoDeNotas(admin, contratoId)
+
+      // Comparação NOTA A NOTA, sem macro item nenhum. É a única pergunta
+      // com resposta acionável: a nota está lançada no Informakon ou não?
+      // O macro item em que ela está é decisão do pedido da FIP e não muda
+      // nada do que se pode fazer.
+      const noRetrato = new Set(
+        notasSaida.map(n => normalizarNumeroNota(n.numeroNf ?? n.documento)).filter(Boolean),
+      )
+      const nossoPorNumero = new Map<string, number>()
+      for (const a of alocacao) {
+        const numero = normalizarNumeroNota(a.numeroNf)
+        if (!numero) continue
+        nossoPorNumero.set(numero, (nossoPorNumero.get(numero) || 0) + (Number(a.valor) || 0))
+      }
+      notasAusentes = [...nossoPorNumero.entries()]
+        .filter(([numero]) => !noRetrato.has(numero))
+        .map(([numero, valor]) => ({ numero, valor: Math.round(valor * 100) / 100 }))
+        .filter(n => n.valor > 0.01)
+        .sort((a, b) => b.valor - a.valor)
       const rech = rechavearRetrato(notasSaida, alocacao)
       linhasSaida = [...rech.porChave.entries()].map(([chave, v]) => ({
         chave,
@@ -339,6 +362,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       /** Σ reendereçado — o total do retrato não muda, só o endereço. */
       total_realocado: totalRealocado,
       realocadas: realocadas.slice(0, 30),
+      /**
+       * Notas do FIP-WAVE que não aparecem em NENHUM macro item do retrato.
+       * É a lista acionável: só essas dá para resolver, lançando.
+       */
+      notas_ausentes: notasAusentes.slice(0, 50),
+      total_ausente: Math.round(notasAusentes.reduce((s, n) => s + n.valor, 0) * 100) / 100,
+      qtd_ausentes: notasAusentes.length,
     })
   } catch (e: any) {
     return apiError(e)

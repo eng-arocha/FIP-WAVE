@@ -1059,7 +1059,14 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
           <SaldoInformakonPainel
             contratoId={contratoId}
             medicaoId={medicaoId}
-            linhasBoletim={linhasExibidas.map(l => ({
+            // TODAS as linhas, nunca `linhasExibidas`: a tabela esconde por
+            // padrão o item com quantidade medida 0 no período, mas ele pode
+            // carregar desconto — é a régua acumulada devolvendo nota de
+            // meses anteriores, e o transbordo dentro do balde. Comparar só o
+            // visível fazia o alarme depender do toggle "mostrar todos" e
+            // subestimar a falta. O ajuste do % (server-side) sempre usou
+            // todas as linhas; era só o painel que mostrava menos.
+            linhasBoletim={(data.linhas ?? []).map(l => ({
               codigo: l.codigo,
               // Com o retrato adotado, `nf_descontavel` já vem líquido da
               // reclassificação — somar de volta a parcela não lançada é o que

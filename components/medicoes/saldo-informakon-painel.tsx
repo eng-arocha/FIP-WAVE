@@ -79,6 +79,10 @@ interface RetratoSaldo {
    */
   total_realocado?: number
   realocadas?: Array<{ numero: string; documento: string; deChave: string; paraChaves: string[]; valor: number }>
+  /** Notas nossas ausentes de TODO o retrato — a lista acionável. */
+  notas_ausentes?: Array<{ numero: string; valor: number }>
+  total_ausente?: number
+  qtd_ausentes?: number
 }
 
 const EXEMPLO = `Documento\tInsumo\tEspecificação\tUnidade\tQtd.a Desc\tVlr. a Desc\tQtd.Desc\tVlr.Desc
@@ -638,6 +642,53 @@ export function SaldoInformakonPainel({
           <div className="px-3 pb-3">
             <div className="p-2 rounded-lg text-[11px] bg-amber-500/10 border border-amber-500/30 text-amber-300">
               {aviso}
+            </div>
+          </div>
+        )}
+
+        {/* ── Leitura NOTA A NOTA, sem macro item ──────────────────────
+            O macro item do ERP é decisão do pedido da FIP, não da nota — a
+            mesma nota aparece em vários lá. Comparar por macro item vira
+            whack-a-mole: credita um grupo e descobre falta em outro, com o
+            total parado. A pergunta com resposta acionável é outra: a nota
+            está lançada no Informakon ou não está? */}
+        {retrato?.formato === 'detalhado' && (
+          <div className="px-3 pb-3">
+            <div
+              className="p-2.5 rounded-lg text-[11px]"
+              style={{
+                background: (retrato.qtd_ausentes ?? 0) > 0 ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)',
+                border: `1px solid ${(retrato.qtd_ausentes ?? 0) > 0 ? 'rgba(239,68,68,0.35)' : 'rgba(16,185,129,0.35)'}`,
+                color: (retrato.qtd_ausentes ?? 0) > 0 ? '#EF4444' : '#10B981',
+              }}
+            >
+              {(retrato.qtd_ausentes ?? 0) > 0 ? (
+                <>
+                  <strong>
+                    {retrato.qtd_ausentes} nota(s) nossa(s) não estão no Informakon — em macro item
+                    nenhum. Somam {formatCurrency(retrato.total_ausente || 0)}.
+                  </strong>
+                  <span className="block mt-1 font-mono" style={{ color: 'var(--text-2)' }}>
+                    {(retrato.notas_ausentes ?? []).slice(0, 15).map(n => `${n.numero} (${formatCurrency(n.valor)})`).join(' · ')}
+                    {(retrato.qtd_ausentes ?? 0) > 15 ? ` · +${(retrato.qtd_ausentes ?? 0) - 15}` : ''}
+                  </span>
+                  <span className="block mt-1" style={{ color: 'var(--text-3)' }}>
+                    Essa é a lista que dá para resolver — lançando. A tabela por macro item abaixo
+                    mistura isso com diferença de classificação: o Informakon amarra a nota ao item
+                    do pedido da FIP e nós a rateamos pelos nossos detalhamentos, então os dois lados
+                    nunca vão bater grupo a grupo.
+                  </span>
+                </>
+              ) : (
+                <>
+                  <strong>Todas as nossas notas estão lançadas no Informakon.</strong>
+                  <span className="block mt-1" style={{ color: 'var(--text-3)' }}>
+                    O que a tabela por macro item mostra abaixo é diferença de classificação, não
+                    nota faltando — o ERP amarra a nota ao item do pedido da FIP e nós a rateamos
+                    pelos nossos detalhamentos. Não há lançamento a fazer.
+                  </span>
+                </>
+              )}
             </div>
           </div>
         )}
