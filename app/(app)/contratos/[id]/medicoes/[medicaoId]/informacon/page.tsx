@@ -238,7 +238,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
     if (!data) return
     const headers = [
       'Código', 'Item Informakon', 'Descrição', '% Informakon (espelho)', '% a lançar',
-      'Mat. Medido', 'NF Terceiro', 'Saldo Aprov.', 'NF Desc.', 'NF Desc. da tarefa', 'Gap', 'Retido', 'FIP Fat-Dir',
+      'Mat. Medido', 'NF Terceiro', 'Saldo Aprov.', 'NF Desc.', 'NF Desc. da tarefa', 'Gap', 'Nota a caminho', 'FIP precisa emitir',
       'Wave (Serv.)', '% Serv. Med.', 'Valor Total Medido', 'Dados Informakon', 'A lançar (R$)', 'Correção', 'Retenção',
     ]
     const rows = linhasExibidas.map(l => [
@@ -775,8 +775,8 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   { header: 'NF Desc.', get: (l: any) => Number(l.nf_descontavel) },
                   { header: 'NF Desc. da tarefa', get: (l: any) => Number(l.nf_transbordo_grupo || 0) },
                   { header: 'Gap', get: (l: any) => Number(l.gap_material) },
-                  { header: 'Retido', get: (l: any) => Number(l.faturamento_direto_em_aberto) },
-                  { header: 'FIP Fat-Dir', get: (l: any) => Number(l.fip_faturar) },
+                  { header: 'Nota a caminho', get: (l: any) => Number(l.faturamento_direto_em_aberto) },
+                  { header: 'FIP precisa emitir', get: (l: any) => Number(l.fip_faturar) },
                   { header: 'Wave (Serv.)', get: (l: any) => Number(l.wave_servico) },
                   { header: '% Serv. Med.', get: (l: any) => Number(pctServMedExibido(l)) },
                   { header: 'Valor Total Medido', get: (l: any) => Number(l.valor_total_medido) },
@@ -1030,7 +1030,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   <th style={{ ...th(), background: 'rgba(16,185,129,0.05)' }}>Item Informakon</th>
                   <th style={{ ...th(), textAlign: 'left' }}>Descrição</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(16,185,129,0.05)' }} title="Espelho do relatório: (serviço medido + material medido) ÷ valor global. NÃO é o número que se lança — ele inclui o Gap.">% Informakon <span style={{ opacity: 0.55, fontWeight: 400 }}>espelho</span></th>
-                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.10)', color: '#3B82F6' }} title="É ESTE que se digita no Informakon. Libera exatamente o serviço medido + o material que já virou nota — sem pagar Retido nem FIP Fat-Dir.">% a lançar</th>
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.10)', color: '#3B82F6' }} title="É ESTE que se digita no Informakon. Libera exatamente o serviço medido + o material que já virou nota — sem pagar Nota a caminho nem FIP precisa emitir.">% a lançar</th>
                   <th style={{ ...th(), textAlign: 'right' }}>Mat. Medido</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }} title="Clique no valor de qualquer linha para ver as notas fiscais alocadas ao item.">NF Terceiro <span style={{ opacity: 0.55, fontWeight: 400 }}>⧉</span></th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }} title="Clique no valor de qualquer linha para ver os pedidos aprovados que ainda aguardam nota.">Saldo Aprov. <span style={{ opacity: 0.55, fontWeight: 400 }}>⧉</span></th>
@@ -1047,8 +1047,8 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                     ↳ da tarefa
                   </th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(245,158,11,0.05)' }}>Gap</th>
-                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(245,158,11,0.05)' }}>Retido</th>
-                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.05)' }}>FIP Fat-Dir</th>
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(245,158,11,0.05)' }} title="Parte do material sem nota que JÁ TEM pedido aprovado — a nota do fornecedor está a caminho. Antes se chamava 'Retido', que confundia com a retenção contratual de 5%.">Nota a caminho</th>
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.05)' }} title="Material sem nota e sem pedido aprovado: ninguém vai emitir, então a FIP precisa. É tarefa a fazer, não receita. Antes se chamava 'FIP Fat-Dir', que sugeria faturamento já ocorrido.">FIP precisa emitir</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>Wave (Serv.)</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>% Serv. Med.</th>
                   <th style={{ ...th(), textAlign: 'right' }}>Valor Total Medido</th>
@@ -1141,13 +1141,13 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                           background: 'rgba(16,185,129,0.06)',
                           color: l.alterado_por_retido ? '#DC2626' : undefined,
                         }}
-                        title={l.alterado_por_retido ? `Confirmado "sem mais NF": o Gap de R$ ${l.gap_material.toFixed(2).replace('.', ',')} deixou de aguardar nota e passou inteiro para FIP Fat-Dir. O serviço segue pago pelo % medido integral.` : undefined}
+                        title={l.alterado_por_retido ? `Confirmado "sem mais NF": o Gap de R$ ${l.gap_material.toFixed(2).replace('.', ',')} deixou de aguardar nota e passou inteiro para FIP precisa emitir. O serviço segue pago pelo % medido integral.` : undefined}
                       >
                         {pctFmt(l.pct_informakon, 4)}
                       </td>
                       {/* O número que se DIGITA. Difere do espelho pelo Gap:
                           lançar o espelho faz o Informakon liberar material
-                          sem nota e pagar Retido + FIP Fat-Dir à Wave. */}
+                          sem nota e pagar Nota a caminho + FIP precisa emitir à Wave. */}
                       {(() => {
                         const pctLancar = Number(l.pct_informakon_a_lancar ?? l.pct_informakon)
                         const correcao = Number(l.correcao_informakon || 0)
@@ -1162,7 +1162,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                             }}
                             title={temCorrecao
                               ? (correcao > 0
-                                  ? `Corrigido em −${formatCurrency(correcao)} para não pagar material sem nota (Retido ${formatCurrency(l.faturamento_direto_em_aberto)} + FIP Fat-Dir ${formatCurrency(l.fip_faturar)}). Lançar o espelho (${pctFmt(l.pct_informakon, 4)}) pagaria esse valor à Wave.`
+                                  ? `Corrigido em −${formatCurrency(correcao)} para não pagar material sem nota (Nota a caminho ${formatCurrency(l.faturamento_direto_em_aberto)} + FIP precisa emitir ${formatCurrency(l.fip_faturar)}). Lançar o espelho (${pctFmt(l.pct_informakon, 4)}) pagaria esse valor à Wave.`
                                   : `Corrigido em +${formatCurrency(Math.abs(correcao))}: há nota de medições anteriores voltando pela régua acumulada. Sem esse acréscimo o desconto do Informakon deixaria a Wave no negativo.`)
                               : 'Sem correção: todo o material medido já tem nota lançada.'}
                           >
@@ -1262,7 +1262,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                           background: 'rgba(16,185,129,0.06)',
                           color: l.alterado_por_retido ? '#DC2626' : '#10B981',
                         }}
-                        title={l.alterado_por_retido ? `Confirmado "sem mais NF": o Gap de R$ ${l.gap_material.toFixed(2).replace('.', ',')} está inteiro em FIP Fat-Dir. Este espelho mostra o executado — quem exclui o Gap do pagamento é a coluna "% a lançar".` : undefined}
+                        title={l.alterado_por_retido ? `Confirmado "sem mais NF": o Gap de R$ ${l.gap_material.toFixed(2).replace('.', ',')} está inteiro em FIP precisa emitir. Este espelho mostra o executado — quem exclui o Gap do pagamento é a coluna "% a lançar".` : undefined}
                       >
                         {formatCurrency(l.dados_informakon)}
                       </td>
@@ -1303,7 +1303,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
         <p className="text-[11px] print:hidden" style={{ color: 'var(--text-3)' }}>
           <TrendingUp className="inline w-3 h-3 mr-1" />
           No Informakon, lance por item o <strong>% Informakon</strong> — Dados Informakon = Wave + NF Desc.
-          (FIP Fat-Dir <em>não entra</em>: a NF ainda não existe). Retenção {pctFmt(data.medicao.contrato.percentual_retencao)} aplicada sobre <em>Valor Total Medido</em> (% medido × valor global do item) e abatida da NF da Wave.
+          (FIP precisa emitir <em>não entra</em>: a NF ainda não existe). Retenção {pctFmt(data.medicao.contrato.percentual_retencao)} aplicada sobre <em>Valor Total Medido</em> (Mat. Medido + Wave) e abatida da NF da Wave.
           Clique em <strong>Critério</strong> pra ver a regra completa.
         </p>
       </div>
@@ -1935,33 +1935,33 @@ function HelpModal({ onClose, pctRetencao }: { onClose: () => void; pctRetencao:
                 nenhuma nota de terceiro cobriu ainda. É só um <em>intermediário</em>: não é
                 gravado em lugar nenhum e não move dinheiro sozinho. Ele se reparte, sempre
                 inteiro, entre as duas colunas seguintes — vale a identidade{' '}
-                <strong>Gap = Retido + FIP Fat-Dir</strong>. Quem decide pagamento são elas.
+                <strong>Gap = Nota a caminho + FIP precisa emitir</strong>. Quem decide pagamento são elas.
               </li>
               <li>
-                <strong>Retido</strong> = a parte do Gap que já tem <em>pedido fat-direto aprovado</em>{' '}
+                <strong>Nota a caminho</strong> <span style={{color:'var(--text-3)'}}>(antes “Retido”)</span> = a parte do Gap que já tem <em>pedido fat-direto aprovado</em>{' '}
                 esperando a nota do fornecedor chegar. Não vira NF da FIP nesta medição.
                 <br />
                 <span style={{ color: 'var(--text-3)' }}>
                   Atenção ao ler a linha: o saldo aprovado é apurado <strong>por tarefa</strong>, num
                   pool compartilhado entre os detalhamentos irmãos — a FIP compra por lote e o pedido
                   costuma estar lançado num item vizinho. Por isso uma linha pode mostrar{' '}
-                  <strong>Saldo Aprov. = 0</strong> e ainda assim ter Retido &gt; 0: o saldo veio de
+                  <strong>Saldo Aprov. = 0</strong> e ainda assim ter Nota a caminho &gt; 0: o saldo veio de
                   outro item da mesma tarefa. A coluna Saldo Aprov. mostra só o número cru
                   <em> daquele item</em>, não a base do rateio.
                 </span>
               </li>
-              <li><strong>FIP Fat-Dir</strong> = Gap − Retido. Solicitação de fat-direto criada automaticamente em nome da FIP (status: aprovado). <em>Ainda assim NÃO entra no Dados Informakon</em> — a NF ainda não foi emitida.</li>
+              <li><strong>FIP precisa emitir</strong> <span style={{color:'var(--text-3)'}}>(antes “FIP Fat-Dir”)</span> = Gap − Nota a caminho. <strong>É tarefa, não receita.</strong> Solicitação de fat-direto criada automaticamente em nome da FIP (status: aprovado). <em>Ainda assim NÃO entra no Dados Informakon</em> — a NF ainda não foi emitida.</li>
               <li><strong>Wave (Serv.)</strong> = qtd × <code>valor_servico_unit</code>. NF da Wave a emitir.</li>
               <li>
                 <strong>% Serv. Med.</strong> = qtd medida ÷ qtd contratada × 100 (físico).
                 <strong> Sempre integral</strong> — o serviço executado é pago por inteiro.
                 A confirmação &quot;sem mais NF&quot; não mexe mais aqui: ela apenas reclassifica
-                o Gap de <em>Retido</em> para <em>FIP Fat-Dir</em> (se nenhuma nota vem, não há o
+                o Gap de <em>Nota a caminho</em> para <em>FIP precisa emitir</em> (se nenhuma nota vem, não há o
                 que aguardar). Quem impede o pagamento do material sem nota é a coluna
                 <strong> % a lançar</strong>, e ela sozinha — descontar também do serviço tiraria
                 o mesmo valor duas vezes.
               </li>
-              <li><strong>Valor Total Medido</strong> = Mat. Medido + Serv. Medido (físico, sem ajuste).</li>
+              <li><strong>Valor Total Medido</strong> = Mat. Medido + Wave (Serv.) — tudo que foi executado no período. É a base da retenção, e é igual ao <em>Dados Informakon</em>.</li>
               <li>
                 <strong>Dados Informakon</strong> = Wave + <em>Mat. Medido</em> (o material inteiro,
                 não só o que virou nota). É o <strong>espelho</strong> do relatório: o Informakon
@@ -1980,7 +1980,7 @@ function HelpModal({ onClose, pctRetencao }: { onClose: () => void; pctRetencao:
                   <code>% × valor global</code> e depois desconta só as notas de material lançadas
                   lá — ele não conhece nosso saldo de pedido aprovado. Então lançar o % físico num
                   item 100% medido faz ele liberar o material inteiro e descontar só o que virou
-                  nota, <strong>pagando à Wave o Gap</strong> (Retido + FIP Fat-Dir): material sem
+                  nota, <strong>pagando à Wave o Gap</strong> (Nota a caminho + FIP precisa emitir): material sem
                   nota de terceiro, cujo dinheiro não é dela e que seria pago de novo quando a nota
                   chegasse. Isolando o percentual que entrega exatamente o serviço medido:{' '}
                   <code>% × global − NF Desc. = Wave</code> ⇒{' '}
@@ -2004,7 +2004,7 @@ function HelpModal({ onClose, pctRetencao }: { onClose: () => void; pctRetencao:
                     <th style={{ ...th(), textAlign: 'right' }}>Saldo Aprov.</th>
                     <th style={{ ...th(), textAlign: 'right' }}>NF Desc.</th>
                     <th style={{ ...th(), textAlign: 'right' }}>Gap</th>
-                    <th style={{ ...th(), textAlign: 'right' }}>Retido</th>
+                    <th style={{ ...th(), textAlign: 'right' }}>Nota a caminho</th>
                     <th style={{ ...th(), textAlign: 'right' }}>FIP (a criar)</th>
                     <th style={{ ...th(), textAlign: 'right' }}>Wave</th>
                     <th style={{ ...th(), textAlign: 'right' }}>Dados Inf.</th>
@@ -2066,7 +2066,7 @@ function HelpModal({ onClose, pctRetencao }: { onClose: () => void; pctRetencao:
           </section>
 
           <section className="rounded-lg p-3" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.30)' }}>
-            <p className="text-[12px]"><strong style={{ color: '#10B981' }}>Por que C e D dão o mesmo Dados Informakon?</strong> Porque <em>FIP Fat-Dir não entra</em> — só desconta NF efetivamente lançada. A diferença entre C e D fica registrada nas colunas Retido (C: 2.000) e FIP Fat-Dir (D: 1.000 a criar). Quando a NF terceira do saldo aprovado chegar, vira NF Desc. nas próximas medições.</p>
+            <p className="text-[12px]"><strong style={{ color: '#10B981' }}>Por que C e D dão o mesmo Dados Informakon?</strong> Porque <em>FIP Fat-Dir não entra</em> — só desconta NF efetivamente lançada. A diferença entre C e D fica registrada nas colunas Nota a caminho (C: 2.000) e FIP precisa emitir (D: 1.000 a criar). Quando a NF terceira do saldo aprovado chegar, vira NF Desc. nas próximas medições.</p>
           </section>
 
           <section className="rounded-lg p-3" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.30)' }}>

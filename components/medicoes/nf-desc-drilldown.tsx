@@ -196,19 +196,19 @@ export function NfDescDrilldown({
                 />
               )}
               <Passo rotulo="= Gap (material sem nota)" valor={linha.gap_material} tom="ambar" destaque />
-              <Passo rotulo="↳ Retido — já tem pedido aprovado, aguarda a nota chegar" valor={linha.faturamento_direto_em_aberto} tom="sub" />
-              <Passo rotulo="↳ FIP Fat-Dir — a FIP precisa emitir nota nova" valor={linha.fip_faturar} tom="sub" />
+              <Passo rotulo="↳ Nota a caminho — já tem pedido aprovado, o fornecedor vai emitir" valor={linha.faturamento_direto_em_aberto} tom="sub" />
+              <Passo rotulo="↳ FIP precisa emitir — ninguém vai emitir, a conta é da FIP" valor={linha.fip_faturar} tom="sub" />
             </div>
             <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-3)' }}>
               O Gap se reparte inteiro entre as duas últimas linhas — vale sempre
-              <strong> Gap = Retido + FIP Fat-Dir</strong>. Ele não é gravado em lugar nenhum
+              <strong> Gap = Nota a caminho + FIP precisa emitir</strong>. Ele não é gravado em lugar nenhum
               e não move dinheiro sozinho: quem decide pagamento são as duas parcelas.
             </p>
             {linha.saldo_aprovado === 0 && linha.faturamento_direto_em_aberto > 0 && (
               <div className="mt-2 flex items-start gap-2 p-2 rounded-lg text-[10px] bg-blue-500/10 border border-blue-500/30 text-blue-300">
                 <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
                 <span>
-                  A coluna <strong>Saldo Aprov.</strong> desta linha mostra 0, mas há valor Retido.
+                  A coluna <strong>Saldo Aprov.</strong> desta linha mostra 0, mas há valor em Nota a caminho.
                   Não é erro: o saldo aprovado é apurado <strong>por tarefa</strong>, num pool
                   compartilhado — a FIP compra por lote e o pedido está lançado num item vizinho.
                   A coluna mostra só o número cru deste item.
@@ -245,7 +245,7 @@ export function NfDescDrilldown({
               <p className="text-[10px] mb-2" style={{ color: 'var(--text-3)' }}>
                 Material já <strong>aprovado</strong> em pedido de faturamento direto cuja nota do
                 fornecedor ainda não chegou — total {formatCurrency(CFG.valor)}. É o que segura a
-                coluna &quot;Retido&quot;: enquanto houver saldo aqui, o sistema não pede nota nova
+                coluna &quot;Nota a caminho&quot;: enquanto houver saldo aqui, o sistema não pede nota nova
                 à FIP pelo mesmo material.
               </p>
             )}
@@ -273,7 +273,7 @@ export function NfDescDrilldown({
               <div className="p-3 rounded-lg text-xs" style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>
                 Nenhum pedido de faturamento direto aprovado com saldo neste item. Por isso a
                 coluna Saldo Aprov. está zerada — o material sem nota vai inteiro para
-                &quot;FIP Fat-Dir&quot;.
+                &quot;FIP precisa emitir&quot;.
               </div>
             )}
 

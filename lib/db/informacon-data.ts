@@ -1055,7 +1055,11 @@ export async function calcularInformaconData(
       const pctServMedAjustado = pctServMed
 
       const waveServico = (pctServMedAjustado / 100) * valorServicoTotalItem
-      const valorTotalMedido = (pctServMedAjustado / 100) * valorServicoTotalItem
+      // Tudo que foi executado fisicamente no período: material + serviço.
+      // Estava repetindo `waveServico` — a coluna "Valor Total Medido" saía
+      // idêntica a "Wave (Serv.)" em toda linha, escondendo o material e
+      // contradizendo a própria legenda. É também a base da retenção de 5%.
+      const valorTotalMedido = matMedido + waveServico
       // dados_informakon = o total que o relatório do Informakon mostra para
       // este item: serviço da Wave + material medido.
       //
