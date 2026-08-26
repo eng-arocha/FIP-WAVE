@@ -68,6 +68,12 @@ interface Linha {
   gap_material: number
   faturamento_direto_em_aberto: number
   fip_faturar: number
+  /**
+   * Terceira parcela do Gap (migration 082): desconto que o boletim pede e
+   * que o Informakon NÃO tem lançado. Só é > 0 quando a medição adotou um
+   * retrato. Ausente em respostas antigas.
+   */
+  nf_nao_lancada_no_erp?: number
   wave_servico: number
   valor_total_medido: number
   dados_informakon: number
@@ -114,6 +120,14 @@ interface Resp {
     contrato: { id: string; numero: string; valor_total: number; percentual_retencao: number }
   }
   linhas: Linha[]
+  /** Retrato do Informakon adotado nesta medição (migration 082). */
+  retrato_adotado?: {
+    snapshot_id: string
+    referencia: string | null
+    informado_em: string | null
+    total_reclassificado: number
+    por_macro_item: Array<{ chave: string; pedido: number; disponivel: number; falta: number }>
+  } | null
   totais: {
     material_medido: number
     servico_medido: number
@@ -123,6 +137,7 @@ interface Resp {
     gap_material: number
     faturamento_direto_em_aberto: number
     fip_faturar: number
+    nf_nao_lancada_no_erp?: number
     wave_servico: number
     valor_total_medido: number
     dados_informakon: number
@@ -249,7 +264,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
     if (!data) return
     const headers = [
       'Código', 'Item Informakon', 'Descrição', '% Informakon (espelho)', '% a lançar', 'Dados Informakon',
-      'Mat. Medido', 'NF Terceiro', 'Saldo Aprov.', 'NF Desc.', 'NF Desc. da tarefa', 'Gap', 'Nota a caminho', 'FIP precisa emitir',
+      'Mat. Medido', 'NF Terceiro', 'Saldo Aprov.', 'NF Desc.', 'NF Desc. da tarefa', 'Gap', 'Nota a caminho', 'FIP precisa emitir', 'Não lançada no ERP',
       'Wave (Serv.)', '% Serv. Med.', 'Valor Total Medido', 'Executado (espelho)', 'Correção (nota a caminho)', 'Retenção',
     ]
     const rows = linhasExibidas.map(l => [
@@ -267,6 +282,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
       l.gap_material.toFixed(2).replace('.', ','),
       l.faturamento_direto_em_aberto.toFixed(2).replace('.', ','),
       l.fip_faturar.toFixed(2).replace('.', ','),
+      Number(l.nf_nao_lancada_no_erp || 0).toFixed(2).replace('.', ','),
       l.wave_servico.toFixed(2).replace('.', ','),
       pctFmt(pctServMedExibido(l)),
       l.valor_total_medido.toFixed(2).replace('.', ','),
@@ -797,6 +813,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   { header: 'Gap', get: (l: any) => Number(l.gap_material) },
                   { header: 'Nota a caminho', get: (l: any) => Number(l.faturamento_direto_em_aberto) },
                   { header: 'FIP precisa emitir', get: (l: any) => Number(l.fip_faturar) },
+                  { header: 'Não lançada no ERP', get: (l: any) => Number(l.nf_nao_lancada_no_erp || 0) },
                   { header: 'Wave (Serv.)', get: (l: any) => Number(l.wave_servico) },
                   { header: '% Serv. Med.', get: (l: any) => Number(pctServMedExibido(l)) },
                   { header: 'Valor Total Medido', get: (l: any) => Number(l.valor_total_medido) },
@@ -1041,13 +1058,21 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
         <div className="mb-3">
           <SaldoInformakonPainel
             contratoId={contratoId}
+            medicaoId={medicaoId}
             linhasBoletim={linhasExibidas.map(l => ({
               codigo: l.codigo,
-              nf_descontavel: Number(l.nf_descontavel || 0),
+              // Com o retrato adotado, `nf_descontavel` já vem líquido da
+              // reclassificação — somar de volta a parcela não lançada é o que
+              // mantém a comparação mostrando o que o boletim PEDE, e não o
+              // que ele pede depois de já ter obedecido ao retrato.
+              nf_descontavel: Number(l.nf_descontavel || 0) + Number(l.nf_nao_lancada_no_erp || 0),
               grupo_id: l.grupo_id ?? null,
               detalhamento_id: l.detalhamento_id,
             }))}
+            retratoAdotado={data.retrato_adotado ?? null}
+            medicaoAberta={data.medicao.status !== 'aprovado'}
             podeEditar={podeAprovar}
+            onMudou={carregar}
           />
         </div>
 
@@ -1196,6 +1221,10 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                         const pctLancar = Number(l.pct_informakon_a_lancar ?? l.pct_informakon)
                         const correcao = Number(l.correcao_informakon || 0)
                         const temCorrecao = Math.abs(correcao) >= 0.01
+                        // Parcela retida por não estar lançada no ERP (retrato
+                        // adotado). Já está dentro de `correcao`, mas exige uma
+                        // ação diferente das outras: digitar a nota lá.
+                        const naoLancada = Number(l.nf_nao_lancada_no_erp || 0)
                         return (
                           <td
                             style={{
@@ -1204,16 +1233,26 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                               background: 'rgba(59,130,246,0.08)',
                               color: '#3B82F6',
                             }}
-                            title={temCorrecao
-                              ? (correcao > 0
-                                  ? `Corrigido em −${formatCurrency(correcao)}: é o "Nota a caminho", material que ainda aguarda a nota do fornecedor e por isso não pode ser liberado agora. A nota da FIP (${formatCurrency(l.fip_faturar)}) ENTRA no valor — ela precisa estar emitida e lançada antes de você usar este percentual.`
-                                  : `Corrigido em +${formatCurrency(Math.abs(correcao))}: há nota de medições anteriores voltando pela régua acumulada.`)
-                              : 'Sem correção: nada neste item aguarda nota de fornecedor.'}
+                            title={[
+                              temCorrecao
+                                ? (correcao > 0
+                                    ? `Corrigido em −${formatCurrency(correcao)}: material que não pode ser liberado agora. A nota da FIP (${formatCurrency(l.fip_faturar)}) ENTRA no valor — ela precisa estar emitida e lançada antes de você usar este percentual.`
+                                    : `Corrigido em +${formatCurrency(Math.abs(correcao))}: há nota de medições anteriores voltando pela régua acumulada.`)
+                                : 'Sem correção: nada neste item aguarda nota de fornecedor.',
+                              naoLancada > 0.01
+                                ? `Desses, ${formatCurrency(naoLancada)} é nota que EXISTE aqui e não está lançada no Informakon (retrato adotado). Lance a nota lá e este percentual sobe.`
+                                : '',
+                            ].filter(Boolean).join(' ')}
                           >
                             {pctFmt(pctLancar, 4)}
                             {temCorrecao && (
                               <span style={{ display: 'block', fontSize: 9, fontWeight: 400, opacity: 0.8 }}>
                                 {correcao > 0 ? '−' : '+'}{formatCurrency(Math.abs(correcao))}
+                              </span>
+                            )}
+                            {naoLancada > 0.01 && (
+                              <span style={{ display: 'block', fontSize: 9, fontWeight: 600, color: '#EF4444' }}>
+                                ⚠ {formatCurrency(naoLancada)} sem lançar no ERP
                               </span>
                             )}
                           </td>
@@ -1227,7 +1266,11 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                           background: 'rgba(59,130,246,0.06)',
                           color: '#3B82F6',
                         }}
-                        title={`Valor Total Medido ${formatCurrency(l.valor_total_medido)} − Nota a caminho ${formatCurrency(l.faturamento_direto_em_aberto)}. Pressupõe a nota da FIP (${formatCurrency(l.fip_faturar)}) já emitida e lançada no Informakon.`}
+                        title={`Valor Total Medido ${formatCurrency(l.valor_total_medido)} − Nota a caminho ${formatCurrency(l.faturamento_direto_em_aberto)}${
+                          Number(l.nf_nao_lancada_no_erp || 0) > 0.01
+                            ? ` − não lançada no ERP ${formatCurrency(Number(l.nf_nao_lancada_no_erp))}`
+                            : ''
+                        }. Pressupõe a nota da FIP (${formatCurrency(l.fip_faturar)}) já emitida e lançada no Informakon.`}
                       >
                         {formatCurrency(Number(l.informakon_a_lancar ?? l.dados_informakon))}
                       </td>
@@ -2013,6 +2056,18 @@ function HelpModal({ onClose, pctRetencao }: { onClose: () => void; pctRetencao:
                 gravado em lugar nenhum e não move dinheiro sozinho. Ele se reparte, sempre
                 inteiro, entre as duas colunas seguintes — vale a identidade{' '}
                 <strong>Gap = Nota a caminho + FIP precisa emitir</strong>. Quem decide pagamento são elas.
+                <br />
+                <span style={{ color: 'var(--text-3)' }}>
+                  Quando a medição <em>adota um retrato do Informakon</em>, aparece uma terceira
+                  parcela e a identidade vira <strong>Gap = Nota a caminho + FIP precisa emitir +
+                  não lançada no ERP</strong>. Essa terceira é desconto que o boletim pediria mas
+                  que o Informakon não tem lançado: a nota existe aqui e não existe lá. Ela sai do
+                  &quot;% a lançar&quot; (o ERP não vai descontar o que não tem, então liberar esse
+                  valor seria pagar material sem contrapartida) e sai do &quot;NF Desc.&quot; gravado
+                  na aprovação, para que a nota volte na medição seguinte em vez de ser dada por
+                  abatida. A ação que ela pede é diferente das outras duas: <em>digitar a nota no
+                  Informakon</em> — feito isso, o percentual sobe de volta.
+                </span>
               </li>
               <li>
                 <strong>Nota a caminho</strong> <span style={{color:'var(--text-3)'}}>(antes “Retido”)</span> = a parte do Gap que já tem <em>pedido fat-direto aprovado</em>{' '}

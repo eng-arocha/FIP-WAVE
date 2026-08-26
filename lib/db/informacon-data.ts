@@ -23,6 +23,7 @@ import { getCodigoInformakon } from '@/lib/data/informakon-codigos'
 // importadores existentes.
 export { ehPedidoDeServicoWave } from '@/lib/db/saldo-detalhamento'
 import { ehPedidoDeServicoWave } from '@/lib/db/saldo-detalhamento'
+import { aplicarRetratoNasLinhas } from '@/lib/informakon/aplicar-retrato'
 
 /**
  * Quanto de NF de material já foi abatido em cada detalhamento nas medições
@@ -33,6 +34,66 @@ import { ehPedidoDeServicoWave } from '@/lib/db/saldo-detalhamento'
  * vazio — o cálculo volta ao comportamento anterior (NF acumulada inteira
  * disponível), sem quebrar a página.
  */
+/**
+ * Lê o retrato adotado pela medição e aplica a reclassificação nas linhas.
+ *
+ * Devolve `null` — e não toca em nada — quando a medição não adotou retrato,
+ * quando as migrations 080/082 ainda não rodaram, ou quando o retrato adotado
+ * sumiu. Nenhum desses casos é erro: o boletim volta a ser exatamente o que
+ * era antes desta funcionalidade existir.
+ *
+ * Só as linhas RECONHECIDAS do retrato entram no mapa. Macro item que o
+ * de-para não conhece não vira zero: sem número do outro lado não dá para
+ * afirmar que falta alguma coisa (ver `aplicarRetratoNasLinhas`).
+ */
+async function aplicarRetratoAdotado(
+  admin: SupabaseClient,
+  snapshotId: string | null | undefined,
+  linhas: InformaconLinha[],
+): Promise<RetratoAdotado | null> {
+  if (!snapshotId) return null
+
+  const snapRes = await admin
+    .from('informakon_saldo_snapshots')
+    .select('id, referencia, informado_em')
+    .eq('id', snapshotId)
+    .maybeSingle()
+  if (snapRes.error) {
+    if (!isSchemaMissingError(snapRes.error, ['informakon_saldo_snapshots'])) {
+      console.warn('[informacon] falha ao carregar o retrato adotado:', snapRes.error.message)
+    }
+    return null
+  }
+  if (!snapRes.data) return null
+
+  const linhasRes = await admin
+    .from('informakon_saldo_linhas')
+    .select('grupo_codigo, detalhamento_codigo, valor')
+    .eq('snapshot_id', snapshotId)
+  if (linhasRes.error) {
+    console.warn('[informacon] falha ao carregar as linhas do retrato:', linhasRes.error.message)
+    return null
+  }
+
+  const saldoPorChave = new Map<string, number>()
+  for (const l of (linhasRes.data || []) as any[]) {
+    const chave = String(l.detalhamento_codigo || l.grupo_codigo || '').trim()
+    if (!chave) continue
+    saldoPorChave.set(chave, (saldoPorChave.get(chave) || 0) + Number(l.valor || 0))
+  }
+  if (saldoPorChave.size === 0) return null
+
+  const resumo = aplicarRetratoNasLinhas(linhas, saldoPorChave)
+  const snap = snapRes.data as any
+  return {
+    snapshot_id: String(snap.id),
+    referencia: snap.referencia ?? null,
+    informado_em: snap.informado_em ?? null,
+    total_reclassificado: resumo.total,
+    por_macro_item: resumo.porMacroItem,
+  }
+}
+
 async function carregarNfJaAbatida(
   admin: SupabaseClient,
   medicaoIdsAnteriores: string[],
@@ -120,6 +181,16 @@ export interface InformaconLinha {
   gap_material: number
   faturamento_direto_em_aberto: number
   fip_faturar: number
+  /**
+   * Terceira parcela do Gap: desconto que o boletim pede mas que o Informakon
+   * NÃO tem lançado. Só é diferente de zero quando a medição adotou um retrato
+   * (migration 082). Fica de fora do `informakon_a_lancar` (o ERP não vai
+   * descontar o que não tem) e de fora do `nf_descontavel` gravado na
+   * aprovação (a nota volta na medição seguinte).
+   *
+   *     Gap = Nota a caminho + FIP precisa emitir + Não lançada no ERP
+   */
+  nf_nao_lancada_no_erp: number
   wave_servico: number
   valor_total_medido: number
   dados_informakon: number
@@ -163,6 +234,16 @@ export interface InformaconTotais {
   gap_material: number
   faturamento_direto_em_aberto: number
   fip_faturar: number
+  /**
+   * Terceira parcela do Gap: desconto que o boletim pede mas que o Informakon
+   * NÃO tem lançado. Só é diferente de zero quando a medição adotou um retrato
+   * (migration 082). Fica de fora do `informakon_a_lancar` (o ERP não vai
+   * descontar o que não tem) e de fora do `nf_descontavel` gravado na
+   * aprovação (a nota volta na medição seguinte).
+   *
+   *     Gap = Nota a caminho + FIP precisa emitir + Não lançada no ERP
+   */
+  nf_nao_lancada_no_erp: number
   wave_servico: number
   valor_total_medido: number
   dados_informakon: number
@@ -208,6 +289,22 @@ export interface InformaconData {
   }
   linhas: InformaconLinha[]
   totais: InformaconTotais
+  /**
+   * Retrato do Informakon adotado nesta medição (migration 082). `null`
+   * quando não há — e aí o boletim é idêntico ao que era antes.
+   */
+  retrato_adotado: RetratoAdotado | null
+}
+
+/** O que a UI mostra sobre o retrato em vigor nesta medição. */
+export interface RetratoAdotado {
+  snapshot_id: string
+  referencia: string | null
+  informado_em: string | null
+  /** Total reclassificado de "NF Desc." para "não lançada no ERP". */
+  total_reclassificado: number
+  /** Por macro item: o que o boletim pedia, o que existe lá, e a falta. */
+  por_macro_item: Array<{ chave: string; pedido: number; disponivel: number; falta: number }>
 }
 
 // ============================================================
@@ -556,6 +653,7 @@ export async function calcularInformaconData(
   if (medErr && isSchemaMissingError(medErr, [
     'ajuste_material_anterior', 'ajuste_material_anterior_motivo',
     'valor_material_correspondente', 'valor_retencao_garantia',
+    'informakon_snapshot_id',
   ])) {
     const fb = await admin
       .from('medicoes')
@@ -1210,6 +1308,7 @@ export async function calcularInformaconData(
         gap_material: gapMaterial,
         faturamento_direto_em_aberto: faturamentoDiretoEmAberto,
         fip_faturar: fipFaturar,
+        nf_nao_lancada_no_erp: 0,
         wave_servico: waveServico,
         valor_total_medido: valorTotalMedido,
         dados_informakon: dadosInformakon,
@@ -1283,6 +1382,7 @@ export async function calcularInformaconData(
       gap_material: 0,
       faturamento_direto_em_aberto: 0,
       fip_faturar: 0,
+      nf_nao_lancada_no_erp: 0,
       wave_servico: 0,
       valor_total_medido: 0,
       dados_informakon: 0,
@@ -1307,6 +1407,18 @@ export async function calcularInformaconData(
 
   linhas.sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), 'pt-BR', { numeric: true }))
 
+  // ── RETRATO DO INFORMAKON ──────────────────────────────────────────────
+  //
+  // Quando a medição adotou um retrato (migration 082), o desconto que o ERP
+  // não tem lançado sai de `nf_descontavel` e vira "não lançada no ERP".
+  // Precisa rodar AQUI: depois de todas as linhas existirem (a falta é
+  // apurada por macro item, e só o conjunto fecha o número) e antes dos
+  // totais e da aprovação, que lê `nf_descontavel` para gravar o saldo
+  // corrido de NF abatida.
+  const retratoAdotado = await aplicarRetratoAdotado(
+    admin, (medicao as any).informakon_snapshot_id, linhas,
+  )
+
   const totais: InformaconTotais = linhas.reduce<InformaconTotais>((acc, l) => ({
     material_medido: acc.material_medido + l.material_medido,
     servico_medido:  acc.servico_medido  + l.servico_medido,
@@ -1318,6 +1430,7 @@ export async function calcularInformaconData(
     gap_material:    acc.gap_material    + l.gap_material,
     faturamento_direto_em_aberto: acc.faturamento_direto_em_aberto + l.faturamento_direto_em_aberto,
     fip_faturar:     acc.fip_faturar     + l.fip_faturar,
+    nf_nao_lancada_no_erp: acc.nf_nao_lancada_no_erp + l.nf_nao_lancada_no_erp,
     wave_servico:    acc.wave_servico    + l.wave_servico,
     valor_total_medido: acc.valor_total_medido + l.valor_total_medido,
     dados_informakon: acc.dados_informakon + l.dados_informakon,
@@ -1337,7 +1450,7 @@ export async function calcularInformaconData(
     material_medido: 0, servico_medido: 0,
     nf_terceiro: 0, saldo_aprovado: 0, nf_descontavel: 0, nf_transbordo_grupo: 0,
     nf_recuperacao_anterior: 0, gap_material: 0,
-    faturamento_direto_em_aberto: 0, fip_faturar: 0, wave_servico: 0,
+    faturamento_direto_em_aberto: 0, fip_faturar: 0, nf_nao_lancada_no_erp: 0, wave_servico: 0,
     valor_total_medido: 0, dados_informakon: 0, total_informakon: 0,
     informakon_a_lancar: 0, correcao_informakon: 0,
     base_retencao: 0, retencao: 0,
@@ -1452,5 +1565,6 @@ export async function calcularInformaconData(
     },
     linhas,
     totais,
+    retrato_adotado: retratoAdotado,
   }
 }
