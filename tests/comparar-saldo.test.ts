@@ -123,3 +123,37 @@ describe('compararSaldoInformakon', () => {
     expect(r.semRetrato).toHaveLength(1)
   })
 })
+
+describe('escopo de consulta (abrir as notas do macro item)', () => {
+  const saldo = [
+    { chave: '14', rotulo: 'COMBATE AO INCÊNDIO', valor: 481745.48 },
+    { chave: '19.1.2', rotulo: 'FECHAMENTOS…', valor: 220000 },
+  ]
+
+  it('grupos 1..18 apontam para o UUID do grupo macro', () => {
+    const r = compararSaldoInformakon(
+      [
+        { codigo: '14.1.1', nf_descontavel: 300000, grupo_id: 'uuid-grupo-14', detalhamento_id: 'uuid-det-a' },
+        { codigo: '14.2.6', nf_descontavel: 211015.55, grupo_id: 'uuid-grupo-14', detalhamento_id: 'uuid-det-b' },
+      ],
+      saldo,
+    )
+    const g14 = r.linhas.find(l => l.chave === '14')!
+    expect(g14.scopeId).toBe('uuid-grupo-14')
+    expect(g14.boletim).toBeCloseTo(511015.55, 2)
+    expect(g14.diferenca).toBeCloseTo(29270.07, 2)   // o caso real do usuário
+  })
+
+  it('o grupo 19 aponta para o detalhamento — é assim que o ERP quebra', () => {
+    const r = compararSaldoInformakon(
+      [{ codigo: '19.1.2', nf_descontavel: 1000, grupo_id: 'uuid-grupo-19', detalhamento_id: 'uuid-det-1912' }],
+      saldo,
+    )
+    expect(r.linhas.find(l => l.chave === '19.1.2')!.scopeId).toBe('uuid-det-1912')
+  })
+
+  it('sem id na linha, o escopo fica nulo em vez de inventar', () => {
+    const r = compararSaldoInformakon([{ codigo: '14.1.1', nf_descontavel: 500000 }], saldo)
+    expect(r.linhas.find(l => l.chave === '14')!.scopeId).toBeNull()
+  })
+})

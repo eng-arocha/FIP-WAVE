@@ -31,6 +31,10 @@ export interface LinhaBoletimComparavel {
   codigo: string
   /** Quanto esta linha manda descontar de nota nesta medição. */
   nf_descontavel: number
+  /** UUID do grupo macro — usado pra abrir as notas do balde. */
+  grupo_id?: string | null
+  /** UUID do detalhamento — o escopo certo no grupo 19. */
+  detalhamento_id?: string | null
 }
 
 export interface SaldoInformakonComparavel {
@@ -51,6 +55,12 @@ export interface LinhaComparacao {
   diferenca: number
   /** true quando falta lançamento no Informakon para fechar a medição. */
   falta: boolean
+  /**
+   * UUID pra consultar as notas deste macro item em /origem: o grupo macro,
+   * ou o detalhamento no grupo 19 (que o Informakon quebra por item).
+   * `null` quando nenhuma linha da medição trouxe o id.
+   */
+  scopeId: string | null
 }
 
 export interface ComparacaoSaldo {
@@ -73,12 +83,18 @@ export function compararSaldoInformakon(
   saldo: SaldoInformakonComparavel[],
 ): ComparacaoSaldo {
   const porChaveBoletim = new Map<string, number>()
+  /** Escopo de consulta por chave — grupo macro, ou detalhamento no grupo 19. */
+  const scopePorChave = new Map<string, string>()
   for (const l of linhasBoletim) {
     const k = chaveMacroItem(l.codigo)
     if (!k) continue
     const v = Number(l.nf_descontavel) || 0
     if (v === 0 && !porChaveBoletim.has(k)) porChaveBoletim.set(k, 0)
     else porChaveBoletim.set(k, (porChaveBoletim.get(k) || 0) + v)
+    if (!scopePorChave.has(k)) {
+      const escopo = k.startsWith('19.') ? l.detalhamento_id : l.grupo_id
+      if (escopo) scopePorChave.set(k, escopo)
+    }
   }
 
   const porChaveInformakon = new Map<string, { valor: number; rotulo: string }>()
@@ -109,6 +125,7 @@ export function compararSaldoInformakon(
       informakon,
       diferenca,
       falta: informakon !== null && diferenca > TOLERANCIA,
+      scopeId: scopePorChave.get(chave) ?? null,
     })
   }
 
