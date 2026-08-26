@@ -14,7 +14,9 @@ import {
   useBreakdownAjuste, BreakdownAjusteGrid, BreakdownCarregando,
 } from '@/components/medicoes/breakdown-ajuste'
 import { excedeTeto, mensagemExcedeTeto } from '@/lib/medicao-teto'
-import { NfDescDrilldown, type NfDescLinha } from '@/components/medicoes/nf-desc-drilldown'
+import {
+  NfDescDrilldown, type NfDescLinha, type ColunaDrilldown,
+} from '@/components/medicoes/nf-desc-drilldown'
 import { EmailLiberacaoMedicaoModal } from '@/components/medicoes/email-liberacao-medicao-modal'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 import { formatCurrency, formatDate } from '@/lib/utils'
@@ -191,8 +193,8 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
    * descartar o breakdown e voltar aos campos qtd/%/R$.
    */
   const [forcarAgregado, setForcarAgregado] = useState(false)
-  /** Linha cuja composição de NF Desc. está aberta no drill-down. */
-  const [drilldownNf, setDrilldownNf] = useState<Linha | null>(null)
+  /** Linha + coluna abertas no drill-down de origem (NF Desc. / NF Terceiro / Saldo Aprov.). */
+  const [drilldownNf, setDrilldownNf] = useState<{ linha: Linha; coluna: ColunaDrilldown } | null>(null)
   const breakdown = useBreakdownAjuste(contratoId, medicaoId, modalAjustar?.item.detalhamento_id ?? null)
   const usaGradeBreakdown = !!breakdown.estado?.suporta_breakdown && !forcarAgregado
 
@@ -1016,8 +1018,8 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   <th style={{ ...th(), textAlign: 'left' }}>Descrição</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(16,185,129,0.05)' }}>% Informakon</th>
                   <th style={{ ...th(), textAlign: 'right' }}>Mat. Medido</th>
-                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>NF Terceiro</th>
-                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>Saldo Aprov.</th>
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }} title="Clique no valor de qualquer linha para ver as notas fiscais alocadas ao item.">NF Terceiro <span style={{ opacity: 0.55, fontWeight: 400 }}>⧉</span></th>
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }} title="Clique no valor de qualquer linha para ver os pedidos aprovados que ainda aguardam nota.">Saldo Aprov. <span style={{ opacity: 0.55, fontWeight: 400 }}>⧉</span></th>
                   <th
                     style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}
                     title="Clique no valor de qualquer linha para ver a conta passo a passo e as notas fiscais do balde que originou o desconto."
@@ -1130,8 +1132,30 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                         {pctFmt(l.pct_informakon, 4)}
                       </td>
                       <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(l.material_medido)}</td>
-                      <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.nf_terceiro)}</td>
-                      <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.saldo_aprovado)}</td>
+                      <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)', padding: 0 }}>
+                        {/* Notas alocadas a ESTE item — aqui a soma bate com a célula. */}
+                        <button
+                          type="button"
+                          onClick={() => setDrilldownNf({ linha: l, coluna: 'nf-terceiro' })}
+                          className="w-full h-full text-right px-2 py-1 hover:bg-teal-500/10 hover:underline decoration-dotted underline-offset-2 transition-colors print:hover:bg-transparent"
+                          style={{ color: 'inherit', font: 'inherit' }}
+                          title="Ver as notas fiscais alocadas a este item"
+                        >
+                          {formatCurrency(l.nf_terceiro)}
+                        </button>
+                      </td>
+                      <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)', padding: 0 }}>
+                        {/* Pedidos aprovados cuja nota ainda não chegou. */}
+                        <button
+                          type="button"
+                          onClick={() => setDrilldownNf({ linha: l, coluna: 'saldo-aprov' })}
+                          className="w-full h-full text-right px-2 py-1 hover:bg-teal-500/10 hover:underline decoration-dotted underline-offset-2 transition-colors print:hover:bg-transparent"
+                          style={{ color: 'inherit', font: 'inherit' }}
+                          title="Ver os pedidos de faturamento direto aprovados que ainda aguardam nota"
+                        >
+                          {formatCurrency(l.saldo_aprovado)}
+                        </button>
+                      </td>
                       <td
                         style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(15,118,110,0.04)', padding: 0 }}
                         title={tituloNfDesc(l)}
@@ -1141,7 +1165,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                             que isto NÃO é "as notas que somam este valor". */}
                         <button
                           type="button"
-                          onClick={() => setDrilldownNf(l)}
+                          onClick={() => setDrilldownNf({ linha: l, coluna: 'nf-desc' })}
                           className="w-full h-full text-right px-2 py-1 hover:bg-teal-500/10 hover:underline decoration-dotted underline-offset-2 transition-colors print:hover:bg-transparent"
                           style={{ color: 'inherit', font: 'inherit' }}
                           title="Ver de onde vem este desconto e as notas do balde"
@@ -1520,7 +1544,8 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
 
       <NfDescDrilldown
         contratoId={contratoId}
-        linha={drilldownNf as NfDescLinha | null}
+        linha={(drilldownNf?.linha ?? null) as NfDescLinha | null}
+        coluna={drilldownNf?.coluna}
         onClose={() => setDrilldownNf(null)}
       />
 

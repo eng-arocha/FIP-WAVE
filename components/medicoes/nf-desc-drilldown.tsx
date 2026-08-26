@@ -32,6 +32,22 @@ import {
 } from '@/components/ui/dialog'
 import { formatCurrency, formatDate } from '@/lib/utils'
 
+/**
+ * Qual célula foi clicada. Cada uma tem uma pergunta e um escopo diferentes:
+ *
+ *  - `nf-desc`      "de onde vem este desconto?" → balde da TAREFA, porque é
+ *                   nele que a régua acumulada é apurada. O valor da célula é
+ *                   uma FATIA do balde, não a soma das notas listadas.
+ *  - `nf-terceiro`  "quais notas estão alocadas a este item?" → escopo do
+ *                   DETALHAMENTO. Aqui a soma BATE com a célula: os dois lados
+ *                   usam o mesmo rateio pro-rata (allocateNfToScope em
+ *                   lib/db/origem.ts e nfAlocadaPorDet em informacon-data.ts).
+ *  - `saldo-aprov`  "que pedidos aprovados ainda não viraram nota?" → escopo do
+ *                   DETALHAMENTO, modo saldo. A soma bate com a célula quando
+ *                   ela é > 0 (a célula é max(0, aprovado − nf alocada)).
+ */
+export type ColunaDrilldown = 'nf-desc' | 'nf-terceiro' | 'saldo-aprov'
+
 export interface NfDescLinha {
   codigo: string
   descricao: string
@@ -61,6 +77,16 @@ interface OrigemNota {
   arquivoUrl: string | null
 }
 
+interface OrigemPedido {
+  tipo: string
+  id: string
+  numero: string
+  aprovadoEm: string | null
+  aprovado: number
+  emNf: number
+  saldo: number
+}
+
 const ROTULO_STATUS: Record<string, { texto: string; cor: string }> = {
   aprovada: { texto: 'aprovada', cor: '#10B981' },
   aguardando_aprovacao: { texto: 'aguardando aprovação', cor: '#F59E0B' },
@@ -71,29 +97,34 @@ const ROTULO_STATUS: Record<string, { texto: string; cor: string }> = {
 export function NfDescDrilldown({
   contratoId,
   linha,
+  coluna = 'nf-desc',
   onClose,
 }: {
   contratoId: string
   linha: NfDescLinha | null
+  coluna?: ColunaDrilldown
   onClose: () => void
 }) {
   const [notas, setNotas] = useState<OrigemNota[] | null>(null)
+  const [pedidos, setPedidos] = useState<OrigemPedido[] | null>(null)
   const [carregando, setCarregando] = useState(false)
   const [erro, setErro] = useState('')
 
-  // Escopo do balde: a TAREFA, que é onde o desconto é apurado. Sem
-  // tarefa_id (resposta antiga da API) cai no detalhamento — mais estreito,
-  // mas ainda verdadeiro sobre o que está alocado ao próprio item.
-  const scope = linha?.tarefa_id || linha?.detalhamento_id || null
-  const escopoEhTarefa = !!linha?.tarefa_id
+  // NF Desc. é apurado no balde da TAREFA; as outras duas colunas são do
+  // próprio item. Sem `tarefa_id` (resposta antiga da API) o NF Desc. cai no
+  // detalhamento — mais estreito, mas ainda verdadeiro sobre o próprio item.
+  const escopoEhTarefa = coluna === 'nf-desc' && !!linha?.tarefa_id
+  const scope = escopoEhTarefa ? linha!.tarefa_id! : (linha?.detalhamento_id || null)
+  const modoOrigem = coluna === 'saldo-aprov' ? 'saldo' : 'realizado'
 
   useEffect(() => {
-    if (!linha || !scope) { setNotas(null); return }
+    if (!linha || !scope) { setNotas(null); setPedidos(null); return }
     let cancelado = false
     setCarregando(true)
     setErro('')
     setNotas(null)
-    fetch(`/api/contratos/${contratoId}/origem?modo=material&origem=realizado&scope=${scope}`, { cache: 'no-store' })
+    setPedidos(null)
+    fetch(`/api/contratos/${contratoId}/origem?modo=material&origem=${modoOrigem}&scope=${scope}`, { cache: 'no-store' })
       .then(async res => {
         const body = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(body?.error || `HTTP ${res.status}`)
@@ -101,15 +132,25 @@ export function NfDescDrilldown({
       })
       .then(data => {
         if (cancelado) return
-        const itens = (data?.itens || []) as OrigemNota[]
-        setNotas(itens.filter(i => i.tipo === 'nf-fat-direto'))
+        const itens = (data?.itens || []) as any[]
+        if (modoOrigem === 'saldo') {
+          setPedidos(itens.filter(i => i.tipo === 'pedido-saldo') as OrigemPedido[])
+        } else {
+          setNotas(itens.filter(i => i.tipo === 'nf-fat-direto') as OrigemNota[])
+        }
       })
-      .catch(e => { if (!cancelado) setErro(e?.message || 'Falha ao carregar as notas.') })
+      .catch(e => { if (!cancelado) setErro(e?.message || 'Falha ao carregar os dados.') })
       .finally(() => { if (!cancelado) setCarregando(false) })
     return () => { cancelado = true }
-  }, [contratoId, scope, linha])
+  }, [contratoId, scope, modoOrigem, linha])
 
   if (!linha) return null
+
+  const CFG = {
+    'nf-desc':     { titulo: 'De onde vem o NF Desc.',        valor: linha.nf_descontavel },
+    'nf-terceiro': { titulo: 'Notas alocadas a este item',    valor: linha.nf_terceiro },
+    'saldo-aprov': { titulo: 'Pedidos aprovados sem nota',    valor: linha.saldo_aprovado },
+  }[coluna]
 
   const transbordo = Number(linha.nf_transbordo_grupo || 0)
   const recuperacao = Number(linha.nf_recuperacao_anterior || 0)
@@ -121,7 +162,7 @@ export function NfDescDrilldown({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2" style={{ color: '#60A5FA' }}>
             <FileText className="w-5 h-5" />
-            De onde vem o NF Desc.
+            {CFG.titulo}
           </DialogTitle>
           <DialogDescription className="text-[var(--text-2)]">
             Item <strong className="font-mono">{linha.codigo}</strong>
@@ -131,7 +172,8 @@ export function NfDescDrilldown({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {/* ── A conta da linha ──────────────────────────────────────── */}
+          {/* ── A conta da linha — só o NF Desc. tem cadeia de cálculo ── */}
+          {coluna === 'nf-desc' && (
           <section>
             <h4 className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-3)' }}>
               A conta desta linha
@@ -174,20 +216,39 @@ export function NfDescDrilldown({
               </div>
             )}
           </section>
+          )}
 
-          {/* ── As notas do balde ────────────────────────────────────── */}
+          {/* ── Notas / pedidos do escopo ────────────────────────────── */}
           <section>
             <h4 className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>
-              Notas no balde {escopoEhTarefa ? 'da tarefa' : 'deste item'}
+              {coluna === 'saldo-aprov'
+                ? 'Pedidos aprovados com saldo neste item'
+                : `Notas no balde ${escopoEhTarefa ? 'da tarefa' : 'deste item'}`}
             </h4>
-            <p className="text-[10px] mb-2" style={{ color: 'var(--text-3)' }}>
-              O NF Desc. acima é uma <strong>fatia</strong> deste conjunto, não a soma de notas
-              específicas: a nota se liga ao <em>pedido</em>, o pedido é rateado entre seus itens,
-              e o desconto é apurado no balde
-              {escopoEhTarefa ? ' da tarefa inteira' : ' do item'} pela régua acumulada. Por isso os
-              totais abaixo não batem com a célula — eles mostram o estoque de nota disponível,
-              de onde a fatia saiu.
-            </p>
+            {coluna === 'nf-desc' ? (
+              <p className="text-[10px] mb-2" style={{ color: 'var(--text-3)' }}>
+                O NF Desc. acima é uma <strong>fatia</strong> deste conjunto, não a soma de notas
+                específicas: a nota se liga ao <em>pedido</em>, o pedido é rateado entre seus itens,
+                e o desconto é apurado no balde
+                {escopoEhTarefa ? ' da tarefa inteira' : ' do item'} pela régua acumulada. Por isso os
+                totais abaixo não batem com a célula — eles mostram o estoque de nota disponível,
+                de onde a fatia saiu.
+              </p>
+            ) : coluna === 'nf-terceiro' ? (
+              <p className="text-[10px] mb-2" style={{ color: 'var(--text-3)' }}>
+                Aqui o total <strong>bate</strong> com a célula ({formatCurrency(CFG.valor)}): é a
+                mesma conta dos dois lados. A nota se liga ao <em>pedido</em>, não ao item — o valor
+                dela é rateado entre os itens do pedido na proporção do valor de cada um, e a coluna
+                &quot;Alocado aqui&quot; é a parcela que coube a este detalhamento.
+              </p>
+            ) : (
+              <p className="text-[10px] mb-2" style={{ color: 'var(--text-3)' }}>
+                Material já <strong>aprovado</strong> em pedido de faturamento direto cuja nota do
+                fornecedor ainda não chegou — total {formatCurrency(CFG.valor)}. É o que segura a
+                coluna &quot;Retido&quot;: enquanto houver saldo aqui, o sistema não pede nota nova
+                à FIP pelo mesmo material.
+              </p>
+            )}
 
             {carregando && (
               <div className="flex items-center gap-2 py-6 justify-center text-xs" style={{ color: 'var(--text-3)' }}>
@@ -205,6 +266,51 @@ export function NfDescDrilldown({
               <div className="p-3 rounded-lg text-xs" style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>
                 Nenhuma nota de terceiro lançada neste escopo. O material medido está
                 inteiro no Gap — ou vira pedido em nome da FIP, ou aguarda nota do fornecedor.
+              </div>
+            )}
+
+            {pedidos && pedidos.length === 0 && !carregando && (
+              <div className="p-3 rounded-lg text-xs" style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>
+                Nenhum pedido de faturamento direto aprovado com saldo neste item. Por isso a
+                coluna Saldo Aprov. está zerada — o material sem nota vai inteiro para
+                &quot;FIP Fat-Dir&quot;.
+              </div>
+            )}
+
+            {pedidos && pedidos.length > 0 && (
+              <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border)' }}>
+                <table className="w-full text-[11px]">
+                  <thead style={{ background: 'var(--surface-2)' }}>
+                    <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
+                      <th className="text-left py-1.5 px-2 font-medium" style={{ color: 'var(--text-3)' }}>Pedido</th>
+                      <th className="text-left py-1.5 px-2 font-medium" style={{ color: 'var(--text-3)' }}>Aprovado em</th>
+                      <th className="text-right py-1.5 px-2 font-medium" style={{ color: 'var(--text-3)' }}>Aprovado aqui</th>
+                      <th className="text-right py-1.5 px-2 font-medium" style={{ color: 'var(--text-3)' }}>Já em NF</th>
+                      <th className="text-right py-1.5 px-2 font-medium" style={{ color: 'var(--text-3)' }}>Saldo sem NF</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pedidos.map(pd => (
+                      <tr key={pd.id} className="border-b" style={{ borderColor: 'var(--border)' }}>
+                        <td className="py-1.5 px-2 font-mono" style={{ color: 'var(--text-1)' }}>{pd.numero || '—'}</td>
+                        <td className="py-1.5 px-2 tabular-nums" style={{ color: 'var(--text-3)' }}>{pd.aprovadoEm ? formatDate(pd.aprovadoEm) : '—'}</td>
+                        <td className="py-1.5 px-2 text-right tabular-nums" style={{ color: 'var(--text-2)' }}>{formatCurrency(pd.aprovado)}</td>
+                        <td className="py-1.5 px-2 text-right tabular-nums" style={{ color: 'var(--text-3)' }}>{formatCurrency(pd.emNf)}</td>
+                        <td className="py-1.5 px-2 text-right tabular-nums font-semibold" style={{ color: '#F59E0B' }}>{formatCurrency(pd.saldo)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: 'var(--surface-2)' }}>
+                      <td colSpan={4} className="py-1.5 px-2 text-right font-semibold" style={{ color: 'var(--text-2)' }}>
+                        Saldo total aguardando nota
+                      </td>
+                      <td className="py-1.5 px-2 text-right tabular-nums font-bold" style={{ color: '#F59E0B' }}>
+                        {formatCurrency(pedidos.reduce((s, p) => s + Number(p.saldo || 0), 0))}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
             )}
 
@@ -263,7 +369,13 @@ export function NfDescDrilldown({
                       <td className="py-1.5 px-2 text-right tabular-nums font-bold" style={{ color: '#10B981' }}>
                         {formatCurrency(somaAlocada)}
                       </td>
-                      <td colSpan={2} />
+                      <td colSpan={2} className="py-1.5 px-2 text-[10px]">
+                        {coluna === 'nf-terceiro' && (
+                          Math.abs(somaAlocada - CFG.valor) < 0.01
+                            ? <span style={{ color: '#10B981' }}>✓ bate com a célula</span>
+                            : <span style={{ color: '#F59E0B' }}>≠ célula ({formatCurrency(CFG.valor)})</span>
+                        )}
+                      </td>
                     </tr>
                   </tfoot>
                 </table>
