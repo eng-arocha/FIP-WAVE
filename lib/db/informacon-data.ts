@@ -126,17 +126,14 @@ export interface InformaconLinha {
   total_informakon: number
   pct_informakon: number
   /**
-   * Valor que o Informakon deve LIBERAR para este item = serviço medido +
-   * material que já virou nota. Difere de `dados_informakon` (o espelho do
-   * executado) exatamente pelo Gap. Ver o cálculo em `calcularInformaconData`.
+   * Valor que vai APARECER no Informakon para este item:
+   * `Valor Total Medido − Nota a caminho`. Assume que a nota da FIP já foi
+   * emitida e lançada — ver a pré-condição em `calcularInformaconData`.
    */
   informakon_a_lancar?: number
   /** `informakon_a_lancar` ÷ valor global × 100 — o número que se digita. */
   pct_informakon_a_lancar?: number
-  /**
-   * `dados_informakon − informakon_a_lancar`. Positivo = Gap segurado
-   * (Retido + FIP Fat-Dir). Negativo = nota antiga sendo recuperada.
-   */
+  /** `dados_informakon − informakon_a_lancar` = "Nota a caminho". */
   correcao_informakon?: number
   alterado_por_retido: boolean
   base_retencao: number
@@ -1125,20 +1122,44 @@ export async function calcularInformaconData(
       //
       // Isolando o % que entrega exatamente o serviço medido:
       //
-      //     % × global − nfDescontavel = waveServico
-      //     % = (waveServico + nfDescontavel) / global × 100
+      //     % × global − (notas lançadas lá) = waveServico
       //
-      // O serviço continua pago pelo % medido integral — a correção sai toda
-      // do lado do material, que é onde o problema está.
-      const informakonALancar = waveServico + nfDescontavel
+      // QUAIS notas estarão lançadas no momento em que o percentual é
+      // digitado? Duas, não uma:
+      //
+      //   1. a nota do fornecedor, que já está lá  ......... nfDescontavel
+      //   2. a nota que a FIP emite para o material sem
+      //      pedido, e que é LANÇADA ANTES do percentual
+      //      (o Informakon não aceita descontar nota que
+      //      ainda não existe — é o fluxo real do usuário)  fipFaturar
+      //
+      // A única parcela que NÃO estará lançada é a que aguarda o fornecedor:
+      // `faturamentoDiretoEmAberto` ("Nota a caminho"). Logo:
+      //
+      //     a lançar = waveServico + nfDescontavel + fipFaturar
+      //              = Valor Total Medido − Nota a caminho
+      //
+      // As duas formas são a mesma conta sempre que `nfDescontavel` cabe no
+      // material do período — que é o caso normal. A implementação usa a
+      // PRIMEIRA porque a segunda quebra na recuperação: quando a régua
+      // acumulada devolve nota de meses anteriores, `nfDescontavel` supera o
+      // material medido, o Gap fica clampado em zero e
+      // `Valor Total Medido − Nota a caminho` liberaria MENOS do que a nota
+      // que o Informakon vai descontar — a Wave ficaria negativa. Somar as
+      // parcelas que serão descontadas é correto nos dois regimes.
+      //
+      // PRÉ-CONDIÇÃO: a nota da FIP precisa estar emitida e lançada antes de
+      // este percentual ser usado. Se não estiver, o Informakon libera o valor
+      // e desconta só a nota do fornecedor — e a Wave recebe `fipFaturar` a
+      // mais do que o serviço. Por isso a UI destaca quando há valor em "FIP
+      // precisa emitir".
+      const informakonALancar = waveServico + nfDescontavel + fipFaturar
       const pctInformakonALancar = valorGlobalItem > 0
         ? (informakonALancar / valorGlobalItem) * 100
         : 0
-      // Quanto o espelho tem a mais (ou a menos) que o valor a liberar.
-      // Positivo = Gap segurado (Retido + FIP Fat-Dir), que é o caso comum.
-      // Negativo = nota de meses anteriores voltando pela régua acumulada:
-      // aí é preciso liberar MAIS que o executado no período, senão o
-      // desconto do Informakon deixaria a Wave no negativo.
+      // Quanto o executado tem a mais que o valor a liberar — é exatamente o
+      // "Nota a caminho": material sem nota que ainda aguarda o fornecedor e
+      // que, por isso, não pode ser liberado agora.
       const correcaoInformakon = dadosInformakon - informakonALancar
       // O valor do item só é "alterado por retido" quando a confirmação sem NF
       // efetivamente reduziu o percentual de serviço.
