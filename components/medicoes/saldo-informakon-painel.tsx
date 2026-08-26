@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Loader2, ClipboardPaste, AlertTriangle, CheckCircle2, RefreshCw, ExternalLink, Search,
+  ShieldCheck, Undo2,
 } from 'lucide-react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -59,6 +60,7 @@ const ROTULO_STATUS: Record<string, string> = {
 interface RetratoSaldo {
   temDados: boolean
   motivo?: string
+  snapshot_id?: string
   /** 'detalhado' = veio nota a nota; 'agregado' = só o somatório por grupo. */
   formato?: 'detalhado' | 'agregado'
   referencia?: string
@@ -423,14 +425,34 @@ function ModalNotasDoMacroItem({
   )
 }
 
+/** O retrato em vigor nesta medição, como vem do boletim (migration 082). */
+export interface RetratoAdotadoUI {
+  snapshot_id: string
+  referencia: string | null
+  informado_em: string | null
+  total_reclassificado: number
+  por_macro_item: Array<{ chave: string; pedido: number; disponivel: number; falta: number }>
+}
+
 export function SaldoInformakonPainel({
   contratoId,
+  medicaoId,
   linhasBoletim,
+  retratoAdotado,
+  medicaoAberta,
   podeEditar,
+  onMudou,
 }: {
   contratoId: string
+  medicaoId: string
   linhasBoletim: LinhaBoletimComparavel[]
+  /** Retrato que ESTA medição adotou. null = boletim sem ajuste. */
+  retratoAdotado?: RetratoAdotadoUI | null
+  /** Medição aprovada não troca de retrato — o saldo de NF já foi gravado. */
+  medicaoAberta: boolean
   podeEditar: boolean
+  /** Recarrega o boletim depois de adotar ou desfazer. */
+  onMudou?: () => void
 }) {
   const [retrato, setRetrato] = useState<RetratoSaldo | null>(null)
   const [carregando, setCarregando] = useState(true)
@@ -441,6 +463,7 @@ export function SaldoInformakonPainel({
   const [aviso, setAviso] = useState<string | null>(null)
   /** Macro item aberto na busca "qual nota falta lançar". */
   const [macroItemAberto, setMacroItemAberto] = useState<LinhaComparacao | null>(null)
+  const [adotando, setAdotando] = useState(false)
 
   const carregar = useCallback(async () => {
     setCarregando(true)
@@ -502,6 +525,37 @@ export function SaldoInformakonPainel({
       setErro(e?.message || 'Erro de rede.')
     } finally {
       setSalvando(false)
+    }
+  }
+
+  /**
+   * Adota o retrato NESTA medição (ou desfaz).
+   *
+   * Adotar não é um filtro visual: o boletim passa a reclassificar de "NF
+   * Desc." para "não lançada no ERP" o que o ERP não tem, o "% a lançar" cai
+   * na diferença exata, e a aprovação deixa de marcar essa nota como abatida
+   * — ela volta na medição seguinte. Por isso é explícito e reversível.
+   */
+  async function alternarAdocao(adotar: boolean) {
+    setAdotando(true)
+    setErro('')
+    setAviso(null)
+    try {
+      const url = `/api/contratos/${contratoId}/medicoes/${medicaoId}/informakon-retrato`
+      const res = adotar
+        ? await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ snapshot_id: retrato?.snapshot_id }),
+          })
+        : await fetch(url, { method: 'DELETE' })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) { setErro(body?.error || `Falha (HTTP ${res.status}).`); return }
+      onMudou?.()
+    } catch (e: any) {
+      setErro(e?.message || 'Erro de rede.')
+    } finally {
+      setAdotando(false)
     }
   }
 
@@ -575,6 +629,65 @@ export function SaldoInformakonPainel({
             </div>
           </div>
         )}
+
+        {/* ── Adotar o retrato nesta medição ───────────────────────────
+            Adotar reclassifica o desconto que o ERP não tem: o "% a lançar"
+            cai na diferença exata e a nota continua na fila para o mês que
+            vem, em vez de ser marcada como abatida na aprovação. */}
+        {retratoAdotado ? (
+          <div className="px-3 pb-3">
+            <div
+              className="p-2.5 rounded-lg text-[11px] flex items-start justify-between gap-3 flex-wrap"
+              style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.35)' }}
+            >
+              <div className="min-w-0" style={{ color: '#10B981' }}>
+                <strong>
+                  Retrato de {retratoAdotado.referencia ? formatDate(retratoAdotado.referencia) : '—'} adotado nesta medição.
+                </strong>{' '}
+                {formatCurrency(retratoAdotado.total_reclassificado)} saíram de &quot;NF Desc.&quot; e viraram
+                &quot;não lançada no ERP&quot;: o <strong>% a lançar</strong> já está corrigido, e essa nota
+                volta na próxima medição em vez de ser dada como abatida.
+              </div>
+              {podeEditar && medicaoAberta && (
+                <button
+                  type="button"
+                  onClick={() => alternarAdocao(false)}
+                  disabled={adotando}
+                  className="shrink-0 inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-lg font-medium border transition-colors hover:bg-[var(--surface-3)] disabled:opacity-50"
+                  style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
+                >
+                  {adotando ? <Loader2 className="w-3 h-3 animate-spin" /> : <Undo2 className="w-3 h-3" />}
+                  Desfazer
+                </button>
+              )}
+            </div>
+          </div>
+        ) : temFalta && podeEditar && medicaoAberta && retrato?.snapshot_id ? (
+          <div className="px-3 pb-3">
+            <div
+              className="p-2.5 rounded-lg text-[11px] flex items-start justify-between gap-3 flex-wrap"
+              style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.35)' }}
+            >
+              <div className="min-w-0" style={{ color: 'var(--text-2)' }}>
+                Lançar o <strong>% a lançar</strong> como está hoje libera{' '}
+                <strong style={{ color: '#EF4444' }}>{formatCurrency(comparacao!.totalFaltante)}</strong> que o
+                Informakon não tem como descontar — e a aprovação ainda daria essa nota por abatida,
+                tirando ela da fila. O melhor caminho é lançar a nota lá. Se não der agora,
+                adote o retrato: o % cai nesse valor exato e a nota volta no mês que vem.
+              </div>
+              <button
+                type="button"
+                onClick={() => alternarAdocao(true)}
+                disabled={adotando}
+                className="shrink-0 inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-lg font-medium border transition-colors hover:bg-red-500/10 disabled:opacity-50"
+                style={{ borderColor: 'rgba(239,68,68,0.45)', color: '#EF4444' }}
+              >
+                {adotando ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
+                Adotar nesta medição
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {/* O que falta — só aparece quando exige ação */}
         {temFalta && (

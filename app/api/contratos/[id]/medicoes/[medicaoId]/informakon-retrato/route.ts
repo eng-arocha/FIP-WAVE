@@ -1,0 +1,137 @@
+import { NextResponse } from 'next/server'
+import { z } from 'zod'
+import { requirePermissao } from '@/lib/api/auth'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { apiError } from '@/lib/api/error-response'
+import { parseBody } from '@/lib/api/schema'
+import { isSchemaMissingError } from '@/lib/db/resilient'
+
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
+/**
+ * /api/contratos/[id]/medicoes/[medicaoId]/informakon-retrato
+ *
+ * Adota (POST) ou desfaz (DELETE) o retrato do Informakon NESTA medição
+ * (migration 082).
+ *
+ * Com o retrato adotado, o boletim reclassifica de "NF Desc." para "não
+ * lançada no ERP" a parcela que o Informakon não tem lançada. Isso derruba o
+ * "% a lançar" na diferença exata e, na aprovação, impede que a nota seja
+ * marcada como abatida — ela volta na medição seguinte.
+ *
+ * Só em medição ABERTA. Depois de aprovada, `nf_material_descontada` já foi
+ * gravado a partir do boletim; trocar o retrato ali desalinharia o saldo
+ * corrido de NF sem que nada no banco fosse recalculado. Para mexer, é
+ * desfazer a aprovação primeiro.
+ */
+
+const COLUNA_082 = ['informakon_snapshot_id']
+
+const Body = z.object({
+  snapshot_id: z.string().uuid('Retrato inválido.'),
+})
+
+function migrationPendente() {
+  return NextResponse.json(
+    {
+      error: 'Funcionalidade pendente: rode a migration 082 no Supabase.',
+      code: 'MIGRATION_PENDENTE',
+    },
+    { status: 503 },
+  )
+}
+
+/** Carrega a medição e recusa o que não pode ser alterado. */
+async function medicaoAlteravel(admin: ReturnType<typeof createAdminClient>, medicaoId: string, contratoId: string) {
+  const { data, error } = await admin
+    .from('medicoes')
+    .select('id, status, contrato_id')
+    .eq('id', medicaoId)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return { res: NextResponse.json({ error: 'Medição não encontrada.' }, { status: 404 }) }
+  const med = data as { status: string; contrato_id: string }
+  if (med.contrato_id !== contratoId) {
+    return { res: NextResponse.json({ error: 'Medição não pertence a este contrato.' }, { status: 404 }) }
+  }
+  if (med.status === 'aprovado') {
+    return {
+      res: NextResponse.json(
+        {
+          error: 'Medição já aprovada. O saldo de NF abatida foi gravado com o boletim desta medição — desfaça a aprovação antes de trocar o retrato.',
+          code: 'MEDICAO_APROVADA',
+        },
+        { status: 409 },
+      ),
+    }
+  }
+  return { res: null }
+}
+
+async function gravar(medicaoId: string, snapshotId: string | null) {
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('medicoes')
+    .update({ informakon_snapshot_id: snapshotId })
+    .eq('id', medicaoId)
+  if (error) {
+    if (isSchemaMissingError(error, COLUNA_082)) return migrationPendente()
+    throw error
+  }
+  return NextResponse.json({ ok: true, snapshot_id: snapshotId })
+}
+
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ id: string; medicaoId: string }> },
+) {
+  const negado = await requirePermissao('medicoes', 'editar')
+  if (negado) return negado
+  try {
+    const { id: contratoId, medicaoId } = await params
+    const parsed = await parseBody(Body, req)
+    if (!parsed.ok) return parsed.res
+
+    const admin = createAdminClient()
+    const guarda = await medicaoAlteravel(admin, medicaoId, contratoId)
+    if (guarda.res) return guarda.res
+
+    // O retrato precisa existir e ser deste contrato — adotar o retrato de
+    // outra obra produziria um percentual silenciosamente errado.
+    const snapRes = await admin
+      .from('informakon_saldo_snapshots')
+      .select('id, contrato_id')
+      .eq('id', parsed.data.snapshot_id)
+      .maybeSingle()
+    if (snapRes.error) {
+      if (isSchemaMissingError(snapRes.error, ['informakon_saldo_snapshots'])) return migrationPendente()
+      throw snapRes.error
+    }
+    if (!snapRes.data || (snapRes.data as any).contrato_id !== contratoId) {
+      return NextResponse.json({ error: 'Retrato não encontrado neste contrato.' }, { status: 404 })
+    }
+
+    return await gravar(medicaoId, parsed.data.snapshot_id)
+  } catch (e: any) {
+    return apiError(e)
+  }
+}
+
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string; medicaoId: string }> },
+) {
+  const negado = await requirePermissao('medicoes', 'editar')
+  if (negado) return negado
+  try {
+    const { id: contratoId, medicaoId } = await params
+    const admin = createAdminClient()
+    const guarda = await medicaoAlteravel(admin, medicaoId, contratoId)
+    if (guarda.res) return guarda.res
+    return await gravar(medicaoId, null)
+  } catch (e: any) {
+    return apiError(e)
+  }
+}
