@@ -14,6 +14,7 @@ import {
   useBreakdownAjuste, BreakdownAjusteGrid, BreakdownCarregando,
 } from '@/components/medicoes/breakdown-ajuste'
 import { excedeTeto, mensagemExcedeTeto } from '@/lib/medicao-teto'
+import { SaldoInformakonPainel } from '@/components/medicoes/saldo-informakon-painel'
 import {
   NfDescDrilldown, type NfDescLinha, type ColunaDrilldown,
 } from '@/components/medicoes/nf-desc-drilldown'
@@ -1033,6 +1034,19 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
             </div>
           </div>
         )}
+
+        {/* Teto de realidade: o Informakon só desconta nota lançada lá.
+            Compara por macro item e avisa ANTES de a medição ser fechada. */}
+        <div className="mb-3">
+          <SaldoInformakonPainel
+            contratoId={contratoId}
+            linhasBoletim={linhasExibidas.map(l => ({
+              codigo: l.codigo,
+              nf_descontavel: Number(l.nf_descontavel || 0),
+            }))}
+            podeEditar={podeAprovar}
+          />
+        </div>
 
         {/* Tabela */}
         <MaximizableCard
