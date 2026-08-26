@@ -1044,6 +1044,8 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
             linhasBoletim={linhasExibidas.map(l => ({
               codigo: l.codigo,
               nf_descontavel: Number(l.nf_descontavel || 0),
+              grupo_id: l.grupo_id ?? null,
+              detalhamento_id: l.detalhamento_id,
             }))}
             podeEditar={podeAprovar}
           />

@@ -318,7 +318,13 @@ export async function calcularBoletimSimulado(
         .filter(x => x.detId)
       const totalSol = itensVal.reduce((s, it) => s + it.valor, 0)
       for (const it of itensVal) aprovadoPorDet[it.detId!] = (aprovadoPorDet[it.detId!] || 0) + it.valor
-      const totalNfsSol = ((sol.nfs || []) as any[]).reduce((s: number, nf: any) => s + Number(nf.valor || 0), 0)
+      // NF cancelada não reserva saldo, então não desconta material. O
+      // `status` já vinha no SELECT e não era lido — mesma correção que foi
+      // feita no boletim real; se só um dos dois filtrasse, a simulação
+      // prometeria um número e a medição entregaria outro.
+      const totalNfsSol = ((sol.nfs || []) as any[])
+        .filter((nf: any) => nfReservaSaldo(nf?.status))
+        .reduce((s: number, nf: any) => s + Number(nf.valor || 0), 0)
       if (totalSol > 0 && totalNfsSol > 0) {
         for (const it of itensVal) {
           const share = it.valor / totalSol
