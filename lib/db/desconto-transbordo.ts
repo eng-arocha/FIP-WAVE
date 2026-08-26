@@ -20,27 +20,34 @@
  * tarefas → detalhamentos), que é o código de dois níveis que o usuário vê:
  * "14.2 TUBOS E CONEXÕES - SPRINKLER", "16.1 INFRA SDAI".
  *
- * POR QUE TAREFA E NÃO GRUPO MACRO:
+ * O NÍVEL DO BALDE — GRUPO MACRO POR PADRÃO, TAREFA POR EXCEÇÃO:
  *
- * A primeira versão apurava pelo grupo macro inteiro, para espelhar o
- * Informakon (que desconta por macro item). Só que o grupo macro mistura
- * materiais de naturezas diferentes: o grupo 16 (SDAI) contém tanto
- * "16.1 INFRA — eletrodutos e caixas" quanto "16.2 CABEAMENTO — cabo
- * blindado". Na medição 005/2026 isso ficou visível: itens de cabeamento sem
- * nota nenhuma apareciam cobertos por nota de eletroduto, e o sistema não
- * pedia NF à FIP por material que de fato não tinha nota.
+ * Esta escolha já mudou duas vezes. O histórico importa porque cada direção
+ * quebra uma coisa diferente:
  *
- * A tarefa é a menor fronteira que ainda resolve o problema original: no caso
- * que motivou o transbordo — sprinkler comprado por prumada e medido por
- * pavimento — origem e destino são ambos "14.2 SPRINKLER", mesma tarefa. O
- * transbordo continua funcionando ali e para de funcionar onde não deveria.
+ *  v1 (grupo macro) — espelhava o Informakon, que desconta por macro item.
+ *  v2 (tarefa, 29/07/2026) — o grupo macro mistura materiais de naturezas
+ *     diferentes: o grupo 16 (SDAI) tem tanto "16.1 INFRA — eletrodutos e
+ *     caixas" quanto "16.2 CABEAMENTO — cabo blindado". Na medição 005/2026
+ *     itens de cabeamento sem nota nenhuma apareciam cobertos por nota de
+ *     eletroduto. Aceitou-se, então, divergir do Informakon de propósito.
+ *  v3 (grupo macro por padrão, configurável) — a divergência deliberada da v2
+ *     virou o problema principal: o Informakon lança nota a nota mas as
+ *     consolida no MACRO GRUPO, e é nesse nível que existe número dos dois
+ *     lados. Apurar por tarefa garante que os totais nunca fechem, porque o
+ *     outro lado não tem dado nessa granularidade. A conciliação só é
+ *     possível onde ambos enxergam o mesmo balde.
  *
- * CONSEQUÊNCIA ACEITA: a apuração fica mais restritiva que a do Informakon,
- * que continua descontando por macro item. Onde uma tarefa tem material sem
- * nota e a tarefa vizinha tem nota sobrando, nós vamos apontar "FIP a criar"
- * e eles não. É uma divergência deliberada — decisão do usuário em 29/07/2026,
- * ciente do trade-off: prefere-se cobrar nota a mais do que dar por coberto
- * material que não tem nota própria.
+ * Por isso o nível voltou a ser o GRUPO MACRO, mas agora por grupo:
+ * `grupos_macro.nivel_apuracao_nf` (migration 079) aceita 'grupo' (padrão) ou
+ * 'tarefa'. Um grupo que de fato mistura materiais incompatíveis — o 16 é o
+ * caso conhecido — pode ser fixado em 'tarefa' sem arrastar os outros 17
+ * grupos junto, que era o custo da v2.
+ *
+ * CONSEQUÊNCIA: onde o nível é 'grupo', a apuração passa a bater com o
+ * Informakon. Onde for fixado em 'tarefa', continua mais restritiva — vamos
+ * apontar "FIP a criar" onde eles dão por coberto, e a diferença aparece na
+ * conciliação por grupo (lib/db/informakon-conciliacao.ts).
  *
  * A RÉGUA ACUMULADA (por que não se apura sobre o material do período):
  *
@@ -73,8 +80,34 @@
  * preserva a dívida e mantém o saldo corrido honesto.
  */
 
+/** Níveis possíveis do balde de apuração de NF. */
+export type NivelApuracao = 'grupo' | 'tarefa'
+
+/**
+ * Nível usado quando o grupo não define nada — inclusive quando a migration
+ * 079 ainda não rodou. É o macro grupo, que é onde o Informakon consolida.
+ */
+export const NIVEL_APURACAO_PADRAO: NivelApuracao = 'grupo'
+
+/**
+ * Resolve o balde de um item. Sem o nível preferido disponível cai no outro,
+ * e sem nenhum dos dois o item vira seu próprio balde (não compartilha com
+ * ninguém) — dado incompleto nunca deve fazer nota de um item cobrir outro
+ * por acidente.
+ */
+function baldeDe(
+  it: { detalhamentoId: string; tarefaId?: string | null; grupoId: string | null; nivelApuracao?: NivelApuracao | null },
+): string {
+  const nivel = it.nivelApuracao ?? NIVEL_APURACAO_PADRAO
+  const preferido = nivel === 'tarefa' ? it.tarefaId : it.grupoId
+  const alternativo = nivel === 'tarefa' ? it.grupoId : it.tarefaId
+  return preferido ?? alternativo ?? `__sem_balde__${it.detalhamentoId}`
+}
+
 export interface ItemDesconto {
   detalhamentoId: string
+  /** Nível do balde deste item, vindo de `grupos_macro.nivel_apuracao_nf`. */
+  nivelApuracao?: NivelApuracao | null
   /**
    * Tarefa do detalhamento — o balde onde o saldo de NF é apurado.
    * Quando ausente (dado incompleto), cai para o grupo macro, que era o
@@ -126,13 +159,7 @@ export function calcularDescontoComTransbordo(
   const resultado = new Map<string, ResultadoDesconto>()
 
   const norm = (v: number) => Math.max(0, Number(v) || 0)
-  /**
-   * O balde é a TAREFA. Sem tarefa cai para o grupo macro (comportamento
-   * anterior); sem nenhum dos dois, o item vira seu próprio balde e não
-   * compartilha saldo com ninguém.
-   */
-  const chave = (it: ItemDesconto) =>
-    it.tarefaId ?? it.grupoId ?? `__sem_balde__${it.detalhamentoId}`
+  const chave = baldeDe
 
   // 1) Soma alocada, abatida, material do período e material acumulado.
   const grupos = new Map<string, {
@@ -186,6 +213,8 @@ export function calcularDescontoComTransbordo(
 
 export interface ItemSaldoAprovado {
   detalhamentoId: string
+  /** Mesma regra de balde do desconto — ver `ItemDesconto.nivelApuracao`. */
+  nivelApuracao?: NivelApuracao | null
   /** Mesma regra de balde do desconto — ver `ItemDesconto.tarefaId`. */
   tarefaId?: string | null
   grupoId: string | null
@@ -206,7 +235,7 @@ export interface ItemSaldoAprovado {
  * NF, mas alocados a detalhamentos diferentes dos medidos, então o sistema
  * pedia "NF nova" para material que já está comprado e só aguarda a nota.
  *
- * Usa o mesmo balde do desconto (tarefa), pelos mesmos motivos.
+ * Usa o mesmo balde do desconto (grupo macro por padrão), pelos mesmos motivos.
  *
  * É classificação de exibição, não saldo corrido: nada aqui é gravado, e o
  * total classificado nunca passa do gap do próprio período.
@@ -216,8 +245,7 @@ export function calcularSaldoAprovadoComTransbordo(
 ): Map<string, number> {
   const resultado = new Map<string, number>()
   const norm = (v: number) => Math.max(0, Number(v) || 0)
-  const chave = (it: ItemSaldoAprovado) =>
-    it.tarefaId ?? it.grupoId ?? `__sem_balde__${it.detalhamentoId}`
+  const chave = baldeDe
 
   const grupos = new Map<string, { aprovado: number; nf: number; gap: number }>()
   for (const it of itens) {

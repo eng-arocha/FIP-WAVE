@@ -10,6 +10,7 @@ import { nfReservaSaldo } from '@/lib/db/nf-status'
 import {
   calcularDescontoComTransbordo,
   calcularSaldoAprovadoComTransbordo,
+  type NivelApuracao,
   type ItemDesconto,
   type ItemSaldoAprovado,
 } from '@/lib/db/desconto-transbordo'
@@ -358,8 +359,14 @@ export async function calcularBoletimSimulado(
     ...Object.keys(matAcumAprovadoPorDet),
   ]))
   const grupoPorDet: Record<string, string> = {}
-  /** Balde do saldo de NF — ver lib/db/desconto-transbordo.ts. */
+  /** Balde alternativo — usado só nos grupos fixados em 'tarefa'. */
   const tarefaPorDet: Record<string, string> = {}
+  /**
+   * Nível de apuração por grupo (migration 079). A simulação PRECISA ler o
+   * mesmo nível da medição real: senão ela prometeria um número e a medição
+   * entregaria outro, que é justamente o que o transbordo veio evitar.
+   */
+  const nivelPorGrupoSim: Record<string, NivelApuracao> = {}
   if (detIdsRelevantes.length > 0) {
     const { data: dets } = await admin
       .from('detalhamentos')
@@ -369,6 +376,19 @@ export async function calcularBoletimSimulado(
       const grupo = d.tarefa?.grupo_macro_id
       if (d.id && grupo) grupoPorDet[d.id] = grupo
       if (d.id && d.tarefa_id) tarefaPorDet[d.id] = d.tarefa_id
+    }
+    const grupoIdsSim = Array.from(new Set(Object.values(grupoPorDet)))
+    if (grupoIdsSim.length > 0) {
+      const res = await admin
+        .from('grupos_macro')
+        .select('id, nivel_apuracao_nf')
+        .in('id', grupoIdsSim)
+      // Migration 079 pendente: silencia e todo grupo cai no padrão 'grupo'.
+      if (!res.error) {
+        for (const g of (res.data || []) as any[]) {
+          if (g?.id && g.nivel_apuracao_nf === 'tarefa') nivelPorGrupoSim[g.id] = 'tarefa'
+        }
+      }
     }
   }
 
@@ -382,12 +402,13 @@ export async function calcularBoletimSimulado(
     )
   }
 
-  // Transbordo dentro da tarefa — mesma regra da medição real, senão a
-  // simulação prometeria um número e a medição entregaria outro.
+  // Mesmo balde da medição real, senão a simulação prometeria um número e a
+  // medição entregaria outro.
   const descontoSimulado = calcularDescontoComTransbordo(
     detIdsRelevantes.map(detId => ({
       detalhamentoId: detId,
       tarefaId: tarefaPorDet[detId] ?? null,
+      nivelApuracao: nivelPorGrupoSim[grupoPorDet[detId] ?? ''] ?? null,
       grupoId: grupoPorDet[detId] ?? null,
       matMedido: medidoPorDet.get(detId) ?? 0,
       matAcumulado: (matAcumAprovadoPorDet[detId] || 0) + (medidoPorDet.get(detId) ?? 0),
@@ -408,6 +429,7 @@ export async function calcularBoletimSimulado(
     detIdsRelevantes.map(detId => ({
       detalhamentoId: detId,
       tarefaId: tarefaPorDet[detId] ?? null,
+      nivelApuracao: nivelPorGrupoSim[grupoPorDet[detId] ?? ''] ?? null,
       grupoId: grupoPorDet[detId] ?? null,
       gapMaterial: gapPorDet.get(detId) ?? 0,
       aprovado: aprovadoPorDet[detId] || 0,
@@ -616,16 +638,26 @@ export async function calcularInformaconData(
   // Grupo macro de cada detalhamento — necessário pro transbordo do desconto
   // dentro do grupo (ver lib/db/desconto-transbordo.ts).
   const grupoPorDetalhamento: Record<string, string> = {}
-  // Tarefa de cada detalhamento — é ELA o balde do saldo de NF (o grupo macro
-  // misturava naturezas diferentes: INFRA e CABEAMENTO no mesmo grupo 16).
-  // Ver lib/db/desconto-transbordo.ts.
+  // Tarefa de cada detalhamento — balde alternativo, usado só nos grupos
+  // fixados em 'tarefa'. Ver lib/db/desconto-transbordo.ts.
   const tarefaPorDetalhamento: Record<string, string> = {}
+  // Nível de apuração de cada grupo (migration 079). Ausente = 'grupo', que é
+  // o padrão e o nível em que o Informakon consolida as notas.
+  const nivelPorGrupo: Record<string, NivelApuracao> = {}
   try {
-    // 1) grupos_macro do contrato
-    const { data: gruposRows, error: gruposErr } = await admin
+    // 1) grupos_macro do contrato. `nivel_apuracao_nf` só existe após a
+    //    migration 079 — sem ela todo grupo cai no padrão.
+    const gruposRes = await admin
       .from('grupos_macro')
-      .select('id')
+      .select('id, nivel_apuracao_nf')
       .eq('contrato_id', contratoId)
+    const gruposFallback = gruposRes.error && isSchemaMissingError(gruposRes.error, ['nivel_apuracao_nf'])
+      ? await admin.from('grupos_macro').select('id').eq('contrato_id', contratoId)
+      : null
+    const { data: gruposRows, error: gruposErr } = gruposFallback ?? gruposRes
+    for (const g of (gruposRows || []) as any[]) {
+      if (g?.id && g.nivel_apuracao_nf === 'tarefa') nivelPorGrupo[g.id] = 'tarefa'
+    }
     if (gruposErr) {
       console.warn('[informacon] falha ao buscar grupos_macro:', gruposErr.message)
     } else {
@@ -841,6 +873,7 @@ export async function calcularInformaconData(
       itensDesconto.push({
         detalhamentoId: det.id,
         tarefaId: tarefaPorDetalhamento[det.id] ?? null,
+        nivelApuracao: nivelPorGrupo[grupoPorDetalhamento[det.id] ?? ''] ?? null,
         grupoId: grupoPorDetalhamento[det.id] ?? null,
         matMedido,
         matAcumulado: matAcumuladoDe(det.id),
@@ -856,6 +889,7 @@ export async function calcularInformaconData(
       itensDesconto.push({
         detalhamentoId: detId,
         tarefaId: tarefaPorDetalhamento[detId] ?? null,
+        nivelApuracao: nivelPorGrupo[grupoPorDetalhamento[detId] ?? ''] ?? null,
         grupoId: grupoPorDetalhamento[detId] ?? null,
         matMedido: 0,
         matAcumulado: matAcumuladoDe(detId),
@@ -913,6 +947,7 @@ export async function calcularInformaconData(
       entrada.push({
         detalhamentoId: detId,
         tarefaId: tarefaPorDetalhamento[detId] ?? null,
+        nivelApuracao: nivelPorGrupo[grupoPorDetalhamento[detId] ?? ''] ?? null,
         grupoId: grupoPorDetalhamento[detId] ?? null,
         gapMaterial: c.gapMaterial,
         aprovado: aprovadoPorDet[detId] || 0,
@@ -924,6 +959,7 @@ export async function calcularInformaconData(
       entrada.push({
         detalhamentoId: detId,
         tarefaId: tarefaPorDetalhamento[detId] ?? null,
+        nivelApuracao: nivelPorGrupo[grupoPorDetalhamento[detId] ?? ''] ?? null,
         grupoId: grupoPorDetalhamento[detId] ?? null,
         gapMaterial: 0,
         aprovado: aprovadoPorDet[detId] || 0,
