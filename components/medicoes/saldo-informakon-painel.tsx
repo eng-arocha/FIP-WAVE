@@ -30,6 +30,11 @@ import {
   type LinhaComparacao,
   type SaldoInformakonComparavel,
 } from '@/lib/informakon/comparar-saldo'
+import {
+  conferirNotas,
+  type NotaDoErp,
+  type SituacaoNota,
+} from '@/lib/informakon/conferir-notas'
 
 interface NotaDoGrupo {
   tipo: string
@@ -54,36 +59,58 @@ const ROTULO_STATUS: Record<string, string> = {
 interface RetratoSaldo {
   temDados: boolean
   motivo?: string
+  /** 'detalhado' = veio nota a nota; 'agregado' = só o somatório por grupo. */
+  formato?: 'detalhado' | 'agregado'
   referencia?: string
   informado_em?: string
   total?: number
   total_informado?: number | null
+  total_descontado?: number
   linhas?: SaldoInformakonComparavel[]
+  /** Uma entrada por nota × macro item. Vazio no retrato agregado. */
+  notas?: NotaDoErp[]
 }
 
-const EXEMPLO = `Faturamento direto  - ÁGUA PLUVIAL\t375.254,16
-Faturamento direto  - ESGOTO\t413.942,67
-Total Geral\t789.196,83`
+const EXEMPLO = `Documento\tInsumo\tEspecificação\tUnidade\tQtd.a Desc\tVlr. a Desc\tQtd.Desc\tVlr.Desc
+NF-e 534\t71635\tFaturamento direto  - QUADROS ELÉTRICOS\tR$\t253.444,08\t253.444,08\t0,0000\t0,00
+NF-e 198\t71635\tFaturamento direto  - ELÉTRICA SUBESTAÇÃO\tR$\t0,0000\t0,00\t5.261,84\t5.261,84`
+
+/** Rótulo e cor de cada situação da conferência nota a nota. */
+const SITUACAO: Record<SituacaoNota, { texto: string; cor: string; fundo?: string }> = {
+  nao_lancada:      { texto: 'não está no Informakon', cor: '#EF4444', fundo: 'rgba(239,68,68,0.07)' },
+  outro_macro_item: { texto: 'lançada em outro macro item', cor: '#F59E0B', fundo: 'rgba(245,158,11,0.07)' },
+  disponivel:       { texto: 'lançada, a descontar', cor: '#10B981' },
+  parcial:          { texto: 'parcialmente descontada', cor: '#10B981' },
+  ja_descontada:    { texto: 'já descontada', cor: 'var(--text-3)' },
+  sem_saldo:        { texto: 'lançada, sem saldo', cor: 'var(--text-3)' },
+}
 
 /**
  * Lista as notas do macro item para achar QUAL não foi lançada no ERP.
  *
- * Listar por listar não resolve: um grupo tem dezenas de notas e a diferença
- * é de poucos milhares. O que fecha a conta é a ordem cronológica — nota que
- * acabou de chegar é a que ainda não foi lançada. Então as notas vêm da mais
- * recente para a mais antiga, com soma corrida, e ficam marcadas as primeiras
- * que somam a diferença: são as candidatas, em ordem de probabilidade.
+ * Há dois modos, e o que manda é o retrato que foi colado.
  *
- * Quando uma nota sozinha bate com a diferença, ela é apontada direto — é o
- * caso mais comum e o mais fácil de confirmar.
+ * CONFERÊNCIA NOTA A NOTA (retrato detalhado) — o número da nota está dos dois
+ * lados, então a resposta é determinística: nota que existe aqui e não existe
+ * no retrato do macro item NÃO FOI LANÇADA. Sem aposta, sem ordenar por data.
+ * O casamento é pelo número e nunca pelo valor: os dois lados rateiam a nota
+ * de formas diferentes, então divergir em valor é normal — faltar é que não.
+ *
+ * BUSCA POR RECÊNCIA (retrato agregado) — sem o número da nota só resta a
+ * heurística antiga: da mais recente para a mais antiga, com soma corrida,
+ * marcando as que somam a diferença. Continua aqui para quem já tem retrato
+ * antigo, mas é a segunda melhor resposta.
  */
 function ModalNotasDoMacroItem({
   contratoId,
   linha,
+  notasErp,
   onClose,
 }: {
   contratoId: string
   linha: LinhaComparacao | null
+  /** Retrato do ERP nota a nota. Vazio = cai na busca por recência. */
+  notasErp: NotaDoErp[]
   onClose: () => void
 }) {
   const [notas, setNotas] = useState<NotaDoGrupo[] | null>(null)
@@ -111,13 +138,26 @@ function ModalNotasDoMacroItem({
     return () => { cancelado = true }
   }, [contratoId, linha])
 
+  const temDetalhe = notasErp.length > 0
+
+  /** Modo determinístico: casa nota a nota contra o retrato do ERP. */
+  const conferencia = useMemo(() => {
+    if (!notas || !linha || !temDetalhe) return null
+    return conferirNotas({
+      nossas: notas,
+      erp: notasErp,
+      chave: linha.chave,
+      falta: Math.max(0, linha.diferenca),
+    })
+  }, [notas, linha, notasErp, temDetalhe])
+
+  /** Modo heurístico: sem número de nota, aposta nas mais recentes. */
   const analise = useMemo(() => {
-    if (!notas || !linha) return null
+    if (!notas || !linha || temDetalhe) return null
     const falta = Math.max(0, linha.diferenca)
     // Mais recente primeiro: é a que tem mais chance de ainda não ter sido
     // lançada no ERP.
     const ordenadas = [...notas].sort((a, b) => String(b.data ?? '').localeCompare(String(a.data ?? '')))
-
     // Nota única que bate com a diferença — o achado mais forte.
     const exata = ordenadas.find(n => Math.abs(n.valorAlocado - falta) < 0.01) ?? null
 
@@ -137,9 +177,13 @@ function ModalNotasDoMacroItem({
       .reduce((s, n) => s + Number(n.valorAlocado || 0), 0)
 
     return { ordenadas, suspeitas, exata, somaSuspeitas, falta }
-  }, [notas, linha])
+  }, [notas, linha, temDetalhe])
 
   if (!linha) return null
+
+  const falta = Math.max(0, linha.diferenca)
+  const vazio = (conferencia && conferencia.linhas.length === 0)
+    || (analise && analise.ordenadas.length === 0)
 
   return (
     <Dialog open={!!linha} onOpenChange={(o) => { if (!o) onClose() }}>
@@ -157,14 +201,56 @@ function ModalNotasDoMacroItem({
         </DialogHeader>
 
         <div className="space-y-3 py-2">
-          {linha.diferenca > 0.01 && (
+          {/* ── Veredito: conferência nota a nota ─────────────────────── */}
+          {conferencia && conferencia.naoLancadas.length > 0 && (
             <div className="p-3 rounded-lg text-xs" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.35)', color: '#EF4444' }}>
-              Falta lançar <strong>{formatCurrency(linha.diferenca)}</strong>.
-              {analise?.exata
+              <strong>
+                {conferencia.naoLancadas.length === 1
+                  ? `A nota ${conferencia.naoLancadas[0].notas[0]?.numero ?? conferencia.naoLancadas[0].numero} não está lançada no Informakon.`
+                  : `${conferencia.naoLancadas.length} notas não estão lançadas no Informakon.`}
+              </strong>{' '}
+              Somam {formatCurrency(conferencia.totalNaoLancado)}
+              {conferencia.explicaFalta
+                ? <> — exatamente a falta de {formatCurrency(falta)}. Lance essas e a medição fecha.</>
+                : <> e a falta é de {formatCurrency(falta)}; o resto vem de valor, não de nota ausente.</>}
+            </div>
+          )}
+
+          {conferencia && conferencia.naoLancadas.length === 0 && falta > 0.01 && (
+            <div className="p-3 rounded-lg text-xs" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.35)', color: '#F59E0B' }}>
+              <strong>Todas as nossas notas deste macro item estão no Informakon.</strong>{' '}
+              A falta de {formatCurrency(falta)} não é nota ausente: o saldo lançado lá
+              ({formatCurrency(conferencia.totalDisponivel)}) é menor do que o boletim pede.
+              {conferencia.foraDoMacroItem.length > 0
+                ? ' Comece pelas notas marcadas como lançadas em outro macro item.'
+                : ' Confira o valor da nota no ERP ou a quantidade medida.'}
+            </div>
+          )}
+
+          {conferencia && conferencia.foraDoMacroItem.length > 0 && (
+            <div className="p-3 rounded-lg text-xs" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.35)', color: '#F59E0B' }}>
+              {conferencia.foraDoMacroItem.length === 1 ? 'Uma nota está' : `${conferencia.foraDoMacroItem.length} notas estão`} no
+              Informakon, mas em outro macro item — é correção de lançamento lá, não nota nova aqui.
+            </div>
+          )}
+
+          {/* ── Veredito: busca por recência (retrato agregado) ───────── */}
+          {analise && falta > 0.01 && (
+            <div className="p-3 rounded-lg text-xs" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.35)', color: '#EF4444' }}>
+              Falta lançar <strong>{formatCurrency(falta)}</strong>.
+              {analise.exata
                 ? <> A nota <strong>{analise.exata.numero}</strong> tem exatamente esse valor — é quase certo que seja ela.</>
-                : analise && analise.suspeitas.size > 0
+                : analise.suspeitas.size > 0
                 ? <> As <strong>{analise.suspeitas.size}</strong> notas mais recentes somam {formatCurrency(analise.somaSuspeitas)} e estão marcadas abaixo — comece por elas.</>
                 : null}
+            </div>
+          )}
+
+          {analise && (
+            <div className="p-2 rounded-lg text-[10px]" style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>
+              Este retrato veio somado por macro item, então a resposta abaixo é por probabilidade.
+              Cole a grade do ERP <strong>nota a nota</strong> (com a coluna Documento) e ela vira
+              certeza — o site passa a dizer qual nota não está lá.
             </div>
           )}
 
@@ -184,13 +270,83 @@ function ModalNotasDoMacroItem({
             </div>
           )}
 
-          {analise && analise.ordenadas.length === 0 && !carregando && (
+          {vazio && !carregando && (
             <div className="p-3 rounded-lg text-xs" style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>
               Nenhuma nota de terceiro neste macro item. Se o boletim manda descontar,
               o valor veio de outro caminho — confira o drill-down de NF Desc. na linha.
             </div>
           )}
 
+          {/* ── Tabela determinística ─────────────────────────────────── */}
+          {conferencia && conferencia.linhas.length > 0 && (
+            <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border)' }}>
+              <table className="w-full text-[11px]">
+                <thead style={{ background: 'var(--surface-2)' }}>
+                  <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
+                    <th className="text-left py-1.5 px-2 font-medium" style={{ color: 'var(--text-3)' }}>NF</th>
+                    <th className="text-left py-1.5 px-2 font-medium" style={{ color: 'var(--text-3)' }}>Emitente</th>
+                    <th className="text-left py-1.5 px-2 font-medium" style={{ color: 'var(--text-3)' }}>Emissão</th>
+                    <th className="text-right py-1.5 px-2 font-medium" style={{ color: 'var(--text-3)' }}>Alocado aqui</th>
+                    <th className="text-right py-1.5 px-2 font-medium" style={{ color: 'var(--text-3)' }}>No ERP a descontar</th>
+                    <th className="text-right py-1.5 px-2 font-medium" style={{ color: 'var(--text-3)' }}>No ERP já descontado</th>
+                    <th className="text-left py-1.5 px-2 font-medium" style={{ color: 'var(--text-3)' }}>Situação</th>
+                    <th className="py-1.5 px-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {conferencia.linhas.map(l => {
+                    const cfg = SITUACAO[l.situacao]
+                    const primeira = l.notas[0]
+                    return (
+                      <tr key={l.numero} className="border-b" style={{ borderColor: 'var(--border)', background: cfg.fundo }}>
+                        <td className="py-1.5 px-2 font-mono" style={{ color: cfg.cor, fontWeight: cfg.fundo ? 700 : 400 }}>
+                          {cfg.fundo && '▸ '}{primeira?.numero || l.numero}
+                        </td>
+                        <td className="py-1.5 px-2" style={{ color: 'var(--text-2)' }}>{primeira?.emitente || '—'}</td>
+                        <td className="py-1.5 px-2 tabular-nums" style={{ color: 'var(--text-3)' }}>{primeira?.data ? formatDate(primeira.data) : '—'}</td>
+                        <td className="py-1.5 px-2 text-right tabular-nums font-semibold" style={{ color: cfg.fundo ? cfg.cor : 'var(--text-2)' }}>
+                          {formatCurrency(l.nosso)}
+                        </td>
+                        <td className="py-1.5 px-2 text-right tabular-nums" style={{ color: 'var(--text-3)' }}>
+                          {l.situacao === 'nao_lancada' ? '—' : formatCurrency(l.erpADescontar)}
+                        </td>
+                        <td className="py-1.5 px-2 text-right tabular-nums" style={{ color: 'var(--text-3)' }}>
+                          {l.situacao === 'nao_lancada' ? '—' : formatCurrency(l.erpDescontado)}
+                        </td>
+                        <td className="py-1.5 px-2" style={{ color: cfg.cor }}>
+                          {cfg.texto}
+                          {l.macroItemNoErp ? <span style={{ color: 'var(--text-3)' }}> ({l.macroItemNoErp})</span> : null}
+                        </td>
+                        <td className="py-1.5 px-2 text-right">
+                          {primeira?.arquivoUrl
+                            ? <a href={primeira.arquivoUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:underline" style={{ color: '#60A5FA' }}>abrir <ExternalLink className="w-3 h-3" /></a>
+                            : <span style={{ color: 'var(--text-3)' }}>—</span>}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {conferencia && conferencia.soNoErp.length > 0 && (
+            <div className="p-3 rounded-lg text-[11px]" style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>
+              <p className="mb-1" style={{ color: 'var(--text-2)' }}>
+                No Informakon e não aqui — {conferencia.soNoErp.length} nota(s):
+              </p>
+              <p className="font-mono">
+                {conferencia.soNoErp.slice(0, 12).map(n => `${n.documento} (${formatCurrency(n.erpADescontar + n.erpDescontado)})`).join(' · ')}
+                {conferencia.soNoErp.length > 12 ? ` · +${conferencia.soNoErp.length - 12}` : ''}
+              </p>
+              <p className="mt-1">
+                O ERP tem essas notas neste macro item e o FIP-WAVE não. Ou faltou cadastrar aqui,
+                ou o ERP as colocou no macro item errado.
+              </p>
+            </div>
+          )}
+
+          {/* ── Tabela heurística ─────────────────────────────────────── */}
           {analise && analise.ordenadas.length > 0 && (
             <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border)' }}>
               <table className="w-full text-[11px]">
@@ -245,11 +401,21 @@ function ModalNotasDoMacroItem({
           )}
 
           <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
-            Notas da mais recente para a mais antiga — a que acabou de chegar é a que tem mais
-            chance de ainda não ter sido lançada. A <strong>soma corrida</strong> ajuda a achar o
-            ponto de corte: onde ela alcança o valor do Informakon, o que está acima ainda não
-            entrou lá. &quot;Alocado aqui&quot; é a parcela da nota que cabe neste macro item —
-            uma nota que atende mais de um item aparece rateada.
+            {conferencia
+              ? <>
+                  Cada linha é uma nota, casada pelo <strong>número</strong> contra o retrato do
+                  Informakon. Valor divergente entre os dois lados é normal — nós rateamos a nota
+                  pelos itens do pedido dentro deste macro item e o ERP amarra a nota ao item do
+                  pedido dele. O que não é normal é a nota <strong>não estar lá</strong>.
+                  &quot;Alocado aqui&quot; é a parcela da nota que cabe neste macro item.
+                </>
+              : <>
+                  Notas da mais recente para a mais antiga — a que acabou de chegar é a que tem mais
+                  chance de ainda não ter sido lançada. A <strong>soma corrida</strong> ajuda a achar o
+                  ponto de corte: onde ela alcança o valor do Informakon, o que está acima ainda não
+                  entrou lá. &quot;Alocado aqui&quot; é a parcela da nota que cabe neste macro item —
+                  uma nota que atende mais de um item aparece rateada.
+                </>}
           </p>
         </div>
       </DialogContent>
@@ -318,9 +484,16 @@ export function SaldoInformakonPainel({
       if ((body.nao_reconhecidas?.length ?? 0) > 0) {
         problemas.push(`macro item não reconhecido: ${body.nao_reconhecidas.join('; ')}`)
       }
-      setAviso(problemas.length > 0
-        ? `Salvei ${body.qtd_linhas} linhas, mas confira: ${problemas.join(' · ')}.`
-        : null)
+      if (body.detalhe_descartado) {
+        problemas.push('você colou nota a nota mas a migration 081 ainda não rodou no Supabase — guardei só o somatório por macro item')
+      }
+      if (body.formato === 'agregado') {
+        problemas.push('o retrato veio somado por macro item; colando a grade do ERP com a coluna Documento eu digo QUAL nota falta lançar')
+      }
+      const salvo = body.formato === 'detalhado' && body.qtd_notas > 0
+        ? `Salvei ${body.qtd_notas} notas em ${body.qtd_linhas} macro itens`
+        : `Salvei ${body.qtd_linhas} linhas`
+      setAviso(problemas.length > 0 ? `${salvo}, mas confira: ${problemas.join(' · ')}.` : null)
 
       setModalAberto(false)
       setTexto('')
@@ -372,7 +545,11 @@ export function SaldoInformakonPainel({
                   : temFalta
                   ? 'O boletim manda descontar mais do que está lançado. Ou falta emitir/lançar nota, ou o site está pedindo demais.'
                   : retrato?.temDados
-                  ? `Retrato de ${retrato.referencia ? formatDate(retrato.referencia) : '—'} · total a descontar ${formatCurrency(retrato.total || 0)}`
+                  ? `Retrato de ${retrato.referencia ? formatDate(retrato.referencia) : '—'} · total a descontar ${formatCurrency(retrato.total || 0)}${
+                      retrato.formato === 'detalhado'
+                        ? ` · ${retrato.notas?.length ?? 0} notas rastreadas`
+                        : ' · somado por macro item'
+                    }`
                   : ''}
               </p>
             </div>
@@ -452,6 +629,7 @@ export function SaldoInformakonPainel({
       <ModalNotasDoMacroItem
         contratoId={contratoId}
         linha={macroItemAberto}
+        notasErp={retrato?.notas ?? []}
         onClose={() => setMacroItemAberto(null)}
       />
 
@@ -464,8 +642,10 @@ export function SaldoInformakonPainel({
               Saldo a descontar no Informakon
             </DialogTitle>
             <DialogDescription className="text-[var(--text-2)]">
-              Cole a tabela dinâmica do ERP com o <strong>Vlr. a Desc</strong> por macro item.
-              Pode colar direto do Excel — o cabeçalho e o &quot;Total Geral&quot; são reconhecidos sozinhos.
+              Cole a grade do Informakon <strong>nota a nota</strong> — a mesma tela, com as colunas
+              Documento / Especificação / Vlr. a Desc / Vlr.Desc, selecionada e copiada inteira.
+              Sem somar nada por grupo: eu somo. E com o número da nota eu consigo dizer
+              <strong> qual</strong> nota falta lançar, não só quanto falta.
             </DialogDescription>
           </DialogHeader>
 
@@ -482,8 +662,9 @@ export function SaldoInformakonPainel({
                 autoFocus
               />
               <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
-                Cada linha: rótulo do macro item, TAB, valor. O prefixo
-                &quot;Faturamento direto -&quot; é opcional.
+                Copie a grade inteira, com ou sem o cabeçalho e com ou sem a linha de totais —
+                tudo é reconhecido sozinho. A tabela dinâmica antiga (rótulo do macro item, TAB,
+                valor) continua funcionando, só não diz qual nota falta.
               </p>
             </div>
 

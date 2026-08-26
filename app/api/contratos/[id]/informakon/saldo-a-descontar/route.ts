@@ -15,23 +15,40 @@ export const revalidate = 0
 /**
  * /api/contratos/[id]/informakon/saldo-a-descontar
  *
- * Retrato datado do "Vlr. a Desc" por macro item, colado da tabela dinâmica
- * do Informakon (migration 080). Serve de TETO DE REALIDADE: o boletim avisa
- * quando manda descontar mais do que existe lançado no ERP.
+ * Retrato datado do saldo a descontar do Informakon (migrations 080 e 081).
+ * Serve de TETO DE REALIDADE: o boletim avisa quando manda descontar mais do
+ * que existe lançado no ERP.
  *
  * POST — body { texto, referencia?, observacoes? }. O texto é a colagem crua;
- *        `lib/informakon/saldo-colado.ts` faz o parse e o de-para do macro
- *        item, com as MESMAS funções da importação do xlsx.
- * GET  — devolve o retrato mais recente do contrato.
+ *        `lib/informakon/saldo-colado.ts` reconhece dois layouts: a grade do
+ *        ERP NOTA A NOTA (preferido — permite dizer QUAL nota falta lançar) e
+ *        a tabela dinâmica somada por macro item. O de-para do macro item usa
+ *        as MESMAS funções da importação do xlsx.
+ * GET  — devolve o retrato mais recente do contrato, com as notas quando o
+ *        layout colado as trouxe.
  *
  * Permissão: `medicoes.visualizar` no GET, `medicoes.editar` no POST — quem
  * informa o saldo está alimentando uma trava de conferência financeira.
  */
 
 const TABELAS_080 = ['informakon_saldo_snapshots', 'informakon_saldo_linhas']
+/**
+ * Colunas e tabela da 081. Enquanto ela não roda, o retrato continua sendo
+ * gravado no formato da 080 — só perde o detalhe por nota.
+ */
+const SCHEMA_081 = [
+  'informakon_saldo_notas',
+  'formato',
+  'total_descontado',
+  'total_descontado_informado',
+  'valor_descontado',
+]
+
+/** Linha crua do PostgREST — as colunas variam com a migration aplicada. */
+type Registro = Record<string, unknown>
 
 const Body = z.object({
-  texto: z.string().min(1, 'Cole a tabela do Informakon.').max(200_000),
+  texto: z.string().min(1, 'Cole a tabela do Informakon.').max(400_000),
   /** ISO YYYY-MM-DD. Ausente = hoje. */
   referencia: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   observacoes: z.string().max(2000).optional(),
@@ -60,7 +77,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (lido.linhas.length === 0) {
       return NextResponse.json(
         {
-          error: 'Nenhuma linha reconhecida. Cole a tabela com o rótulo e o valor em cada linha (ex.: "Faturamento direto - ESGOTO⇥413.942,67").',
+          error: 'Nenhuma linha reconhecida. Cole a grade do ERP (Documento / Especificação / Vlr. a Desc) ou a tabela somada por macro item ("Faturamento direto - ESGOTO⇥413.942,67").',
           code: 'COLAGEM_VAZIA',
           ignoradas: lido.ignoradas.slice(0, 10),
         },
@@ -72,39 +89,95 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
-    const { data: snap, error: snapErr } = await admin
+    const base = {
+      contrato_id: contratoId,
+      referencia: referencia ?? new Date().toISOString().slice(0, 10),
+      informado_por_id: user?.id ?? null,
+      total: lido.total,
+      total_informado: lido.totalInformado,
+      observacoes: observacoes ?? null,
+    }
+
+    // A 081 pode não ter rodado ainda. Tenta com as colunas novas e, se o
+    // schema não as conhece, grava o retrato no formato da 080 — melhor um
+    // retrato sem detalhe do que nenhum.
+    let temSchema081 = true
+    let snapRes = await admin
       .from('informakon_saldo_snapshots')
       .insert({
-        contrato_id: contratoId,
-        referencia: referencia ?? new Date().toISOString().slice(0, 10),
-        informado_por_id: user?.id ?? null,
-        total: lido.total,
-        total_informado: lido.totalInformado,
-        observacoes: observacoes ?? null,
+        ...base,
+        formato: lido.formato,
+        total_descontado: lido.totalDescontado,
+        total_descontado_informado: lido.totalDescontadoInformado,
       })
       .select('id')
       .single()
-    if (snapErr) {
-      if (isSchemaMissingError(snapErr, TABELAS_080)) return migrationPendente()
-      throw snapErr
+    if (snapRes.error && isSchemaMissingError(snapRes.error, SCHEMA_081)) {
+      temSchema081 = false
+      snapRes = await admin
+        .from('informakon_saldo_snapshots')
+        .insert(base)
+        .select('id')
+        .single()
+    }
+    if (snapRes.error) {
+      if (isSchemaMissingError(snapRes.error, TABELAS_080)) return migrationPendente()
+      throw snapRes.error
     }
 
-    const snapshotId = (snap as any).id as string
-    const { error: linhasErr } = await admin
-      .from('informakon_saldo_linhas')
-      .insert(lido.linhas.map(l => ({
-        snapshot_id: snapshotId,
-        macro_item: l.macroItem,
-        grupo_codigo: l.grupoCodigo,
-        detalhamento_codigo: l.detalhamentoCodigo,
-        valor: l.valor,
-      })))
+    const snapshotId = (snapRes.data as any).id as string
+    /** Desfaz tudo: snapshot sem linha mascararia o retrato anterior, que é bom. */
+    const desfazer = () => admin.from('informakon_saldo_snapshots').delete().eq('id', snapshotId)
+
+    const linhasBase = lido.linhas.map(l => ({
+      snapshot_id: snapshotId,
+      macro_item: l.macroItem,
+      grupo_codigo: l.grupoCodigo,
+      detalhamento_codigo: l.detalhamentoCodigo,
+      valor: l.valor,
+    }))
+    let linhasErr = temSchema081
+      ? (await admin.from('informakon_saldo_linhas').insert(
+          linhasBase.map((l, i) => ({ ...l, valor_descontado: lido.linhas[i].valorDescontado })),
+        )).error
+      : (await admin.from('informakon_saldo_linhas').insert(linhasBase)).error
+    if (linhasErr && temSchema081 && isSchemaMissingError(linhasErr, SCHEMA_081)) {
+      temSchema081 = false
+      linhasErr = (await admin.from('informakon_saldo_linhas').insert(linhasBase)).error
+    }
     if (linhasErr) {
-      // Snapshot sem linhas não serve pra nada e ainda mascararia o retrato
-      // anterior, que é bom — remove antes de devolver o erro.
-      await admin.from('informakon_saldo_snapshots').delete().eq('id', snapshotId)
+      await desfazer()
       if (isSchemaMissingError(linhasErr, TABELAS_080)) return migrationPendente()
       throw linhasErr
+    }
+
+    // Detalhe por nota — o que permite dizer QUAL nota falta lançar. Só existe
+    // no layout detalhado, e some sem quebrar nada se a 081 estiver pendente.
+    let notasSalvas = 0
+    if (lido.notas.length > 0 && temSchema081) {
+      const { error: notasErr } = await admin
+        .from('informakon_saldo_notas')
+        .insert(lido.notas.map(n => ({
+          snapshot_id: snapshotId,
+          documento: n.documento,
+          tipo_doc: n.tipoDoc,
+          numero_nf: n.numeroNf,
+          insumo: n.insumo,
+          macro_item: n.macroItem,
+          grupo_codigo: n.grupoCodigo,
+          detalhamento_codigo: n.detalhamentoCodigo,
+          valor_a_descontar: n.valorADescontar,
+          valor_descontado: n.valorDescontado,
+        })))
+      if (notasErr) {
+        if (!isSchemaMissingError(notasErr, SCHEMA_081)) {
+          await desfazer()
+          throw notasErr
+        }
+        temSchema081 = false
+      } else {
+        notasSalvas = lido.notas.length
+      }
     }
 
     const somaConfere = lido.totalInformado === null
@@ -113,9 +186,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({
       ok: true,
       snapshot_id: snapshotId,
+      formato: lido.formato,
       qtd_linhas: lido.linhas.length,
+      qtd_notas: notasSalvas,
+      /** true = colou nota a nota mas a migration 081 ainda não rodou. */
+      detalhe_descartado: lido.notas.length > 0 && notasSalvas === 0,
       total: lido.total,
       total_informado: lido.totalInformado,
+      total_descontado: lido.totalDescontado,
       /** false = a soma das linhas não bate com o "Total Geral" colado. */
       soma_confere: somaConfere,
       nao_reconhecidas: lido.naoReconhecidas.map(l => l.macroItem),
@@ -133,14 +211,20 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const { id: contratoId } = await params
     const admin = createAdminClient()
 
-    const snapRes = await admin
+    const COLS_080 = 'id, referencia, informado_em, total, total_informado, observacoes'
+    const buscarSnap = (cols: string) => admin
       .from('informakon_saldo_snapshots')
-      .select('id, referencia, informado_em, total, total_informado, observacoes')
+      .select(cols)
       .eq('contrato_id', contratoId)
       .order('referencia', { ascending: false })
       .order('informado_em', { ascending: false })
       .limit(1)
       .maybeSingle()
+
+    let snapRes = await buscarSnap(`${COLS_080}, formato, total_descontado, total_descontado_informado`)
+    if (snapRes.error && isSchemaMissingError(snapRes.error, SCHEMA_081)) {
+      snapRes = await buscarSnap(COLS_080)
+    }
 
     // Migration 080 pendente não é erro para quem só está abrindo o boletim:
     // devolve "sem retrato" e a UI simplesmente não mostra o painel.
@@ -153,26 +237,54 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     if (!snapRes.data) return NextResponse.json({ temDados: false })
 
     const snap = snapRes.data as any
-    const { data: linhas, error: linhasErr } = await admin
+    const buscarLinhas = (cols: string) => admin
       .from('informakon_saldo_linhas')
-      .select('macro_item, grupo_codigo, detalhamento_codigo, valor')
+      .select(cols)
       .eq('snapshot_id', snap.id)
-    if (linhasErr) throw linhasErr
+
+    let linhasRes = await buscarLinhas('macro_item, grupo_codigo, detalhamento_codigo, valor, valor_descontado')
+    if (linhasRes.error && isSchemaMissingError(linhasRes.error, SCHEMA_081)) {
+      linhasRes = await buscarLinhas('macro_item, grupo_codigo, detalhamento_codigo, valor')
+    }
+    if (linhasRes.error) throw linhasRes.error
+
+    // Detalhe por nota: ausente em retrato agregado e enquanto a 081 não roda.
+    const notasRes = await admin
+      .from('informakon_saldo_notas')
+      .select('documento, tipo_doc, numero_nf, macro_item, grupo_codigo, detalhamento_codigo, valor_a_descontar, valor_descontado')
+      .eq('snapshot_id', snap.id)
+    if (notasRes.error && !isSchemaMissingError(notasRes.error, SCHEMA_081)) throw notasRes.error
+    const notasBrutas: Registro[] = notasRes.error ? [] : ((notasRes.data || []) as Registro[])
+
+    /** Chave de comparação: grupo macro, ou o detalhamento no grupo 19. */
+    const chaveDe = (l: Registro) => String(l.detalhamento_codigo || l.grupo_codigo || '')
 
     return NextResponse.json({
       temDados: true,
       snapshot_id: snap.id,
+      formato: snap.formato ?? (notasBrutas.length > 0 ? 'detalhado' : 'agregado'),
       referencia: snap.referencia,
       informado_em: snap.informado_em,
       total: Number(snap.total || 0),
-      total_informado: snap.total_informado === null ? null : Number(snap.total_informado),
+      total_informado: snap.total_informado === null || snap.total_informado === undefined
+        ? null : Number(snap.total_informado),
+      total_descontado: Number(snap.total_descontado || 0),
       observacoes: snap.observacoes ?? null,
-      linhas: (linhas || []).map((l: any) => ({
-        // Chave de comparação: grupo macro, ou o detalhamento no grupo 19.
-        chave: l.detalhamento_codigo || l.grupo_codigo || '',
+      linhas: ((linhasRes.data || []) as unknown as Registro[]).map(l => ({
+        chave: chaveDe(l),
         rotulo: l.macro_item,
         valor: Number(l.valor || 0),
-      })).filter((l: any) => l.chave),
+        valorDescontado: Number(l.valor_descontado || 0),
+      })).filter(l => l.chave),
+      notas: notasBrutas.map(n => ({
+        chave: chaveDe(n),
+        documento: n.documento,
+        tipoDoc: n.tipo_doc ?? null,
+        numeroNf: n.numero_nf ?? null,
+        macroItem: n.macro_item,
+        valorADescontar: Number(n.valor_a_descontar || 0),
+        valorDescontado: Number(n.valor_descontado || 0),
+      })).filter(n => n.chave),
     })
   } catch (e: any) {
     return apiError(e)
