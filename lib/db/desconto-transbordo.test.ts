@@ -422,11 +422,11 @@ describe('calcularSaldoAprovadoComTransbordo', () => {
   })
 })
 
-describe('balde é a TAREFA, não o grupo macro', () => {
-  // Caso real da MED-005: grupo 16 (SDAI) contém a tarefa 16.1 (INFRA —
-  // eletrodutos e caixas) e a 16.2 (CABEAMENTO — cabo blindado). Cabo não é
-  // eletroduto: a nota de um não pode dar por coberto o material do outro.
-  it('nota de INFRA (16.1) não cobre material de CABEAMENTO (16.2)', () => {
+describe('nível do balde — grupo macro por padrão, tarefa por exceção', () => {
+  // O padrão voltou a ser o GRUPO MACRO (migration 079): é o nível em que o
+  // Informakon consolida as notas, e portanto o único em que os dois lados
+  // têm número comparável. Apurar por tarefa garantia divergência estrutural.
+  it('por padrão o balde é o grupo macro — nota de 16.1 cobre material de 16.2', () => {
     const r = calcularDescontoComTransbordo([
       {
         detalhamentoId: '16.1.11', tarefaId: '16.1', grupoId: '16',
@@ -439,23 +439,42 @@ describe('balde é a TAREFA, não o grupo macro', () => {
         nfAlocada: 0, nfJaAbatida: 0,
       },
     ])
-    // Sem nota na própria tarefa, o cabeamento fica descoberto — e vira
-    // "FIP a criar", que é o comportamento que o usuário pediu.
+    expect(r.get('16.2.11')!.total).toBeCloseTo(214.49, 2)
+    expect(r.get('16.2.11')!.transbordo).toBeCloseTo(214.49, 2)
+  })
+
+  // Caso real da MED-005, agora atrás de configuração: o grupo 16 (SDAI) tem
+  // a tarefa 16.1 (INFRA — eletrodutos e caixas) e a 16.2 (CABEAMENTO — cabo
+  // blindado). Cabo não é eletroduto. Fixando o grupo em 'tarefa', a nota de
+  // um não cobre o material do outro.
+  it("com nivelApuracao='tarefa', nota de INFRA (16.1) não cobre CABEAMENTO (16.2)", () => {
+    const r = calcularDescontoComTransbordo([
+      {
+        detalhamentoId: '16.1.11', nivelApuracao: 'tarefa', tarefaId: '16.1', grupoId: '16',
+        matMedido: 0, matAcumulado: 0,
+        nfAlocada: 21538.76, nfJaAbatida: 0,
+      },
+      {
+        detalhamentoId: '16.2.11', nivelApuracao: 'tarefa', tarefaId: '16.2', grupoId: '16',
+        matMedido: 214.49, matAcumulado: 214.49,
+        nfAlocada: 0, nfJaAbatida: 0,
+      },
+    ])
     expect(r.get('16.2.11')!.total).toBeCloseTo(0, 2)
     expect(r.get('16.2.11')!.transbordo).toBeCloseTo(0, 2)
   })
 
-  // O caso que motivou o transbordo continua funcionando: sprinkler comprado
-  // por prumada e medido por pavimento é tudo tarefa 14.2.
-  it('dentro da mesma tarefa o transbordo continua valendo', () => {
+  // O caso que motivou o transbordo funciona nos dois níveis: sprinkler
+  // comprado por prumada e medido por pavimento é tudo tarefa 14.2, grupo 14.
+  it.each([undefined, 'tarefa' as const])('transbordo dentro da mesma tarefa vale com nível %s', (nivel) => {
     const r = calcularDescontoComTransbordo([
       {
-        detalhamentoId: '14.2.6', tarefaId: '14.2', grupoId: '14',
+        detalhamentoId: '14.2.6', nivelApuracao: nivel, tarefaId: '14.2', grupoId: '14',
         matMedido: 24053.65, matAcumulado: 24053.65,
         nfAlocada: 487.13, nfJaAbatida: 0,
       },
       {
-        detalhamentoId: '14.2.1', tarefaId: '14.2', grupoId: '14',
+        detalhamentoId: '14.2.1', nivelApuracao: nivel, tarefaId: '14.2', grupoId: '14',
         matMedido: 0, matAcumulado: 0,
         nfAlocada: 217162.55, nfJaAbatida: 0,
       },
@@ -464,34 +483,64 @@ describe('balde é a TAREFA, não o grupo macro', () => {
     expect(r.get('14.2.6')!.transbordo).toBeCloseTo(23566.52, 2)
   })
 
-  it('tarefas diferentes não somam saldo mesmo com o mesmo grupo macro', () => {
+  it("com nivelApuracao='tarefa', tarefas irmãs não somam saldo", () => {
     const r = calcularDescontoComTransbordo([
       // 14.1 HIDRANTE tem nota sobrando
       {
-        detalhamentoId: '14.1.1', tarefaId: '14.1', grupoId: '14',
+        detalhamentoId: '14.1.1', nivelApuracao: 'tarefa', tarefaId: '14.1', grupoId: '14',
         matMedido: 0, matAcumulado: 0, nfAlocada: 84778.31, nfJaAbatida: 0,
       },
       // 14.2 SPRINKLER mede sem nota nenhuma
       {
-        detalhamentoId: '14.2.10', tarefaId: '14.2', grupoId: '14',
+        detalhamentoId: '14.2.10', nivelApuracao: 'tarefa', tarefaId: '14.2', grupoId: '14',
         matMedido: 3357.64, matAcumulado: 3357.64, nfAlocada: 0, nfJaAbatida: 0,
       },
     ])
     expect(r.get('14.2.10')!.total).toBeCloseTo(0, 2)
   })
 
-  it('sem tarefaId cai para o grupo macro (comportamento anterior)', () => {
+  it('no padrão, tarefas irmãs do mesmo grupo somam saldo', () => {
     const r = calcularDescontoComTransbordo([
-      { detalhamentoId: 'A', grupoId: '16', matMedido: 100, matAcumulado: 100, nfAlocada: 0, nfJaAbatida: 0 },
-      { detalhamentoId: 'B', grupoId: '16', matMedido: 0, matAcumulado: 0, nfAlocada: 500, nfJaAbatida: 0 },
+      {
+        detalhamentoId: '14.1.1', tarefaId: '14.1', grupoId: '14',
+        matMedido: 0, matAcumulado: 0, nfAlocada: 84778.31, nfJaAbatida: 0,
+      },
+      {
+        detalhamentoId: '14.2.10', tarefaId: '14.2', grupoId: '14',
+        matMedido: 3357.64, matAcumulado: 3357.64, nfAlocada: 0, nfJaAbatida: 0,
+      },
+    ])
+    expect(r.get('14.2.10')!.total).toBeCloseTo(3357.64, 2)
+  })
+
+  it('sem tarefaId o nível tarefa cai para o grupo macro', () => {
+    const r = calcularDescontoComTransbordo([
+      { detalhamentoId: 'A', nivelApuracao: 'tarefa', grupoId: '16', matMedido: 100, matAcumulado: 100, nfAlocada: 0, nfJaAbatida: 0 },
+      { detalhamentoId: 'B', nivelApuracao: 'tarefa', grupoId: '16', matMedido: 0, matAcumulado: 0, nfAlocada: 500, nfJaAbatida: 0 },
     ])
     expect(r.get('A')!.total).toBeCloseTo(100, 2)
   })
 
-  it('saldo de pedido aprovado também respeita a fronteira de tarefa', () => {
+  it('sem grupo nem tarefa o item não compartilha saldo com ninguém', () => {
+    const r = calcularDescontoComTransbordo([
+      { detalhamentoId: 'A', grupoId: null, matMedido: 100, matAcumulado: 100, nfAlocada: 0, nfJaAbatida: 0 },
+      { detalhamentoId: 'B', grupoId: null, matMedido: 0, matAcumulado: 0, nfAlocada: 500, nfJaAbatida: 0 },
+    ])
+    expect(r.get('A')!.total).toBeCloseTo(0, 2)
+  })
+
+  it('saldo de pedido aprovado usa o mesmo balde — padrão grupo', () => {
     const r = calcularSaldoAprovadoComTransbordo([
       { detalhamentoId: '16.2.11', tarefaId: '16.2', grupoId: '16', gapMaterial: 214.49, aprovado: 0, nfAlocada: 0 },
       { detalhamentoId: '16.1.11', tarefaId: '16.1', grupoId: '16', gapMaterial: 0, aprovado: 300000, nfAlocada: 0 },
+    ])
+    expect(r.get('16.2.11')).toBeCloseTo(214.49, 2)
+  })
+
+  it("saldo de pedido aprovado respeita nivelApuracao='tarefa'", () => {
+    const r = calcularSaldoAprovadoComTransbordo([
+      { detalhamentoId: '16.2.11', nivelApuracao: 'tarefa', tarefaId: '16.2', grupoId: '16', gapMaterial: 214.49, aprovado: 0, nfAlocada: 0 },
+      { detalhamentoId: '16.1.11', nivelApuracao: 'tarefa', tarefaId: '16.1', grupoId: '16', gapMaterial: 0, aprovado: 300000, nfAlocada: 0 },
     ])
     expect(r.get('16.2.11')).toBeCloseTo(0, 2)
   })
