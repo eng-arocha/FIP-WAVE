@@ -71,6 +71,14 @@ interface RetratoSaldo {
   linhas?: SaldoInformakonComparavel[]
   /** Uma entrada por nota × macro item. Vazio no retrato agregado. */
   notas?: NotaDoErp[]
+  /**
+   * Σ reendereçado: valor que o ERP arquivou num macro item e que o boletim
+   * pede em outro. O total do retrato não muda — só o endereço. Sem isso, uma
+   * nota LANÇADA apareceria como "falta lançar", e não haveria ação possível
+   * (lançamento feito no Informakon não se corrige).
+   */
+  total_realocado?: number
+  realocadas?: Array<{ numero: string; documento: string; deChave: string; paraChaves: string[]; valor: number }>
 }
 
 const EXEMPLO = `Documento\tInsumo\tEspecificação\tUnidade\tQtd.a Desc\tVlr. a Desc\tQtd.Desc\tVlr.Desc
@@ -603,6 +611,10 @@ export function SaldoInformakonPainel({
                       retrato.formato === 'detalhado'
                         ? ` · ${retrato.notas?.length ?? 0} notas rastreadas`
                         : ' · somado por macro item'
+                    }${
+                      (retrato.total_realocado ?? 0) > 0.01
+                        ? ` · ${formatCurrency(retrato.total_realocado!)} lidos no macro item em que o boletim pede`
+                        : ''
                     }`
                   : ''}
               </p>

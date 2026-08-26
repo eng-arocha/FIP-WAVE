@@ -24,6 +24,8 @@ import { getCodigoInformakon } from '@/lib/data/informakon-codigos'
 export { ehPedidoDeServicoWave } from '@/lib/db/saldo-detalhamento'
 import { ehPedidoDeServicoWave } from '@/lib/db/saldo-detalhamento'
 import { aplicarRetratoNasLinhas } from '@/lib/informakon/aplicar-retrato'
+import { rechavearRetrato } from '@/lib/informakon/rechavear'
+import { carregarAlocacaoDeNotas } from '@/lib/db/alocacao-notas'
 
 /**
  * Quanto de NF de material já foi abatido em cada detalhamento nas medições
@@ -48,6 +50,7 @@ import { aplicarRetratoNasLinhas } from '@/lib/informakon/aplicar-retrato'
  */
 async function aplicarRetratoAdotado(
   admin: SupabaseClient,
+  contratoId: string,
   snapshotId: string | null | undefined,
   linhas: InformaconLinha[],
 ): Promise<RetratoAdotado | null> {
@@ -66,20 +69,49 @@ async function aplicarRetratoAdotado(
   }
   if (!snapRes.data) return null
 
-  const linhasRes = await admin
-    .from('informakon_saldo_linhas')
-    .select('grupo_codigo, detalhamento_codigo, valor')
-    .eq('snapshot_id', snapshotId)
-  if (linhasRes.error) {
-    console.warn('[informacon] falha ao carregar as linhas do retrato:', linhasRes.error.message)
-    return null
-  }
-
   const saldoPorChave = new Map<string, number>()
-  for (const l of (linhasRes.data || []) as any[]) {
-    const chave = String(l.detalhamento_codigo || l.grupo_codigo || '').trim()
-    if (!chave) continue
-    saldoPorChave.set(chave, (saldoPorChave.get(chave) || 0) + Number(l.valor || 0))
+  let realocado = 0
+
+  // Retrato NOTA A NOTA (migration 081): o saldo é reendereçado pela NOSSA
+  // classificação antes de comparar. O macro item do ERP é propriedade do
+  // item do pedido da FIP, não da nota — a mesma nota aparece em vários
+  // macro itens lá —, e lançamento já feito no Informakon não se corrige.
+  // Comparar sem reendereçar acusaria como "falta lançar" uma nota que está
+  // lançada, só sob outro rótulo. Ver lib/informakon/rechavear.ts.
+  const notasRes = await admin
+    .from('informakon_saldo_notas')
+    .select('documento, numero_nf, grupo_codigo, detalhamento_codigo, valor_a_descontar, valor_descontado')
+    .eq('snapshot_id', snapshotId)
+  const notasRetrato = notasRes.error ? [] : (notasRes.data || []) as any[]
+
+  if (notasRetrato.length > 0) {
+    const alocacao = await carregarAlocacaoDeNotas(admin, contratoId)
+    const rech = rechavearRetrato(
+      notasRetrato.map(n => ({
+        chave: String(n.detalhamento_codigo || n.grupo_codigo || '').trim(),
+        numeroNf: n.numero_nf ?? null,
+        documento: n.documento ?? undefined,
+        valorADescontar: Number(n.valor_a_descontar || 0),
+        valorDescontado: Number(n.valor_descontado || 0),
+      })),
+      alocacao,
+    )
+    for (const [chave, v] of rech.porChave) saldoPorChave.set(chave, v.aDescontar)
+    realocado = rech.totalRealocado
+  } else {
+    const linhasRes = await admin
+      .from('informakon_saldo_linhas')
+      .select('grupo_codigo, detalhamento_codigo, valor')
+      .eq('snapshot_id', snapshotId)
+    if (linhasRes.error) {
+      console.warn('[informacon] falha ao carregar as linhas do retrato:', linhasRes.error.message)
+      return null
+    }
+    for (const l of (linhasRes.data || []) as any[]) {
+      const chave = String(l.detalhamento_codigo || l.grupo_codigo || '').trim()
+      if (!chave) continue
+      saldoPorChave.set(chave, (saldoPorChave.get(chave) || 0) + Number(l.valor || 0))
+    }
   }
   if (saldoPorChave.size === 0) return null
 
@@ -91,6 +123,7 @@ async function aplicarRetratoAdotado(
     informado_em: snap.informado_em ?? null,
     total_reclassificado: resumo.total,
     por_macro_item: resumo.porMacroItem,
+    total_realocado: realocado,
   }
 }
 
@@ -305,6 +338,12 @@ export interface RetratoAdotado {
   total_reclassificado: number
   /** Por macro item: o que o boletim pedia, o que existe lá, e a falta. */
   por_macro_item: Array<{ chave: string; pedido: number; disponivel: number; falta: number }>
+  /**
+   * Quanto do retrato foi reendereçado para os macro itens em que NÓS
+   * alocamos a nota, porque o ERP a arquivou sob outro rótulo. Não muda o
+   * total do retrato — só o endereço. Ver lib/informakon/rechavear.ts.
+   */
+  total_realocado: number
 }
 
 // ============================================================
@@ -1416,7 +1455,7 @@ export async function calcularInformaconData(
   // totais e da aprovação, que lê `nf_descontavel` para gravar o saldo
   // corrido de NF abatida.
   const retratoAdotado = await aplicarRetratoAdotado(
-    admin, (medicao as any).informakon_snapshot_id, linhas,
+    admin, contratoId, (medicao as any).informakon_snapshot_id, linhas,
   )
 
   const totais: InformaconTotais = linhas.reduce<InformaconTotais>((acc, l) => ({

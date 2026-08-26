@@ -7,6 +7,8 @@ import { apiError } from '@/lib/api/error-response'
 import { parseBody } from '@/lib/api/schema'
 import { isSchemaMissingError } from '@/lib/db/resilient'
 import { parseSaldoColado } from '@/lib/informakon/saldo-colado'
+import { rechavearRetrato } from '@/lib/informakon/rechavear'
+import { carregarAlocacaoDeNotas } from '@/lib/db/alocacao-notas'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -259,6 +261,68 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     /** Chave de comparação: grupo macro, ou o detalhamento no grupo 19. */
     const chaveDe = (l: Registro) => String(l.detalhamento_codigo || l.grupo_codigo || '')
 
+    const rotuloPorChave = new Map<string, string>()
+    for (const l of (linhasRes.data || []) as unknown as Registro[]) {
+      const k = chaveDe(l)
+      if (k && !rotuloPorChave.has(k)) rotuloPorChave.set(k, String(l.macro_item ?? ''))
+    }
+
+    // ── REENDEREÇAMENTO ────────────────────────────────────────────────
+    //
+    // O macro item do Informakon é propriedade do ITEM DO PEDIDO da FIP, não
+    // da nota: a mesma nota aparece em vários macro itens lá (a NF-e 206
+    // aparece em sete). Nós rateamos a mesma nota pelos detalhamentos do
+    // nosso pedido. São duas classificações do mesmo material, e lançamento
+    // já feito no ERP não se corrige.
+    //
+    // Comparar sem reendereçar acusaria "falta lançar" para nota que ESTÁ
+    // lançada, só sob outro rótulo — e não haveria ação possível. Então o
+    // saldo é lido no endereçamento do boletim. O total não muda: só o
+    // endereço. Ver lib/informakon/rechavear.ts.
+    let linhasSaida = ((linhasRes.data || []) as unknown as Registro[]).map(l => ({
+      chave: chaveDe(l),
+      rotulo: String(l.macro_item ?? ''),
+      valor: Number(l.valor || 0),
+      valorDescontado: Number(l.valor_descontado || 0),
+    })).filter(l => l.chave)
+    let notasSaida: Array<{
+      chave: string; documento: string; tipoDoc: string | null; numeroNf: string | null
+      macroItem: string; valorADescontar: number; valorDescontado: number
+    }> = notasBrutas.map(n => ({
+      chave: chaveDe(n),
+      documento: String(n.documento ?? ''),
+      tipoDoc: (n.tipo_doc as string) ?? null,
+      numeroNf: (n.numero_nf as string) ?? null,
+      macroItem: String(n.macro_item ?? ''),
+      valorADescontar: Number(n.valor_a_descontar || 0),
+      valorDescontado: Number(n.valor_descontado || 0),
+    })).filter(n => n.chave)
+    let totalRealocado = 0
+    let realocadas: Array<{ numero: string; documento: string; deChave: string; paraChaves: string[]; valor: number }> = []
+
+    if (notasSaida.length > 0) {
+      const alocacao = await carregarAlocacaoDeNotas(admin, contratoId)
+      const rech = rechavearRetrato(notasSaida, alocacao)
+      linhasSaida = [...rech.porChave.entries()].map(([chave, v]) => ({
+        chave,
+        rotulo: rotuloPorChave.get(chave) || `Macro item ${chave}`,
+        valor: v.aDescontar,
+        valorDescontado: v.descontado,
+      }))
+      const tipoPorNumero = new Map(notasSaida.map(n => [String(n.numeroNf ?? ''), n.tipoDoc]))
+      notasSaida = rech.notas.map(n => ({
+        chave: n.chave,
+        documento: n.documento ?? '',
+        tipoDoc: tipoPorNumero.get(String(n.numeroNf ?? '')) ?? null,
+        numeroNf: n.numeroNf,
+        macroItem: n.macroItem ?? '',
+        valorADescontar: n.valorADescontar,
+        valorDescontado: n.valorDescontado,
+      }))
+      totalRealocado = rech.totalRealocado
+      realocadas = rech.realocadas
+    }
+
     return NextResponse.json({
       temDados: true,
       snapshot_id: snap.id,
@@ -270,21 +334,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         ? null : Number(snap.total_informado),
       total_descontado: Number(snap.total_descontado || 0),
       observacoes: snap.observacoes ?? null,
-      linhas: ((linhasRes.data || []) as unknown as Registro[]).map(l => ({
-        chave: chaveDe(l),
-        rotulo: l.macro_item,
-        valor: Number(l.valor || 0),
-        valorDescontado: Number(l.valor_descontado || 0),
-      })).filter(l => l.chave),
-      notas: notasBrutas.map(n => ({
-        chave: chaveDe(n),
-        documento: n.documento,
-        tipoDoc: n.tipo_doc ?? null,
-        numeroNf: n.numero_nf ?? null,
-        macroItem: n.macro_item,
-        valorADescontar: Number(n.valor_a_descontar || 0),
-        valorDescontado: Number(n.valor_descontado || 0),
-      })).filter(n => n.chave),
+      linhas: linhasSaida,
+      notas: notasSaida,
+      /** Σ reendereçado — o total do retrato não muda, só o endereço. */
+      total_realocado: totalRealocado,
+      realocadas: realocadas.slice(0, 30),
     })
   } catch (e: any) {
     return apiError(e)
