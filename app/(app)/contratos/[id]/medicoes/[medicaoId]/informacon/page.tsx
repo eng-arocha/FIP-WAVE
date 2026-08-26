@@ -13,6 +13,8 @@ import {
 import {
   useBreakdownAjuste, BreakdownAjusteGrid, BreakdownCarregando,
 } from '@/components/medicoes/breakdown-ajuste'
+import { excedeTeto, mensagemExcedeTeto } from '@/lib/medicao-teto'
+import { NfDescDrilldown, type NfDescLinha } from '@/components/medicoes/nf-desc-drilldown'
 import { EmailLiberacaoMedicaoModal } from '@/components/medicoes/email-liberacao-medicao-modal'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 import { formatCurrency, formatDate } from '@/lib/utils'
@@ -189,6 +191,8 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
    * descartar o breakdown e voltar aos campos qtd/%/R$.
    */
   const [forcarAgregado, setForcarAgregado] = useState(false)
+  /** Linha cuja composição de NF Desc. está aberta no drill-down. */
+  const [drilldownNf, setDrilldownNf] = useState<Linha | null>(null)
   const breakdown = useBreakdownAjuste(contratoId, medicaoId, modalAjustar?.item.detalhamento_id ?? null)
   const usaGradeBreakdown = !!breakdown.estado?.suporta_breakdown && !forcarAgregado
 
@@ -550,6 +554,19 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
       const qtyNum = Number(novaQuantidade.replace(',', '.'))
       if (!Number.isFinite(qtyNum) || qtyNum < 0) {
         setErroAjuste('Quantidade inválida.')
+        return
+      }
+      // Teto do contrato — o servidor é a autoridade, isto só evita o 409.
+      const tetoItem = breakdown.estado?.teto ?? null
+      if (excedeTeto(qtyNum, tetoItem)) {
+        setErroAjuste(mensagemExcedeTeto({
+          codigo: item.codigo,
+          unidade: item.unidade,
+          quantidadeContratada: item.quantidade_contratada,
+          qtdAnterior: breakdown.estado?.qtd_anterior ?? 0,
+          qtdNova: qtyNum,
+          teto: tetoItem as number,
+        }))
         return
       }
       if (Math.abs(qtyNum - item.quantidade_medida) < 1e-6) {
@@ -1001,7 +1018,12 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   <th style={{ ...th(), textAlign: 'right' }}>Mat. Medido</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>NF Terceiro</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>Saldo Aprov.</th>
-                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>NF Desc.</th>
+                  <th
+                    style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}
+                    title="Clique no valor de qualquer linha para ver a conta passo a passo e as notas fiscais do balde que originou o desconto."
+                  >
+                    NF Desc. <span style={{ opacity: 0.55, fontWeight: 400 }}>⧉</span>
+                  </th>
                   <th
                     style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}
                     title="Quanto do NF Desc. veio de nota alocada a OUTRO item da mesma tarefa (o código de dois níveis: 14.2 SPRINKLER, 16.1 INFRA SDAI). A FIP compra por lote e a medição é por pavimento — sem isso, a nota fica parada num item enquanto o vizinho aparece sem cobertura. Fora da tarefa nada transborda: cabo não é coberto por nota de eletroduto."
@@ -1111,10 +1133,21 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                       <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.nf_terceiro)}</td>
                       <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}>{formatCurrency(l.saldo_aprovado)}</td>
                       <td
-                        style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(15,118,110,0.04)' }}
+                        style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(15,118,110,0.04)', padding: 0 }}
                         title={tituloNfDesc(l)}
                       >
-                        {formatCurrency(l.nf_descontavel)}
+                        {/* Clique abre a conta da linha + as notas do balde.
+                            Ver components/medicoes/nf-desc-drilldown.tsx pra por
+                            que isto NÃO é "as notas que somam este valor". */}
+                        <button
+                          type="button"
+                          onClick={() => setDrilldownNf(l)}
+                          className="w-full h-full text-right px-2 py-1 hover:bg-teal-500/10 hover:underline decoration-dotted underline-offset-2 transition-colors print:hover:bg-transparent"
+                          style={{ color: 'inherit', font: 'inherit' }}
+                          title="Ver de onde vem este desconto e as notas do balde"
+                        >
+                          {formatCurrency(l.nf_descontavel)}
+                        </button>
                       </td>
                       <td
                         style={{
@@ -1485,6 +1518,12 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
 
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} pctRetencao={data.medicao.contrato.percentual_retencao} />}
 
+      <NfDescDrilldown
+        contratoId={contratoId}
+        linha={drilldownNf as NfDescLinha | null}
+        onClose={() => setDrilldownNf(null)}
+      />
+
       {/* Modal Ajustar Quantidade (admin durante aprovação) — migration 061 */}
       <Dialog
         open={!!modalAjustar}
@@ -1596,6 +1635,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                           type="number"
                           step="any"
                           min="0"
+                          max={breakdown.estado?.teto ?? undefined}
                           value={novaQuantidade}
                           onChange={e => handleQtdChange(e.target.value)}
                           className="w-full bg-[var(--surface-1)] border border-orange-500/40 text-[var(--text-1)] rounded-lg px-2 py-1.5 outline-none font-mono text-sm"
@@ -1652,6 +1692,13 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                       {' · '}
                       Unit. serviço: <strong className="font-mono">{modalAjustar.item.valor_servico_unit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
                     </p>
+                    {breakdown.estado?.teto != null && (
+                      <p className="text-[10px]" style={{ color: '#F59E0B' }}>
+                        Máximo desta medição: <strong className="font-mono">{breakdown.estado.teto}</strong>
+                        {' '}— o contratado menos <strong className="font-mono">{breakdown.estado.qtd_anterior}</strong> já
+                        aprovado em medições anteriores. Acima disso seria medir mais de 100% do contrato.
+                      </p>
+                    )}
                   </div>
                   </>
                 )}
@@ -1810,8 +1857,26 @@ function HelpModal({ onClose, pctRetencao }: { onClose: () => void; pctRetencao:
                 é nota que ficou para trás voltando de uma vez. Passe o mouse sobre o valor pra ver a
                 composição.
               </li>
-              <li><strong>Gap</strong> = Mat. Medido − NF Desc. (parte do material não coberta por NF).</li>
-              <li><strong>Retido</strong> = MIN(Gap, Saldo Aprov.). Não pago nesta medição — aguarda chegar NF terceiro.</li>
+              <li>
+                <strong>Gap</strong> = Mat. Medido − NF Desc. — a parte do material medido que
+                nenhuma nota de terceiro cobriu ainda. É só um <em>intermediário</em>: não é
+                gravado em lugar nenhum e não move dinheiro sozinho. Ele se reparte, sempre
+                inteiro, entre as duas colunas seguintes — vale a identidade{' '}
+                <strong>Gap = Retido + FIP Fat-Dir</strong>. Quem decide pagamento são elas.
+              </li>
+              <li>
+                <strong>Retido</strong> = a parte do Gap que já tem <em>pedido fat-direto aprovado</em>{' '}
+                esperando a nota do fornecedor chegar. Não vira NF da FIP nesta medição.
+                <br />
+                <span style={{ color: 'var(--text-3)' }}>
+                  Atenção ao ler a linha: o saldo aprovado é apurado <strong>por tarefa</strong>, num
+                  pool compartilhado entre os detalhamentos irmãos — a FIP compra por lote e o pedido
+                  costuma estar lançado num item vizinho. Por isso uma linha pode mostrar{' '}
+                  <strong>Saldo Aprov. = 0</strong> e ainda assim ter Retido &gt; 0: o saldo veio de
+                  outro item da mesma tarefa. A coluna Saldo Aprov. mostra só o número cru
+                  <em> daquele item</em>, não a base do rateio.
+                </span>
+              </li>
               <li><strong>FIP Fat-Dir</strong> = Gap − Retido. Solicitação de fat-direto criada automaticamente em nome da FIP (status: aprovado). <em>Ainda assim NÃO entra no Dados Informakon</em> — a NF ainda não foi emitida.</li>
               <li><strong>Wave (Serv.)</strong> = qtd × <code>valor_servico_unit</code>. NF da Wave a emitir.</li>
               <li><strong>% Serv. Med.</strong> = qtd medida ÷ qtd contratada × 100 (físico). Quando o aprovador marca &quot;sem mais NF&quot;, este % é reduzido para coincidir com o % Informakon — protegendo a retenção.</li>

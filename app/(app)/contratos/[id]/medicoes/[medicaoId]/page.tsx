@@ -31,6 +31,7 @@ import { EmailLiberacaoMedicaoModal } from '@/components/medicoes/email-liberaca
 import {
   useBreakdownAjuste, BreakdownAjusteGrid, BreakdownCarregando, fmtQtd,
 } from '@/components/medicoes/breakdown-ajuste'
+import { excedeTeto, mensagemExcedeTeto } from '@/lib/medicao-teto'
 
 // Tipos da rota /api/contratos/[id]/medicoes/[medicaoId]/planilha
 type ItemPlanilha = {
@@ -558,6 +559,20 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
       const qtyNum = Number(novaQtd.replace(',', '.'))
       if (!Number.isFinite(qtyNum) || qtyNum < 0) {
         setErroAjuste('Quantidade inválida.')
+        return
+      }
+      // Teto do contrato. O servidor também barra (é ele a autoridade), mas
+      // avisar aqui evita uma ida à rede pra levar 409.
+      const tetoItem = breakdown.estado?.teto ?? null
+      if (excedeTeto(qtyNum, tetoItem)) {
+        setErroAjuste(mensagemExcedeTeto({
+          codigo: modalAjustar.codigo,
+          unidade: modalAjustar.unidade,
+          quantidadeContratada: modalAjustar.quantidade_contratada,
+          qtdAnterior: breakdown.estado?.qtd_anterior ?? 0,
+          qtdNova: qtyNum,
+          teto: tetoItem as number,
+        }))
         return
       }
       if (Math.abs(qtyNum - modalAjustar.quantidade_atual) < 1e-6) {
@@ -2193,11 +2208,20 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                         type="number"
                         step="0.001"
                         min="0"
+                        max={breakdown.estado?.teto ?? undefined}
                         value={novaQtd}
                         onChange={e => setNovaQtd(e.target.value)}
                         className="w-full bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text-1)] rounded-lg px-3 py-2 outline-none font-mono"
                         autoFocus
                       />
+                      {breakdown.estado?.teto != null && (
+                        <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
+                          Máximo desta medição: <strong className="tabular-nums">{fmtQtd(breakdown.estado.teto)}</strong>
+                          {modalAjustar.unidade ? ` ${modalAjustar.unidade}` : ''} — é o contratado
+                          ({fmtQtd(modalAjustar.quantidade_contratada)}) menos {fmtQtd(breakdown.estado.qtd_anterior)} já
+                          aprovado em medições anteriores. Passar disso é medir mais de 100% do contrato.
+                        </p>
+                      )}
                     </div>
                   </>
                 )}

@@ -10,9 +10,13 @@ export type OrigemNotaFatDireto = {
   data: string                 // ISO YYYY-MM-DD
   valorAlocado: number         // porção alocada ao escopo
   valorTotalNf: number         // valor bruto da NF
-  status: string               // 'pendente' | 'validada' | 'rejeitada' | ...
+  status: string               // 'aguardando_aprovacao' | 'aprovada' | 'em_correcao' | 'cancelada'
   pedidoId: string
   pedidoNumero: string
+  /** Razão social do fornecedor que emitiu a nota. `null` em pedido sem cadastro. */
+  emitente: string | null
+  /** URL pública do PDF/XML no bucket `faturamento-direto`. `null` se não anexado. */
+  arquivoUrl: string | null
 }
 
 export type OrigemNotaWave = {

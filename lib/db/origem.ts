@@ -45,7 +45,10 @@ type PedidoComNfs = {
   fornecedor_cnpj?: string | null
   fornecedor_razao_social?: string | null
   itens: Array<{ detalhamento_id: string | null; valor_total: number }> | null
-  nfs: Array<{ id: string; numero_nf: string; data_emissao: string; valor: number; status: string }> | null
+  nfs: Array<{
+    id: string; numero_nf: string; data_emissao: string; valor: number; status: string
+    arquivo_url?: string | null
+  }> | null
 }
 
 /**
@@ -63,7 +66,7 @@ async function carregarPedidosComNfs(contratoId: string): Promise<PedidoComNfs[]
       fornecedor_cnpj,
       fornecedor_razao_social,
       itens:itens_solicitacao_fat_direto ( detalhamento_id, valor_total ),
-      nfs:notas_fiscais_fat_direto!solicitacao_id ( id, numero_nf, data_emissao, valor, status )
+      nfs:notas_fiscais_fat_direto!solicitacao_id ( id, numero_nf, data_emissao, valor, status, arquivo_url )
     `
   const res = await withSchemaFallback({
     primary: () => admin
@@ -97,7 +100,10 @@ export async function listOrigemRealizadoMaterial(
     // aparecia na lista de MATERIAL (e o modo serviço ficava vazio).
     if (ehPedidoDeServicoWave(sol)) continue
     const itens = (sol.itens ?? []) as Array<{ detalhamento_id: string | null; valor_total: number }>
-    const nfs = (sol.nfs ?? []) as Array<{ id: string; numero_nf: string; data_emissao: string; valor: number; status: string }>
+    const nfs = (sol.nfs ?? []) as Array<{
+      id: string; numero_nf: string; data_emissao: string; valor: number; status: string
+      arquivo_url?: string | null
+    }>
 
     for (const nf of nfs) {
       if (!nfReservaSaldo(nf.status)) continue
@@ -113,6 +119,8 @@ export async function listOrigemRealizadoMaterial(
         status: String(nf.status ?? ''),
         pedidoId: sol.id,
         pedidoNumero: String(sol.numero ?? ''),
+        emitente: sol.fornecedor_razao_social ?? null,
+        arquivoUrl: nf.arquivo_url ?? null,
       })
     }
   }
