@@ -80,9 +80,13 @@ interface RetratoSaldo {
   total_realocado?: number
   realocadas?: Array<{ numero: string; documento: string; deChave: string; paraChaves: string[]; valor: number }>
   /** Notas nossas ausentes de TODO o retrato — a lista acionável. */
-  notas_ausentes?: Array<{ numero: string; valor: number }>
+  notas_ausentes?: Array<{ numero: string; pedido: string | null; valor: number }>
   total_ausente?: number
   qtd_ausentes?: number
+  /** O inverso: o ERP tem e o nosso cadastro não conhece. */
+  notas_so_no_erp?: Array<{ numero: string; documento: string; macroItem: string; valor: number }>
+  total_so_no_erp?: number
+  qtd_so_no_erp?: number
 }
 
 const EXEMPLO = `Documento\tInsumo\tEspecificação\tUnidade\tQtd.a Desc\tVlr. a Desc\tQtd.Desc\tVlr.Desc
@@ -716,8 +720,10 @@ export function SaldoInformakonPainel({
                     nenhum. Somam {formatCurrency(retrato.total_ausente || 0)}.
                   </strong>
                   <span className="block mt-1 font-mono" style={{ color: 'var(--text-2)' }}>
-                    {(retrato.notas_ausentes ?? []).slice(0, 15).map(n => `${n.numero} (${formatCurrency(n.valor)})`).join(' · ')}
-                    {(retrato.qtd_ausentes ?? 0) > 15 ? ` · +${(retrato.qtd_ausentes ?? 0) - 15}` : ''}
+                    {(retrato.notas_ausentes ?? []).slice(0, 15).map(n => (
+                      `${n.pedido ? `${n.pedido} · ` : ''}NF ${n.numero} (${formatCurrency(n.valor)})`
+                    )).join('  ·  ')}
+                    {(retrato.qtd_ausentes ?? 0) > 15 ? `  ·  +${(retrato.qtd_ausentes ?? 0) - 15}` : ''}
                   </span>
                   <span className="block mt-1" style={{ color: 'var(--text-3)' }}>
                     Essa é a lista que dá para resolver — lançando. A tabela por macro item abaixo
@@ -736,6 +742,36 @@ export function SaldoInformakonPainel({
                   </span>
                 </>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* ── O INVERSO: o ERP tem nota que o nosso cadastro não conhece ─
+            Este é o erro mais caro dos dois, porque nada no boletim o
+            denuncia: `NF Terceiro` fica baixo, `NF Desc.` fica baixo, e todos
+            os números fecham entre si — só estão todos errados para menos. */}
+        {(retrato?.qtd_so_no_erp ?? 0) > 0 && (
+          <div className="px-3 pb-3">
+            <div
+              className="p-2.5 rounded-lg text-[11px]"
+              style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.35)', color: '#F59E0B' }}
+            >
+              <strong>
+                {retrato!.qtd_so_no_erp} nota(s) estão no Informakon e não existem no site.
+                Somam {formatCurrency(retrato!.total_so_no_erp || 0)}.
+              </strong>
+              <span className="block mt-1 font-mono" style={{ color: 'var(--text-2)' }}>
+                {(retrato!.notas_so_no_erp ?? []).slice(0, 12).map(n => (
+                  `${n.documento || `NF ${n.numero}`} (${formatCurrency(n.valor)})`
+                )).join('  ·  ')}
+                {(retrato!.qtd_so_no_erp ?? 0) > 12 ? `  ·  +${(retrato!.qtd_so_no_erp ?? 0) - 12}` : ''}
+              </span>
+              <span className="block mt-1" style={{ color: 'var(--text-3)' }}>
+                Se for material desta obra, o pedido de fat-direto está faltando aqui — e aí o boletim
+                manda descontar <strong>menos</strong> do que deveria, e a Wave recebe material sem
+                abatimento. Confira uma a uma: ou cadastre o pedido, ou confirme que a nota é de outra
+                obra. Este alarme não some sozinho e nenhum outro número do boletim o denuncia.
+              </span>
             </div>
           </div>
         )}
