@@ -440,6 +440,9 @@ function ModalNotasDoMacroItem({
 /** O retrato em vigor nesta medição, como vem do boletim (migration 082). */
 export interface RetratoAdotadoUI {
   snapshot_id: string
+  /** false = a medição aponta para um retrato que o boletim não conseguiu aplicar. */
+  aplicado?: boolean
+  motivo?: string
   referencia: string | null
   informado_em: string | null
   total_reclassificado: number
@@ -476,6 +479,12 @@ export function SaldoInformakonPainel({
   /** Macro item aberto na busca "qual nota falta lançar". */
   const [macroItemAberto, setMacroItemAberto] = useState<LinhaComparacao | null>(null)
   const [adotando, setAdotando] = useState(false)
+  /**
+   * Confirmação da última adoção. Sem isso o clique não devolvia sinal
+   * nenhum: `erro` só era renderizado DENTRO do modal de colagem, que está
+   * fechado na hora de adotar — qualquer falha era invisível.
+   */
+  const [confirmacao, setConfirmacao] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     setCarregando(true)
@@ -501,6 +510,7 @@ export function SaldoInformakonPainel({
     setSalvando(true)
     setErro('')
     setAviso(null)
+    setConfirmacao(null)
     try {
       const res = await fetch(`/api/contratos/${contratoId}/informakon/saldo-a-descontar`, {
         method: 'POST',
@@ -563,6 +573,9 @@ export function SaldoInformakonPainel({
         : await fetch(url, { method: 'DELETE' })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) { setErro(body?.error || `Falha (HTTP ${res.status}).`); return }
+      setConfirmacao(adotar
+        ? `Retrato adotado: ${formatCurrency(body.total_reclassificado || 0)} reclassificados em ${body.macro_itens ?? 0} macro item(ns). O "% a lançar" já caiu nesse valor.`
+        : 'Retrato desfeito nesta medição. O "% a lançar" voltou ao valor cheio.')
       onMudou?.()
     } catch (e: any) {
       setErro(e?.message || 'Erro de rede.')
@@ -646,6 +659,30 @@ export function SaldoInformakonPainel({
           </div>
         )}
 
+        {/* Erro e confirmação das ações do painel. Antes o `erro` só era
+            renderizado dentro do modal de colagem — fechado na hora de
+            adotar —, então uma falha ao adotar não aparecia em lugar nenhum. */}
+        {erro && !modalAberto && (
+          <div className="px-3 pb-3">
+            <div className="p-2 rounded-lg text-[11px] bg-red-900/20 border border-red-800/40 text-red-400 flex items-start justify-between gap-2">
+              <span>{erro}</span>
+              <button type="button" onClick={() => setErro('')} className="shrink-0 opacity-70 hover:opacity-100">✕</button>
+            </div>
+          </div>
+        )}
+
+        {confirmacao && (
+          <div className="px-3 pb-3">
+            <div
+              className="p-2 rounded-lg text-[11px] flex items-start justify-between gap-2"
+              style={{ background: 'rgba(16,185,129,0.10)', border: '1px solid rgba(16,185,129,0.35)', color: '#10B981' }}
+            >
+              <span>{confirmacao}</span>
+              <button type="button" onClick={() => setConfirmacao(null)} className="shrink-0 opacity-70 hover:opacity-100">✕</button>
+            </div>
+          </div>
+        )}
+
         {/* ── Leitura NOTA A NOTA, sem macro item ──────────────────────
             O macro item do ERP é decisão do pedido da FIP, não da nota — a
             mesma nota aparece em vários lá. Comparar por macro item vira
@@ -697,7 +734,32 @@ export function SaldoInformakonPainel({
             Adotar reclassifica o desconto que o ERP não tem: o "% a lançar"
             cai na diferença exata e a nota continua na fila para o mês que
             vem, em vez de ser marcada como abatida na aprovação. */}
-        {retratoAdotado ? (
+        {retratoAdotado && retratoAdotado.aplicado === false ? (
+          <div className="px-3 pb-3">
+            <div
+              className="p-2.5 rounded-lg text-[11px] flex items-start justify-between gap-3 flex-wrap"
+              style={{ background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.40)', color: '#F59E0B' }}
+            >
+              <div className="min-w-0">
+                <strong>Esta medição aponta para um retrato, mas o boletim não conseguiu aplicá-lo</strong>
+                {retratoAdotado.motivo ? ` — ${retratoAdotado.motivo}.` : '.'}{' '}
+                O &quot;% a lançar&quot; está sem correção. Desfaça, cole o retrato de novo e adote outra vez.
+              </div>
+              {podeEditar && medicaoAberta && (
+                <button
+                  type="button"
+                  onClick={() => alternarAdocao(false)}
+                  disabled={adotando}
+                  className="shrink-0 inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-lg font-medium border transition-colors hover:bg-[var(--surface-3)] disabled:opacity-50"
+                  style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
+                >
+                  {adotando ? <Loader2 className="w-3 h-3 animate-spin" /> : <Undo2 className="w-3 h-3" />}
+                  Desfazer
+                </button>
+              )}
+            </div>
+          </div>
+        ) : retratoAdotado ? (
           <div className="px-3 pb-3">
             <div
               className="p-2.5 rounded-lg text-[11px] flex items-start justify-between gap-3 flex-wrap"

@@ -123,6 +123,9 @@ interface Resp {
   /** Retrato do Informakon adotado nesta medição (migration 082). */
   retrato_adotado?: {
     snapshot_id: string
+    /** false = a medição aponta para um retrato que o boletim não aplicou. */
+    aplicado?: boolean
+    motivo?: string
     referencia: string | null
     informado_em: string | null
     total_reclassificado: number
