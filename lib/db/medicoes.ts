@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { calcularTetoMedicao, excedeTeto, mensagemExcedeTeto } from '@/lib/medicao-teto'
+import { isSchemaMissingError } from '@/lib/db/resilient'
 
 export async function getMedicoes(contratoId: string) {
   const supabase = await createClient()
@@ -212,8 +213,48 @@ export async function createMedicao(input: {
   return medicao
 }
 
+/**
+ * Sem importação, sem medição.
+ *
+ * A aprovação grava `nf_material_descontada` a partir do boletim — é o momento
+ * em que a nota é dada por abatida e sai da fila para sempre. Fazer isso sem
+ * saber o que está lançado no Informakon é assinar embaixo de um número que
+ * ninguém conferiu do outro lado.
+ *
+ * Por isso o retrato do ERP (migrations 080/081) passa a ser pré-requisito da
+ * aprovação, adotado NESTA medição (migration 082). Adotá-lo também reclassifica
+ * o que o ERP não tem lastro para descontar, então o percentual já sai
+ * corrigido.
+ *
+ * Fail-open só quando a coluna não existe: se a migration 082 ainda não rodou,
+ * não há como registrar a adoção e travar toda aprovação seria pior do que o
+ * risco que a trava evita.
+ */
+async function assertRetratoInformakonImportado(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  medicaoId: string,
+) {
+  const { data, error } = await supabase
+    .from('medicoes')
+    .select('informakon_snapshot_id')
+    .eq('id', medicaoId)
+    .maybeSingle()
+
+  if (error) {
+    if (isSchemaMissingError(error, ['informakon_snapshot_id'])) return
+    throw error
+  }
+  if (!data || (data as any).informakon_snapshot_id) return
+
+  throw new Error(
+    'Importação do Informakon pendente. Cole o retrato do ERP no painel do boletim e clique em "Adotar nesta medição" antes de aprovar — sem ele não há como conferir o que está lançado do outro lado, e a aprovação marca a nota como abatida em definitivo.',
+  )
+}
+
 export async function aprovarMedicao(id: string, aprovadorNome: string, aprovadorEmail: string, comentario?: string) {
   const supabase = await createClient()
+
+  await assertRetratoInformakonImportado(supabase, id)
 
   // Carrega medição + contrato + itens com unitários separados de mat/serv
   const { data: medSnap } = await supabase
