@@ -87,6 +87,9 @@ interface RetratoSaldo {
   notas_so_no_erp?: Array<{ numero: string; documento: string; macroItem: string; valor: number }>
   total_so_no_erp?: number
   qtd_so_no_erp?: number
+  /** Mesma nota nos dois lados com valor diferente — compra divergente. */
+  notas_divergentes?: Array<{ numero: string; nosso: number; erp: number; diferenca: number }>
+  qtd_divergentes?: number
 }
 
 const EXEMPLO = `Documento\tInsumo\tEspecificação\tUnidade\tQtd.a Desc\tVlr. a Desc\tQtd.Desc\tVlr.Desc
@@ -771,6 +774,30 @@ export function SaldoInformakonPainel({
                 manda descontar <strong>menos</strong> do que deveria, e a Wave recebe material sem
                 abatimento. Confira uma a uma: ou cadastre o pedido, ou confirme que a nota é de outra
                 obra. Este alarme não some sozinho e nenhum outro número do boletim o denuncia.
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* ── COMPRA DIVERGENTE: a nota existe nos dois lados, com valores
+            diferentes. Nem "falta lançar" nem "só no ERP" pegam este caso —
+            a presença bate e só o valor difere. */}
+        {(retrato?.qtd_divergentes ?? 0) > 0 && (
+          <div className="px-3 pb-3">
+            <div
+              className="p-2.5 rounded-lg text-[11px]"
+              style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.30)', color: '#F59E0B' }}
+            >
+              <strong>{retrato!.qtd_divergentes} nota(s) com valor diferente entre o site e o Informakon.</strong>
+              <span className="block mt-1 font-mono" style={{ color: 'var(--text-2)' }}>
+                {(retrato!.notas_divergentes ?? []).slice(0, 10).map(n => (
+                  `NF ${n.numero}: aqui ${formatCurrency(n.nosso)} × lá ${formatCurrency(n.erp)} (${n.diferenca > 0 ? '+' : ''}${formatCurrency(n.diferenca)})`
+                )).join('  ·  ')}
+                {(retrato!.qtd_divergentes ?? 0) > 10 ? `  ·  +${(retrato!.qtd_divergentes ?? 0) - 10}` : ''}
+              </span>
+              <span className="block mt-1" style={{ color: 'var(--text-3)' }}>
+                Compra lançada com valor divergente, ou nota parcialmente lançada de um dos lados.
+                Positivo = temos mais aqui do que existe lá, e o desconto vai travar na diferença.
               </span>
             </div>
           </div>

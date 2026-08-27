@@ -135,9 +135,11 @@ export function RoteiroInformakonModal({
             </button>
           </DialogTitle>
           <DialogDescription className="text-[var(--text-2)]">
-            Por macro grupo, na ordem de digitar. O desconto de material é repartido entre as notas
-            em <strong>FIFO</strong> — a mais antiga primeiro —, sem passar do saldo de nenhuma.
-            Clique em qualquer número para copiar.
+            Por macro grupo, na ordem de digitar. O <strong>%</strong> e o <strong>desconto</strong> vão
+            no <strong>pedido mãe</strong>, consumindo o saldo acumulado no pedido de faturamento
+            direto. Nota de material nunca entra no pedido mãe. O desconto é repartido entre as
+            notas em <strong>FIFO</strong> — a mais antiga primeiro —, sem passar do saldo de
+            nenhuma. Clique em qualquer número para copiar.
           </DialogDescription>
         </DialogHeader>
 
@@ -283,6 +285,10 @@ export function RoteiroInformakonModal({
                     <p className="text-[11px]" style={{ color: '#EF4444' }}>
                       A FIP precisa emitir e lançar <strong>{formatCurrency(g.fipPrecisaEmitir)}</strong> de
                       nota de material neste grupo antes de você conseguir digitar o desconto.
+                      <span className="block mt-0.5" style={{ color: 'var(--text-3)' }}>
+                        Lance no <strong>pedido de faturamento direto</strong> — nota complementar
+                        no pedido mãe não vira base de desconto e o lançamento continua travado.
+                      </span>
                     </p>
                   </Bloco>
                 )}
