@@ -305,6 +305,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     let notasAusentes: Array<{ numero: string; pedido: string | null; valor: number }> = []
     /** O inverso: notas do retrato que o nosso cadastro não conhece. */
     let notasSoNoErp: Array<{ numero: string; documento: string; macroItem: string; valor: number }> = []
+    /** Mesma nota nos dois lados, com valor diferente — compra divergente. */
+    let notasDivergentes: Array<{ numero: string; nosso: number; erp: number; diferenca: number }> = []
 
     if (notasSaida.length > 0) {
       const alocacao = await carregarAlocacaoDeNotas(admin, contratoId)
@@ -356,6 +358,34 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         .map(([numero, v]) => ({ ...v, numero, valor: Math.round(v.valor * 100) / 100 }))
         .filter(n => n.valor > 0.01)
         .sort((a, b) => b.valor - a.valor)
+
+      // ── COMPRA DIVERGENTE ───────────────────────────────────────────
+      //
+      // A nota existe dos dois lados, com valor diferente. É o terceiro erro
+      // que o usuário descreveu, ao lado do macro grupo trocado — e o único
+      // que nenhuma das outras duas faixas pega, porque presença bate e só o
+      // número não.
+      //
+      // O total do ERP é `a descontar + descontado` somado em TODOS os macro
+      // itens: a mesma nota aparece quebrada em vários lá, e comparar pedaço
+      // com o total do nosso lado acusaria divergência em toda nota rateada.
+      const erpPorNumero = new Map<string, number>()
+      for (const n of notasSaida) {
+        const numero = normalizarNumeroNota(n.numeroNf ?? n.documento)
+        if (!numero) continue
+        const v = (Number(n.valorADescontar) || 0) + (Number(n.valorDescontado) || 0)
+        erpPorNumero.set(numero, (erpPorNumero.get(numero) || 0) + v)
+      }
+      const TOLERANCIA = 1
+      notasDivergentes = [...nossoPorNumero.entries()]
+        .filter(([numero]) => erpPorNumero.has(numero))
+        .map(([numero, v]) => {
+          const erp = Math.round((erpPorNumero.get(numero) || 0) * 100) / 100
+          const nosso = Math.round(v.valor * 100) / 100
+          return { numero, nosso, erp, diferenca: Math.round((nosso - erp) * 100) / 100 }
+        })
+        .filter(n => Math.abs(n.diferenca) > TOLERANCIA)
+        .sort((a, b) => Math.abs(b.diferenca) - Math.abs(a.diferenca))
       const rech = rechavearRetrato(notasSaida, alocacao)
       linhasSaida = [...rech.porChave.entries()].map(([chave, v]) => ({
         chave,
@@ -407,6 +437,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       notas_so_no_erp: notasSoNoErp.slice(0, 50),
       total_so_no_erp: Math.round(notasSoNoErp.reduce((s, n) => s + n.valor, 0) * 100) / 100,
       qtd_so_no_erp: notasSoNoErp.length,
+      /** Mesma nota nos dois lados com valor diferente — compra divergente. */
+      notas_divergentes: notasDivergentes.slice(0, 30),
+      qtd_divergentes: notasDivergentes.length,
     })
   } catch (e: any) {
     return apiError(e)
