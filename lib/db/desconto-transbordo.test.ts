@@ -546,11 +546,15 @@ describe('nível do balde — grupo macro por padrão, tarefa por exceção', ()
   })
 })
 
-describe('teto da régua: material CONTRATADO (até zerar a nota)', () => {
-  // O teto era o material MEDIDO acumulado, então uma nota grande ficava
-  // parada esperando a obra alcançar — e o material virava "FIP precisa
-  // emitir" enquanto o fornecedor já tinha faturado.
-  it('sem matContratado: teto continua sendo o material medido (compat)', () => {
+describe('teto da régua: material MEDIDO acumulado (% nunca passa do físico)', () => {
+  // Houve uma versão em que o teto era o material CONTRATADO, para consumir a
+  // nota do fornecedor mais cedo. Como
+  //     % a lançar = (serviço medido + desconto) / valor global,
+  // descontar material não executado obriga a lançar percentual não executado
+  // — a obra real teve um item com 8,0063% lançado contra 5,00% físico.
+  // Estes testes travam o invariante que impede isso de voltar.
+
+  it('a nota grande fica em saldo: só desconta o material já executado', () => {
     const r = calcularDescontoComTransbordo([
       {
         detalhamentoId: 'A', grupoId: '14',
@@ -559,102 +563,129 @@ describe('teto da régua: material CONTRATADO (até zerar a nota)', () => {
       },
     ])
     expect(r.get('A')!.total).toBeCloseTo(50_000, 2)
+    // Nada de recuperação: o desconto não passou do material do período.
+    expect(r.get('A')!.recuperacao).toBeCloseTo(0, 2)
   })
 
-  it('com matContratado: a nota é consumida até o espaço contratual', () => {
+  it('INVARIANTE: o % lançado acumulado nunca passa do % físico acumulado', () => {
+    // Item com muito contrato, pouca execução e nota cheia — o caso que
+    // produzia 8% lançado contra 5% físico.
+    const matUnit = 41_868.91          // material contratado do item
+    const servUnit = 66_590.60         // serviço contratado do item
+    const global = matUnit + servUnit
+    const pctFisico = 12.79 / 100
+    const matAcumulado = matUnit * pctFisico
+    const servAcumulado = servUnit * pctFisico
+
     const r = calcularDescontoComTransbordo([
       {
-        detalhamentoId: 'A', grupoId: '14',
-        matMedido: 50_000, matAcumulado: 50_000, matContratado: 300_000,
-        nfAlocada: 200_000, nfJaAbatida: 0,
+        detalhamentoId: 'A', grupoId: '3',
+        matMedido: matUnit * 0.05, matAcumulado,
+        nfAlocada: matUnit, nfJaAbatida: 0,   // a prumada inteira já faturada
       },
     ])
-    // Zera a nota inteira: 200k cabe nos 300k contratados.
-    expect(r.get('A')!.total).toBeCloseTo(200_000, 2)
-    // O excedente sobre o material do período é "recuperação".
-    expect(r.get('A')!.recuperacao).toBeCloseTo(150_000, 2)
+    const desconto = r.get('A')!.total
+    const aLancarAcumulado = servAcumulado + desconto
+    const pctLancado = (aLancarAcumulado / global) * 100
+
+    expect(desconto).toBeLessThanOrEqual(matAcumulado + 1e-6)
+    expect(pctLancado).toBeLessThanOrEqual(pctFisico * 100 + 1e-6)
   })
 
-  it('a nota nunca passa do material contratado — % a lançar não pode passar de 100%', () => {
+  it('a nota nunca passa do material executado, por maior que seja', () => {
     const r = calcularDescontoComTransbordo([
       {
         detalhamentoId: 'A', grupoId: '14',
-        matMedido: 10_000, matAcumulado: 10_000, matContratado: 120_000,
+        matMedido: 10_000, matAcumulado: 10_000,
         nfAlocada: 500_000, nfJaAbatida: 0,
       },
     ])
-    expect(r.get('A')!.total).toBeCloseTo(120_000, 2)
+    expect(r.get('A')!.total).toBeCloseTo(10_000, 2)
+  })
+
+  it('recupera o material medido antes que não teve nota na época', () => {
+    const r = calcularDescontoComTransbordo([
+      {
+        detalhamentoId: 'A', grupoId: '14',
+        matMedido: 10_000, matAcumulado: 60_000,
+        nfAlocada: 200_000, nfJaAbatida: 0,
+      },
+    ])
+    // Teto = material acumulado 60k; nada abatido ainda.
+    expect(r.get('A')!.total).toBeCloseTo(60_000, 2)
+    // 50k excedem o material do período: é a recuperação dos meses anteriores.
+    expect(r.get('A')!.recuperacao).toBeCloseTo(50_000, 2)
   })
 
   it('desconta o que já foi abatido em medições anteriores', () => {
     const r = calcularDescontoComTransbordo([
       {
         detalhamentoId: 'A', grupoId: '14',
-        matMedido: 10_000, matAcumulado: 60_000, matContratado: 120_000,
-        nfAlocada: 200_000, nfJaAbatida: 80_000,
+        matMedido: 10_000, matAcumulado: 60_000,
+        nfAlocada: 200_000, nfJaAbatida: 40_000,
       },
     ])
-    // min(teto 120k, nota 200k) − já abatido 80k = 40k
-    expect(r.get('A')!.total).toBeCloseTo(40_000, 2)
+    // min(teto 60k, nota 200k) − já abatido 40k = 20k
+    expect(r.get('A')!.total).toBeCloseTo(20_000, 2)
   })
 
-  it('water-filling: o que não cabe num item vai para o vizinho com espaço', () => {
+  it('water-filling: o vizinho absorve, mas nunca além do que ele executou', () => {
     const r = calcularDescontoComTransbordo([
-      // A tem pouco espaço contratual, mas é quem mediu mais
+      // A mediu muito e não tem nota própria
       {
         detalhamentoId: 'A', grupoId: '18',
-        matMedido: 90_000, matAcumulado: 90_000, matContratado: 100_000,
+        matMedido: 90_000, matAcumulado: 90_000,
         nfAlocada: 0, nfJaAbatida: 0,
       },
-      // B tem espaço de sobra e é dono da nota
+      // B é dono de uma nota grande, mas mediu pouco
       {
         detalhamentoId: 'B', grupoId: '18',
-        matMedido: 10_000, matAcumulado: 10_000, matContratado: 400_000,
+        matMedido: 10_000, matAcumulado: 10_000,
         nfAlocada: 300_000, nfJaAbatida: 0,
       },
     ])
     const a = r.get('A')!.total
     const b = r.get('B')!.total
-    // O balde desconta os 300k inteiros (teto do grupo = 500k)
-    expect(a + b).toBeCloseTo(300_000, 2)
-    // A satura no seu contrato e o excedente escorre para B
-    expect(a).toBeCloseTo(100_000, 2)
-    expect(b).toBeCloseTo(200_000, 2)
+    // O balde desconta no máximo o material executado do balde: 100k.
+    expect(a + b).toBeCloseTo(100_000, 2)
+    // Cada um até o próprio material executado — nenhum passa do seu físico.
+    expect(a).toBeCloseTo(90_000, 2)
+    expect(b).toBeCloseTo(10_000, 2)
   })
 
   it('o que não couber em ninguém continua em saldo', () => {
     const r = calcularDescontoComTransbordo([
       {
         detalhamentoId: 'A', grupoId: '18',
-        matMedido: 5_000, matAcumulado: 5_000, matContratado: 10_000,
+        matMedido: 5_000, matAcumulado: 5_000,
         nfAlocada: 90_000, nfJaAbatida: 0,
       },
     ])
-    expect(r.get('A')!.total).toBeCloseTo(10_000, 2)  // não os 90k
+    expect(r.get('A')!.total).toBeCloseTo(5_000, 2)
   })
 
-  it('item não medido no período não recebe desconto, mesmo com espaço', () => {
+  it('item não medido no período não recebe desconto', () => {
     const r = calcularDescontoComTransbordo([
       {
         detalhamentoId: 'medido', grupoId: '18',
-        matMedido: 1_000, matAcumulado: 1_000, matContratado: 2_000,
+        matMedido: 1_000, matAcumulado: 1_000,
         nfAlocada: 0, nfJaAbatida: 0,
       },
       {
         detalhamentoId: 'nao-medido', grupoId: '18',
-        matMedido: 0, matAcumulado: 0, matContratado: 500_000,
+        matMedido: 0, matAcumulado: 0,
         nfAlocada: 400_000, nfJaAbatida: 0,
       },
     ])
     expect(r.get('nao-medido')!.total).toBeCloseTo(0, 2)
-    expect(r.get('medido')!.total).toBeCloseTo(2_000, 2)
+    expect(r.get('medido')!.total).toBeCloseTo(1_000, 2)
   })
 
   it('o resultado não depende da ordem dos itens', () => {
     const itens: Parameters<typeof calcularDescontoComTransbordo>[0] = [
-      { detalhamentoId: 'A', grupoId: '18', matMedido: 90_000, matAcumulado: 90_000, matContratado: 100_000, nfAlocada: 0, nfJaAbatida: 0 },
-      { detalhamentoId: 'B', grupoId: '18', matMedido: 10_000, matAcumulado: 10_000, matContratado: 400_000, nfAlocada: 300_000, nfJaAbatida: 0 },
-      { detalhamentoId: 'C', grupoId: '18', matMedido: 40_000, matAcumulado: 40_000, matContratado: 50_000, nfAlocada: 0, nfJaAbatida: 0 },
+      { detalhamentoId: 'A', grupoId: '18', matMedido: 90_000, matAcumulado: 90_000, nfAlocada: 0, nfJaAbatida: 0 },
+      { detalhamentoId: 'B', grupoId: '18', matMedido: 10_000, matAcumulado: 10_000, nfAlocada: 300_000, nfJaAbatida: 0 },
+      { detalhamentoId: 'C', grupoId: '18', matMedido: 40_000, matAcumulado: 40_000, nfAlocada: 0, nfJaAbatida: 0 },
     ]
     const direto = calcularDescontoComTransbordo(itens)
     const invertido = calcularDescontoComTransbordo([...itens].reverse())
@@ -663,25 +694,26 @@ describe('teto da régua: material CONTRATADO (até zerar a nota)', () => {
     }
   })
 
-  it('caso real do grupo 18: a nota do vizinho zera o Gap dos dois itens', () => {
+  it('caso real do grupo 18: a nota do vizinho cobre o material executado', () => {
     // 18.1.6 e 18.1.14 da medição real. A nota de 20.730,08 está alocada ao
-    // 18.1.14; antes só 3.107,05 descontava (teto = material medido).
+    // 18.1.14, que mediu pouco; o transbordo leva ao 18.1.6 o que ele
+    // executou — e para aí. O resto da nota fica em saldo.
     const r = calcularDescontoComTransbordo([
       {
         detalhamentoId: '18.1.6', grupoId: '18',
-        matMedido: 11_057.26, matAcumulado: 11_057.26, matContratado: 11_639.22,
+        matMedido: 11_057.26, matAcumulado: 11_057.26,
         nfAlocada: 0, nfJaAbatida: 0,
       },
       {
         detalhamentoId: '18.1.14', grupoId: '18',
-        matMedido: 2_110.60, matAcumulado: 2_110.60, matContratado: 25_327.20,
+        matMedido: 2_110.60, matAcumulado: 2_110.60,
         nfAlocada: 20_730.08, nfJaAbatida: 0,
       },
     ])
     const total = r.get('18.1.6')!.total + r.get('18.1.14')!.total
-    expect(total).toBeCloseTo(20_730.08, 2)
-    // Gap dos dois vai a zero — nenhuma nota da FIP a emitir no grupo.
-    expect(r.get('18.1.6')!.total).toBeGreaterThanOrEqual(11_057.26)
-    expect(r.get('18.1.14')!.total).toBeGreaterThanOrEqual(2_110.60)
+    // O material executado do balde (13.167,86) é o teto — não os 20.730,08.
+    expect(total).toBeCloseTo(13_167.86, 2)
+    expect(r.get('18.1.6')!.total).toBeCloseTo(11_057.26, 2)
+    expect(r.get('18.1.14')!.total).toBeCloseTo(2_110.60, 2)
   })
 })

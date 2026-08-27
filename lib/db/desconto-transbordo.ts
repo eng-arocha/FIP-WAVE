@@ -49,30 +49,48 @@
  * apontar "FIP a criar" onde eles dão por coberto, e a diferença aparece na
  * conciliação por grupo (lib/db/informakon-conciliacao.ts).
  *
- * ATÉ ZERAR A NOTA (o teto da régua):
+ * O TETO DA RÉGUA — e por que NÃO é o material contratado:
  *
- * O teto era o material MEDIDO acumulado: comprou R$ 200 mil de tubo, instalou
- * R$ 50 mil, descontava R$ 50 mil e o resto ficava de saldo. A ideia era não
- * "descontar material que ainda não foi executado".
+ * O teto é o material MEDIDO acumulado: comprou R$ 200 mil de tubo, instalou
+ * R$ 50 mil, desconta R$ 50 mil e o resto fica de saldo.
  *
- * Só que o desconto NÃO move o que a Wave recebe. O `% a lançar` é
- * `(serviço + NF Desc.) / valor global`, então o Informakon libera na mesma
- * medida em que desconta — a Wave recebe o serviço medido, sempre, qualquer
- * que seja o desconto. Segurar a nota não protegia ninguém: só empurrava o
- * material para "FIP precisa emitir" e obrigava a FIP a faturar material que
- * o fornecedor JÁ faturou, para descontar a nota do fornecedor meses depois.
+ * Houve uma versão em que o teto passou a ser o material CONTRATADO, para
+ * consumir a nota do fornecedor mais cedo e encolher o passivo de material
+ * comprado e não reconhecido. O raciocínio era que o desconto não move o que
+ * a Wave recebe — o `% a lançar` sobe junto com o desconto, então ela recebe
+ * o serviço medido de qualquer jeito.
  *
- * O teto passou a ser o material CONTRATADO (`matContratado`). A nota é
- * consumida assim que existe espaço contratual, não quando a obra alcança.
- * Efeitos: menos nota da FIP a emitir, e o passivo de material comprado e não
- * reconhecido encolhe já nas primeiras medições — mais conservador para o
- * contratante, que era o objetivo.
+ * É verdade que ela recebe o serviço medido. O que esse raciocínio ignorava é
+ * o que acontece com o PERCENTUAL. Como
  *
- * O teto por ITEM é obrigatório e não é estético: `% a lançar` não pode passar
- * de 100%, e como `% = (serviço + NF Desc.) / global`, o item não pode
- * absorver mais nota do que o material que ele tem em contrato. O que não
- * couber é redistribuído entre os itens que ainda têm espaço (water-filling);
- * o que sobrar depois disso continua em saldo, como antes.
+ *     % a lançar = (serviço medido + desconto) / valor global
+ *
+ * descontar material que ainda não foi executado obriga a lançar percentual
+ * que ainda não foi executado. Na obra WAVE isso produziu um item com
+ * 8,0063% lançado no Informakon contra 5,00% de avanço físico — o ERP passou
+ * a registrar mais execução do que existe no canteiro.
+ *
+ * Consumir a nota antes de medir o material e não lançar percentual acima do
+ * físico são objetivos incompatíveis por construção. Prevalece o segundo: o
+ * percentual é o que a FIP lê como avanço de obra, e um número inflado ali
+ * contamina medição, cronograma e a conferência de todo mundo. A nota parada
+ * é só um saldo esperando o material ser instalado.
+ *
+ * INVARIANTE QUE ISSO GARANTE:
+ *
+ *     Σ a lançar  =  Σ serviço + Σ desconto
+ *                 ≤  Σ serviço + Σ material medido
+ *                 =  valor medido acumulado
+ *
+ * ou seja, `% lançado acumulado ≤ % físico acumulado`, item a item e sempre.
+ * O percentual de um PERÍODO ainda pode superar o físico do período — é a
+ * devolução de percentual que ficou retido em meses anteriores, quando a nota
+ * ainda não existia (ver `recuperacao`). O acumulado é que não passa nunca.
+ *
+ * O teto por ITEM não é estético: o item não pode absorver nota de vizinho
+ * além do próprio material medido, senão o percentual dele passa do físico
+ * dele — o mesmo erro na escala do item. O que não couber é redistribuído
+ * entre os que ainda têm espaço (water-filling) e o resto fica em saldo.
  *
  * A RÉGUA ACUMULADA (por que não se apura sobre o material do período):
  *
@@ -153,14 +171,6 @@ export interface ItemDesconto {
   nfAlocada: number
   /** Quanto desta alocação já foi abatido em medições aprovadas anteriores. */
   nfJaAbatida: number
-  /**
-   * Material CONTRATADO do item (qtde contratada × valor material unitário).
-   *
-   * É o novo teto da régua — ver o bloco "ATÉ ZERAR A NOTA" na doc do módulo.
-   * Quando ausente, o cálculo cai no teto antigo (material medido acumulado)
-   * e o comportamento é exatamente o de antes.
-   */
-  matContratado?: number | null
 }
 
 export interface ResultadoDesconto {
@@ -195,8 +205,24 @@ export function calcularDescontoComTransbordo(
   const chave = baldeDe
 
   // 1) Soma por balde: alocada, abatida, material do período e o TETO.
-  //    O teto é o material contratado quando o chamador informa; sem ele,
-  //    cai no material medido acumulado (comportamento anterior).
+  //
+  //    O TETO É O MATERIAL MEDIDO ACUMULADO — nunca o contratado.
+  //
+  //    Essa escolha é o que garante o invariante do boletim:
+  //
+  //        Σ a lançar  =  Σ serviço + Σ desconto
+  //                    ≤  Σ serviço + Σ material medido
+  //                    =  valor medido acumulado
+  //
+  //    ou seja, o percentual ACUMULADO lançado no Informakon nunca passa do
+  //    percentual físico acumulado. Você nunca libera no ERP mais do que a
+  //    obra executou.
+  //
+  //    Já foi o material CONTRATADO, para consumir a nota mais cedo e zerar o
+  //    saldo do fornecedor. Consumir a nota antes de medir o material exige
+  //    liberar percentual antes de executar — foi o que produziu um item com
+  //    8,0063% lançado contra 5,00% físico. As duas coisas são incompatíveis
+  //    por construção, e esta é a que não mente sobre o avanço da obra.
   const grupos = new Map<string, {
     alocada: number; abatida: number; medido: number; teto: number
   }>()
@@ -206,10 +232,9 @@ export function calcularDescontoComTransbordo(
     const medido = norm(it.matMedido)
     // O teto nunca fica abaixo do que se está medindo agora: dado
     // inconsistente não pode impedir o desconto do próprio período.
-    const tetoItem = Math.max(
-      it.matContratado != null ? norm(it.matContratado) : norm(it.matAcumulado),
-      medido,
-    )
+    // O teto nunca fica abaixo do que se está medindo agora: dado
+    // inconsistente não pode impedir o desconto do próprio período.
+    const tetoItem = Math.max(norm(it.matAcumulado), medido)
     g.alocada += norm(it.nfAlocada)
     g.abatida += norm(it.nfJaAbatida)
     g.medido += medido
@@ -248,11 +273,13 @@ export function calcularDescontoComTransbordo(
     const participantes = doBalde.filter(it => norm(it.matMedido) > 0)
     if (participantes.length === 0) continue
 
+    // Espaço de cada item: o material que ele já executou e ainda não teve
+    // coberto por nota. Um item não pode absorver nota de vizinho além do
+    // próprio material medido — senão o percentual DELE passaria do físico
+    // dele, que é o mesmo erro na escala do item.
     const espaco = new Map<string, number>()
     for (const it of participantes) {
-      const teto = it.matContratado != null
-        ? Math.max(norm(it.matContratado), norm(it.matMedido))
-        : Number.POSITIVE_INFINITY
+      const teto = Math.max(norm(it.matAcumulado), norm(it.matMedido))
       espaco.set(it.detalhamentoId, Math.max(0, teto - norm(it.nfJaAbatida)))
     }
 

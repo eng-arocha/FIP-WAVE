@@ -65,6 +65,8 @@ interface Linha {
    * de medições anteriores recuperada pela régua acumulada.
    */
   nf_recuperacao_anterior?: number
+  /** NF de material deste item já abatida em medições aprovadas anteriores. */
+  nf_ja_abatida?: number
   gap_material: number
   faturamento_direto_em_aberto: number
   fip_faturar: number
@@ -1247,6 +1249,20 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                         // adotado). Já está dentro de `correcao`, mas exige uma
                         // ação diferente das outras: digitar a nota lá.
                         const naoLancada = Number(l.nf_nao_lancada_no_erp || 0)
+                        // ── TRAVA DO ACUMULADO ──────────────────────────
+                        // O % de um PERÍODO pode passar do físico do período:
+                        // é a devolução do que ficou retido em meses em que a
+                        // nota ainda não existia. O ACUMULADO é que não pode
+                        // passar nunca — senão o Informakon registra mais
+                        // execução do que a obra tem. Ver o teto da régua em
+                        // lib/db/desconto-transbordo.ts.
+                        const aLancarAcum = Number(l.servico_acumulado || 0)
+                          + Number(l.nf_ja_abatida || 0) + Number(l.nf_descontavel || 0)
+                        const pctLancadoAcum = Number(l.valor_total_item) > 0
+                          ? (aLancarAcum / Number(l.valor_total_item)) * 100
+                          : 0
+                        const pctFisicoAcum = Number(l.pct_acumulado || 0)
+                        const acumuladoEstourou = pctLancadoAcum > pctFisicoAcum + 0.01
                         return (
                           <td
                             style={{
@@ -1264,6 +1280,11 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                               naoLancada > 0.01
                                 ? `Desses, ${formatCurrency(naoLancada)} é nota que EXISTE aqui e não está lançada no Informakon (retrato adotado). Lance a nota lá e este percentual sobe.`
                                 : '',
+                              `ACUMULADO: já lançado ${pctFmt(pctLancadoAcum, 4)} contra ${pctFmt(pctFisicoAcum, 4)} de avanço físico.${
+                                acumuladoEstourou
+                                  ? ' ATENÇÃO: o acumulado lançado passou do físico — não deveria acontecer, avise o desenvolvimento.'
+                                  : ' O acumulado nunca passa do físico; um percentual de período acima do físico do período é devolução do que ficou retido antes.'
+                              }`,
                             ].filter(Boolean).join(' ')}
                           >
                             {pctFmt(pctLancar, 4)}
@@ -1279,6 +1300,16 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                             {naoLancada > 0.01 && (
                               <span style={{ display: 'block', fontSize: 9, fontWeight: 600, color: '#EF4444' }}>
                                 ⚠ {formatCurrency(naoLancada)} sem lançar no ERP
+                              </span>
+                            )}
+                            {correcao < 0 && !acumuladoEstourou && (
+                              <span style={{ display: 'block', fontSize: 9, fontWeight: 400, color: 'var(--text-3)' }}>
+                                acum. {pctFmt(pctLancadoAcum, 2)} / {pctFmt(pctFisicoAcum, 2)} físico
+                              </span>
+                            )}
+                            {acumuladoEstourou && (
+                              <span style={{ display: 'block', fontSize: 9, fontWeight: 700, color: '#EF4444' }}>
+                                ⚠ acum. {pctFmt(pctLancadoAcum, 2)} &gt; físico {pctFmt(pctFisicoAcum, 2)}
                               </span>
                             )}
                           </td>
