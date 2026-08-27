@@ -5,51 +5,48 @@
  *
  * POR QUE ISTO NÃO É "a lista de notas que somam R$ X":
  *
- * O valor da célula passa por três rateios em série e perde a identidade da
- * nota em cada um deles:
+ * O desconto não sai mais da soma das notas que temos cadastradas. Ele é
+ * `p × M` — o material medido no período (camada ①) — cortado pelo que o
+ * Informakon tem lançado no macro grupo (camada ②, lib/informakon/
+ * aplicar-retrato.ts). Quem manda no abatimento é o ERP, porque é ele que o
+ * executa; nota nossa que ainda não chegou lá não desconta nada.
  *
- *   1. lib/db/informacon-data.ts — todas as NFs de um pedido viram um total
- *      único. `notas_fiscais_fat_direto` sequer tem `detalhamento_id`: a nota
- *      se liga ao PEDIDO, não ao item do contrato.
- *   2. o total do pedido é rateado pro-rata entre os itens do pedido, pelo
- *      `valor_total` de cada um.
- *   3. lib/db/desconto-transbordo.ts — todos os detalhamentos da mesma TAREFA
- *      caem num balde comum, a régua acumulada
- *      `min(material acumulado, NF alocada) − já abatido` é aplicada ao balde
- *      inteiro, e o resultado volta pra cada item por proporção de material
- *      medido.
+ * As notas listadas abaixo são, então, CONTEXTO e não a origem do número:
+ * mostram o que o fornecedor já faturou neste item — a mesma cobertura que a
+ * camada ③ usa para decidir se a FIP precisa emitir. A conta da célula, essa,
+ * vem inteira do painel "A conta desta linha".
  *
- * Logo o NF Desc. de uma linha é uma FATIA do balde da tarefa. Prometer
- * "estas são as notas dessa célula" seria mentira. O que este painel entrega
- * é a versão honesta e auditável: a conta da linha passo a passo, e as notas
- * que estão no balde de onde a fatia saiu.
+ * As notas seguem ligadas ao PEDIDO, não ao item (`notas_fiscais_fat_direto`
+ * não tem `detalhamento_id`): o valor de cada uma é rateado pro-rata entre os
+ * itens do pedido, e a coluna "Alocado aqui" é a parcela deste detalhamento.
  */
 
 import { useEffect, useState } from 'react'
-import { Loader2, FileText, ExternalLink, AlertTriangle } from 'lucide-react'
+import { Loader2, FileText, ExternalLink } from 'lucide-react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog'
 import { formatCurrency, formatDate } from '@/lib/utils'
 
 /**
- * Qual célula foi clicada. Cada uma tem uma pergunta e um escopo diferentes:
+ * Qual célula foi clicada. Todas olham o mesmo escopo — o DETALHAMENTO —,
+ * porque nenhuma parcela da regra nova compensa entre itens: o desconto é
+ * `p × M` do próprio item e a cobertura da camada ③ é apurada item a item.
  *
- *  - `nf-desc`      "de onde vem este desconto?" → balde da TAREFA, porque é
- *                   nele que a régua acumulada é apurada. O valor da célula é
- *                   uma FATIA do balde, não a soma das notas listadas.
- *  - `nf-terceiro`  "quais notas estão alocadas a este item?" → escopo do
- *                   DETALHAMENTO. Aqui a soma BATE com a célula: os dois lados
- *                   usam o mesmo rateio pro-rata (allocateNfToScope em
- *                   lib/db/origem.ts e nfAlocadaPorDet em informacon-data.ts).
- *  - `saldo-aprov`  "que pedidos aprovados ainda não viraram nota?" → escopo do
- *                   DETALHAMENTO, modo saldo. A soma bate com a célula quando
- *                   ela é > 0 (a célula é max(0, aprovado − nf alocada)).
- *  - `nota-a-caminho` "de onde veio o valor retido nesta linha?" → escopo do
- *                   GRUPO MACRO, modo saldo. É o único que abre o balde certo:
- *                   a coluna é uma fatia do pool do grupo, rateada pelo Gap de
- *                   cada item, então os pedidos que a originam quase nunca
- *                   estão neste detalhamento.
+ *  - `nf-desc`      "de onde vem este desconto?" → a conta da linha, mais as
+ *                   notas do item como contexto. A soma das notas NÃO bate com
+ *                   a célula, e não deve: o desconto é o material medido
+ *                   cortado pelo lastro do ERP, não a soma das nossas notas.
+ *  - `nf-terceiro`  "quais notas estão alocadas a este item?" Aqui a soma BATE
+ *                   com a célula: os dois lados usam o mesmo rateio pro-rata
+ *                   (allocateNfToScope em lib/db/origem.ts e nfAlocadaPorDet
+ *                   em informacon-data.ts).
+ *  - `saldo-aprov`  "que pedidos aprovados ainda não viraram nota?" Modo saldo.
+ *                   A soma bate com a célula quando ela é > 0 (a célula é
+ *                   max(0, aprovado − nf alocada)).
+ *  - `nota-a-caminho` "o que ainda está por vir do fornecedor?" Modo saldo,
+ *                   mesmos pedidos do item — a coluna é informação, não retém
+ *                   mais nada do percentual.
  */
 export type ColunaDrilldown = 'nf-desc' | 'nf-terceiro' | 'saldo-aprov' | 'nota-a-caminho'
 
@@ -57,13 +54,10 @@ export interface NfDescLinha {
   codigo: string
   descricao: string
   detalhamento_id: string
-  tarefa_id?: string | null
-  grupo_id?: string | null
   material_medido: number
   nf_terceiro: number
   nf_descontavel: number
-  nf_transbordo_grupo?: number
-  nf_recuperacao_anterior?: number
+  /** Material medido que ficou sem desconto por falta de lastro no ERP. */
   gap_material: number
   faturamento_direto_em_aberto: number
   fip_faturar: number
@@ -116,16 +110,7 @@ export function NfDescDrilldown({
   const [carregando, setCarregando] = useState(false)
   const [erro, setErro] = useState('')
 
-  // NF Desc. é apurado no balde da TAREFA; as outras duas colunas são do
-  // próprio item. Sem `tarefa_id` (resposta antiga da API) o NF Desc. cai no
-  // detalhamento — mais estreito, mas ainda verdadeiro sobre o próprio item.
-  const escopoEhTarefa = coluna === 'nf-desc' && !!linha?.tarefa_id
-  const escopoEhGrupo = coluna === 'nota-a-caminho' && !!linha?.grupo_id
-  const scope = escopoEhGrupo
-    ? linha!.grupo_id!
-    : escopoEhTarefa
-    ? linha!.tarefa_id!
-    : (linha?.detalhamento_id || null)
+  const scope = linha?.detalhamento_id || null
   const modoOrigem = (coluna === 'saldo-aprov' || coluna === 'nota-a-caminho') ? 'saldo' : 'realizado'
 
   useEffect(() => {
@@ -164,8 +149,12 @@ export function NfDescDrilldown({
     'nota-a-caminho': { titulo: 'O que segura este valor',     valor: linha.faturamento_direto_em_aberto },
   }[coluna]
 
-  const transbordo = Number(linha.nf_transbordo_grupo || 0)
-  const recuperacao = Number(linha.nf_recuperacao_anterior || 0)
+  // `gap_material` é, por construção, o desconto ideal que sobrou sem lastro:
+  // o servidor grava material medido − desconto aplicado.
+  const semLastro = Number(linha.gap_material || 0)
+  // A linha guarda o saldo JÁ líquido da nota (max(0, aprovado − nf)), então a
+  // cobertura da camada ③ — max(NF, aprovado) — é a soma das duas colunas.
+  const cobertura = Number(linha.nf_terceiro || 0) + Number(linha.saldo_aprovado || 0)
   const somaAlocada = (notas || []).reduce((s, n) => s + Number(n.valorAlocado || 0), 0)
 
   return (
@@ -191,62 +180,54 @@ export function NfDescDrilldown({
               A conta desta linha
             </h4>
             <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
-              <Passo rotulo="Material medido no período" valor={linha.material_medido} tom="neutro" />
-              <Passo rotulo="− NF Desc. (nota de terceiro já descontada)" valor={-linha.nf_descontavel} tom="verde" />
-              {transbordo > 0 && (
+              <Passo rotulo="Material medido no período (p × M) — o desconto ideal" valor={linha.material_medido} tom="neutro" />
+              {semLastro > 0.005 && (
                 <Passo
-                  rotulo="↳ dos quais vieram de nota de OUTRO item da mesma tarefa"
-                  valor={transbordo}
-                  tom="sub"
+                  rotulo="− sem lastro no Informakon (o ERP não tem esse valor lançado)"
+                  valor={-semLastro}
+                  tom="ambar"
                 />
               )}
-              {recuperacao > 0 && (
-                <Passo
-                  rotulo="↳ dos quais são nota de medições anteriores, recuperada agora"
-                  valor={recuperacao}
-                  tom="sub"
-                />
-              )}
-              <Passo rotulo="= Gap (material sem nota)" valor={linha.gap_material} tom="ambar" destaque />
-              <Passo rotulo="↳ Nota a caminho — já tem pedido aprovado, o fornecedor vai emitir" valor={linha.faturamento_direto_em_aberto} tom="sub" />
-              <Passo rotulo="↳ FIP precisa emitir — ninguém vai emitir, a conta é da FIP" valor={linha.fip_faturar} tom="sub" />
+              <Passo rotulo="= NF Desc. — o desconto que entra no % a lançar" valor={linha.nf_descontavel} tom="verde" destaque />
             </div>
             <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-3)' }}>
-              O Gap se reparte inteiro entre as duas últimas linhas — vale sempre
-              <strong> Gap = Nota a caminho + FIP precisa emitir</strong>. Ele não é gravado em lugar nenhum
-              e não move dinheiro sozinho: quem decide pagamento são as duas parcelas.
+              O desconto ideal é o material medido no período, e nada mais. Quem o limita é o
+              <strong> lastro do Informakon</strong>, apurado por macro grupo: o ERP só abate nota que
+              está lançada lá, então liberar percentual acima disso entregaria material à Wave sem
+              contrapartida. Lance a nota no Informakon e o corte desaparece na medição seguinte.
             </p>
-            {linha.saldo_aprovado === 0 && linha.faturamento_direto_em_aberto > 0 && (
-              <div className="mt-2 flex items-start gap-2 p-2 rounded-lg text-[10px] bg-blue-500/10 border border-blue-500/30 text-blue-300">
-                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
-                <span>
-                  A coluna <strong>Saldo Aprov.</strong> desta linha mostra 0, mas há valor em Nota a caminho.
-                  Não é erro: o saldo aprovado é apurado <strong>por tarefa</strong>, num pool
-                  compartilhado — a FIP compra por lote e o pedido está lançado num item vizinho.
-                  A coluna mostra só o número cru deste item.
-                </span>
-              </div>
-            )}
+
+            <h4 className="text-[11px] font-semibold uppercase tracking-wider mt-4 mb-2" style={{ color: 'var(--text-3)' }}>
+              Quem compra este material
+            </h4>
+            <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
+              <Passo rotulo="Cobertura no site — NF de terceiro ou pedido aprovado" valor={cobertura} tom="neutro" />
+              <Passo rotulo="↳ Nota a caminho — pedido aprovado, nota do fornecedor ainda não chegou" valor={linha.faturamento_direto_em_aberto} tom="sub" />
+              <Passo rotulo="= FIP precisa emitir — material medido além da cobertura" valor={linha.fip_faturar} tom="ambar" destaque />
+            </div>
+            <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-3)' }}>
+              Esta conta é independente da de cima e <strong>não entra no % a lançar</strong>. Ela responde
+              outra pergunta: alguém precisa emitir nota, ou é só atraso de lançamento? &quot;FIP precisa
+              emitir&quot; é <strong>tarefa</strong>, não receita; &quot;Nota a caminho&quot; é
+              <strong> informação</strong> — não retém mais nada do percentual. A nota que a FIP emitir
+              vira lastro quando for lançada no ERP, e aí sobe o percentual da medição seguinte.
+            </p>
           </section>
           )}
 
           {/* ── Notas / pedidos do escopo ────────────────────────────── */}
           <section>
             <h4 className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>
-              {coluna === 'nota-a-caminho'
-                ? 'Pedidos aprovados sem nota no grupo macro'
-                : coluna === 'saldo-aprov'
+              {coluna === 'nota-a-caminho' || coluna === 'saldo-aprov'
                 ? 'Pedidos aprovados com saldo neste item'
-                : `Notas no balde ${escopoEhTarefa ? 'da tarefa' : 'deste item'}`}
+                : 'Notas de terceiro alocadas a este item'}
             </h4>
             {coluna === 'nf-desc' ? (
               <p className="text-[10px] mb-2" style={{ color: 'var(--text-3)' }}>
-                O NF Desc. acima é uma <strong>fatia</strong> deste conjunto, não a soma de notas
-                específicas: a nota se liga ao <em>pedido</em>, o pedido é rateado entre seus itens,
-                e o desconto é apurado no balde
-                {escopoEhTarefa ? ' da tarefa inteira' : ' do item'} pela régua acumulada. Por isso os
-                totais abaixo não batem com a célula — eles mostram o estoque de nota disponível,
-                de onde a fatia saiu.
+                Estas notas <strong>não somam</strong> o NF Desc. acima, e não deveriam: o desconto é o
+                material medido no período cortado pelo lastro do ERP, não a soma do que temos
+                cadastrado aqui. Elas servem à outra conta — mostram quanto deste material o
+                fornecedor já faturou, que é o que decide se a FIP precisa emitir nota.
               </p>
             ) : coluna === 'nf-terceiro' ? (
               <p className="text-[10px] mb-2" style={{ color: 'var(--text-3)' }}>
@@ -257,16 +238,15 @@ export function NfDescDrilldown({
               </p>
             ) : coluna === 'nota-a-caminho' ? (
               <p className="text-[10px] mb-2" style={{ color: 'var(--text-3)' }}>
-                Estes são os pedidos que originaram os{' '}
-                <strong>{formatCurrency(CFG.valor)}</strong> desta linha. O saldo é apurado no
-                <strong> grupo macro inteiro</strong> e rateado entre os itens na proporção do Gap
-                de cada um — por isso o pedido quase nunca está neste detalhamento, e a soma abaixo
-                é a do grupo, não a da célula.
+                Pedidos aprovados deste item cuja nota do fornecedor ainda não chegou — é o que
+                sustenta os <strong>{formatCurrency(CFG.valor)}</strong> da coluna. Vale como
+                informação: enquanto houver saldo aqui, o sistema não pede nota nova à FIP pelo
+                mesmo material, mas o percentual a lançar não muda por causa disso.
               </p>
             ) : (
               <p className="text-[10px] mb-2" style={{ color: 'var(--text-3)' }}>
                 Material já <strong>aprovado</strong> em pedido de faturamento direto cuja nota do
-                fornecedor ainda não chegou — total {formatCurrency(CFG.valor)}. É o que segura a
+                fornecedor ainda não chegou — total {formatCurrency(CFG.valor)}. É o que sustenta a
                 coluna &quot;Nota a caminho&quot;: enquanto houver saldo aqui, o sistema não pede nota nova
                 à FIP pelo mesmo material.
               </p>
@@ -286,8 +266,8 @@ export function NfDescDrilldown({
 
             {notas && notas.length === 0 && !carregando && (
               <div className="p-3 rounded-lg text-xs" style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>
-                Nenhuma nota de terceiro lançada neste escopo. O material medido está
-                inteiro no Gap — ou vira pedido em nome da FIP, ou aguarda nota do fornecedor.
+                Nenhuma nota de terceiro lançada neste item. Sem cobertura, o material medido
+                inteiro vira tarefa de nota nova em nome da FIP.
               </div>
             )}
 

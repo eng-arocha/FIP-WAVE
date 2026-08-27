@@ -50,6 +50,17 @@ export interface ItemCoberturaSite {
   nfTerceiro: number
   /** Pedido de fat-direto APROVADO alocado a este detalhamento. */
   pedidoAprovado: number
+  /**
+   * Quanto desta cobertura JÁ foi consumido por medições aprovadas anteriores
+   * (`medicao_itens.nf_material_descontada`).
+   *
+   * Sem isto a conta compara estoque com fluxo: `nfTerceiro` e `pedidoAprovado`
+   * são acumulados de contrato inteiro, e `matMedido` é só o período. Um item
+   * cujo material já foi todo coberto em medições passadas continuaria
+   * parecendo coberto ao medir material NOVO, e a FIP nunca seria chamada a
+   * emitir — nem o portão de aprovação que exige essa nota seria acionado.
+   */
+  jaConsumido?: number
 }
 
 export interface CoberturaDoItem {
@@ -77,10 +88,13 @@ export function classificarCoberturaDoSite(
     const matMedido = norm(it.matMedido)
     const nf = norm(it.nfTerceiro)
     const aprovado = norm(it.pedidoAprovado)
-    const cobertura = Math.max(nf, aprovado)
+    // `max` e não soma: o pedido aprovado já contém o que dele virou nota.
+    // Menos o que medições anteriores já consumiram, senão é estoque contra
+    // fluxo — ver `jaConsumido`.
+    const cobertura = Math.max(0, Math.max(nf, aprovado) - norm(it.jaConsumido))
     out.set(it.detalhamentoId, {
       cobertura,
-      notaACaminho: Math.min(matMedido, Math.max(0, aprovado - nf)),
+      notaACaminho: Math.min(matMedido, Math.max(0, Math.min(aprovado - nf, cobertura))),
       fipPrecisaEmitir: Math.max(0, matMedido - cobertura),
     })
   }

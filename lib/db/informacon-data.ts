@@ -1052,6 +1052,7 @@ export async function calcularInformaconData(
         matMedido: Number(it.quantidade_medida || 0) * Number(det.valor_material_unit || 0),
         nfTerceiro: nfAlocadaPorDet[det.id] || 0,
         pedidoAprovado: aprovadoPorDet[det.id] || 0,
+        jaConsumido: nfJaAbatidaPorDet[det.id] || 0,
       })
     }
     return classificarCoberturaDoSite(entrada)
@@ -1149,64 +1150,27 @@ export async function calcularInformaconData(
       const dadosInformakon = waveServico + matMedido
       const pctInformakon = valorGlobalItem > 0 ? (dadosInformakon / valorGlobalItem) * 100 : 0
 
-      // ── % A LANÇAR — corrigido para não pagar o Gap ────────────────────
+      // ── % A LANÇAR — a MESMA fórmula da camada ② ───────────────────────
       //
-      // `dadosInformakon` acima é o ESPELHO: o que o relatório do Informakon
-      // mostra como executado. Não serve para lançar, e é aí que estava o
-      // vazamento de dinheiro.
+      //     a lançar = serviço medido + desconto
       //
-      // Mecânica do Informakon (confirmada pelo usuário): ao receber um
-      // percentual ele LIBERA `% × valor global do item` e depois desconta as
-      // notas de material lançadas LÁ — nada mais. Ele não conhece nosso
-      // "saldo de pedido aprovado".
+      // Este é o valor ANTES do teto do ERP; `aplicarRetratoNasLinhas` recalcula
+      // os dois campos depois, já com o corte. A fórmula tem de ser idêntica
+      // nos dois lugares: enquanto ela somava `fipFaturar` aqui e não somava
+      // lá, o mesmo item saía com percentual diferente conforme existisse ou
+      // não retrato do Informakon — e sem retrato o percentual passava do
+      // físico, adiantando medição.
       //
-      //     Wave recebe = % × valor global − NF lançada no Informakon
-      //
-      // Lançar o % físico (100% quando o item está 100% medido) faz o
-      // Informakon liberar o material INTEIRO e descontar só o que virou nota
-      // — ou seja, paga à Wave o Gap (Retido + FIP Fat-Dir): material que
-      // ainda não tem nota de terceiro e cujo dinheiro não é dela.
-      //
-      // Isolando o % que entrega exatamente o serviço medido:
-      //
-      //     % × global − (notas lançadas lá) = waveServico
-      //
-      // QUAIS notas estarão lançadas no momento em que o percentual é
-      // digitado? Duas, não uma:
-      //
-      //   1. a nota do fornecedor, que já está lá  ......... nfDescontavel
-      //   2. a nota que a FIP emite para o material sem
-      //      pedido, e que é LANÇADA ANTES do percentual
-      //      (o Informakon não aceita descontar nota que
-      //      ainda não existe — é o fluxo real do usuário)  fipFaturar
-      //
-      // A única parcela que NÃO estará lançada é a que aguarda o fornecedor:
-      // `faturamentoDiretoEmAberto` ("Nota a caminho"). Logo:
-      //
-      //     a lançar = waveServico + nfDescontavel + fipFaturar
-      //              = Valor Total Medido − Nota a caminho
-      //
-      // As duas formas são a mesma conta sempre que `nfDescontavel` cabe no
-      // material do período — que é o caso normal. A implementação usa a
-      // PRIMEIRA porque a segunda quebra na recuperação: quando a régua
-      // acumulada devolve nota de meses anteriores, `nfDescontavel` supera o
-      // material medido, o Gap fica clampado em zero e
-      // `Valor Total Medido − Nota a caminho` liberaria MENOS do que a nota
-      // que o Informakon vai descontar — a Wave ficaria negativa. Somar as
-      // parcelas que serão descontadas é correto nos dois regimes.
-      //
-      // PRÉ-CONDIÇÃO: a nota da FIP precisa estar emitida e lançada antes de
-      // este percentual ser usado. Se não estiver, o Informakon libera o valor
-      // e desconta só a nota do fornecedor — e a Wave recebe `fipFaturar` a
-      // mais do que o serviço. Por isso a UI destaca quando há valor em "FIP
-      // precisa emitir".
-      const informakonALancar = waveServico + nfDescontavel + fipFaturar
+      // A nota da FIP não entra: ela é tarefa da camada ③, e só muda o
+      // percentual da medição seguinte, quando virar lastro no ERP.
+      const informakonALancar = waveServico + nfDescontavel
+      // O percentual sai do valor SEM arredondar. Arredondar antes de dividir
+      // empurrava o resultado meio centavo para cima, e um item 100% medido
+      // saía com 25,0001% contra 25,0000% de físico — percentual acima do
+      // executado por artefato de exibição.
       const pctInformakonALancar = valorGlobalItem > 0
         ? (informakonALancar / valorGlobalItem) * 100
         : 0
-      // Quanto o executado tem a mais que o valor a liberar — é exatamente o
-      // "Nota a caminho": material sem nota que ainda aguarda o fornecedor e
-      // que, por isso, não pode ser liberado agora.
       const correcaoInformakon = dadosInformakon - informakonALancar
       // O valor do item só é "alterado por retido" quando a confirmação sem NF
       // efetivamente reduziu o percentual de serviço.
@@ -1371,9 +1335,14 @@ export async function calcularInformaconData(
     return ((r.data as any)?.informakon_snapshot_id ?? null) as string | null
   })()
 
-  const retratoAdotado = await aplicarRetratoAdotado(
-    admin, contratoId, snapshotIdAdotado, linhas,
-  )
+  // Medição APROVADA não é recortada por retrato nenhum. `snapshotAprovado` já
+  // congelou o desconto item a item; deixar a camada ② rodar por cima cortaria
+  // aquele valor contra o lastro do ERP de HOJE — que a própria medição já
+  // consumiu. O boletim reimpresso deixaria de bater com o que foi assinado.
+  // Só o percentual precisa ser rederivado, com a fórmula única.
+  const retratoAdotado = (medicao as any).status === 'aprovado'
+    ? (aplicarRetratoNasLinhas(linhas, new Map()), null)
+    : await aplicarRetratoAdotado(admin, contratoId, snapshotIdAdotado, linhas)
 
   const totais: InformaconTotais = linhas.reduce<InformaconTotais>((acc, l) => ({
     material_medido: acc.material_medido + l.material_medido,

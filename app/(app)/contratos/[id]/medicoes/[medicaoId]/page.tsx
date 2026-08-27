@@ -235,21 +235,12 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
   const [totaisInformacon, setTotaisInformacon] = useState<{
     material_medido: number
     servico_medido: number
-    /** NF FIP material já lançada e descontada da medição (= min(matMedido, nf_terceiro)) */
+    /**
+     * Desconto de material aplicado nesta medição: o material medido no
+     * período, limitado pelo lastro que o Informakon tem lançado no macro
+     * grupo. Ver lib/informakon/aplicar-retrato.ts.
+     */
     nf_descontavel: number
-    /**
-     * Do `nf_descontavel` acima, quanto veio de saldo ocioso de NF de OUTRO
-     * detalhamento da mesma tarefa ("transbordo"). Já está incluído em
-     * `nf_descontavel` — não somar de novo em lugar nenhum, é só um detalhamento
-     * visual de origem.
-     */
-    nf_transbordo_grupo: number
-    /**
-     * Do `nf_descontavel` acima, quanto excede o material medido NO PERIODO —
-     * nota de medicoes anteriores recuperada pela regua acumulada por grupo.
-     * Ja esta incluido em `nf_descontavel`.
-     */
-    nf_recuperacao_anterior: number
     /**
      * NF de serviço a emitir = serviço − retenção − ajuste de rateio.
      * `null` quando o servidor ainda não expõe o campo — aí cai no fallback
@@ -327,8 +318,6 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
         material_medido: Number(data.totais?.material_medido || 0),
         servico_medido:  Number(data.totais?.servico_medido  || 0),
         nf_descontavel:  Number(data.totais?.nf_descontavel  || 0),
-        nf_transbordo_grupo: Number(data.totais?.nf_transbordo_grupo || 0),
-        nf_recuperacao_anterior: Number(data.totais?.nf_recuperacao_anterior || 0),
         servico_liquido: data.totais?.servico_liquido != null
           ? Number(data.totais.servico_liquido)
           : null,
@@ -1621,8 +1610,6 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                               const tot = Number(medicao.valor_total || 0)
                               if (mat === 0 && serv === 0 && tot > 0) serv = tot
                               const nfFipMaterial      = totaisInformacon?.nf_descontavel ?? 0
-                              const nfTransbordoGrupo  = totaisInformacon?.nf_transbordo_grupo ?? 0
-                              const nfRecuperacao      = totaisInformacon?.nf_recuperacao_anterior ?? 0
                               const saldoPedAprovados  = totaisInformacon?.faturamento_direto_em_aberto ?? 0
                               const fipACriar          = totaisInformacon?.fip_faturar    ?? 0
                               const pctRet = totaisInformacon?.pct_retencao ?? Number(medicao.contrato?.percentual_retencao ?? 5)
@@ -1645,44 +1632,6 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                     <td colSpan={6} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ NOTA FIP Material <span className="text-[10px] font-medium opacity-75">(já descontada)</span></td>
                                     <td className="text-right text-sm font-semibold tabular-nums" style={{ color: '#06B6D4' }}>{formatCurrency(nfFipMaterial)}</td>
                                   </tr>
-                                  {nfTransbordoGrupo > 0 && (
-                                    <tr>
-                                      <td
-                                        colSpan={6}
-                                        className="text-xs text-right pr-4"
-                                        style={{ color: 'var(--text-3)' }}
-                                        title="Material medido cujo desconto veio de nota alocada em outro item da mesma tarefa (o código de dois níveis: 14.2 SPRINKLER, 16.1 INFRA SDAI). A FIP compra por lote e a medição é por pavimento — sem isso, a nota fica parada num item enquanto o vizinho aparece sem cobertura. Fora da tarefa nada transborda."
-                                      >
-                                        ↳ dos quais cobertos por NF da mesma tarefa
-                                      </td>
-                                      <td
-                                        className="text-right text-xs tabular-nums"
-                                        style={{ color: 'var(--text-3)' }}
-                                        title="Material medido cujo desconto veio de nota alocada em outro item da mesma tarefa (o código de dois níveis: 14.2 SPRINKLER, 16.1 INFRA SDAI). A FIP compra por lote e a medição é por pavimento — sem isso, a nota fica parada num item enquanto o vizinho aparece sem cobertura. Fora da tarefa nada transborda."
-                                      >
-                                        {formatCurrency(nfTransbordoGrupo)}
-                                      </td>
-                                    </tr>
-                                  )}
-                                  {nfRecuperacao > 0 && (
-                                    <tr>
-                                      <td
-                                        colSpan={6}
-                                        className="text-xs text-right pr-4"
-                                        style={{ color: 'var(--text-3)' }}
-                                        title="Nota de medições anteriores que não descontou na época e está sendo recuperada agora. O saldo de NF é apurado sobre o acumulado da tarefa (menor entre material executado e nota lançada), então o desconto de um mês pode superar o material medido nesse mês."
-                                      >
-                                        ↳ dos quais recuperação de NF de medições anteriores
-                                      </td>
-                                      <td
-                                        className="text-right text-xs tabular-nums"
-                                        style={{ color: 'var(--text-3)' }}
-                                        title="Nota de medições anteriores que não descontou na época e está sendo recuperada agora. O saldo de NF é apurado sobre o acumulado da tarefa (menor entre material executado e nota lançada), então o desconto de um mês pode superar o material medido nesse mês."
-                                      >
-                                        {formatCurrency(nfRecuperacao)}
-                                      </td>
-                                    </tr>
-                                  )}
                                   <tr>
                                     <td colSpan={6} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ Saldo Ped. Aprovados <span className="text-[10px] font-medium opacity-75">(NF Pendentes)</span></td>
                                     <td className="text-right text-sm font-semibold tabular-nums" style={{ color: '#F59E0B' }}>{formatCurrency(saldoPedAprovados)}</td>
@@ -1777,8 +1726,6 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                         const tot = Number(medicao.valor_total || 0)
                         if (mat === 0 && serv === 0 && tot > 0) serv = tot
                         const nfFipMaterial      = totaisInformacon?.nf_descontavel ?? 0
-                        const nfTransbordoGrupo  = totaisInformacon?.nf_transbordo_grupo ?? 0
-                        const nfRecuperacao      = totaisInformacon?.nf_recuperacao_anterior ?? 0
                         const saldoPedAprovados  = totaisInformacon?.faturamento_direto_em_aberto ?? 0
                         const fipACriar          = totaisInformacon?.fip_faturar    ?? 0
                         const pctRet = totaisInformacon?.pct_retencao ?? Number(medicao.contrato?.percentual_retencao ?? 5)
@@ -1801,46 +1748,6 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                               <td colSpan={2} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ NOTA FIP Material <span className="text-[10px] font-medium opacity-75">(já descontada)</span></td>
                               <td className="text-right text-sm font-semibold tabular-nums" style={{ color: '#06B6D4' }}>{formatCurrency(nfFipMaterial)}</td>
                             </tr>
-                            {nfTransbordoGrupo > 0 && (
-                              <tr>
-                                <td colSpan={3} />
-                                <td
-                                  colSpan={2}
-                                  className="text-xs text-right pr-4"
-                                  style={{ color: 'var(--text-3)' }}
-                                  title="Material medido cujo desconto veio de nota alocada em outro item da mesma tarefa (o código de dois níveis: 14.2 SPRINKLER, 16.1 INFRA SDAI). A FIP compra por lote e a medição é por pavimento — sem isso, a nota fica parada num item enquanto o vizinho aparece sem cobertura. Fora da tarefa nada transborda."
-                                >
-                                  ↳ dos quais cobertos por NF da mesma tarefa
-                                </td>
-                                <td
-                                  className="text-right text-xs tabular-nums"
-                                  style={{ color: 'var(--text-3)' }}
-                                  title="Material medido cujo desconto veio de nota alocada em outro item da mesma tarefa (o código de dois níveis: 14.2 SPRINKLER, 16.1 INFRA SDAI). A FIP compra por lote e a medição é por pavimento — sem isso, a nota fica parada num item enquanto o vizinho aparece sem cobertura. Fora da tarefa nada transborda."
-                                >
-                                  {formatCurrency(nfTransbordoGrupo)}
-                                </td>
-                              </tr>
-                            )}
-                            {nfRecuperacao > 0 && (
-                              <tr>
-                                <td colSpan={3} />
-                                <td
-                                  colSpan={2}
-                                  className="text-xs text-right pr-4"
-                                  style={{ color: 'var(--text-3)' }}
-                                  title="Nota de medições anteriores que não descontou na época e está sendo recuperada agora. O saldo de NF é apurado sobre o acumulado da tarefa (menor entre material executado e nota lançada), então o desconto de um mês pode superar o material medido nesse mês."
-                                >
-                                  ↳ dos quais recuperação de NF de medições anteriores
-                                </td>
-                                <td
-                                  className="text-right text-xs tabular-nums"
-                                  style={{ color: 'var(--text-3)' }}
-                                  title="Nota de medições anteriores que não descontou na época e está sendo recuperada agora. O saldo de NF é apurado sobre o acumulado da tarefa (menor entre material executado e nota lançada), então o desconto de um mês pode superar o material medido nesse mês."
-                                >
-                                  {formatCurrency(nfRecuperacao)}
-                                </td>
-                              </tr>
-                            )}
                             <tr>
                               <td colSpan={3} />
                               <td colSpan={2} className="text-sm text-right pr-4" style={{ color: 'var(--text-2)' }}>↳ Saldo Ped. Aprovados <span className="text-[10px] font-medium opacity-75">(NF Pendentes)</span></td>

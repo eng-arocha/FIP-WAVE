@@ -141,7 +141,15 @@ export function rechavearRetrato(
     const numero = normalizarNumeroNota(n.numeroNf ?? n.documento)
     const destino = numero ? nossa.get(numero) : undefined
 
-    // Sem número, ou nota que não conhecemos: fica onde o ERP colocou.
+    // Nota SEM NÚMERO não vira lastro. O roteiro de lançamento a descarta
+    // (roteiro-informakon.ts pula quem não tem número), e contá-la aqui faria
+    // a camada ② liberar percentual apoiado num saldo que o roteiro não
+    // encontra — os dois lados leriam o mesmo retrato e discordariam.
+    if (!numero) {
+      saida.push({ ...n, chave: chaveErp })
+      continue
+    }
+    // Nota que não conhecemos: fica onde o ERP colocou.
     if (!destino || destino.size === 0) {
       somar(porChave, chaveErp, a, d)
       saida.push({ ...n, chave: chaveErp })

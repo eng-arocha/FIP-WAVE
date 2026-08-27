@@ -54,27 +54,20 @@ interface Linha {
   // Lógica Wave/FIP
   nf_terceiro: number
   saldo_aprovado: number
+  /**
+   * O desconto aplicado ao item: material medido no período (p × M), já
+   * limitado pelo lastro que o Informakon tem lançado no macro grupo.
+   */
   nf_descontavel: number
-  /**
-   * Parte de `nf_descontavel` coberta por NF ociosa de OUTRO detalhamento do
-   * mesma tarefa. Explica por que uma linha com `nf_terceiro` = 0 pode
-   * ter `nf_descontavel` > 0. Ausente em respostas antigas.
-   */
-  nf_transbordo_grupo?: number
-  /**
-   * Parte de `nf_descontavel` que excede o material medido NO PERÍODO — nota
-   * de medições anteriores recuperada pela régua acumulada.
-   */
-  nf_recuperacao_anterior?: number
   /** NF de material deste item já abatida em medições aprovadas anteriores. */
   nf_ja_abatida?: number
+  /** Material medido que ficou sem desconto por falta de lastro no ERP. */
   gap_material: number
   faturamento_direto_em_aberto: number
   fip_faturar: number
   /**
-   * Terceira parcela do Gap (migration 082): desconto que o boletim pede e
-   * que o Informakon NÃO tem lançado. Só é > 0 quando a medição adotou um
-   * retrato. Ausente em respostas antigas.
+   * Quanto do desconto ideal foi cortado por falta de lastro no Informakon —
+   * o corte da camada ②. Ausente em respostas antigas.
    */
   nf_nao_lancada_no_erp?: number
   wave_servico: number
@@ -86,7 +79,7 @@ interface Linha {
   informakon_a_lancar?: number
   /** O percentual que se DIGITA no Informakon. */
   pct_informakon_a_lancar?: number
-  /** dados_informakon − informakon_a_lancar. Positivo = Gap segurado. */
+  /** dados_informakon − informakon_a_lancar: o material sem lastro no ERP. */
   correcao_informakon?: number
   alterado_por_retido?: boolean
   base_retencao: number
@@ -154,8 +147,6 @@ interface Resp {
     retencao: number
     material_acumulado: number
     servico_acumulado: number
-    /** Parte do desconto recuperada de medições anteriores (régua acumulada). */
-    nf_recuperacao_anterior?: number
     /** Divergência de rateio material/serviço contra o ERP da FIP. */
     ajuste_material_anterior?: number
     /** NF de serviço a emitir = wave_servico − retenção − ajuste. */
@@ -229,10 +220,10 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
   const [drilldownNf, setDrilldownNf] = useState<{ linha: Linha; coluna: ColunaDrilldown } | null>(null)
   /**
    * Colunas de CONFERÊNCIA — escondidas por padrão porque nenhuma delas muda
-   * uma decisão: "% Informakon (espelho)" e "Dados Informakon" são o mesmo
-   * número em % e em R$, e ambos repetem o Valor Total Medido; o "Gap" é um
-   * passo intermediário que já se reparte inteiro nas duas colunas seguintes.
-   * Ficam atrás do toggle pra auditoria, sem poluir a leitura do dia a dia.
+   * uma decisão: o "% Informakon (espelho)" e o "Executado (espelho)" repetem
+   * o Valor Total Medido em % e em R$, e o "Gap" é o mesmo número que a linha
+   * vermelha do "% a lançar" já mostra — o desconto cortado por falta de
+   * lastro. Ficam atrás do toggle pra auditoria, sem poluir o dia a dia.
    */
   const [mostrarConferencia, setMostrarConferencia] = useState(false)
   /** Roteiro de lançamento: o que se digita no ERP, por macro grupo. */
@@ -278,8 +269,8 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
     if (!data) return
     const headers = [
       'Código', 'Item Informakon', 'Descrição', '% Informakon (espelho)', '% a lançar', 'Dados Informakon',
-      'Mat. Medido', 'NF Terceiro', 'Saldo Aprov.', 'NF Desc.', 'NF Desc. da tarefa', 'Gap', 'Nota a caminho', 'FIP precisa emitir', 'Não lançada no ERP',
-      'Wave (Serv.)', '% Serv. Med.', 'Valor Total Medido', 'Executado (espelho)', 'Correção (nota a caminho)', 'Retenção',
+      'Mat. Medido', 'NF Terceiro', 'Saldo Aprov.', 'NF Desc.', 'Sem lastro no ERP', 'Nota a caminho', 'FIP precisa emitir',
+      'Wave (Serv.)', '% Serv. Med.', 'Valor Total Medido', 'Executado (espelho)', 'Correção (sem lastro)', 'Retenção',
     ]
     const rows = linhasExibidas.map(l => [
       l.codigo,
@@ -292,11 +283,9 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
       l.nf_terceiro.toFixed(2).replace('.', ','),
       l.saldo_aprovado.toFixed(2).replace('.', ','),
       l.nf_descontavel.toFixed(2).replace('.', ','),
-      Number(l.nf_transbordo_grupo || 0).toFixed(2).replace('.', ','),
-      l.gap_material.toFixed(2).replace('.', ','),
+      Number(l.nf_nao_lancada_no_erp || 0).toFixed(2).replace('.', ','),
       l.faturamento_direto_em_aberto.toFixed(2).replace('.', ','),
       l.fip_faturar.toFixed(2).replace('.', ','),
-      Number(l.nf_nao_lancada_no_erp || 0).toFixed(2).replace('.', ','),
       l.wave_servico.toFixed(2).replace('.', ','),
       pctFmt(pctServMedExibido(l)),
       l.valor_total_medido.toFixed(2).replace('.', ','),
@@ -793,7 +782,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
             <label
               className="flex items-center gap-1.5 text-xs cursor-pointer px-3 py-1.5 rounded-lg"
               style={{ color: 'var(--text-2)', border: '1px solid var(--border)' }}
-              title="Reexibe % Informakon (espelho), Gap e Dados Informakon. Nenhuma das três muda uma decisão — servem só para auditar a conta."
+              title="Reexibe % Informakon (espelho), Gap e Executado (espelho). Nenhuma das três muda uma decisão — servem só para auditar a conta."
             >
               <input type="checkbox" checked={mostrarConferencia} onChange={e => setMostrarConferencia(e.target.checked)} />
               Colunas de conferência
@@ -818,16 +807,14 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   { header: '% Informakon (espelho)', get: (l: any) => Number(l.pct_informakon) },
                   { header: '% a lançar', get: (l: any) => Number(l.pct_informakon_a_lancar ?? l.pct_informakon) },
                   { header: 'Dados Informakon', get: (l: any) => Number(l.informakon_a_lancar ?? l.dados_informakon) },
-                  { header: 'Correção (nota a caminho)', get: (l: any) => Number(l.correcao_informakon || 0) },
+                  { header: 'Correção (sem lastro)', get: (l: any) => Number(l.correcao_informakon || 0) },
                   { header: 'Mat. Medido', get: (l: any) => Number(l.material_medido) },
                   { header: 'NF Terceiro', get: (l: any) => Number(l.nf_terceiro) },
                   { header: 'Saldo Aprov.', get: (l: any) => Number(l.saldo_aprovado) },
                   { header: 'NF Desc.', get: (l: any) => Number(l.nf_descontavel) },
-                  { header: 'NF Desc. da tarefa', get: (l: any) => Number(l.nf_transbordo_grupo || 0) },
-                  { header: 'Gap', get: (l: any) => Number(l.gap_material) },
+                  { header: 'Sem lastro no ERP', get: (l: any) => Number(l.nf_nao_lancada_no_erp || 0) },
                   { header: 'Nota a caminho', get: (l: any) => Number(l.faturamento_direto_em_aberto) },
                   { header: 'FIP precisa emitir', get: (l: any) => Number(l.fip_faturar) },
-                  { header: 'Não lançada no ERP', get: (l: any) => Number(l.nf_nao_lancada_no_erp || 0) },
                   { header: 'Wave (Serv.)', get: (l: any) => Number(l.wave_servico) },
                   { header: '% Serv. Med.', get: (l: any) => Number(pctServMedExibido(l)) },
                   { header: 'Valor Total Medido', get: (l: any) => Number(l.valor_total_medido) },
@@ -1034,7 +1021,6 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
           const liquidoWave = data.totais.servico_liquido != null
             ? Number(data.totais.servico_liquido)
             : data.totais.wave_servico - data.totais.retencao - ajusteRateio
-          const recuperacao = Number(data.totais.nf_recuperacao_anterior || 0)
           // Dedução do espelho: a linha "desconto de notas lançadas no
           // Informakon" é o material medido pelo rateio DELES — o nosso mais o
           // ajuste. Não confundir com a NF de terceiro descontada.
@@ -1052,7 +1038,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                 label="NF terceiro descontada"
                 value={formatCurrency(data.totais.nf_descontavel)}
                 accent="var(--text-2)"
-                hint={`NF de material abatida${recuperacao > 0 ? `, dos quais ${formatCurrency(recuperacao)} recuperados de medições anteriores` : ''}. Não é a dedução do espelho — essa é o material pelo rateio da FIP: ${formatCurrency(deducaoEspelho)}`}
+                hint={`Material medido descontado nesta medição, até o lastro que o Informakon tem lançado. Não é a dedução do espelho — essa é o material pelo rateio da FIP: ${formatCurrency(deducaoEspelho)}`}
               />
               <Card label="Fat. Direto em aberto" value={formatCurrency(data.totais.faturamento_direto_em_aberto)} accent="#F59E0B" hint="Pedido FIP fat-direto aprovado, NF a emitir" />
               <Card
@@ -1100,19 +1086,16 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
           <SaldoInformakonPainel
             contratoId={contratoId}
             medicaoId={medicaoId}
-            // TODAS as linhas, nunca `linhasExibidas`: a tabela esconde por
-            // padrão o item com quantidade medida 0 no período, mas ele pode
-            // carregar desconto — é a régua acumulada devolvendo nota de
-            // meses anteriores, e o transbordo dentro do balde. Comparar só o
-            // visível fazia o alarme depender do toggle "mostrar todos" e
-            // subestimar a falta. O ajuste do % (server-side) sempre usou
+            // TODAS as linhas, nunca `linhasExibidas`: comparar só o visível
+            // fazia o alarme depender do toggle "mostrar todos" e subestimar a
+            // falta do grupo. O corte por lastro (server-side) sempre usou
             // todas as linhas; era só o painel que mostrava menos.
             linhasBoletim={(data.linhas ?? []).map(l => ({
               codigo: l.codigo,
-              // Com o retrato adotado, `nf_descontavel` já vem líquido da
-              // reclassificação — somar de volta a parcela não lançada é o que
-              // mantém a comparação mostrando o que o boletim PEDE, e não o
-              // que ele pede depois de já ter obedecido ao retrato.
+              // `nf_descontavel` já vem cortado pelo lastro; somar de volta a
+              // parcela sem lastro é o que mantém a comparação mostrando o
+              // desconto que o boletim PEDE, e não o que ele pede depois de já
+              // ter obedecido ao Informakon.
               nf_descontavel: Number(l.nf_descontavel || 0) + Number(l.nf_nao_lancada_no_erp || 0),
               grupo_id: l.grupo_id ?? null,
               detalhamento_id: l.detalhamento_id,
@@ -1154,14 +1137,14 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                     <th style={{ ...th(), textAlign: 'left' }}>Descrição</th>
                     <th style={{ ...th(), textAlign: 'right' }} title="Avanço físico medido no período.">% físico</th>
                     <th style={{ ...th(), textAlign: 'right' }} title="Material + serviço medidos no período, em reais.">Valor medido</th>
-                    <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.06)' }} title="Quanto a nota de faturamento direto abate deste item nesta medição. Clique para ver as notas.">Desconto fat-direto <span style={{ opacity: 0.55, fontWeight: 400 }}>⧉</span></th>
-                    <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.10)', color: '#3B82F6' }} title="É este que se digita no Informakon.">% a lançar</th>
+                    <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.06)' }} title="O material medido no período, até o lastro que o Informakon tem lançado no macro grupo. Clique para ver a conta e as notas do item.">Desconto fat-direto <span style={{ opacity: 0.55, fontWeight: 400 }}>⧉</span></th>
+                    <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.10)', color: '#3B82F6' }} title="É este que se digita no Informakon: (serviço medido + desconto fat-direto) ÷ valor global do item. Nunca passa do % físico.">% a lançar</th>
                     <th style={th()} />
                   </tr>
                 </thead>
                 <tbody>
                   {linhasExibidas.map(l => {
-                    const naoLancada = Number(l.nf_nao_lancada_no_erp || 0)
+                    const semLastro = Number(l.nf_nao_lancada_no_erp || 0)
                     return (
                       <tr key={l.detalhamento_id} style={{ borderBottom: '1px solid var(--border)' }}>
                         <td style={{ ...td('font-mono'), whiteSpace: 'nowrap' }}>{l.codigo}</td>
@@ -1180,9 +1163,9 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                         </td>
                         <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(59,130,246,0.08)', color: '#3B82F6' }}>
                           {pctFmt(Number(l.pct_informakon_a_lancar ?? l.pct_informakon), 4)}
-                          {naoLancada > 0.01 && (
+                          {semLastro > 0.01 && (
                             <span style={{ display: 'block', fontSize: 9, fontWeight: 600, color: '#EF4444' }}>
-                              ⚠ {formatCurrency(naoLancada)} sem lançar
+                              − {formatCurrency(semLastro)} sem lastro no Informakon
                             </span>
                           )}
                         </td>
@@ -1219,37 +1202,31 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
             </div>
           ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-xs" style={{ minWidth: 1620, color: 'var(--text-1)', borderCollapse: 'collapse' }}>
+            <table className="w-full text-xs" style={{ minWidth: 1520, color: 'var(--text-1)', borderCollapse: 'collapse' }}>
               <thead style={{ background: 'var(--surface-3)', position: 'sticky', top: 0, zIndex: 10 }}>
                 <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                   <th style={th()}>Item</th>
                   <th style={{ ...th(), background: 'rgba(16,185,129,0.05)' }}>Item Informakon</th>
                   <th style={{ ...th(), textAlign: 'left' }}>Descrição</th>
                   {mostrarConferencia && (
-                    <th style={{ ...th(), textAlign: 'right', background: 'rgba(16,185,129,0.05)' }} title="Espelho do relatório: (serviço medido + material medido) ÷ valor global. NÃO é o número que se lança — ele inclui o Gap.">% Informakon <span style={{ opacity: 0.55, fontWeight: 400 }}>espelho</span></th>
+                    <th style={{ ...th(), textAlign: 'right', background: 'rgba(16,185,129,0.05)' }} title="Espelho do relatório: (serviço medido + material medido) ÷ valor global. NÃO é o número que se lança — ele inclui o material sem lastro no ERP.">% Informakon <span style={{ opacity: 0.55, fontWeight: 400 }}>espelho</span></th>
                   )}
-                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.10)', color: '#3B82F6' }} title="É ESTE que se digita no Informakon. Libera o Valor Total Medido menos o que ainda aguarda nota do fornecedor. Pressupõe a nota da FIP já emitida e lançada.">% a lançar</th>
-                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.10)', color: '#3B82F6' }} title="O valor em R$ que vai aparecer no Informakon: Valor Total Medido − Nota a caminho. É o mesmo número do % a lançar, em reais.">Dados Informakon</th>
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.10)', color: '#3B82F6' }} title="É ESTE que se digita no Informakon: (serviço medido + desconto de material) ÷ valor global do item. O desconto é o material medido, cortado no que o Informakon não tem lançado. Nunca passa do % físico.">% a lançar</th>
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.10)', color: '#3B82F6' }} title="O mesmo número do % a lançar, em reais: serviço medido + desconto de material.">Dados Informakon</th>
                   <th style={{ ...th(), textAlign: 'right' }}>Mat. Medido</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }} title="Clique no valor de qualquer linha para ver as notas fiscais alocadas ao item.">NF Terceiro <span style={{ opacity: 0.55, fontWeight: 400 }}>⧉</span></th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }} title="Clique no valor de qualquer linha para ver os pedidos aprovados que ainda aguardam nota.">Saldo Aprov. <span style={{ opacity: 0.55, fontWeight: 400 }}>⧉</span></th>
                   <th
                     style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}
-                    title="Clique no valor de qualquer linha para ver a conta passo a passo e as notas fiscais do balde que originou o desconto."
+                    title="Clique no valor de qualquer linha para ver a conta passo a passo e as notas fiscais do item."
                   >
                     NF Desc. <span style={{ opacity: 0.55, fontWeight: 400 }}>⧉</span>
                   </th>
-                  <th
-                    style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}
-                    title="Quanto do NF Desc. veio de nota alocada a OUTRO item da mesma tarefa (o código de dois níveis: 14.2 SPRINKLER, 16.1 INFRA SDAI). A FIP compra por lote e a medição é por pavimento — sem isso, a nota fica parada num item enquanto o vizinho aparece sem cobertura. Fora da tarefa nada transborda: cabo não é coberto por nota de eletroduto."
-                  >
-                    ↳ da tarefa
-                  </th>
                   {mostrarConferencia && (
-                    <th style={{ ...th(), textAlign: 'right', background: 'rgba(245,158,11,0.05)' }} title="Passo intermediário: Mat. Medido − NF Desc. Reparte-se inteiro entre as duas colunas seguintes.">Gap</th>
+                    <th style={{ ...th(), textAlign: 'right', background: 'rgba(245,158,11,0.05)' }} title="Mat. Medido − NF Desc. É exatamente o desconto cortado por falta de lastro no Informakon.">Gap</th>
                   )}
-                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(245,158,11,0.05)' }} title="Parte do material sem nota que JÁ TEM pedido aprovado — a nota do fornecedor está a caminho. Antes se chamava 'Retido', que confundia com a retenção contratual de 5%.">Nota a caminho <span style={{ opacity: 0.55, fontWeight: 400 }}>⧉</span></th>
-                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.05)' }} title="Material sem nota e sem pedido aprovado: ninguém vai emitir, então a FIP precisa. É tarefa a fazer, não receita. Antes se chamava 'FIP Fat-Dir', que sugeria faturamento já ocorrido.">FIP precisa emitir</th>
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(245,158,11,0.05)' }} title="Material medido que já tem pedido fat-direto aprovado e aguarda a nota do fornecedor. É só INFORMAÇÃO: não retém nada do percentual a lançar.">Nota a caminho <span style={{ opacity: 0.55, fontWeight: 400 }}>⧉</span></th>
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.05)' }} title="max(0, material medido − cobertura no site): ninguém vai emitir a nota, então a FIP precisa. É tarefa a fazer, não receita — não entra no percentual a lançar.">FIP precisa emitir</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>Wave (Serv.)</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>% Serv. Med.</th>
                   <th style={{ ...th(), textAlign: 'right' }}>Valor Total Medido</th>
@@ -1345,36 +1322,16 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                             background: 'rgba(16,185,129,0.06)',
                             color: l.alterado_por_retido ? '#DC2626' : undefined,
                           }}
-                          title={l.alterado_por_retido ? `Confirmado "sem mais NF": o Gap de R$ ${l.gap_material.toFixed(2).replace('.', ',')} deixou de aguardar nota e passou inteiro para FIP precisa emitir. O serviço segue pago pelo % medido integral.` : undefined}
+                          title={l.alterado_por_retido ? 'Confirmado "sem mais NF": nada mais deste item aguarda o fornecedor, então o material sem cobertura passou inteiro para FIP precisa emitir. Não mexe no percentual — o serviço segue pago pelo % medido integral.' : undefined}
                         >
                           {pctFmt(l.pct_informakon, 4)}
                         </td>
                       )}
-                      {/* O número que se DIGITA. Difere do espelho pelo Gap:
-                          lançar o espelho faz o Informakon liberar material
-                          sem nota e pagar Nota a caminho + FIP precisa emitir à Wave. */}
+                      {/* O número que se DIGITA. Difere do físico só quando o
+                          Informakon não tem lastro para o desconto inteiro. */}
                       {(() => {
                         const pctLancar = Number(l.pct_informakon_a_lancar ?? l.pct_informakon)
-                        const correcao = Number(l.correcao_informakon || 0)
-                        const temCorrecao = Math.abs(correcao) >= 0.01
-                        // Parcela retida por não estar lançada no ERP (retrato
-                        // adotado). Já está dentro de `correcao`, mas exige uma
-                        // ação diferente das outras: digitar a nota lá.
-                        const naoLancada = Number(l.nf_nao_lancada_no_erp || 0)
-                        // ── TRAVA DO ACUMULADO ──────────────────────────
-                        // O % de um PERÍODO pode passar do físico do período:
-                        // é a devolução do que ficou retido em meses em que a
-                        // nota ainda não existia. O ACUMULADO é que não pode
-                        // passar nunca — senão o Informakon registra mais
-                        // execução do que a obra tem. Ver o teto da régua em
-                        // lib/db/desconto-transbordo.ts.
-                        const aLancarAcum = Number(l.servico_acumulado || 0)
-                          + Number(l.nf_ja_abatida || 0) + Number(l.nf_descontavel || 0)
-                        const pctLancadoAcum = Number(l.valor_total_item) > 0
-                          ? (aLancarAcum / Number(l.valor_total_item)) * 100
-                          : 0
-                        const pctFisicoAcum = Number(l.pct_acumulado || 0)
-                        const acumuladoEstourou = pctLancadoAcum > pctFisicoAcum + 0.01
+                        const semLastro = Number(l.nf_nao_lancada_no_erp || 0)
                         return (
                           <td
                             style={{
@@ -1383,45 +1340,16 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                               background: 'rgba(59,130,246,0.08)',
                               color: '#3B82F6',
                             }}
-                            title={[
-                              temCorrecao
-                                ? (correcao > 0
-                                    ? `Corrigido em −${formatCurrency(correcao)}: material que não pode ser liberado agora. A nota da FIP (${formatCurrency(l.fip_faturar)}) ENTRA no valor — ela precisa estar emitida e lançada antes de você usar este percentual.`
-                                    : `Corrigido em +${formatCurrency(Math.abs(correcao))}: RECUPERAÇÃO. A nota abate ${formatCurrency(l.nf_descontavel)} de material, e só ${formatCurrency(l.material_medido)} foi medido neste período — a diferença é material de medições anteriores que ainda não tinha sido descontado. Como o Informakon desconta a nota do valor que você libera, é preciso liberar mais para que sobre o serviço: ${formatCurrency(Number(l.informakon_a_lancar ?? 0))} − ${formatCurrency(l.nf_descontavel)} = ${formatCurrency(l.wave_servico)}, exatamente o serviço medido. Por isso este % fica acima do % físico; ele se compensa nos meses seguintes e nunca passa de 100% acumulado, porque o desconto do item é limitado ao material contratado dele.`)
-                                : 'Sem correção: nada neste item aguarda nota de fornecedor.',
-                              naoLancada > 0.01
-                                ? `Desses, ${formatCurrency(naoLancada)} é nota que EXISTE aqui e não está lançada no Informakon (retrato adotado). Lance a nota lá e este percentual sobe.`
-                                : '',
-                              `ACUMULADO: já lançado ${pctFmt(pctLancadoAcum, 4)} contra ${pctFmt(pctFisicoAcum, 4)} de avanço físico.${
-                                acumuladoEstourou
-                                  ? ' ATENÇÃO: o acumulado lançado passou do físico — não deveria acontecer, avise o desenvolvimento.'
-                                  : ' O acumulado nunca passa do físico; um percentual de período acima do físico do período é devolução do que ficou retido antes.'
-                              }`,
-                            ].filter(Boolean).join(' ')}
+                            title={
+                              semLastro > 0.01
+                                ? `Serviço medido ${formatCurrency(l.wave_servico)} + desconto de material ${formatCurrency(l.nf_descontavel)}, sobre o valor global do item. O desconto ideal era ${formatCurrency(l.material_medido)}; ${formatCurrency(semLastro)} foram cortados porque o Informakon não tem esse valor lançado no macro grupo. Lance a nota lá e o percentual sobe na próxima medição.`
+                                : `Serviço medido ${formatCurrency(l.wave_servico)} + desconto de material ${formatCurrency(l.nf_descontavel)}, sobre o valor global do item. O Informakon tem lastro para o desconto inteiro — este percentual é o próprio avanço físico.`
+                            }
                           >
                             {pctFmt(pctLancar, 4)}
-                            {temCorrecao && (
-                              <span style={{ display: 'block', fontSize: 9, fontWeight: 400, opacity: 0.8 }}>
-                                {correcao > 0 ? '−' : '+'}{formatCurrency(Math.abs(correcao))}
-                                {/* Recuperação: o % passa do físico porque a nota
-                                    abate material de medições anteriores. Sem
-                                    nomear, o número parece erro. */}
-                                {correcao < 0 ? ' recuperação' : ''}
-                              </span>
-                            )}
-                            {naoLancada > 0.01 && (
+                            {semLastro > 0.01 && (
                               <span style={{ display: 'block', fontSize: 9, fontWeight: 600, color: '#EF4444' }}>
-                                ⚠ {formatCurrency(naoLancada)} sem lançar no ERP
-                              </span>
-                            )}
-                            {correcao < 0 && !acumuladoEstourou && (
-                              <span style={{ display: 'block', fontSize: 9, fontWeight: 400, color: 'var(--text-3)' }}>
-                                acum. {pctFmt(pctLancadoAcum, 2)} / {pctFmt(pctFisicoAcum, 2)} físico
-                              </span>
-                            )}
-                            {acumuladoEstourou && (
-                              <span style={{ display: 'block', fontSize: 9, fontWeight: 700, color: '#EF4444' }}>
-                                ⚠ acum. {pctFmt(pctLancadoAcum, 2)} &gt; físico {pctFmt(pctFisicoAcum, 2)}
+                                − {formatCurrency(semLastro)} sem lastro no Informakon
                               </span>
                             )}
                           </td>
@@ -1435,11 +1363,11 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                           background: 'rgba(59,130,246,0.06)',
                           color: '#3B82F6',
                         }}
-                        title={`Valor Total Medido ${formatCurrency(l.valor_total_medido)} − Nota a caminho ${formatCurrency(l.faturamento_direto_em_aberto)}${
+                        title={`Serviço medido ${formatCurrency(l.wave_servico)} + desconto de material ${formatCurrency(l.nf_descontavel)}${
                           Number(l.nf_nao_lancada_no_erp || 0) > 0.01
-                            ? ` − não lançada no ERP ${formatCurrency(Number(l.nf_nao_lancada_no_erp))}`
+                            ? `, já cortado em ${formatCurrency(Number(l.nf_nao_lancada_no_erp))} por falta de lastro no Informakon`
                             : ''
-                        }. Pressupõe a nota da FIP (${formatCurrency(l.fip_faturar)}) já emitida e lançada no Informakon.`}
+                        }. A nota da FIP (${formatCurrency(l.fip_faturar)}) NÃO entra: ela é tarefa, e vira lastro quando for lançada no ERP.`}
                       >
                         {formatCurrency(Number(l.informakon_a_lancar ?? l.dados_informakon))}
                       </td>
@@ -1472,7 +1400,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                         style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(15,118,110,0.04)', padding: 0 }}
                         title={tituloNfDesc(l)}
                       >
-                        {/* Clique abre a conta da linha + as notas do balde.
+                        {/* Clique abre a conta da linha + as notas do item.
                             Ver components/medicoes/nf-desc-drilldown.tsx pra por
                             que isto NÃO é "as notas que somam este valor". */}
                         <button
@@ -1480,24 +1408,13 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                           onClick={() => setDrilldownNf({ linha: l, coluna: 'nf-desc' })}
                           className="w-full h-full text-right px-2 py-1 hover:bg-teal-500/10 hover:underline decoration-dotted underline-offset-2 transition-colors print:hover:bg-transparent"
                           style={{ color: 'inherit', font: 'inherit' }}
-                          title="Ver de onde vem este desconto e as notas do balde"
+                          title="Ver de onde vem este desconto e as notas do item"
                         >
                           {formatCurrency(l.nf_descontavel)}
                         </button>
                       </td>
-                      <td
-                        style={{
-                          ...td('tabular-nums'),
-                          textAlign: 'right',
-                          background: 'rgba(15,118,110,0.04)',
-                          color: Number(l.nf_transbordo_grupo || 0) > 0 ? '#0F766E' : 'var(--text-3)',
-                        }}
-                        title={tituloNfDesc(l)}
-                      >
-                        {formatCurrency(Number(l.nf_transbordo_grupo || 0))}
-                      </td>
                       {mostrarConferencia && (
-                        <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(245,158,11,0.04)', color: 'var(--text-3)' }} title="Mat. Medido − NF Desc. Reparte-se inteiro nas duas colunas seguintes.">{formatCurrency(l.gap_material)}</td>
+                        <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(245,158,11,0.04)', color: 'var(--text-3)' }} title="Mat. Medido − NF Desc.: o desconto que o Informakon não tem lastro para cobrir.">{formatCurrency(l.gap_material)}</td>
                       )}
                       <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(245,158,11,0.04)', padding: 0 }}>
                         {/* Abre os pedidos do GRUPO que originaram este valor. */}
@@ -1544,7 +1461,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                             background: 'rgba(16,185,129,0.06)',
                             color: l.alterado_por_retido ? '#DC2626' : '#10B981',
                           }}
-                          title={l.alterado_por_retido ? `Confirmado "sem mais NF": o Gap de R$ ${l.gap_material.toFixed(2).replace('.', ',')} está inteiro em FIP precisa emitir. Este espelho mostra o executado — quem exclui o Gap do pagamento é a coluna "% a lançar".` : undefined}
+                          title={l.alterado_por_retido ? 'Confirmado "sem mais NF": o material sem cobertura está inteiro em FIP precisa emitir. Este espelho mostra o executado; o que se lança é a coluna "% a lançar".' : undefined}
                         >
                           {formatCurrency(l.dados_informakon)}
                         </td>
@@ -1569,7 +1486,6 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.nf_terceiro, 0))}</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.saldo_aprovado, 0))}</td>
                     <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.nf_descontavel, 0))}</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)', color: '#0F766E' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + Number(l.nf_transbordo_grupo || 0), 0))}</td>
                     {mostrarConferencia && (
                       <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(245,158,11,0.06)' }}>{formatCurrency(linhasExibidas.reduce((s, l) => s + l.gap_material, 0))}</td>
                     )}
@@ -1592,8 +1508,13 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
 
         <p className="text-[11px] print:hidden" style={{ color: 'var(--text-3)' }}>
           <TrendingUp className="inline w-3 h-3 mr-1" />
-          No Informakon, lance por item o <strong>% Informakon</strong> — Dados Informakon = Wave + NF Desc.
-          (a nota da FIP <em>entra</em>, desde que já emitida e lançada; o que fica de fora é o <em>Nota a caminho</em>). Retenção {pctFmt(data.medicao.contrato.percentual_retencao)} aplicada sobre <em>Valor Total Medido</em> (Mat. Medido + Wave) e abatida da NF da Wave.
+          No Informakon, lance por item o <strong>% a lançar</strong> — que é <em>serviço medido +
+          desconto de material</em> dividido pelo valor global do item. O desconto de material é o
+          material medido no período, cortado no que o Informakon não tem lançado no macro grupo;
+          por isso o <strong>% a lançar nunca passa do % físico</strong>. A nota da FIP não entra em
+          percentual nenhum: ela é tarefa, e vira lastro na medição seguinte.
+          Retenção {pctFmt(data.medicao.contrato.percentual_retencao)} aplicada sobre <em>Valor Total
+          Medido</em> (Mat. Medido + Wave) e abatida da NF da Wave.
           Clique em <strong>Critério</strong> pra ver a regra completa.
         </p>
       </div>
@@ -2124,35 +2045,24 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
 /**
  * Explica de onde veio o NF Desc. da linha.
  *
- * Sem isto o usuário vê "NF Terceiro R$ 0,00" ao lado de "NF Desc.
- * R$ 1.868,28" na mesma linha, sem nenhum caminho na tela pra descobrir a
- * origem da cobertura.
+ * Sem isto o número parece sair das notas que temos cadastradas — e não sai:
+ * ele é o material medido no período, cortado pelo lastro do Informakon. Uma
+ * linha com "NF Terceiro R$ 0,00" e "NF Desc." maior que zero é normal, e o
+ * usuário precisa de um caminho na tela para entender por quê.
  */
 function tituloNfDesc(l: Linha): string {
   const fmt = (v: number) => `R$ ${v.toFixed(2).replace('.', ',')}`
-  const transbordo = Number(l.nf_transbordo_grupo || 0)
-  const recuperacao = Number(l.nf_recuperacao_anterior || 0)
-  const partes: string[] = []
-
-  if (transbordo > 0) {
-    partes.push(
-      `${fmt(transbordo)} vieram de nota alocada a outro item da MESMA TAREFA. ` +
-      'A FIP compra por lote (prumada inteira) e a Wave mede por pavimento — o saldo ' +
-      'de NF é apurado no nível da tarefa, então a nota parada num item cobre o vizinho. ' +
-      'Fora da tarefa nada transborda.',
+  const semLastro = Number(l.nf_nao_lancada_no_erp || 0)
+  const base =
+    `Desconto de material desta medição. Parte do ideal — o material medido no período, ` +
+    `${fmt(l.material_medido)} — e não da nota que temos cadastrada aqui (${fmt(l.nf_terceiro)}).`
+  if (semLastro > 0.01) {
+    return (
+      `${base} Foram cortados ${fmt(semLastro)} porque o Informakon não tem esse valor ` +
+      'lançado no macro grupo: o ERP só abate nota que está lá. Lance a nota e o desconto volta.'
     )
   }
-  if (recuperacao > 0) {
-    partes.push(
-      `${fmt(recuperacao)} são recuperação de medições anteriores: nota que não ` +
-      'descontou no mês certo e voltou agora, porque o desconto é apurado sobre o ' +
-      'acumulado da tarefa. É por isso que este valor pode superar o material medido no período.',
-    )
-  }
-  if (partes.length === 0) {
-    return `NF de material abatida nesta medição. Coberta pela nota do próprio item (${fmt(l.nf_terceiro)} alocados).`
-  }
-  return partes.join(' ')
+  return `${base} O Informakon tem lastro para o desconto inteiro, então nada foi cortado.`
 }
 
 /** % Serv. Med. exibido — usa o ajustado se disponível, senão o físico. */
@@ -2187,201 +2097,144 @@ function HelpModal({ onClose, pctRetencao }: { onClose: () => void; pctRetencao:
             <h3 className="font-bold mb-1" style={{ color: 'var(--text-1)' }}>Atores</h3>
             <ul className="list-disc pl-5 space-y-0.5">
               <li><strong>WAVE INSTALACOES SPE LTDA</strong> — emite NF do <strong>serviço</strong> (parcela mão-de-obra do item).</li>
-              <li><strong>FIP ENGENHARIA ELETRICA LTDA</strong> — empresa garantidora; emite NF de <strong>material</strong> via fat-direto automático quando não há cobertura por NF terceiro nem saldo aprovado.</li>
+              <li><strong>FIP ENGENHARIA ELETRICA LTDA</strong> — empresa garantidora; emite NF de <strong>material</strong> via fat-direto quando o fornecedor não vai emitir.</li>
+              <li><strong>INFORMAKON</strong> — o ERP do cliente. Ao receber um percentual ele libera <code>% × valor global</code> e desconta as notas de material <em>lançadas lá</em>. Ele não conhece nosso cadastro.</li>
             </ul>
           </section>
 
           <section>
-            <h3 className="font-bold mb-1" style={{ color: 'var(--text-1)' }}>Variáveis por item medido</h3>
-            <ul className="list-disc pl-5 space-y-0.5 text-[12px]">
-              <li><strong>Mat. Medido</strong> = qtd × <code>valor_material_unit</code> do contrato.</li>
-              <li><strong>NF Terceiro</strong> = ∑ NFs (validadas/pendentes) de fat-direto APROVADO vinculadas ao item, alocadas proporcionalmente por valor dentro de cada solicitação.</li>
-              <li><strong>Saldo Aprov.</strong> = ∑ aprovado em fat-direto − NFs já lançadas (saldo aguardando NF).</li>
-              <li>
-                <strong>NF Desc.</strong> = o que a nota de material abate nesta medição. <em>Não</em> é
-                MIN(Mat. Medido, NF Terceiro) do próprio item: o saldo de NF é apurado no nível da{' '}
-                <strong>tarefa</strong> (o código de dois níveis — 14.2 SPRINKLER, 16.1 INFRA SDAI), não
-                do item. A FIP compra por lote (a prumada inteira) e a Wave mede por pavimento — sem isso
-                a nota fica parada num detalhamento enquanto o vizinho da mesma tarefa aparece sem
-                cobertura. Fora da tarefa nada transborda: nota de eletroduto (16.1) não cobre cabo
-                (16.2), e Hidráulica não paga material de Elétrica.
-              </li>
-              <li>
-                <strong>↳ da tarefa</strong> = quanto do NF Desc. veio de nota alocada a OUTRO item da
-                mesma tarefa. É por isso que uma linha pode ter NF Terceiro R$ 0,00 e NF Desc. maior que
-                zero. Note que o Informakon desconta por <em>macro item</em> (grupo), uma fronteira mais
-                larga — então pode haver material que aqui aparece como "FIP a criar" e lá já está
-                coberto.
-              </li>
-              <li>
-                O desconto é apurado sobre o <strong>acumulado</strong> da tarefa — MENOR(material
-                executado acumulado, nota lançada) menos o que as medições anteriores já abateram. Por
-                isso o NF Desc. de um período pode <em>superar</em> o material medido nesse período:
-                é nota que ficou para trás voltando de uma vez. Passe o mouse sobre o valor pra ver a
-                composição.
-              </li>
-              <li>
-                <strong>Gap</strong> = Mat. Medido − NF Desc. — a parte do material medido que
-                nenhuma nota de terceiro cobriu ainda. É só um <em>intermediário</em>: não é
-                gravado em lugar nenhum e não move dinheiro sozinho. Ele se reparte, sempre
-                inteiro, entre as duas colunas seguintes — vale a identidade{' '}
-                <strong>Gap = Nota a caminho + FIP precisa emitir</strong>. Quem decide pagamento são elas.
-                <br />
-                <span style={{ color: 'var(--text-3)' }}>
-                  Quando a medição <em>adota um retrato do Informakon</em>, aparece uma terceira
-                  parcela e a identidade vira <strong>Gap = Nota a caminho + FIP precisa emitir +
-                  não lançada no ERP</strong>. Essa terceira é desconto que o boletim pediria mas
-                  que o Informakon não tem lançado: a nota existe aqui e não existe lá. Ela sai do
-                  &quot;% a lançar&quot; (o ERP não vai descontar o que não tem, então liberar esse
-                  valor seria pagar material sem contrapartida) e sai do &quot;NF Desc.&quot; gravado
-                  na aprovação, para que a nota volte na medição seguinte em vez de ser dada por
-                  abatida. A ação que ela pede é diferente das outras duas: <em>digitar a nota no
-                  Informakon</em> — feito isso, o percentual sobe de volta.
-                </span>
-              </li>
-              <li>
-                <strong>Nota a caminho</strong> <span style={{color:'var(--text-3)'}}>(antes “Retido”)</span> = a parte do Gap que já tem <em>pedido fat-direto aprovado</em>{' '}
-                esperando a nota do fornecedor chegar. Não vira NF da FIP nesta medição.
-                <br />
-                <span style={{ color: 'var(--text-3)' }}>
-                  Atenção ao ler a linha: o saldo aprovado é apurado <strong>por tarefa</strong>, num
-                  pool compartilhado entre os detalhamentos irmãos — a FIP compra por lote e o pedido
-                  costuma estar lançado num item vizinho. Por isso uma linha pode mostrar{' '}
-                  <strong>Saldo Aprov. = 0</strong> e ainda assim ter Nota a caminho &gt; 0: o saldo veio de
-                  outro item da mesma tarefa. A coluna Saldo Aprov. mostra só o número cru
-                  <em> daquele item</em>, não a base do rateio.
-                </span>
-              </li>
-              <li><strong>FIP precisa emitir</strong> <span style={{color:'var(--text-3)'}}>(antes “FIP Fat-Dir”)</span> = Gap − Nota a caminho. <strong>É tarefa, não receita.</strong> Solicitação de fat-direto criada automaticamente em nome da FIP (status: aprovado). <em>Ainda assim NÃO entra no Dados Informakon</em> — a NF ainda não foi emitida.</li>
-              <li><strong>Wave (Serv.)</strong> = qtd × <code>valor_servico_unit</code>. NF da Wave a emitir.</li>
-              <li>
-                <strong>% Serv. Med.</strong> = qtd medida ÷ qtd contratada × 100 (físico).
-                <strong> Sempre integral</strong> — o serviço executado é pago por inteiro.
-                A confirmação &quot;sem mais NF&quot; não mexe mais aqui: ela apenas reclassifica
-                o Gap de <em>Nota a caminho</em> para <em>FIP precisa emitir</em> (se nenhuma nota vem, não há o
-                que aguardar). Quem impede o pagamento do material sem nota é a coluna
-                <strong> % a lançar</strong>, e ela sozinha — descontar também do serviço tiraria
-                o mesmo valor duas vezes.
-              </li>
-              <li><strong>Valor Total Medido</strong> = Mat. Medido + Wave (Serv.) — tudo que foi executado no período. É a base da retenção, e é igual ao <em>Dados Informakon</em>.</li>
-              <li>
-                <strong>Dados Informakon</strong> = Wave + <em>Mat. Medido</em> (o material inteiro,
-                não só o que virou nota). É o <strong>espelho</strong> do relatório: o Informakon
-                registra o que foi executado. Serve pra conciliar, <strong>não pra lançar</strong>.
-              </li>
-              <li>
-                <strong>% Informakon (espelho)</strong> = Dados Informakon ÷ valor global × 100.
-                Mesma coisa em percentual — também não é o número que se digita.
-              </li>
-              <li>
-                <strong>Dados Informakon</strong> = <strong>Valor Total Medido − Nota a caminho</strong>.
-                É o valor em R$ que vai aparecer no Informakon, e <strong>% a lançar</strong> é
-                ele dividido pelo valor global do item.
-                <strong> São esses dois que você usa.</strong>
-                <br />
-                <span style={{ color: 'var(--text-3)' }}>
-                  Por quê: ao receber um percentual, o Informakon <em>libera</em>{' '}
-                  <code>% × valor global</code> e depois desconta as notas de material lançadas
-                  lá — ele não conhece nosso saldo de pedido aprovado. No momento em que você
-                  digita o percentual, <strong>duas</strong> notas estão lançadas: a do fornecedor
-                  e a que a FIP emitiu (você só consegue lançar depois de emitir). A única parcela
-                  que <em>não</em> está lá é a que aguarda o fornecedor — o <strong>Nota a caminho</strong>.
-                  Daí <code>a lançar = Valor Total Medido − Nota a caminho</code>, que dá no mesmo
-                  que <code>Wave + NF Desc. + FIP precisa emitir</code>. O serviço continua pago
-                  pelo <strong>% Serv. Med. integral</strong>; a correção sai toda do lado do material.
-                  <br />
-                  <strong style={{ color: '#EF4444' }}>Pré-condição:</strong> a nota da FIP precisa
-                  estar emitida e lançada <em>antes</em>. Se você usar este percentual com a nota da
-                  FIP ainda por emitir, o Informakon libera o valor e desconta só a do fornecedor —
-                  e a Wave recebe a mais exatamente o &quot;FIP precisa emitir&quot;.
-                </span>
-              </li>
-              <li><strong>Retenção</strong> = % medido × valor global do item × {pctFmt(pctRetencao)} (= Valor Total Medido × {pctFmt(pctRetencao)}). É abatida da NF da Wave (serviço).</li>
-            </ul>
+            <h3 className="font-bold mb-2" style={{ color: 'var(--text-1)' }}>A regra, em três camadas</h3>
+
+            <div className="rounded-lg p-3 mb-2" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+              <p className="font-semibold mb-1" style={{ color: 'var(--text-1)' }}>① Por item — o desconto ideal</p>
+              <p className="text-[12px]">
+                <code>desconto ideal = p × M</code> — o avanço físico do período vezes o material
+                contratado do item. É só isso. Não há régua acumulada, não há teto pela nota que
+                temos cadastrada, não há compensação entre itens.
+              </p>
+            </div>
+
+            <div className="rounded-lg p-3 mb-2" style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.30)' }}>
+              <p className="font-semibold mb-1" style={{ color: '#3B82F6' }}>② Por macro grupo — o teto do Informakon decide o percentual</p>
+              <p className="text-[12px]">
+                <code>falta do grupo = Σ desconto ideal − &quot;Vlr. a Desc&quot; do grupo no Informakon</code>.
+                A falta é cortada em cascata, começando pelo item de maior desconto; o teto de cada
+                item é o desconto dele, nunca o serviço. Daí:
+              </p>
+              <p className="text-[12px] mt-1">
+                <code>a lançar = serviço medido + desconto ajustado</code>
+                {' · '}
+                <code>% a lançar = a lançar ÷ valor global do item</code>
+              </p>
+              <p className="text-[12px] mt-1">
+                Sempre aplicado — não depende de ninguém clicar em &quot;adotar o retrato&quot;.
+                Liberar percentual que o ERP não consegue descontar entregaria material à Wave sem
+                contrapartida.
+              </p>
+              <p className="text-[12px] mt-1" style={{ color: '#3B82F6' }}>
+                <strong>INVARIANTE: % a lançar ≤ % físico, sempre.</strong> Não existe mais
+                percentual acima do físico. Se o grupo tem lastro de sobra, os dois são iguais.
+              </p>
+              <p className="text-[12px] mt-1" style={{ color: 'var(--text-3)' }}>
+                Macro grupo <em>ausente</em> do retrato não é lastro zero: sem número do outro lado
+                não dá para afirmar que falta alguma coisa, então o grupo fica como está e o painel
+                de saldo avisa que ele não pôde ser conferido.
+              </p>
+            </div>
+
+            <div className="rounded-lg p-3" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.30)' }}>
+              <p className="font-semibold mb-1" style={{ color: '#F59E0B' }}>③ Por item — quem emite a nota do material</p>
+              <p className="text-[12px]">
+                <code>cobertura no site = max(NF de terceiro lançada, pedido aprovado)</code> —
+                é o máximo, não a soma: o pedido aprovado já contém o que dele virou nota.
+              </p>
+              <p className="text-[12px] mt-1">
+                <code>FIP precisa emitir = max(0, p × M − cobertura)</code>. É <strong>tarefa</strong>,
+                não receita, e <strong>não entra no &quot;a lançar&quot;</strong>. A nota que a FIP
+                emitir vira lastro quando for lançada no ERP, e a camada ② a enxerga na medição
+                seguinte — o percentual sobe sozinho, sem ninguém precisar prometer nada.
+              </p>
+              <p className="text-[12px] mt-1">
+                <strong>Nota a caminho</strong> (material com pedido aprovado, nota do fornecedor
+                ainda por chegar) continua existindo, mas é só <strong>informação</strong>: não
+                retém mais nada do percentual.
+              </p>
+            </div>
           </section>
 
           <section>
-            <h3 className="font-bold mb-2" style={{ color: 'var(--text-1)' }}>4 cenários (item 1.1.4.1, valor global R$ 30.747,78, medição física 50% → mat 7.687 / serv 7.687)</h3>
+            <h3 className="font-bold mb-2" style={{ color: 'var(--text-1)' }}>
+              Exemplo — macro grupo 18 da Medição 5, com R$ 3.265,48 de lastro no Informakon
+            </h3>
             <div className="overflow-x-auto rounded-lg" style={{ border: '1px solid var(--border)' }}>
               <table className="w-full text-[11.5px]" style={{ borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: 'var(--surface-3)', color: 'var(--text-3)', textTransform: 'uppercase', fontSize: 9.5 }}>
-                    <th style={th()}>Cenário</th>
-                    <th style={{ ...th(), textAlign: 'right' }}>NF Terc.</th>
-                    <th style={{ ...th(), textAlign: 'right' }}>Saldo Aprov.</th>
-                    <th style={{ ...th(), textAlign: 'right' }}>NF Desc.</th>
-                    <th style={{ ...th(), textAlign: 'right' }}>Gap</th>
-                    <th style={{ ...th(), textAlign: 'right' }}>Nota a caminho</th>
-                    <th style={{ ...th(), textAlign: 'right' }}>FIP (a criar)</th>
-                    <th style={{ ...th(), textAlign: 'right' }}>Wave</th>
-                    <th style={{ ...th(), textAlign: 'right' }}>Dados Inf.</th>
-                    <th style={{ ...th(), textAlign: 'right' }}>% Inf.</th>
+                    <th style={{ ...th(), textAlign: 'left' }}>Item</th>
+                    <th style={{ ...th(), textAlign: 'right' }}>Serviço medido</th>
+                    <th style={{ ...th(), textAlign: 'right' }}>Desconto ideal (p × M)</th>
+                    <th style={{ ...th(), textAlign: 'right' }}>Cortado</th>
+                    <th style={{ ...th(), textAlign: 'right' }}>Desconto ajustado</th>
+                    <th style={{ ...th(), textAlign: 'right' }}>A lançar</th>
+                    <th style={{ ...th(), textAlign: 'right' }}>% físico</th>
+                    <th style={{ ...th(), textAlign: 'right' }}>% a lançar</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr style={{ borderTop: '1px solid var(--border)' }}>
-                    <td style={td()}><strong>A</strong> sem NF, sem saldo</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>0</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>0</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>0</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>7.687</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>0</td>
-                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#3B82F6' }}>7.687</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right', color: '#0F766E' }}>7.687</td>
-                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#10B981' }}>7.687</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>25,00%</td>
+                    <td style={td()}><strong>18.1.6</strong> <span style={{ color: 'var(--text-3)' }}>global 19.753,37</span></td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', color: '#0F766E' }}>7.708,44</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>11.057,26</td>
+                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#EF4444' }}>− 9.902,37</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>1.154,89</td>
+                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#10B981' }}>8.863,33</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', color: 'var(--text-3)' }}>95,0000%</td>
+                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#3B82F6' }}>44,8700%</td>
                   </tr>
                   <tr style={{ borderTop: '1px solid var(--border)' }}>
-                    <td style={td()}><strong>B</strong> NF cobre tudo</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>10.000</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>—</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>7.687</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>0</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>0</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>0</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right', color: '#0F766E' }}>7.687</td>
-                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#10B981' }}>15.373,89</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>50,00%</td>
-                  </tr>
-                  <tr style={{ borderTop: '1px solid var(--border)' }}>
-                    <td style={td()}><strong>C</strong> NF parcial, saldo cobre o resto</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>5.687</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>2.000</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>5.687</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>2.000</td>
-                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#F59E0B' }}>2.000</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>0</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right', color: '#0F766E' }}>7.687</td>
-                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#10B981' }}>13.373,89</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>43,4955%</td>
-                  </tr>
-                  <tr style={{ borderTop: '1px solid var(--border)' }}>
-                    <td style={td()}><strong>D</strong> NF parcial, saldo parcial</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>5.687</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>1.000</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>5.687</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>2.000</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right', color: '#F59E0B' }}>1.000</td>
-                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#3B82F6' }}>1.000</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right', color: '#0F766E' }}>7.687</td>
-                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#10B981' }}>13.373,89</td>
-                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>43,4955%</td>
+                    <td style={td()}><strong>18.1.14</strong> <span style={{ color: 'var(--text-3)' }}>global 53.733,91</span></td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', color: '#0F766E' }}>2.367,23</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>2.110,59</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', color: 'var(--text-3)' }}>—</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>2.110,59</td>
+                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#10B981' }}>4.477,82</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', color: 'var(--text-3)' }}>8,3334%</td>
+                    <td style={{ ...td('tabular-nums font-bold'), textAlign: 'right', color: '#3B82F6' }}>8,3334%</td>
                   </tr>
                 </tbody>
               </table>
             </div>
+            <p className="text-[12px] mt-1.5" style={{ color: 'var(--text-3)' }}>
+              O grupo pediu 13.167,85 de desconto e o Informakon só tem 3.265,48 lançados: faltam
+              9.902,37. A falta vai inteira para o item de maior desconto (18.1.6), que cai de 95%
+              para 44,87%. O vizinho não é tocado — e a soma dos descontos ajustados fecha
+              exatamente com o lastro do grupo. Quando as notas de 18.1.6 forem lançadas no
+              Informakon, o percentual dele volta na medição seguinte.
+            </p>
+          </section>
+
+          <section>
+            <h3 className="font-bold mb-1" style={{ color: 'var(--text-1)' }}>As colunas do boletim</h3>
+            <ul className="list-disc pl-5 space-y-0.5 text-[12px]">
+              <li><strong>% físico</strong> (&quot;% Serv. Med.&quot;) = qtd medida ÷ qtd contratada. <strong>Sempre integral</strong> — o serviço executado é pago por inteiro. A confirmação &quot;sem mais NF&quot; não mexe aqui.</li>
+              <li><strong>Mat. Medido</strong> = <code>p × M</code>, o desconto ideal da camada ①.</li>
+              <li><strong>NF Desc.</strong> = o desconto <em>ajustado</em>: o ideal menos o que o Informakon não tem lastro para cobrir.</li>
+              <li><strong>Gap</strong> = Mat. Medido − NF Desc. É exatamente o valor cortado por falta de lastro.</li>
+              <li><strong>NF Terceiro</strong> e <strong>Saldo Aprov.</strong> = a cobertura da camada ③, apurada por item: nota já alocada, e pedido aprovado ainda sem nota. Não determinam o desconto.</li>
+              <li><strong>Nota a caminho</strong> = material com pedido aprovado esperando a nota do fornecedor. <strong>Informação</strong> — não retém percentual.</li>
+              <li><strong>FIP precisa emitir</strong> = <code>max(0, p × M − cobertura)</code>. <strong>Tarefa</strong> — não entra em percentual nenhum.</li>
+              <li><strong>% a lançar</strong> e <strong>Dados Informakon</strong> = o mesmo número em % e em R$: <code>serviço medido + NF Desc.</code>. <strong>São esses dois que você digita.</strong></li>
+              <li><strong>% Informakon (espelho)</strong> e <strong>Executado (espelho)</strong> = o executado do período (serviço + material medido inteiro). Servem para conciliar, <strong>não para lançar</strong>: incluem o material sem lastro no ERP.</li>
+              <li><strong>Retenção</strong> = Valor Total Medido × {pctFmt(pctRetencao)} (Valor Total Medido = Mat. Medido + Wave). Abatida da NF da Wave.</li>
+            </ul>
           </section>
 
           <section className="rounded-lg p-3" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.30)' }}>
-            <p className="text-[12px]"><strong style={{ color: '#10B981' }}>Por que C e D dão o mesmo Dados Informakon?</strong> Porque <em>FIP Fat-Dir não entra</em> — só desconta NF efetivamente lançada. A diferença entre C e D fica registrada nas colunas Nota a caminho (C: 2.000) e FIP precisa emitir (D: 1.000 a criar). Quando a NF terceira do saldo aprovado chegar, vira NF Desc. nas próximas medições.</p>
+            <p className="text-[12px]"><strong style={{ color: '#10B981' }}>O que fazer quando um item cai:</strong> a queda do percentual é sempre a mesma causa — nota que existe aqui e não está lançada no Informakon. A ação é lançá-la lá, não ajustar a medição. Feito isso, o desconto volta e o percentual sobe na medição seguinte, sem retrabalho.</p>
           </section>
 
           <section className="rounded-lg p-3" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.30)' }}>
-            <p className="text-[12px]"><strong style={{ color: '#F59E0B' }}>Atenção pra pesos diferentes mat/serv:</strong> as colunas usam o <code>valor_material_unit</code> e <code>valor_servico_unit</code> de cada item — não há divisão fixa 50/50. O cálculo é por item, com pesos do contrato. Itens onde a parcela de material é dominante terão FIP ou retido proporcionalmente maiores.</p>
-          </section>
-
-          <section className="rounded-lg p-3" style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.30)' }}>
-            <p className="text-[12px]"><strong style={{ color: '#3B82F6' }}>Nota técnica (1ª iteração):</strong> NFs de terceiro são alocadas por proporção de valor dentro de cada solicitação fat-direto. Os agregados são totais do item — ainda não descontam material consumido em medições aprovadas anteriores. Refinamentos (snapshot por medição) virão depois.</p>
+            <p className="text-[12px]"><strong style={{ color: '#F59E0B' }}>Pesos mat/serv são por item:</strong> as colunas usam o <code>valor_material_unit</code> e o <code>valor_servico_unit</code> de cada item — não há divisão fixa 50/50. Itens em que o material é dominante sofrem mais com falta de lastro, porque é o material que carrega o desconto.</p>
           </section>
         </div>
       </div>
