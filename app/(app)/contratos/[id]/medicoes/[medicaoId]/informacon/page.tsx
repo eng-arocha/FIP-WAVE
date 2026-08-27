@@ -237,6 +237,12 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
   const [mostrarConferencia, setMostrarConferencia] = useState(false)
   /** Roteiro de lançamento: o que se digita no ERP, por macro grupo. */
   const [roteiroAberto, setRoteiroAberto] = useState(false)
+  /**
+   * A tela de conferência tem seis colunas; a tabela completa fica atrás do
+   * toggle. Enxuto é o padrão porque é o que se usa para decidir aprovar —
+   * as outras onze colunas explicam COMO o número saiu, não SE ele fecha.
+   */
+  const [modoEnxuto, setModoEnxuto] = useState(true)
   const breakdown = useBreakdownAjuste(contratoId, medicaoId, modalAjustar?.item.detalhamento_id ?? null)
   const usaGradeBreakdown = !!breakdown.estado?.suporta_breakdown && !forcarAgregado
 
@@ -1124,6 +1130,94 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
           className="rounded-2xl overflow-hidden"
           style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}
         >
+          <div className="px-3 pt-2 print:hidden">
+            <button
+              type="button"
+              onClick={() => setModoEnxuto(v => !v)}
+              className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg font-medium border transition-colors hover:bg-[var(--surface-3)]"
+              style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}
+            >
+              {modoEnxuto ? 'Ver tabela completa' : 'Voltar à conferência'}
+            </button>
+          </div>
+
+          {modoEnxuto ? (
+            /* ── CONFERÊNCIA ──────────────────────────────────────────────
+               Seis colunas e dois totais: é o que se olha antes de aprovar.
+               O físico, o que isso vale em R$, o que desconta de faturamento
+               direto, e o percentual que vai ser digitado. */
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs" style={{ minWidth: 720, color: 'var(--text-1)', borderCollapse: 'collapse' }}>
+                <thead style={{ background: 'var(--surface-3)', position: 'sticky', top: 0, zIndex: 10 }}>
+                  <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    <th style={th()}>Item</th>
+                    <th style={{ ...th(), textAlign: 'left' }}>Descrição</th>
+                    <th style={{ ...th(), textAlign: 'right' }} title="Avanço físico medido no período.">% físico</th>
+                    <th style={{ ...th(), textAlign: 'right' }} title="Material + serviço medidos no período, em reais.">Valor medido</th>
+                    <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.06)' }} title="Quanto a nota de faturamento direto abate deste item nesta medição. Clique para ver as notas.">Desconto fat-direto <span style={{ opacity: 0.55, fontWeight: 400 }}>⧉</span></th>
+                    <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.10)', color: '#3B82F6' }} title="É este que se digita no Informakon.">% a lançar</th>
+                    <th style={th()} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {linhasExibidas.map(l => {
+                    const naoLancada = Number(l.nf_nao_lancada_no_erp || 0)
+                    return (
+                      <tr key={l.detalhamento_id} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ ...td('font-mono'), whiteSpace: 'nowrap' }}>{l.codigo}</td>
+                        <td style={td()}>{l.descricao}</td>
+                        <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{pctFmt(pctServMedExibido(l))}</td>
+                        <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(l.valor_total_medido)}</td>
+                        <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)', padding: 0 }}>
+                          <button
+                            type="button"
+                            onClick={() => setDrilldownNf({ linha: l, coluna: 'nf-desc' })}
+                            className="w-full h-full text-right px-2 py-1 hover:bg-teal-500/10 hover:underline decoration-dotted underline-offset-2 transition-colors print:hover:bg-transparent"
+                            style={{ color: 'inherit', font: 'inherit' }}
+                          >
+                            {formatCurrency(l.nf_descontavel)}
+                          </button>
+                        </td>
+                        <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(59,130,246,0.08)', color: '#3B82F6' }}>
+                          {pctFmt(Number(l.pct_informakon_a_lancar ?? l.pct_informakon), 4)}
+                          {naoLancada > 0.01 && (
+                            <span style={{ display: 'block', fontSize: 9, fontWeight: 600, color: '#EF4444' }}>
+                              ⚠ {formatCurrency(naoLancada)} sem lançar
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ ...td(), textAlign: 'right' }}>
+                          {isPendente && podeAprovar && (
+                            <button
+                              type="button"
+                              onClick={() => abrirModalAjustar(l)}
+                              className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border print:hidden"
+                              style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}
+                            >
+                              <Pencil className="w-2.5 h-2.5" /> Ajustar
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: 'var(--surface-3)', fontWeight: 700, borderTop: '2px solid var(--border)' }}>
+                    <td colSpan={3} style={{ ...td(), textAlign: 'right' }}>TOTAIS</td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>
+                      {formatCurrency(linhasExibidas.reduce((s, l) => s + l.valor_total_medido, 0))}
+                    </td>
+                    <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.06)', color: '#0F766E' }}>
+                      {formatCurrency(linhasExibidas.reduce((s, l) => s + l.nf_descontavel, 0))}
+                    </td>
+                    <td style={{ ...td(), background: 'rgba(59,130,246,0.08)' }} />
+                    <td style={td()} />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs" style={{ minWidth: 1620, color: 'var(--text-1)', borderCollapse: 'collapse' }}>
               <thead style={{ background: 'var(--surface-3)', position: 'sticky', top: 0, zIndex: 10 }}>
@@ -1493,6 +1587,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
               )}
             </table>
           </div>
+          )}
         </MaximizableCard>
 
         <p className="text-[11px] print:hidden" style={{ color: 'var(--text-3)' }}>

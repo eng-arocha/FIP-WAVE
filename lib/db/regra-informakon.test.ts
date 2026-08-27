@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calcularDescontoComTransbordo } from './desconto-transbordo'
+import { calcularDescontoDeMaterial } from './desconto-material'
 
 /**
  * A regra de lançamento do Informakon, escrita pelo usuário, virada em teste.
@@ -36,8 +36,8 @@ describe('regra de lançamento do Informakon (exemplo do usuário)', () => {
   const materialMedido = MATERIAL_CONTRATADO * PCT_FISICO // 250
 
   it('com nota de R$ 3.000 lançada: digita 5% e desconta R$ 250', () => {
-    const r = calcularDescontoComTransbordo([{
-      detalhamentoId: 'A', grupoId: '1',
+    const r = calcularDescontoDeMaterial([{
+      detalhamentoId: 'A',
       matMedido: materialMedido, matAcumulado: materialMedido,
       nfAlocada: 3_000, nfJaAbatida: 0,
     }])
@@ -53,8 +53,8 @@ describe('regra de lançamento do Informakon (exemplo do usuário)', () => {
   })
 
   it('sem nota lançada: a FIP precisa emitir exatamente R$ 250', () => {
-    const r = calcularDescontoComTransbordo([{
-      detalhamentoId: 'A', grupoId: '1',
+    const r = calcularDescontoDeMaterial([{
+      detalhamentoId: 'A',
       matMedido: materialMedido, matAcumulado: materialMedido,
       nfAlocada: 0, nfJaAbatida: 0,
     }])
@@ -72,8 +72,8 @@ describe('regra de lançamento do Informakon (exemplo do usuário)', () => {
   })
 
   it('nota menor que o material medido: desconta o que tem, a FIP emite o resto', () => {
-    const r = calcularDescontoComTransbordo([{
-      detalhamentoId: 'A', grupoId: '1',
+    const r = calcularDescontoDeMaterial([{
+      detalhamentoId: 'A',
       matMedido: materialMedido, matAcumulado: materialMedido,
       nfAlocada: 100, nfJaAbatida: 0,
     }])
@@ -90,8 +90,8 @@ describe('regra de lançamento do Informakon (exemplo do usuário)', () => {
     // Nota de 3.000 num item de 5.000 de material. Se a régua consumisse a
     // nota até o espaço contratual, o desconto seria 3.000 e o percentual
     // saltaria para 32,5% com 5% de obra feita.
-    const r = calcularDescontoComTransbordo([{
-      detalhamentoId: 'A', grupoId: '1',
+    const r = calcularDescontoDeMaterial([{
+      detalhamentoId: 'A',
       matMedido: materialMedido, matAcumulado: materialMedido,
       nfAlocada: 3_000, nfJaAbatida: 0,
     }])
@@ -99,17 +99,61 @@ describe('regra de lançamento do Informakon (exemplo do usuário)', () => {
     expect(l.pct).toBeLessThanOrEqual(PCT_FISICO * 100 + 1e-9)
   })
 
-  it('o saldo do macro grupo compensa entre itens do mesmo grupo', () => {
-    // Regra 1 do Informakon: o abatimento é pelo saldo consolidado do macro
-    // grupo. Um item sem nota própria é coberto pela nota do vizinho — e
-    // nenhum dos dois passa do próprio material executado.
-    const r = calcularDescontoComTransbordo([
-      { detalhamentoId: 'semNota', grupoId: '1', matMedido: 250, matAcumulado: 250, nfAlocada: 0, nfJaAbatida: 0 },
-      { detalhamentoId: 'comNota', grupoId: '1', matMedido: 250, matAcumulado: 250, nfAlocada: 3_000, nfJaAbatida: 0 },
+  it('a nota de um item NÃO cobre o material do vizinho', () => {
+    // Decisão do usuário: sem compensação entre itens, pelo caminho mais
+    // conservador. O item sem nota própria desconta zero, o percentual dele
+    // cai e o ERP libera menos — nunca mais. A nota do vizinho continua em
+    // saldo e será usada quando aquele item for medido.
+    const r = calcularDescontoDeMaterial([
+      { detalhamentoId: 'semNota', matMedido: 250, matAcumulado: 250, nfAlocada: 0, nfJaAbatida: 0 },
+      { detalhamentoId: 'comNota', matMedido: 250, matAcumulado: 250, nfAlocada: 3_000, nfJaAbatida: 0 },
     ])
-    expect(r.get('semNota')!.total).toBeCloseTo(250, 2)
+    expect(r.get('semNota')!.total).toBeCloseTo(0, 2)
     expect(r.get('comNota')!.total).toBeCloseTo(250, 2)
-    // O grupo desconta 500 no total — o material executado do grupo, e só.
-    expect(r.get('semNota')!.total + r.get('comNota')!.total).toBeCloseTo(500, 2)
+  })
+
+  it('o item sem nota vira tarefa para a FIP, não perda', () => {
+    const r = calcularDescontoDeMaterial([
+      { detalhamentoId: 'semNota', matMedido: 250, matAcumulado: 250, nfAlocada: 0, nfJaAbatida: 0 },
+    ])
+    // O gap inteiro fica para classificar entre "nota a caminho" (há pedido
+    // aprovado) e "a FIP precisa emitir" (não há).
+    expect(250 - r.get('semNota')!.total).toBeCloseTo(250, 2)
+  })
+
+  it('o caso real do grupo 18: o custo da decisão, em reais', () => {
+    // 18.1.6 mediu 11.057,26 e não tem nota; 18.1.14 mediu 2.110,60 e é dono
+    // de uma nota de 20.730,08. Com compensação, o grupo descontava 13.167,86
+    // e a FIP não emitia nada. Sem ela, desconta 2.110,60.
+    const r = calcularDescontoDeMaterial([
+      { detalhamentoId: '18.1.6', matMedido: 11_057.26, matAcumulado: 11_057.26, nfAlocada: 0, nfJaAbatida: 0 },
+      { detalhamentoId: '18.1.14', matMedido: 2_110.60, matAcumulado: 2_110.60, nfAlocada: 20_730.08, nfJaAbatida: 0 },
+    ])
+    expect(r.get('18.1.6')!.total).toBeCloseTo(0, 2)
+    expect(r.get('18.1.14')!.total).toBeCloseTo(2_110.60, 2)
+    // O que a FIP passa a emitir neste grupo — o preço aceito da simplificação.
+    expect(11_057.26 - r.get('18.1.6')!.total).toBeCloseTo(11_057.26, 2)
+  })
+
+  it('recupera material medido antes que não tinha nota na época', () => {
+    const r = calcularDescontoDeMaterial([
+      { detalhamentoId: 'A', matMedido: 1_000, matAcumulado: 6_000, nfAlocada: 20_000, nfJaAbatida: 0 },
+    ])
+    expect(r.get('A')!.total).toBeCloseTo(6_000, 2)
+    expect(r.get('A')!.recuperacao).toBeCloseTo(5_000, 2)
+  })
+
+  it('não desconta duas vezes a mesma nota', () => {
+    const r = calcularDescontoDeMaterial([
+      { detalhamentoId: 'A', matMedido: 1_000, matAcumulado: 6_000, nfAlocada: 20_000, nfJaAbatida: 5_000 },
+    ])
+    expect(r.get('A')!.total).toBeCloseTo(1_000, 2)
+  })
+
+  it('item não medido no período não recebe desconto', () => {
+    const r = calcularDescontoDeMaterial([
+      { detalhamentoId: 'A', matMedido: 0, matAcumulado: 9_000, nfAlocada: 50_000, nfJaAbatida: 0 },
+    ])
+    expect(r.get('A')!.total).toBeCloseTo(0, 2)
   })
 })

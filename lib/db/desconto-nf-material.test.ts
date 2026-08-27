@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ehPedidoDeServicoWave } from './informacon-data'
-import { calcularDescontoComTransbordo } from './desconto-transbordo'
+import { calcularDescontoDeMaterial } from './desconto-material'
 
 /**
  * Regressões do desconto de NF de material (migration 074).
@@ -64,8 +64,8 @@ function nfDescontavel(
   nfJaAbatida: number,
   matAcumulado: number = matMedido,
 ) {
-  const r = calcularDescontoComTransbordo([
-    { detalhamentoId: 'x', grupoId: null, matMedido, matAcumulado, nfAlocada: nfEmitida, nfJaAbatida },
+  const r = calcularDescontoDeMaterial([
+    { detalhamentoId: 'x', matMedido, matAcumulado, nfAlocada: nfEmitida, nfJaAbatida },
   ])
   return r.get('x')!.total
 }
