@@ -1268,7 +1268,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                     <th style={{ ...th(), textAlign: 'right', background: 'rgba(245,158,11,0.05)' }} title="Mat. Medido − NF Desc. É exatamente o desconto cortado por falta de lastro no Informakon.">Gap</th>
                   )}
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(245,158,11,0.05)' }} title="Material medido que já tem pedido fat-direto aprovado e aguarda a nota do fornecedor. É só INFORMAÇÃO: não retém nada do percentual a lançar.">Nota a caminho <span style={{ opacity: 0.55, fontWeight: 400 }}>⧉</span></th>
-                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.05)' }} title="max(0, material medido − cobertura no site): ninguém vai emitir a nota, então a FIP precisa. É tarefa a fazer, não receita — não entra no percentual a lançar.">FIP precisa emitir</th>
+                  <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.05)' }} title="Material sem nota em lugar nenhum — nem pedido no site, nem lastro no Informakon. Depois do corte da camada ②, o teto é o próprio corte: onde o desconto foi lançado inteiro, a nota do fornecedor existe no ERP e a FIP não emite. Macro grupo ausente do retrato não abate. É tarefa a fazer, não receita — não entra no percentual a lançar.">FIP precisa emitir</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>Wave (Serv.)</th>
                   <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.05)' }}>% Serv. Med.</th>
                   <th style={{ ...th(), textAlign: 'right' }}>Valor Total Medido</th>
@@ -2252,7 +2252,7 @@ function HelpModal({ onClose, pctRetencao }: { onClose: () => void; pctRetencao:
                 é o máximo, não a soma: o pedido aprovado já contém o que dele virou nota.
               </p>
               <p className="text-[12px] mt-1">
-                <code>FIP precisa emitir = max(0, p × M − cobertura)</code>. É <strong>tarefa</strong>,
+                <code>FIP precisa emitir = min(max(0, material − cobertura no site), corte do lastro)</code>. É <strong>tarefa</strong>,
                 não receita, e <strong>não entra no &quot;a lançar&quot;</strong>. A nota que a FIP
                 emitir vira lastro quando for lançada no ERP, e a camada ② a enxerga na medição
                 seguinte — o percentual sobe sozinho, sem ninguém precisar prometer nada.
@@ -2325,7 +2325,7 @@ function HelpModal({ onClose, pctRetencao }: { onClose: () => void; pctRetencao:
               <li><strong>Gap</strong> = Mat. Medido − NF Desc. É exatamente o valor cortado por falta de lastro.</li>
               <li><strong>NF Terceiro</strong> e <strong>Saldo Aprov.</strong> = a cobertura da camada ③, apurada por item: nota já alocada, e pedido aprovado ainda sem nota. Não determinam o desconto.</li>
               <li><strong>Nota a caminho</strong> = material com pedido aprovado esperando a nota do fornecedor. <strong>Informação</strong> — não retém percentual.</li>
-              <li><strong>FIP precisa emitir</strong> = <code>max(0, p × M − cobertura)</code>. <strong>Tarefa</strong> — não entra em percentual nenhum.</li>
+              <li><strong>FIP precisa emitir</strong> = <code>min(max(0, material − cobertura), corte do lastro)</code>. A FIP só emite onde não há nota no ERP <em>nem</em> pedido no site. <strong>Tarefa</strong> — não entra em percentual nenhum.</li>
               <li><strong>% a lançar</strong> e <strong>Dados Informakon</strong> = o mesmo número em % e em R$: <code>serviço medido + NF Desc.</code>. <strong>São esses dois que você digita.</strong></li>
               <li><strong>% Informakon (espelho)</strong> e <strong>Executado (espelho)</strong> = o executado do período (serviço + material medido inteiro). Servem para conciliar, <strong>não para lançar</strong>: incluem o material sem lastro no ERP.</li>
               <li><strong>Retenção</strong> = Valor Total Medido × {pctFmt(pctRetencao)} (Valor Total Medido = Mat. Medido + Wave). Abatida da NF da Wave.</li>

@@ -172,3 +172,78 @@ describe('CAMADA ③ — a nota da FIP não mexe no percentual, só na tarefa', 
     expect(m.get('comPedido')!.fipPrecisaEmitir).toBe(0)
   })
 })
+
+/**
+ * CAMADA ③ depois do corte — a FIP só emite onde não há lastro no ERP nem
+ * pedido no site.
+ *
+ * A camada ③ mede cobertura pelo SITE. O desconto que a camada ② deixa passar
+ * é, por construção, nota que o ERP TEM lançada. Onde o Informakon tem nota
+ * que o nosso cadastro não tem, a camada ③ pedia à FIP uma SEGUNDA nota para
+ * o mesmo material. Números reais da Medição 5.
+ */
+describe('CAMADA ③ — a nota da FIP depois do corte', () => {
+  it('4.2.4: desconto integralmente lastreado zera a emissão', () => {
+    // Material 4.453,17, sem nota nem pedido no site — a camada ③ pedia tudo.
+    // Mas o grupo 4 tem lastro para o desconto inteiro: a nota existe no ERP.
+    const l = linha({
+      codigo: '4.2.4', wave_servico: 6_764.62, nf_descontavel: 4_453.17,
+      desconto_ideal: 4_453.17, fip_faturar: 4_453.17, valor_total_item: 12_464.21,
+    })
+    const r = aplicarRetratoNasLinhas([l], new Map([['4', 4_453.17]]))
+    expect(l.fip_faturar).toBe(0)
+    expect(r.fipAbatidoPeloLastro).toBeCloseTo(4_453.17, 2)
+  })
+
+  it('18.1.6: a FIP emite exatamente o que foi cortado', () => {
+    // Grupo 18: desconto ideal 13.167,85 contra lastro de 3.265,48.
+    const l186 = linha({
+      codigo: '18.1.6', wave_servico: 7_708.44, nf_descontavel: 11_057.26,
+      desconto_ideal: 11_057.26, fip_faturar: 11_057.26, valor_total_item: 19_753.37,
+    })
+    const l1814 = linha({
+      codigo: '18.1.14', wave_servico: 2_367.23, nf_descontavel: 2_110.60,
+      desconto_ideal: 2_110.60, fip_faturar: 0, valor_total_item: 53_733.96,
+    })
+    aplicarRetratoNasLinhas([l186, l1814], new Map([['18', 3_265.48]]))
+    // O corte cai no maior desconto: 11.057,26 − 9.902,38 = 1.154,88.
+    expect(l186.nf_descontavel).toBeCloseTo(1_154.88, 2)
+    // E é exatamente isso que a FIP emite — o mesmo número da Folha de Rosto.
+    expect(l186.fip_faturar).toBeCloseTo(9_902.38, 2)
+  })
+
+  it('pedido aprovado no site segura a emissão mesmo com corte', () => {
+    // Grupo 1: cortado em 50.291,03, mas há 73.057,03 de pedido aprovado —
+    // a nota do fornecedor está a caminho, a FIP não emite nada.
+    const l = linha({
+      codigo: '1.8.1', wave_servico: 4_950.40, nf_descontavel: 119_977.36,
+      desconto_ideal: 119_977.36, fip_faturar: 0, valor_total_item: 124_927.76,
+    })
+    aplicarRetratoNasLinhas([l], new Map([['1', 69_686.33]]))
+    expect(l.nf_descontavel).toBeCloseTo(69_686.33, 2)
+    expect(l.fip_faturar).toBe(0)
+  })
+
+  it('grupo AUSENTE do retrato não abate a emissão', () => {
+    // A trava que impede transformar falta de informação em prova de que o
+    // material já foi faturado. Sem o grupo no retrato, nada foi conferido.
+    const l = linha({
+      codigo: '4.2.4', wave_servico: 6_764.62, nf_descontavel: 4_453.17,
+      desconto_ideal: 4_453.17, fip_faturar: 4_453.17, valor_total_item: 12_464.21,
+    })
+    const r = aplicarRetratoNasLinhas([l], new Map())
+    expect(l.fip_faturar).toBe(4_453.17)
+    expect(r.fipAbatidoPeloLastro).toBe(0)
+  })
+
+  it('nunca aumenta a emissão — o abatimento é um teto, não um cálculo novo', () => {
+    // Item com pedido cobrindo metade: a camada ③ pedia 1.000 e o corte foi
+    // 4.000. O `min` preserva o número menor, que é o da cobertura do site.
+    const l = linha({
+      codigo: '9.1.1', wave_servico: 1_000, nf_descontavel: 6_000,
+      desconto_ideal: 10_000, fip_faturar: 1_000, valor_total_item: 20_000,
+    })
+    aplicarRetratoNasLinhas([l], new Map([['9', 6_000]]))
+    expect(l.fip_faturar).toBe(1_000)
+  })
+})
