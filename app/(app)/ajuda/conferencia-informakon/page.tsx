@@ -84,10 +84,11 @@ export default function ConferenciaInformakonPage() {
             <code>% a lançar</code> cai junto. Sem retrato importado a medição não aprova.
           </p>
           <p className="text-[13px] leading-relaxed mt-2" style={{ color: 'var(--text-2)' }}>
-            O corte é automático e seguro — nunca se lança percentual acima do físico. Mas ele{' '}
-            <strong>não volta sozinho no mês seguinte</strong>: o desconto de cada medição é o
-            material daquela medição. Lançar a nota no ERP <strong>antes</strong> de aprovar é o que
-            garante o percentual cheio.
+            O corte é automático e seguro — no acumulado nunca se lança percentual acima do
+            físico. E ele <strong>não se perde</strong>: o material que ficou sem lastro segue
+            pendente e volta assim que a nota for lançada no Informakon, mesmo num mês em que o
+            item não tenha evolução nenhuma. Lançar antes de aprovar continua sendo melhor — o
+            percentual sai cheio de uma vez, em vez de ficar dois meses abaixo do físico.
           </p>
         </div>
 
@@ -135,8 +136,9 @@ export default function ConferenciaInformakonPage() {
             </Passo>
 
             <Passo n={5} titulo="Lance no ERP o que a faixa vermelha apontar">
-              É o único passo que muda o resultado. Cada nota lançada vira lastro e o{' '}
-              <code>% a lançar</code> daquele macro grupo sobe até o físico.
+              Cada nota lançada vira lastro e o <code>% a lançar</code> daquele macro grupo sobe
+              até o físico. O que não der tempo de lançar não se perde — fica pendente e entra na
+              medição seguinte —, mas lançar agora evita ficar um mês abaixo do físico.
             </Passo>
 
             <Passo n={6} titulo="Confira as duas colunas em R$ e aprove">
@@ -179,9 +181,11 @@ export default function ConferenciaInformakonPage() {
               desconto e escorrendo para o próximo, sem nunca comer a mão de obra.
             </p>
             <p className="text-[13px] mt-1.5" style={{ color: 'var(--text-2)' }}>
-              Você não paga o que o ERP não vai descontar. Mas o percentual sai{' '}
-              <strong>abaixo do físico</strong> nesta medição, e não é devolvido depois — por isso
-              o passo 5 vem antes de aprovar.
+              Você não paga o que o ERP não vai descontar. O percentual sai{' '}
+              <strong>abaixo do físico</strong> nesta medição, e o que foi cortado fica{' '}
+              <strong>pendente de lastro</strong>: entra na primeira medição depois que a nota for
+              lançada lá — inclusive num mês sem evolução física, com o selo{' '}
+              <em>material de meses anteriores</em>.
             </p>
           </div>
         </div>
@@ -192,20 +196,23 @@ export default function ConferenciaInformakonPage() {
             E na medição seguinte?
           </h2>
           <p className="text-[13px] leading-relaxed" style={{ color: 'var(--text-2)' }}>
-            <strong>Cada medição começa limpa.</strong> O desconto de um item é sempre o material
-            medido <em>naquela</em> medição, e o teto é o retrato do dia. Não há régua acumulada,
-            recuperação de meses anteriores nem transbordo entre itens — foi tudo removido, porque
-            qualquer um dos três podia empurrar o percentual acima do físico.
+            <strong>Você não precisa lembrar de nada.</strong> O desconto de um item é o material
+            que ele ainda não lançou — o do mês mais o que ficou pendente de cortes anteriores. Se
+            um macro grupo ficou sem lastro em março, o percentual de março saiu menor e a
+            diferença fica em fila. Quando a nota entrar no Informakon, ela é lançada na primeira
+            medição seguinte.
           </p>
           <p className="text-[13px] leading-relaxed mt-2" style={{ color: 'var(--text-2)' }}>
-            A consequência prática: <strong>o corte de uma medição não reaparece na seguinte</strong>.
-            Se um macro grupo ficou sem lastro em março, o percentual de março saiu menor e assim
-            fica. Em abril o cálculo olha só o material de abril. Lançar a nota antes de aprovar é o
-            que evita isso.
+            <strong>Inclusive num mês sem evolução física.</strong> O item aparece na tabela com{' '}
+            <code>% físico</code> zero e o selo <em>material de meses anteriores</em>, carregando só
+            o desconto. É proposital: sem medição não há liberação no pedido mãe, e sem liberação
+            não há de onde deduzir o faturamento direto — a nota ficaria parada no ERP para sempre.
           </p>
           <p className="text-[13px] leading-relaxed mt-2" style={{ color: 'var(--text-2)' }}>
-            O retrato também não se propaga: cada medição pede o do dia, porque o de um mês atrás
-            não diz nada sobre o que está lançado hoje.
+            O que continua valendo: nada é lançado sem lastro, e no <strong>acumulado</strong> o
+            percentual nunca passa do físico. Não voltaram a régua antiga, a retenção por “nota a
+            caminho” nem o transbordo entre macro grupos — a fila só anda contra nota que já está
+            no Informakon. E o retrato não se propaga: cada medição pede o do dia.
           </p>
         </div>
 

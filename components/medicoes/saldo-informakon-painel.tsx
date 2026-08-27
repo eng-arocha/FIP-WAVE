@@ -869,9 +869,10 @@ export function SaldoInformakonPainel({
               <div className="min-w-0" style={{ color: 'var(--text-2)' }}>
                 <strong style={{ color: '#EF4444' }}>{formatCurrency(comparacao!.totalFaltante)}</strong> de
                 desconto não têm lastro no Informakon. O boletim <strong>já cortou</strong> esse valor: o{' '}
-                <strong>% a lançar</strong> destes grupos saiu abaixo do físico, e{' '}
-                <strong>não volta no mês que vem</strong> — o desconto de cada medição é o material
-                daquela medição. Lançar as notas lá antes de aprovar é o que recupera o percentual.
+                <strong>% a lançar</strong> destes grupos saiu abaixo do físico. O valor cortado
+                fica <strong>pendente de lastro</strong> e entra na primeira medição depois que a
+                nota for lançada lá — mesmo num mês sem evolução física. Lançar agora evita ficar
+                um mês abaixo do físico.
               </div>
               <button
                 type="button"
