@@ -287,7 +287,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
       l.faturamento_direto_em_aberto.toFixed(2).replace('.', ','),
       l.fip_faturar.toFixed(2).replace('.', ','),
       l.wave_servico.toFixed(2).replace('.', ','),
-      pctFmt(pctServMedExibido(l)),
+      pctFmt(pctServMedExibido(l), 4),
       l.valor_total_medido.toFixed(2).replace('.', ','),
       l.dados_informakon.toFixed(2).replace('.', ','),
       Number(l.correcao_informakon || 0).toFixed(2).replace('.', ','),
@@ -1149,7 +1149,10 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                       <tr key={l.detalhamento_id} style={{ borderBottom: '1px solid var(--border)' }}>
                         <td style={{ ...td('font-mono'), whiteSpace: 'nowrap' }}>{l.codigo}</td>
                         <td style={td()}>{l.descricao}</td>
-                        <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{pctFmt(pctServMedExibido(l))}</td>
+                        {/* Mesmas casas do "% a lançar": comparar quatro casas
+                            contra duas fazia o percentual parecer acima do
+                            físico sem estar. */}
+                        <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{pctFmt(pctServMedExibido(l), 4)}</td>
                         <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(l.valor_total_medido)}</td>
                         <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)', padding: 0 }}>
                           <button
@@ -1166,6 +1169,12 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                           {semLastro > 0.01 && (
                             <span style={{ display: 'block', fontSize: 9, fontWeight: 600, color: '#EF4444' }}>
                               − {formatCurrency(semLastro)} sem lastro no Informakon
+                            </span>
+                          )}
+                          {/* Comparação feita nos valores CRUS, não nos exibidos. */}
+                          {pctAcimaDoFisico(l) && (
+                            <span style={{ display: 'block', fontSize: 9, fontWeight: 700, color: '#EF4444' }}>
+                              ⚠ acima do físico
                             </span>
                           )}
                         </td>
@@ -1352,6 +1361,12 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                                 − {formatCurrency(semLastro)} sem lastro no Informakon
                               </span>
                             )}
+                            {/* Comparação feita nos valores CRUS, não nos exibidos. */}
+                            {pctAcimaDoFisico(l) && (
+                              <span style={{ display: 'block', fontSize: 9, fontWeight: 700, color: '#EF4444' }}>
+                                ⚠ acima do físico
+                              </span>
+                            )}
                           </td>
                         )
                       })()}
@@ -1449,7 +1464,10 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                               <Pencil className="inline w-3 h-3 mr-0.5" />Ajustar
                             </button>
                           )}
-                          <span>{pctFmt(pctExibido)}</span>
+                          {/* Quatro casas, as mesmas do "% a lançar": comparar
+                              quatro contra duas fazia o percentual parecer
+                              acima do físico sem estar. */}
+                          <span>{pctFmt(pctExibido, 4)}</span>
                         </span>
                       </td>
                       <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(l.valor_total_medido)}</td>
@@ -2069,6 +2087,27 @@ function tituloNfDesc(l: Linha): string {
 function pctServMedExibido(l: Linha): number {
   if (typeof l.pct_serv_med === 'number' && Number.isFinite(l.pct_serv_med)) return l.pct_serv_med
   return l.pct_medido
+}
+
+/**
+ * O "% a lançar" passou do físico? Compara os valores CRUS.
+ *
+ * Comparar o que está na tela não serve: as duas colunas eram exibidas com
+ * casas decimais diferentes (quatro contra duas), e onde a terceira casa
+ * arredondava para baixo o percentual parecia acima do físico sem estar —
+ * foram onze itens numa medição só, todos dentro de 0,0048 ponto percentual,
+ * que é meia unidade da última casa exibida.
+ *
+ * A tolerância é de um centésimo da última casa que se digita no ERP: abaixo
+ * disso não há o que reportar, acima disso é adiantamento de medição.
+ */
+const TOLERANCIA_PCT = 0.00005
+
+function pctAcimaDoFisico(l: Linha): boolean {
+  const aLancar = Number(l.pct_informakon_a_lancar ?? l.pct_informakon)
+  const fisico = pctServMedExibido(l)
+  if (!Number.isFinite(aLancar) || !Number.isFinite(fisico)) return false
+  return aLancar > fisico + TOLERANCIA_PCT
 }
 
 function HelpModal({ onClose, pctRetencao }: { onClose: () => void; pctRetencao: number }) {
