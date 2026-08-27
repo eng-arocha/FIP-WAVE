@@ -15,6 +15,7 @@ import {
 } from '@/components/medicoes/breakdown-ajuste'
 import { excedeTeto, mensagemExcedeTeto } from '@/lib/medicao-teto'
 import { SaldoInformakonPainel } from '@/components/medicoes/saldo-informakon-painel'
+import { RoteiroInformakonModal } from '@/components/medicoes/roteiro-informakon'
 import {
   NfDescDrilldown, type NfDescLinha, type ColunaDrilldown,
 } from '@/components/medicoes/nf-desc-drilldown'
@@ -24,7 +25,7 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import { exportCsv } from '@/lib/utils/csv'
 import {
   ArrowLeft, Loader2, Download, Copy, Check, FileText, TrendingUp, Printer, HelpCircle, X,
-  CheckCircle2, XCircle, Mail, AlertTriangle, Info, Undo2, Pencil, ListChecks,
+  CheckCircle2, XCircle, Mail, AlertTriangle, Info, Undo2, Pencil, ListChecks, ClipboardList,
 } from 'lucide-react'
 
 interface Linha {
@@ -234,6 +235,8 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
    * Ficam atrás do toggle pra auditoria, sem poluir a leitura do dia a dia.
    */
   const [mostrarConferencia, setMostrarConferencia] = useState(false)
+  /** Roteiro de lançamento: o que se digita no ERP, por macro grupo. */
+  const [roteiroAberto, setRoteiroAberto] = useState(false)
   const breakdown = useBreakdownAjuste(contratoId, medicaoId, modalAjustar?.item.detalhamento_id ?? null)
   const usaGradeBreakdown = !!breakdown.estado?.suporta_breakdown && !forcarAgregado
 
@@ -838,6 +841,14 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
             >
               <Printer className="w-3.5 h-3.5" /> Imprimir / PDF
             </button>
+            <button
+              onClick={() => setRoteiroAberto(true)}
+              className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium"
+              style={{ background: 'rgba(16,185,129,0.14)', color: '#10B981', border: '1px solid rgba(16,185,129,0.45)' }}
+              title="O que digitar no Informakon: % por item e desconto por nota, agrupado por macro grupo"
+            >
+              <ClipboardList className="w-3.5 h-3.5" /> Roteiro de lançamento
+            </button>
             {/* O QUE FAZER. Página única e estável — o procedimento é o mesmo
                 em toda medição, então não depende de contrato nem período. */}
             <Link href="/ajuda/conferencia-informakon" target="_blank" rel="noopener noreferrer">
@@ -1072,6 +1083,13 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
 
         {/* Teto de realidade: o Informakon só desconta nota lançada lá.
             Compara por macro item e avisa ANTES de a medição ser fechada. */}
+        <RoteiroInformakonModal
+          contratoId={contratoId}
+          medicaoId={medicaoId}
+          aberto={roteiroAberto}
+          onClose={() => setRoteiroAberto(false)}
+        />
+
         <div className="mb-3">
           <SaldoInformakonPainel
             contratoId={contratoId}

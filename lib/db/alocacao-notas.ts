@@ -125,3 +125,36 @@ export async function carregarNumerosDeNotasConhecidas(
   }
   return out
 }
+
+/**
+ * Data de emissão de cada nota de fat-direto, por número normalizado.
+ *
+ * O retrato do Informakon não traz data — o ERP só devolve documento e valor.
+ * A ordem FIFO do roteiro de lançamento sai daqui, do nosso cadastro. Nota que
+ * só existe lá fica sem data e vai para o fim da fila.
+ */
+export async function carregarDatasDeNotas(
+  admin: SupabaseClient,
+  contratoId: string,
+): Promise<Map<string, string>> {
+  const { data, error } = await admin
+    .from('solicitacoes_fat_direto')
+    .select('id, nfs:notas_fiscais_fat_direto!solicitacao_id ( numero_nf, data_emissao )')
+    .eq('contrato_id', contratoId)
+    .is('deletado_em', null)
+  if (error || !data) return new Map()
+
+  const out = new Map<string, string>()
+  for (const p of data as unknown as Array<{ nfs?: Array<{ numero_nf: string | null; data_emissao: string | null }> | null }>) {
+    for (const nf of p.nfs ?? []) {
+      const numero = String(nf.numero_nf ?? '').replace(/\D/g, '').replace(/^0+/, '')
+      const data = nf.data_emissao ? String(nf.data_emissao).slice(0, 10) : ''
+      if (!numero || !data) continue
+      // A mais antiga manda: se a mesma nota aparece em dois pedidos, é a
+      // emissão que importa, e ela é uma só.
+      const atual = out.get(numero)
+      if (!atual || data < atual) out.set(numero, data)
+    }
+  }
+  return out
+}
