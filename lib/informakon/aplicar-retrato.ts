@@ -115,10 +115,15 @@ export function aplicarRetratoNasLinhas(
 
   for (const l of linhas) {
     // A nota da FIP NÃO entra: ver o bloco no topo do arquivo.
-    const aLancar = cent(num(l.wave_servico) + num(l.nf_descontavel))
+    const bruto = num(l.wave_servico) + num(l.nf_descontavel)
+    const aLancar = cent(bruto)
     l.informakon_a_lancar = aLancar
+    // O percentual sai do valor SEM arredondar. Arredondar antes de dividir
+    // empurra o resultado meio centavo para cima, e um item sai com 25,0001%
+    // contra 25,0000% de físico — percentual acima do executado por artefato
+    // de exibição. O valor em reais continua em centavos, que é o que se digita.
     l.pct_informakon_a_lancar = num(l.valor_total_item) > 0
-      ? (aLancar / num(l.valor_total_item)) * 100
+      ? (bruto / num(l.valor_total_item)) * 100
       : 0
     l.correcao_informakon = cent(num(l.dados_informakon) - aLancar)
     if (l.nf_nao_lancada_no_erp === undefined) l.nf_nao_lancada_no_erp = 0

@@ -66,12 +66,16 @@ describe('rechavearRetrato', () => {
     expect(r.totalRealocado).toBe(0)
   })
 
-  it('nota sem número fica onde está — sem identificador não há o que casar', () => {
+  it('nota SEM NÚMERO não vira lastro — o roteiro também a descarta', () => {
+    // Contá-la aqui faria a camada ② liberar percentual apoiado num saldo que
+    // o roteiro de lançamento não encontra: os dois lados leriam o mesmo
+    // retrato e discordariam do saldo do grupo.
     const r = rechavearRetrato(
       [{ chave: '10', numeroNf: null, valorADescontar: 400, valorDescontado: 0 }],
       [nosso('300', '14', 1)],
     )
-    expect(r.porChave.get('10')?.aDescontar).toBe(400)
+    expect(r.porChave.has('10')).toBe(false)
+    expect(r.totalRealocado).toBe(0)
   })
 
   it('casa 534 com 0000534 e com "NF-e 534"', () => {
