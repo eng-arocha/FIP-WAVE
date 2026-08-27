@@ -26,11 +26,18 @@
  * desconto — sobra o serviço executado. Sem digitar, o ERP liberaria R$ 500.
  *
  * ─────────────────────────────────────────────────────────────────────────
+ * O DESCONTO É DIGITADO EM BLOCO — a repartição é PROVA, não instrução
+ *
+ * No pedido mãe o desconto entra como UM valor por macro grupo; o ERP não
+ * pede nota a nota. A repartição FIFO calculada aqui existe para responder
+ * outra pergunta: esse valor tem lastro lançado que o sustente, e vindo de
+ * quais notas? É o que a conferência precisa quando o ERP recusa o bloco por
+ * falta de saldo — e é `faltaLastro` que diz de quanto é o buraco.
+ *
  * POR QUE FIFO
  *
- * Escolha do usuário: consome primeiro o saldo mais antigo. Rende mais linhas
- * para digitar do que ordenar pelo maior saldo, mas drena as notas velhas
- * primeiro e mantém a idade do saldo honesta.
+ * Escolha do usuário: consome primeiro o saldo mais antigo. Drena as notas
+ * velhas antes das novas e mantém a idade do saldo honesta.
  *
  * A data vem do NOSSO cadastro (`data_emissao`), porque o retrato do ERP não
  * traz data. Nota que só existe lá fica no fim da fila — sem data não dá para

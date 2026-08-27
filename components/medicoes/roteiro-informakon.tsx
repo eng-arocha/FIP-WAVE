@@ -135,11 +135,10 @@ export function RoteiroInformakonModal({
             </button>
           </DialogTitle>
           <DialogDescription className="text-[var(--text-2)]">
-            Por macro grupo, na ordem de digitar. O <strong>%</strong> e o <strong>desconto</strong> vão
-            no <strong>pedido mãe</strong>, consumindo o saldo acumulado no pedido de faturamento
-            direto. Nota de material nunca entra no pedido mãe. O desconto é repartido entre as
-            notas em <strong>FIFO</strong> — a mais antiga primeiro —, sem passar do saldo de
-            nenhuma. Clique em qualquer número para copiar.
+            Por macro grupo, na ordem de digitar. O <strong>%</strong> vai item a item e o
+            <strong> desconto vai em bloco</strong>, um valor por macro grupo, no{' '}
+            <strong>pedido mãe</strong> — consumindo o saldo acumulado no pedido de faturamento
+            direto. Nota de material nunca entra no pedido mãe. Clique em qualquer número para copiar.
           </DialogDescription>
         </DialogHeader>
 
@@ -234,38 +233,56 @@ export function RoteiroInformakonModal({
                   </p>
                 </Bloco>
 
-                <Bloco n="②" titulo={`digite o desconto de material — ${formatCurrency(g.desconto)}`}>
-                  {g.distribuicao.linhas.length === 0 ? (
-                    <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>
-                      {g.desconto > 0.01
-                        ? 'Sem saldo de nota no Informakon para este grupo — o desconto trava aqui.'
-                        : 'Nada a descontar neste grupo.'}
-                    </p>
-                  ) : (
-                    <table className="w-full text-[11px]">
-                      <tbody>
-                        {g.distribuicao.linhas.map(n => (
-                          <tr key={n.numero} className="border-b" style={{ borderColor: 'var(--border)' }}>
-                            <td className="py-1 pr-2 font-mono" style={{ color: 'var(--text-1)' }}>{n.documento}</td>
-                            <td className="py-1 pr-2 tabular-nums" style={{ color: 'var(--text-3)' }}>
-                              {n.data ? formatDate(n.data) : 'sem data'}
-                            </td>
-                            <td className="py-1 pr-2 text-right tabular-nums" style={{ color: 'var(--text-3)' }}>
-                              saldo {formatCurrency(n.saldo)}
-                            </td>
-                            <td className="py-1 text-right font-bold">
-                              <Copiavel texto={n.usar.toFixed(2).replace('.', ',')} cor="#10B981">
+                <Bloco n="②" titulo="digite o desconto do grupo — em bloco, no pedido mãe">
+                  {/* UM número por macro grupo: é assim que o ERP recebe. A
+                      lista FIFO abaixo não é instrução de digitação, é a prova
+                      de que existe lastro lançado sustentando esse valor. */}
+                  <p className="text-lg font-bold leading-none">
+                    <Copiavel texto={g.desconto.toFixed(2).replace('.', ',')} cor="#10B981">
+                      {formatCurrency(g.desconto)}
+                    </Copiavel>
+                  </p>
+
+                  {g.desconto > 0.01 && (
+                    <details className="mt-1.5">
+                      <summary
+                        className="text-[10px] cursor-pointer select-none print:hidden"
+                        style={{ color: 'var(--text-3)' }}
+                      >
+                        lastro que sustenta esse valor — {g.distribuicao.linhas.length} nota(s), FIFO
+                      </summary>
+                      <table className="w-full text-[11px] mt-1">
+                        <tbody>
+                          {g.distribuicao.linhas.map(n => (
+                            <tr key={n.numero} className="border-b" style={{ borderColor: 'var(--border)' }}>
+                              <td className="py-1 pr-2 font-mono" style={{ color: 'var(--text-2)' }}>{n.documento}</td>
+                              <td className="py-1 pr-2 tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                {n.data ? formatDate(n.data) : 'sem data'}
+                              </td>
+                              <td className="py-1 pr-2 text-right tabular-nums" style={{ color: 'var(--text-3)' }}>
+                                saldo {formatCurrency(n.saldo)}
+                              </td>
+                              <td className="py-1 text-right tabular-nums" style={{ color: 'var(--text-2)' }}>
                                 {formatCurrency(n.usar)}
-                              </Copiavel>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                              </td>
+                            </tr>
+                          ))}
+                          {g.distribuicao.linhas.length === 0 && (
+                            <tr><td className="py-1" style={{ color: 'var(--text-3)' }}>
+                              Nenhuma nota com saldo neste grupo.
+                            </td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </details>
                   )}
+
                   {g.distribuicao.faltaLastro > 0.01 && (
                     <p className="text-[11px] mt-1" style={{ color: '#EF4444' }}>
-                      Faltam {formatCurrency(g.distribuicao.faltaLastro)} de lastro neste grupo.
+                      <AlertTriangle className="w-3 h-3 inline mr-1" />
+                      O grupo só tem {formatCurrency(g.distribuicao.distribuido)} de lastro lançado —
+                      faltam <strong>{formatCurrency(g.distribuicao.faltaLastro)}</strong>. O ERP vai
+                      recusar o valor acima.
                     </p>
                   )}
                 </Bloco>
