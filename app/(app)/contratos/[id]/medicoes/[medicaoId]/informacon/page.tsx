@@ -164,6 +164,19 @@ interface Resp {
 const MOTIVO_PADRAO_SEM_NF =
   'fornecedor confirmou que não emitirá mais NF — material concluído com NFs já lançadas'
 
+/**
+ * Casas das colunas percentuais COMPARÁVEIS ENTRE SI — espelho, % a lançar e
+ * % físico. É a precisão que se digita no ERP.
+ *
+ * Existe como constante porque o literal já esteve fora de sincronia entre
+ * duas dessas colunas: uma saía com quatro casas e outra com duas, e onde a
+ * terceira casa arredondava para baixo o percentual parecia acima do físico
+ * sem estar. Foram onze itens numa medição só, todos dentro de 0,0048 ponto
+ * percentual — meia unidade da última casa exibida. Enquanto o número for
+ * literal em cada chamada, a dessincronia pode voltar.
+ */
+const CASAS_PCT_ERP = 4
+
 function pctFmt(v: number, casas = 2): string {
   if (!Number.isFinite(v)) return '—'
   return `${v.toFixed(casas).replace('.', ',')}%`
@@ -286,8 +299,8 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
       l.codigo,
       l.codigo_informakon ?? '',
       l.descricao,
-      pctFmt(l.pct_informakon, 4),
-      pctFmt(Number(l.pct_informakon_a_lancar ?? l.pct_informakon), 4),
+      pctFmt(l.pct_informakon, CASAS_PCT_ERP),
+      pctFmt(Number(l.pct_informakon_a_lancar ?? l.pct_informakon), CASAS_PCT_ERP),
       Number(l.informakon_a_lancar ?? l.dados_informakon).toFixed(2).replace('.', ','),
       l.material_medido.toFixed(2).replace('.', ','),
       l.nf_terceiro.toFixed(2).replace('.', ','),
@@ -297,7 +310,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
       l.faturamento_direto_em_aberto.toFixed(2).replace('.', ','),
       l.fip_faturar.toFixed(2).replace('.', ','),
       l.wave_servico.toFixed(2).replace('.', ','),
-      pctFmt(pctServMedExibido(l), 4),
+      pctFmt(pctServMedExibido(l), CASAS_PCT_ERP),
       l.valor_total_medido.toFixed(2).replace('.', ','),
       l.dados_informakon.toFixed(2).replace('.', ','),
       Number(l.correcao_informakon || 0).toFixed(2).replace('.', ','),
@@ -1163,7 +1176,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                             contra duas fazia o percentual parecer acima do
                             físico sem estar. */}
                         <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>
-                          {pctFmt(pctServMedExibido(l), 4)}
+                          {pctFmt(pctServMedExibido(l), CASAS_PCT_ERP)}
                           {ehRecuperacao(l) && (
                             <span
                               style={{ display: 'block', fontSize: 9, fontWeight: 600, color: '#F59E0B' }}
@@ -1185,7 +1198,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                           </button>
                         </td>
                         <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(59,130,246,0.08)', color: '#3B82F6' }}>
-                          {pctFmt(Number(l.pct_informakon_a_lancar ?? l.pct_informakon), 4)}
+                          {pctFmt(Number(l.pct_informakon_a_lancar ?? l.pct_informakon), CASAS_PCT_ERP)}
                           {semLastro > 0.01 && (
                             <span style={{ display: 'block', fontSize: 9, fontWeight: 600, color: '#EF4444' }}>
                               − {formatCurrency(semLastro)} sem lastro no Informakon
@@ -1353,7 +1366,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                           }}
                           title={l.alterado_por_retido ? 'Confirmado "sem mais NF": nada mais deste item aguarda o fornecedor, então o material sem cobertura passou inteiro para FIP precisa emitir. Não mexe no percentual — o serviço segue pago pelo % medido integral.' : undefined}
                         >
-                          {pctFmt(l.pct_informakon, 4)}
+                          {pctFmt(l.pct_informakon, CASAS_PCT_ERP)}
                         </td>
                       )}
                       {/* O número que se DIGITA. Difere do físico só quando o
@@ -1375,7 +1388,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                                 : `Serviço medido ${formatCurrency(l.wave_servico)} + desconto de material ${formatCurrency(l.nf_descontavel)}, sobre o valor global do item. O Informakon tem lastro para o desconto inteiro — este percentual é o próprio avanço físico.`
                             }
                           >
-                            {pctFmt(pctLancar, 4)}
+                            {pctFmt(pctLancar, CASAS_PCT_ERP)}
                             {semLastro > 0.01 && (
                               <span style={{ display: 'block', fontSize: 9, fontWeight: 600, color: '#EF4444' }}>
                                 − {formatCurrency(semLastro)} sem lastro no Informakon
@@ -1487,7 +1500,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                           {/* Quatro casas, as mesmas do "% a lançar": comparar
                               quatro contra duas fazia o percentual parecer
                               acima do físico sem estar. */}
-                          <span>{pctFmt(pctExibido, 4)}</span>
+                          <span>{pctFmt(pctExibido, CASAS_PCT_ERP)}</span>
                           {ehRecuperacao(l) && (
                             <span
                               style={{ display: 'block', fontSize: 9, fontWeight: 600, color: '#F59E0B' }}

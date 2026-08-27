@@ -154,15 +154,39 @@ async function aplicarRetratoAdotado(
   }
 }
 
+/**
+ * Quanto de material cada item já teve LANÇADO como desconto nas medições
+ * informadas. É o que a camada ① desconta do material acumulado para achar o
+ * pendente de lastro.
+ *
+ * `matUnitDe` liga o modo tolerante, e ele é obrigatório sempre que o
+ * resultado vai virar pendente. O motivo: medição aprovada antes da migration
+ * 074 tem `nf_material_descontada` gravada como zero em todos os itens — não
+ * porque nada foi descontado, mas porque a coluna não existia. Somar zero ali
+ * faria o material INTEIRO daquelas medições ressurgir como pendente, e o
+ * boletim mandaria lançar de novo o que já foi lançado e pago.
+ *
+ * Sem snapshot, portanto, a medição é tratada como tendo lançado o próprio
+ * material medido — a mesma saída que `matAcumAprovadoPorDet` já usa. A
+ * detecção é por medição, não por item: um item pode legitimamente ter
+ * descontado zero num mês em que outros descontaram.
+ *
+ * Sem `matUnitDe` a função devolve o valor cru, que é o que o snapshot da
+ * própria medição aprovada precisa (ali zero significa zero mesmo).
+ */
 async function carregarNfJaAbatida(
   admin: SupabaseClient,
   medicaoIdsAnteriores: string[],
+  matUnitDe?: (detalhamentoId: string) => number,
 ): Promise<Record<string, number>> {
   const out: Record<string, number> = {}
   if (medicaoIdsAnteriores.length === 0) return out
+  const colunas = matUnitDe
+    ? 'detalhamento_id, nf_material_descontada, quantidade_medida, medicao_id'
+    : 'detalhamento_id, nf_material_descontada'
   const { data, error } = await admin
     .from('medicao_itens')
-    .select('detalhamento_id, nf_material_descontada')
+    .select(colunas)
     .in('medicao_id', medicaoIdsAnteriores)
   if (error) {
     if (!isSchemaMissingError(error, ['nf_material_descontada'])) {
@@ -170,9 +194,30 @@ async function carregarNfJaAbatida(
     }
     return out
   }
-  for (const r of (data || []) as any[]) {
-    if (!r.detalhamento_id) continue
-    out[r.detalhamento_id] = (out[r.detalhamento_id] || 0) + Number(r.nf_material_descontada || 0)
+  const linhas = (data || []) as any[]
+  if (!matUnitDe) {
+    for (const r of linhas) {
+      if (!r.detalhamento_id) continue
+      out[r.detalhamento_id] = (out[r.detalhamento_id] || 0) + Number(r.nf_material_descontada || 0)
+    }
+    return out
+  }
+  const porMedicao = new Map<string, any[]>()
+  for (const r of linhas) {
+    const k = String(r.medicao_id ?? '')
+    const lista = porMedicao.get(k)
+    if (lista) lista.push(r)
+    else porMedicao.set(k, [r])
+  }
+  for (const rows of porMedicao.values()) {
+    const temSnapshot = rows.some(r => Number(r.nf_material_descontada || 0) > 0)
+    for (const r of rows) {
+      if (!r.detalhamento_id) continue
+      const valor = temSnapshot
+        ? Number(r.nf_material_descontada || 0)
+        : Number(r.quantidade_medida || 0) * matUnitDe(String(r.detalhamento_id))
+      out[r.detalhamento_id] = (out[r.detalhamento_id] || 0) + valor
+    }
   }
   return out
 }
@@ -522,7 +567,11 @@ export async function calcularBoletimSimulado(
       .select('id')
       .eq('contrato_id', contratoId)
       .eq('status', 'aprovado')
-    return carregarNfJaAbatida(admin, (aprovadas || []).map((m: any) => m.id))
+    return carregarNfJaAbatida(
+      admin,
+      (aprovadas || []).map((m: any) => m.id),
+      (detId) => Number(detMap.get(detId)?.valor_material_unit || 0),
+    )
   })()
 
   // Material já medido nas aprovadas — o teto da régua acumulada. Sem isto a
@@ -945,6 +994,7 @@ export async function calcularInformaconData(
     (medicoesDoContrato || [])
       .filter((m: any) => m.status === 'aprovado' && m.id !== medicaoId)
       .map((m: any) => m.id),
+    (detId) => matUnitPorDet[detId] || 0,
   )
 
   // 4) Solicitações fat-direto APROVADAS + NFs alocadas por detalhamento
