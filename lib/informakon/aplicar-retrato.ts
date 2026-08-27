@@ -33,6 +33,36 @@
  * Não é lastro zero. Sem número do outro lado não dá para afirmar que falta
  * alguma coisa, e chutar zero derrubaria o percentual do grupo inteiro. Fica
  * como está, e o painel avisa que aquele grupo não pôde ser conferido.
+ *
+ * Pela mesma razão, ausência também não é COBERTURA: o abatimento da nota da
+ * FIP abaixo só vale para grupo presente no retrato. Ler `nf_descontavel`
+ * intocado como "tem lastro para tudo" transformaria falta de informação em
+ * prova de que o material já foi faturado.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * A NOTA DA FIP DEPOIS DO CORTE
+ *
+ * A camada ③ mede cobertura pelo SITE — nota de terceiro cadastrada mais
+ * pedido aprovado. Só que o desconto que sai daqui é, por construção, nota
+ * que o ERP TEM lançada: ele não abate o que não está lá. Onde o Informakon
+ * tem nota que o nosso cadastro não tem, a camada ③ conclui que ninguém
+ * comprou o material e manda a FIP emitir — uma segunda nota para o mesmo
+ * material.
+ *
+ * O estrago não é imediato, e é por isso que passa despercebido: o desconto é
+ * limitado ao material que falta descontar, então a nota extra não abate hoje.
+ * Ela fica como lastro parado no ERP e, meses depois, cobre material real de
+ * outro item — material descontado contra uma nota que não corresponde a
+ * compra nenhuma. A Wave perde esse valor, com atraso e sem rastro.
+ *
+ * Então, depois do corte:
+ *
+ *     fip_faturar = min( fip_faturar , desconto_ideal − nf_descontavel )
+ *
+ * O segundo termo é o próprio corte: o material que NÃO teve lastro. O `min`
+ * preserva o caso do pedido aprovado — se a nota do fornecedor está a caminho,
+ * a FIP não emite, mesmo com corte. Em uma frase: a FIP só emite onde não há
+ * lastro no ERP nem pedido no site.
  */
 
 import { chaveMacroItem } from './comparar-saldo'
@@ -45,6 +75,10 @@ export interface LinhaAjustavel {
   /** Entra como o desconto IDEAL (p × M) e sai já limitado pelo lastro. */
   nf_descontavel: number
   gap_material: number
+  /** O desconto ANTES do teto — base do abatimento da nota da FIP. */
+  desconto_ideal?: number
+  /** Camada ③: quanto a FIP precisa emitir. Reduzido aqui pelo lastro do ERP. */
+  fip_faturar?: number
   /** Valor global do item (qtd contratada × valor unitário) — base do %. */
   valor_total_item: number
   informakon_a_lancar?: number
@@ -59,6 +93,8 @@ export interface ResumoRetratoAplicado {
   /** Total cortado do desconto por falta de lastro no ERP. */
   total: number
   porMacroItem: Array<{ chave: string; pedido: number; disponivel: number; falta: number }>
+  /** Quanto saiu de "FIP precisa emitir" por já haver nota lançada no ERP. */
+  fipAbatidoPeloLastro: number
 }
 
 const cent = (n: number) => Math.round(n * 100) / 100
@@ -82,9 +118,11 @@ export function aplicarRetratoNasLinhas(
     else porChave.set(k, [l])
   }
 
-  const resumo: ResumoRetratoAplicado = { total: 0, porMacroItem: [] }
+  const resumo: ResumoRetratoAplicado = { total: 0, porMacroItem: [], fipAbatidoPeloLastro: 0 }
 
   for (const [chave, doGrupo] of porChave) {
+    // Grupo fora do retrato não é conferido — nem para cortar, nem para
+    // abater a nota da FIP.
     if (!saldoPorChave.has(chave)) continue
 
     const entrada: ItemAjuste[] = doGrupo.map((l, i) => ({
@@ -114,7 +152,23 @@ export function aplicarRetratoNasLinhas(
   }
 
   for (const l of linhas) {
-    // A nota da FIP NÃO entra: ver o bloco no topo do arquivo.
+    // ── CAMADA ③ revisitada, agora que o corte é conhecido ───────────────
+    //
+    //     fip_faturar = min( fip_faturar , desconto_ideal − nf_descontavel )
+    //
+    // Só para grupo presente no retrato: ver "MACRO ITEM AUSENTE" no topo.
+    if (l.fip_faturar !== undefined && saldoPorChave.has(chaveMacroItem(l.codigo))) {
+      const ideal = num(l.desconto_ideal ?? l.nf_descontavel)
+      const semLastro = Math.max(0, cent(ideal - num(l.nf_descontavel)))
+      const antes = num(l.fip_faturar)
+      const depois = Math.min(antes, semLastro)
+      if (depois < antes) {
+        resumo.fipAbatidoPeloLastro = cent(resumo.fipAbatidoPeloLastro + (antes - depois))
+      }
+      l.fip_faturar = cent(depois)
+    }
+
+    // A nota da FIP NÃO entra no percentual: ver o bloco no topo do arquivo.
     const bruto = num(l.wave_servico) + num(l.nf_descontavel)
     const aLancar = cent(bruto)
     l.informakon_a_lancar = aLancar
