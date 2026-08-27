@@ -101,13 +101,17 @@ describe('montarGrupo — o bloco que se digita', () => {
     expect(g.distribuicao.faltaLastro).toBe(0)
   })
 
-  it('sem lastro: fecha na conta, mas a FIP precisa emitir antes', () => {
+  it('sem lastro: o percentual já vem cortado, e a FIP é tarefa à parte', () => {
+    // A CAMADA ② derruba a liberação junto com o desconto, então o bloco
+    // fecha em serviço puro. A nota da FIP não entra na conta: ela muda o
+    // percentual da medição SEGUINTE, quando virar lastro no ERP.
     const g = montarGrupo({
-      chave: '1', rotulo: 'ELÉTRICA SUBESTAÇÃO', itens,
+      chave: '1', rotulo: 'ELÉTRICA SUBESTAÇÃO',
+      itens: [{ ...itens[0], pct: 2.5, liberacao: 250 }],
       desconto: 0, servico: 250, fipPrecisaEmitir: 250,
       lastro: [],
     })
-    expect(g.fecha).toBe(true)               // 500 − 0 − 250 = 250
+    expect(g.fecha).toBe(true)               // 250 − 0 = 250
     expect(g.fipPrecisaEmitir).toBe(250)
     expect(g.distribuicao.linhas).toHaveLength(0)
   })
@@ -120,6 +124,7 @@ describe('montarGrupo — o bloco que se digita', () => {
     })
     expect(g.distribuicao.distribuido).toBe(100)
     expect(g.distribuicao.faltaLastro).toBe(150)
+    expect(g.fecha).toBe(true)               // 500 − 250 = 250
   })
 
   it('acusa quando a conta NÃO fecha — não deixa lançar no escuro', () => {

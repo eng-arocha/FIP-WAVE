@@ -174,9 +174,10 @@ export function montarGrupo(args: {
   const fip = cent(num(args.fipPrecisaEmitir))
   const distribuicao = distribuirDescontoFifo(desconto, args.lastro)
 
-  // A prova do bloco ③: o que o ERP libera, menos o que se desconta (o
-  // desconto do material mais a nota da FIP), tem de dar o serviço medido.
-  const fecha = Math.abs(liberacao - desconto - fip - servico) < 0.02
+  // A prova do bloco ③: o que o ERP libera, menos o desconto digitado, tem de
+  // dar o serviço medido. A nota da FIP NÃO entra — ela é tarefa da camada ③,
+  // e só muda o percentual da medição seguinte, quando virar lastro no ERP.
+  const fecha = Math.abs(liberacao - desconto - servico) < 0.02
 
   return {
     chave: args.chave,

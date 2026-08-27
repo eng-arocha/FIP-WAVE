@@ -8,10 +8,9 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { isSchemaMissingError } from '@/lib/db/resilient'
 import { nfReservaSaldo } from '@/lib/db/nf-status'
 import {
-  calcularDescontoDeMaterial,
-  calcularSaldoAprovadoPorItem,
-  type ItemDesconto,
-  type ItemSaldoAprovado,
+  descontoIdealDoItem,
+  classificarCoberturaDoSite,
+  type ItemCoberturaSite,
 } from '@/lib/db/desconto-material'
 import { getCodigoInformakon } from '@/lib/data/informakon-codigos'
 
@@ -53,7 +52,24 @@ async function aplicarRetratoAdotado(
   snapshotId: string | null | undefined,
   linhas: InformaconLinha[],
 ): Promise<RetratoAdotado | null> {
-  if (!snapshotId) return null
+  // Sem retrato adotado nesta medição, cai no mais recente do contrato: a
+  // CAMADA ② não é opcional. Lançar percentual que o ERP não consegue
+  // descontar entrega material à Wave sem contrapartida, e o usuário não deve
+  // precisar clicar em nada para que isso não aconteça.
+  const idEmVigor = snapshotId ?? await (async () => {
+    const r = await admin
+      .from('informakon_saldo_snapshots')
+      .select('id')
+      .eq('contrato_id', contratoId)
+      .order('referencia', { ascending: false })
+      .order('informado_em', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    return r.error ? null : ((r.data as any)?.id ?? null)
+  })()
+  if (!idEmVigor) return null
+  const adotadoExplicitamente = !!snapshotId
+  snapshotId = idEmVigor
 
   const vazio = (motivo: string): RetratoAdotado => ({
     snapshot_id: String(snapshotId),
@@ -128,6 +144,7 @@ async function aplicarRetratoAdotado(
   return {
     snapshot_id: String(snap.id),
     aplicado: true,
+    adotado_explicitamente: adotadoExplicitamente,
     referencia: snap.referencia ?? null,
     informado_em: snap.informado_em ?? null,
     total_reclassificado: resumo.total,
@@ -218,7 +235,6 @@ export interface InformaconLinha {
    * medições anteriores recuperada pela régua acumulada. Já está dentro de
    * `nf_descontavel`; não somar de novo.
    */
-  nf_recuperacao_anterior: number
   gap_material: number
   faturamento_direto_em_aberto: number
   fip_faturar: number
@@ -270,7 +286,6 @@ export interface InformaconTotais {
   nf_descontavel: number
   /** Parte do desconto que veio de NF ociosa de outro detalhamento do grupo. */
   /** Desconto que excede o material do período — recuperação de meses anteriores. */
-  nf_recuperacao_anterior: number
   gap_material: number
   faturamento_direto_em_aberto: number
   fip_faturar: number
@@ -346,6 +361,12 @@ export interface RetratoAdotado {
    * parecer que não fez nada.
    */
   aplicado: boolean
+  /**
+   * true quando a medição aponta para este retrato (migration 082). false
+   * quando o boletim caiu no retrato mais recente do contrato — o que é o
+   * caminho normal: a CAMADA ② não é opcional.
+   */
+  adotado_explicitamente?: boolean
   /** Por que não foi aplicado. Só preenchido quando `aplicado` é false. */
   motivo?: string
   referencia: string | null
@@ -574,33 +595,17 @@ export async function calcularBoletimSimulado(
     )
   }
 
-  // Mesmo balde da medição real, senão a simulação prometeria um número e a
-  // medição entregaria outro.
-  const descontoSimulado = calcularDescontoDeMaterial(
+  // Mesmas camadas da medição real, senão a simulação prometeria um número e
+  // a medição entregaria outro. A CAMADA ② (teto do Informakon) não entra na
+  // simulação: ela depende do retrato do ERP, que só existe na conferência da
+  // medição fechada. O simulado mostra o desconto IDEAL — e o real pode ser
+  // menor, nunca maior.
+  const coberturaSimulada = classificarCoberturaDoSite(
     detIdsRelevantes.map(detId => ({
       detalhamentoId: detId,
       matMedido: medidoPorDet.get(detId) ?? 0,
-      matAcumulado: (matAcumAprovadoPorDet[detId] || 0) + (medidoPorDet.get(detId) ?? 0),
-      nfAlocada: nfAlocadaPorDet[detId] || 0,
-      nfJaAbatida: nfJaAbatidaPorDet[detId] || 0,
-    })),
-  )
-
-  // Gap por item, e depois a classificação "pedido aprovado x NF nova" também
-  // no nível do grupo (ver calcularInformaconData).
-  const gapPorDet = new Map<string, number>()
-  for (const detId of detIdsRelevantes) {
-    const matMedido = medidoPorDet.get(detId) ?? 0
-    const nfDesc = descontoSimulado.get(detId)?.total ?? 0
-    gapPorDet.set(detId, Math.max(0, matMedido - nfDesc))
-  }
-  const saldoAprovadoSimulado = calcularSaldoAprovadoPorItem(
-    detIdsRelevantes.map(detId => ({
-      detalhamentoId: detId,
-      grupoId: grupoPorDet[detId] ?? null,
-      gapMaterial: gapPorDet.get(detId) ?? 0,
-      aprovado: aprovadoPorDet[detId] || 0,
-      nfAlocada: nfAlocadaPorDet[detId] || 0,
+      nfTerceiro: nfAlocadaPorDet[detId] || 0,
+      pedidoAprovado: aprovadoPorDet[detId] || 0,
     })),
   )
 
@@ -617,15 +622,11 @@ export async function calcularBoletimSimulado(
     const nfTerceiroItem = nfAlocadaPorDet[det.id] || 0
     const aprovadoItem = aprovadoPorDet[det.id] || 0
     const saldoAprovDisponivel = Math.max(0, aprovadoItem - nfTerceiroItem)
-    const nfDisponivel = Math.max(0, nfTerceiroItem - (nfJaAbatidaPorDet[det.id] || 0))
-    const descontoItem = descontoSimulado.get(det.id)
-    const nfDescontavel = descontoItem?.total ?? Math.min(matMedido, nfDisponivel)
-    const gapMaterial = Math.max(0, matMedido - nfDescontavel)
-    const fatDiretoEmAberto = Math.min(
-      gapMaterial,
-      saldoAprovadoSimulado.get(det.id) ?? saldoAprovDisponivel,
-    )
-    const fipFaturar = Math.max(0, gapMaterial - fatDiretoEmAberto)
+    void saldoAprovDisponivel
+    const nfDescontavel = descontoIdealDoItem(matMedido)
+    const cob = coberturaSimulada.get(det.id)
+    const fatDiretoEmAberto = cob?.notaACaminho ?? 0
+    const fipFaturar = cob?.fipPrecisaEmitir ?? 0
     const baseRet = matMedido + servMedido
     const retencao = baseRet * (pctRetencao / 100)
 
@@ -995,14 +996,12 @@ export async function calcularInformaconData(
   }
 
   // === Medição aprovada: o boletim mostra o que foi aprovado ===
-  //
   // O boletim recalcula ao vivo a cada abertura. Numa medição já aprovada e
   // paga isso é errado: mudanças posteriores — NF lançada depois, ou uma
-  // mudança na própria regra de desconto, como o transbordo por grupo — fariam
-  // a tela exibir números diferentes dos que foram aprovados, assinados e
-  // enviados por e-mail. `medicao_itens.nf_material_descontada` guarda o
-  // snapshot gravado na aprovação (migration 074); quando ele existe, é ele
-  // que manda. Mesmo padrão de lib/db/resumo-financeiro-obra.ts.
+  // mudança na própria regra, como esta — fariam a tela exibir números
+  // diferentes dos que foram aprovados, assinados e enviados por e-mail.
+  // `medicao_itens.nf_material_descontada` guarda o snapshot gravado na
+  // aprovação (migration 074); quando ele existe, é ele que manda.
   const snapshotAprovado = await (async () => {
     if ((medicao as any).status !== 'aprovado') return null
     const snap = await carregarNfJaAbatida(admin, [medicaoId])
@@ -1011,114 +1010,51 @@ export async function calcularInformaconData(
     return temValor ? snap : null
   })()
 
-
-  // === Transbordo do desconto dentro da tarefa ===
-  // A NF fica alocada ao seu detalhamento, mas o saldo ocioso cobre o material
-  // medido dos vizinhos da mesma tarefa. Sem isto, material comprado por lote
-  // (prumada) e medido por pavimento aparece como "sem NF" enquanto a nota
-  // está parada ao lado. Ver lib/db/desconto-transbordo.ts.
+  // ── CAMADA ① — o desconto ideal de cada item é o material medido ────────
   //
-  // O pool considera TODOS os detalhamentos do contrato com NF alocada — não
-  // só os medidos nesta medição —, porque é justamente na nota de um item
-  // ainda não medido que costuma estar o saldo.
+  //     desconto ideal = p × M
   //
-  // Além dos detalhamentos com NF, entram também os que já foram medidos em
-  // medições anteriores: é o material acumulado deles que forma o teto da
-  // régua da tarefa.
-  const descontoPorDet = (() => {
-    const vistos = new Set<string>()
-    const itensDesconto: ItemDesconto[] = []
-
-    for (const it of (medicaoItens || []) as any[]) {
-      const det = it.detalhamento
-      if (!det?.id) continue
-      vistos.add(det.id)
-      const matMedido = Number(it.quantidade_medida || 0) * Number(det.valor_material_unit || 0)
-      itensDesconto.push({
-        detalhamentoId: det.id,
-        matMedido,
-        matAcumulado: matAcumuladoDe(det.id),
-        // Teto da régua: a nota é consumida até o espaço CONTRATUAL do item,
-        // não até a obra alcançar. Ver desconto-transbordo.ts.
-        nfAlocada: nfAlocadaPorDet[det.id] || 0,
-        nfJaAbatida: nfJaAbatidaPorDet[det.id] || 0,
-      })
-    }
-
-    // Detalhamentos fora desta medição: entram com matMedido = 0 e não recebem
-    // desconto, mas somam NF e material acumulado ao balde do grupo.
-    for (const detId of new Set([...Object.keys(nfAlocadaPorDet), ...Object.keys(acumulado)])) {
-      if (vistos.has(detId)) continue
-      itensDesconto.push({
-        detalhamentoId: detId,
-        matMedido: 0,
-        matAcumulado: matAcumuladoDe(detId),
-        nfAlocada: nfAlocadaPorDet[detId] || 0,
-        nfJaAbatida: nfJaAbatidaPorDet[detId] || 0,
-      })
-    }
-
-    return calcularDescontoDeMaterial(itensDesconto)
-  })()
-
-  // === Desconto e gap por detalhamento, apurados antes das linhas ===
+  // Sem régua acumulada e sem teto pela nota que temos cadastrada. O que
+  // limita esse ideal é a CAMADA ②, e ela olha o lastro real do Informakon
+  // (ver lib/informakon/aplicar-retrato.ts). Quem manda no desconto é o ERP,
+  // porque é ele que executa o abatimento.
   //
-  // A classificação do gap ("pedido aprovado, NF pendente" x "FIP a criar")
-  // precisa do gap de TODOS os itens do grupo antes de decidir o de cada um —
-  // por isso este passo vem separado do map que monta as linhas.
-  const calculoPorDet = new Map<string, {
-    nfDescontavel: number
-    nfRecuperacao: number
-    gapMaterial: number
-  }>()
+  // Medição aprovada não recalcula: vale o que foi gravado na aprovação.
+  const calculoPorDet = new Map<string, { nfDescontavel: number; gapMaterial: number }>()
   for (const it of (medicaoItens || []) as any[]) {
     const det = it.detalhamento
     if (!det?.id) continue
     const matMedido = Number(it.quantidade_medida || 0) * Number(det.valor_material_unit || 0)
-    const nfDisponivel = Math.max(
-      0,
-      (nfAlocadaPorDet[det.id] || 0) - (nfJaAbatidaPorDet[det.id] || 0),
-    )
-    const desconto = descontoPorDet.get(det.id)
-    const calculado = desconto?.total ?? Math.min(matMedido, nfDisponivel)
-    // Medição aprovada: vale o que foi gravado na aprovação, não o recálculo.
     const nfDescontavel = snapshotAprovado
       ? Number(snapshotAprovado[det.id] ?? 0)
-      : calculado
+      : descontoIdealDoItem(matMedido)
     calculoPorDet.set(det.id, {
       nfDescontavel,
-      nfRecuperacao: snapshotAprovado
-        ? Math.max(0, nfDescontavel - matMedido)
-        : (desconto?.recuperacao ?? 0),
       gapMaterial: Math.max(0, matMedido - nfDescontavel),
     })
   }
 
-  // Pedido aprovado sem NF, com transbordo dentro da tarefa. A FIP compra
-  // por lote: o pedido costuma estar alocado a um detalhamento diferente do
-  // medido, e sem isto o sistema pede "NF nova" para material já comprado.
-  const saldoAprovadoPorDet = (() => {
-    const vistos = new Set<string>()
-    const entrada: ItemSaldoAprovado[] = []
-    for (const [detId, c] of calculoPorDet) {
-      vistos.add(detId)
+  // ── CAMADA ③ — a nota da FIP, por item ──────────────────────────────────
+  //
+  //     cobertura no site = NF de terceiro lançada + saldo de pedido aprovado
+  //     cobertura ≥ p × M  →  a FIP não emite; falta lançar a nota no ERP
+  //     cobertura <  p × M  →  a FIP emite a diferença
+  //
+  // Não mexe no percentual. Responde outra pergunta: alguém precisa emitir
+  // nota, ou é só atraso de lançamento? Ver lib/db/desconto-material.ts.
+  const coberturaPorDet = (() => {
+    const entrada: ItemCoberturaSite[] = []
+    for (const it of (medicaoItens || []) as any[]) {
+      const det = it.detalhamento
+      if (!det?.id) continue
       entrada.push({
-        detalhamentoId: detId,
-        gapMaterial: c.gapMaterial,
-        aprovado: aprovadoPorDet[detId] || 0,
-        nfAlocada: nfAlocadaPorDet[detId] || 0,
+        detalhamentoId: det.id,
+        matMedido: Number(it.quantidade_medida || 0) * Number(det.valor_material_unit || 0),
+        nfTerceiro: nfAlocadaPorDet[det.id] || 0,
+        pedidoAprovado: aprovadoPorDet[det.id] || 0,
       })
     }
-    for (const detId of Object.keys(aprovadoPorDet)) {
-      if (vistos.has(detId)) continue
-      entrada.push({
-        detalhamentoId: detId,
-        gapMaterial: 0,
-        aprovado: aprovadoPorDet[detId] || 0,
-        nfAlocada: nfAlocadaPorDet[detId] || 0,
-      })
-    }
-    return calcularSaldoAprovadoPorItem(entrada)
+    return classificarCoberturaDoSite(entrada)
   })()
 
   // Monta linhas
@@ -1145,21 +1081,23 @@ export async function calcularInformaconData(
       const nfJaAbatida  = nfJaAbatidaPorDet[det.id] || 0
       const nfDisponivel = Math.max(0, nfTerceiroItem - nfJaAbatida)
 
-      // Desconto acumulado com transbordo (ver lib/db/desconto-transbordo.ts).
+      // CAMADA ① — o desconto ideal. A CAMADA ② o limita depois, com o
+      // lastro real do Informakon (aplicarRetratoNasLinhas).
       const c = calculoPorDet.get(det.id)
       const nfDescontavel  = c?.nfDescontavel ?? 0
-      const nfRecuperacao  = c?.nfRecuperacao ?? 0
       const gapMaterial    = c?.gapMaterial ?? 0
-      // "Retido" = parte do Gap que tem pedido aprovado esperando a nota. Se o
-      // aprovador confirmou que NÃO vem mais nota, não há o que esperar: o Gap
-      // inteiro vira "FIP Fat-Dir". Ver o bloco da confirmação logo abaixo.
+
+      // CAMADA ③ — o material já está comprado, ou a FIP precisa emitir?
+      // Nenhuma das duas mexe no percentual: "Nota a caminho" é informação e
+      // "FIP precisa emitir" é tarefa. Confirmação "sem mais NF" tira a espera:
+      // se não vem mais nota do fornecedor, o material inteiro é da FIP.
+      const cob = coberturaPorDet.get(det.id)
       const faturamentoDiretoEmAberto = Boolean(it.confirmacao_sem_nf)
         ? 0
-        : Math.min(
-            gapMaterial,
-            saldoAprovadoPorDet.get(det.id) ?? saldoAprovDisponivel,
-          )
-      const fipFaturar     = Math.max(0, gapMaterial - faturamentoDiretoEmAberto)
+        : (cob?.notaACaminho ?? 0)
+      const fipFaturar = Boolean(it.confirmacao_sem_nf)
+        ? Math.max(0, matMedido - nfTerceiroItem)
+        : (cob?.fipPrecisaEmitir ?? 0)
 
       const valorGlobalItem = qtdContr * valorUnit
       const valorServicoTotalItem = qtdContr * servUnit
@@ -1308,7 +1246,6 @@ export async function calcularInformaconData(
         nf_disponivel: nfDisponivel,
         saldo_aprovado: saldoAprovDisponivel,
         nf_descontavel: nfDescontavel,
-        nf_recuperacao_anterior: nfRecuperacao,
         gap_material: gapMaterial,
         faturamento_direto_em_aberto: faturamentoDiretoEmAberto,
         fip_faturar: fipFaturar,
@@ -1381,7 +1318,6 @@ export async function calcularInformaconData(
       nf_disponivel: Math.max(0, (nfAlocadaPorDet[det.id] || 0) - (nfJaAbatidaPorDet[det.id] || 0)),
       saldo_aprovado: Math.max(0, (aprovadoPorDet[det.id] || 0) - (nfAlocadaPorDet[det.id] || 0)),
       nf_descontavel: 0,
-      nf_recuperacao_anterior: 0,
       gap_material: 0,
       faturamento_direto_em_aberto: 0,
       fip_faturar: 0,
@@ -1445,7 +1381,6 @@ export async function calcularInformaconData(
     nf_terceiro:     acc.nf_terceiro     + l.nf_terceiro,
     saldo_aprovado:  acc.saldo_aprovado  + l.saldo_aprovado,
     nf_descontavel:  acc.nf_descontavel  + l.nf_descontavel,
-    nf_recuperacao_anterior: acc.nf_recuperacao_anterior + l.nf_recuperacao_anterior,
     gap_material:    acc.gap_material    + l.gap_material,
     faturamento_direto_em_aberto: acc.faturamento_direto_em_aberto + l.faturamento_direto_em_aberto,
     fip_faturar:     acc.fip_faturar     + l.fip_faturar,
@@ -1467,8 +1402,7 @@ export async function calcularInformaconData(
     servico_liquido: 0,
   }), {
     material_medido: 0, servico_medido: 0,
-    nf_terceiro: 0, saldo_aprovado: 0, nf_descontavel: 0,
-    nf_recuperacao_anterior: 0, gap_material: 0,
+    nf_terceiro: 0, saldo_aprovado: 0, nf_descontavel: 0, gap_material: 0,
     faturamento_direto_em_aberto: 0, fip_faturar: 0, nf_nao_lancada_no_erp: 0, wave_servico: 0,
     valor_total_medido: 0, dados_informakon: 0, total_informakon: 0,
     informakon_a_lancar: 0, correcao_informakon: 0,
