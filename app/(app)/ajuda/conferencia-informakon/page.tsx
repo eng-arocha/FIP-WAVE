@@ -76,11 +76,18 @@ export default function ConferenciaInformakonPage() {
           <p className="text-[13px] leading-relaxed" style={{ color: 'var(--text-2)' }}>
             O Informakon <strong>só desconta nota que já está lançada lá</strong>. Se o boletim manda
             descontar mais do que existe, o ERP libera o valor cheio e desconta só o que tem — a Wave
-            recebe a diferença sem contrapartida. E não se corrige sozinho depois: na aprovação o
-            boletim grava aquela nota como <em>abatida</em>, e ela sai da fila para sempre.
+            recebe a diferença sem contrapartida.
           </p>
           <p className="text-[13px] leading-relaxed mt-2" style={{ color: 'var(--text-2)' }}>
-            Este procedimento existe para descobrir isso <strong>antes</strong> de digitar o percentual.
+            Por isso o retrato do ERP virou <strong>parte do cálculo</strong>, não conferência
+            opcional: o boletim limita o desconto de cada macro grupo ao que existe lançado lá, e o{' '}
+            <code>% a lançar</code> cai junto. Sem retrato importado a medição não aprova.
+          </p>
+          <p className="text-[13px] leading-relaxed mt-2" style={{ color: 'var(--text-2)' }}>
+            O corte é automático e seguro — nunca se lança percentual acima do físico. Mas ele{' '}
+            <strong>não volta sozinho no mês seguinte</strong>: o desconto de cada medição é o
+            material daquela medição. Lançar a nota no ERP <strong>antes</strong> de aprovar é o que
+            garante o percentual cheio.
           </p>
         </div>
 
@@ -127,12 +134,15 @@ export default function ConferenciaInformakonPage() {
               </span>
             </Passo>
 
-            <Passo n={5} titulo="Decida: lançar ou adotar">
-              As duas saídas estão no quadro seguinte. Qualquer uma resolve.
+            <Passo n={5} titulo="Lance no ERP o que a faixa vermelha apontar">
+              É o único passo que muda o resultado. Cada nota lançada vira lastro e o{' '}
+              <code>% a lançar</code> daquele macro grupo sobe até o físico.
             </Passo>
 
-            <Passo n={6} titulo="Aprove a medição">
-              Só depois que a faixa de cima estiver verde, ou que o retrato tiver sido adotado.
+            <Passo n={6} titulo="Confira as duas colunas em R$ e aprove">
+              <code>Valor medido</code> e <code>Desconto fat-direto</code>, com a soma no rodapé.
+              Se as duas fecham com o que você espera, aprove — o corte pelo lastro já está
+              aplicado na tabela.
             </Passo>
           </ol>
         </div>
@@ -147,12 +157,12 @@ export default function ConferenciaInformakonPage() {
               <CheckCircle2 className="w-4 h-4" /> Consegue lançar as notas
             </p>
             <p className="text-[13px] leading-relaxed mt-1.5" style={{ color: 'var(--text-2)' }}>
-              É o melhor caminho — o dinheiro é legítimo, só falta o registro. Lance as notas da lista
-              no Informakon, volte, clique em <strong>Atualizar retrato</strong> e cole de novo.
-              A faixa fica verde.
+              É o caminho certo — o dinheiro é legítimo, só falta o registro. Lance as notas da
+              lista no Informakon, volte, clique em <strong>Atualizar retrato</strong> e cole de
+              novo. A faixa fica verde.
             </p>
             <p className="text-[13px] mt-1.5 font-medium" style={{ color: 'var(--text-1)' }}>
-              Lance o <code>% a lançar</code> cheio, como está na tabela.
+              O <code>% a lançar</code> sobe sozinho até o físico. Digite-o como está na tabela.
             </p>
           </div>
 
@@ -164,12 +174,14 @@ export default function ConferenciaInformakonPage() {
               <ShieldCheck className="w-4 h-4" /> Não dá tempo de lançar
             </p>
             <p className="text-[13px] leading-relaxed mt-1.5" style={{ color: 'var(--text-2)' }}>
-              Clique em <strong>Adotar nesta medição</strong>. Deve aparecer a confirmação verde com o
-              valor reclassificado; se aparecer vermelho, o texto diz o motivo.
+              Não há botão a apertar: o boletim <strong>já cortou</strong>. O desconto do macro
+              grupo foi limitado ao <code>Vlr. a Desc</code> do ERP, começando pelo item de maior
+              desconto e escorrendo para o próximo, sem nunca comer a mão de obra.
             </p>
             <p className="text-[13px] mt-1.5" style={{ color: 'var(--text-2)' }}>
-              O <code>% a lançar</code> cai <strong>no valor exato</strong> do que o ERP não tem. Você
-              não paga o que ele não vai descontar, e a nota continua na fila.
+              Você não paga o que o ERP não vai descontar. Mas o percentual sai{' '}
+              <strong>abaixo do físico</strong> nesta medição, e não é devolvido depois — por isso
+              o passo 5 vem antes de aprovar.
             </p>
           </div>
         </div>
@@ -180,14 +192,20 @@ export default function ConferenciaInformakonPage() {
             E na medição seguinte?
           </h2>
           <p className="text-[13px] leading-relaxed" style={{ color: 'var(--text-2)' }}>
-            <strong>Você não precisa lembrar de nada.</strong> Como a aprovação não gravou aquela nota
-            como abatida, a régua acumulada a devolve sozinha em <code>NF Desc.</code> na medição
-            seguinte. Se nesse meio-tempo ela foi lançada no ERP, desconta ali e o assunto encerra.
+            <strong>Cada medição começa limpa.</strong> O desconto de um item é sempre o material
+            medido <em>naquela</em> medição, e o teto é o retrato do dia. Não há régua acumulada,
+            recuperação de meses anteriores nem transbordo entre itens — foi tudo removido, porque
+            qualquer um dos três podia empurrar o percentual acima do físico.
           </p>
           <p className="text-[13px] leading-relaxed mt-2" style={{ color: 'var(--text-2)' }}>
-            Só uma ressalva: <strong>a adoção vale para aquela medição e só para ela</strong>. Não se
-            propaga. Cada medição começa limpa e pede o retrato do dia — que é o certo, porque o
-            retrato de um mês atrás não diz nada sobre o que está lançado hoje.
+            A consequência prática: <strong>o corte de uma medição não reaparece na seguinte</strong>.
+            Se um macro grupo ficou sem lastro em março, o percentual de março saiu menor e assim
+            fica. Em abril o cálculo olha só o material de abril. Lançar a nota antes de aprovar é o
+            que evita isso.
+          </p>
+          <p className="text-[13px] leading-relaxed mt-2" style={{ color: 'var(--text-2)' }}>
+            O retrato também não se propaga: cada medição pede o do dia, porque o de um mês atrás
+            não diz nada sobre o que está lançado hoje.
           </p>
         </div>
 
@@ -198,9 +216,9 @@ export default function ConferenciaInformakonPage() {
           </h2>
           <ul className="text-[13px] space-y-1.5 list-disc pl-5" style={{ color: 'var(--text-2)' }}>
             <li>
-              <strong>Painel de conferência</strong> — no boletim, acima da tabela. Três faixas:
-              o veredito nota a nota, o botão de adotar (ou a confirmação verde com{' '}
-              <em>Desfazer</em>), e a tabela por macro item.
+              <strong>Painel de conferência</strong> — no boletim, acima da tabela. O veredito
+              nota a nota nas faixas de cima, e a tabela por macro item embaixo, que mostra o
+              lastro do ERP contra o desconto pedido.
             </li>
             <li>
               <strong>Qual nota falta</strong> — clique no valor em{' '}
@@ -208,9 +226,9 @@ export default function ConferenciaInformakonPage() {
               já classificadas: não está no ERP, lançada e a descontar, ou já descontada.
             </li>
             <li>
-              <strong>Coluna <code>% a lançar</code></strong> — na linha afetada aparece{' '}
-              <span style={{ color: '#EF4444' }}>⚠ R$ X sem lançar no ERP</span> embaixo do percentual.
-              O tooltip diz de onde vem.
+              <strong>Coluna <code>% a lançar</code></strong> — na linha cortada pelo lastro o
+              percentual sai abaixo do <code>% Serv. Med.</code>, e o tooltip diz quanto foi
+              cortado e por quê.
             </li>
             <li>
               <strong>CSV e &quot;copiar&quot;</strong> — coluna <em>Não lançada no ERP</em>.

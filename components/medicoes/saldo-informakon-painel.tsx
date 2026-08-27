@@ -558,12 +558,12 @@ export function SaldoInformakonPainel({
   }
 
   /**
-   * Adota o retrato NESTA medição (ou desfaz).
+   * Fixa o retrato NESTA medição (ou desfaz).
    *
-   * Adotar não é um filtro visual: o boletim passa a reclassificar de "NF
-   * Desc." para "não lançada no ERP" o que o ERP não tem, o "% a lançar" cai
-   * na diferença exata, e a aprovação deixa de marcar essa nota como abatida
-   * — ela volta na medição seguinte. Por isso é explícito e reversível.
+   * O corte pelo lastro do ERP é aplicado sempre — sem retrato fixado o
+   * boletim usa o mais recente do contrato. Fixar serve para congelar QUAL
+   * retrato vale nesta medição, para que o boletim impresso hoje continue
+   * batendo depois que alguém atualizar o retrato. Por isso é reversível.
    */
   async function alternarAdocao(adotar: boolean) {
     setAdotando(true)
@@ -803,10 +803,10 @@ export function SaldoInformakonPainel({
           </div>
         )}
 
-        {/* ── Adotar o retrato nesta medição ───────────────────────────
-            Adotar reclassifica o desconto que o ERP não tem: o "% a lançar"
-            cai na diferença exata e a nota continua na fila para o mês que
-            vem, em vez de ser marcada como abatida na aprovação. */}
+        {/* ── Fixar o retrato nesta medição ────────────────────────────
+            O corte pelo lastro já está aplicado na tabela, com ou sem retrato
+            fixado. Fixar congela QUAL retrato vale aqui, para o boletim
+            impresso não mudar quando o retrato do contrato for atualizado. */}
         {retratoAdotado && retratoAdotado.aplicado === false ? (
           <div className="px-3 pb-3">
             <div
@@ -840,11 +840,11 @@ export function SaldoInformakonPainel({
             >
               <div className="min-w-0" style={{ color: '#10B981' }}>
                 <strong>
-                  Retrato de {retratoAdotado.referencia ? formatDate(retratoAdotado.referencia) : '—'} adotado nesta medição.
+                  Retrato de {retratoAdotado.referencia ? formatDate(retratoAdotado.referencia) : '—'} fixado nesta medição.
                 </strong>{' '}
-                {formatCurrency(retratoAdotado.total_reclassificado)} saíram de &quot;NF Desc.&quot; e viraram
-                &quot;não lançada no ERP&quot;: o <strong>% a lançar</strong> já está corrigido, e essa nota
-                volta na próxima medição em vez de ser dada como abatida.
+                O corte pelo lastro usa este retrato, não o mais recente do contrato:{' '}
+                {formatCurrency(retratoAdotado.total_reclassificado)} saíram de &quot;NF Desc.&quot; porque o
+                ERP não tem como descontar. O boletim impresso hoje continua batendo depois.
               </div>
               {podeEditar && medicaoAberta && (
                 <button
@@ -867,11 +867,11 @@ export function SaldoInformakonPainel({
               style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.35)' }}
             >
               <div className="min-w-0" style={{ color: 'var(--text-2)' }}>
-                Lançar o <strong>% a lançar</strong> como está hoje libera{' '}
-                <strong style={{ color: '#EF4444' }}>{formatCurrency(comparacao!.totalFaltante)}</strong> que o
-                Informakon não tem como descontar — e a aprovação ainda daria essa nota por abatida,
-                tirando ela da fila. O melhor caminho é lançar a nota lá. Se não der agora,
-                adote o retrato: o % cai nesse valor exato e a nota volta no mês que vem.
+                <strong style={{ color: '#EF4444' }}>{formatCurrency(comparacao!.totalFaltante)}</strong> de
+                desconto não têm lastro no Informakon. O boletim <strong>já cortou</strong> esse valor: o{' '}
+                <strong>% a lançar</strong> destes grupos saiu abaixo do físico, e{' '}
+                <strong>não volta no mês que vem</strong> — o desconto de cada medição é o material
+                daquela medição. Lançar as notas lá antes de aprovar é o que recupera o percentual.
               </div>
               <button
                 type="button"
@@ -881,7 +881,7 @@ export function SaldoInformakonPainel({
                 style={{ borderColor: 'rgba(239,68,68,0.45)', color: '#EF4444' }}
               >
                 {adotando ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
-                Adotar nesta medição
+                Fixar este retrato
               </button>
             </div>
           </div>
