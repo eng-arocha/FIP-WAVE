@@ -1259,7 +1259,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                               temCorrecao
                                 ? (correcao > 0
                                     ? `Corrigido em −${formatCurrency(correcao)}: material que não pode ser liberado agora. A nota da FIP (${formatCurrency(l.fip_faturar)}) ENTRA no valor — ela precisa estar emitida e lançada antes de você usar este percentual.`
-                                    : `Corrigido em +${formatCurrency(Math.abs(correcao))}: há nota de medições anteriores voltando pela régua acumulada.`)
+                                    : `Corrigido em +${formatCurrency(Math.abs(correcao))}: RECUPERAÇÃO. A nota abate ${formatCurrency(l.nf_descontavel)} de material, e só ${formatCurrency(l.material_medido)} foi medido neste período — a diferença é material de medições anteriores que ainda não tinha sido descontado. Como o Informakon desconta a nota do valor que você libera, é preciso liberar mais para que sobre o serviço: ${formatCurrency(Number(l.informakon_a_lancar ?? 0))} − ${formatCurrency(l.nf_descontavel)} = ${formatCurrency(l.wave_servico)}, exatamente o serviço medido. Por isso este % fica acima do % físico; ele se compensa nos meses seguintes e nunca passa de 100% acumulado, porque o desconto do item é limitado ao material contratado dele.`)
                                 : 'Sem correção: nada neste item aguarda nota de fornecedor.',
                               naoLancada > 0.01
                                 ? `Desses, ${formatCurrency(naoLancada)} é nota que EXISTE aqui e não está lançada no Informakon (retrato adotado). Lance a nota lá e este percentual sobe.`
@@ -1270,6 +1270,10 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                             {temCorrecao && (
                               <span style={{ display: 'block', fontSize: 9, fontWeight: 400, opacity: 0.8 }}>
                                 {correcao > 0 ? '−' : '+'}{formatCurrency(Math.abs(correcao))}
+                                {/* Recuperação: o % passa do físico porque a nota
+                                    abate material de medições anteriores. Sem
+                                    nomear, o número parece erro. */}
+                                {correcao < 0 ? ' recuperação' : ''}
                               </span>
                             )}
                             {naoLancada > 0.01 && (
