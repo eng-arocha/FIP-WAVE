@@ -61,6 +61,11 @@ interface Linha {
   nf_descontavel: number
   /** NF de material deste item já abatida em medições aprovadas anteriores. */
   nf_ja_abatida?: number
+  /**
+   * O desconto ANTES do teto do ERP: material acumulado menos o já lançado.
+   * `desconto_ideal − nf_descontavel` é o que segue pendente de lastro.
+   */
+  desconto_ideal?: number
   /** Material medido que ficou sem desconto por falta de lastro no ERP. */
   gap_material: number
   faturamento_direto_em_aberto: number
@@ -159,6 +164,19 @@ interface Resp {
 const MOTIVO_PADRAO_SEM_NF =
   'fornecedor confirmou que não emitirá mais NF — material concluído com NFs já lançadas'
 
+/**
+ * Casas das colunas percentuais COMPARÁVEIS ENTRE SI — espelho, % a lançar e
+ * % físico. É a precisão que se digita no ERP.
+ *
+ * Existe como constante porque o literal já esteve fora de sincronia entre
+ * duas dessas colunas: uma saía com quatro casas e outra com duas, e onde a
+ * terceira casa arredondava para baixo o percentual parecia acima do físico
+ * sem estar. Foram onze itens numa medição só, todos dentro de 0,0048 ponto
+ * percentual — meia unidade da última casa exibida. Enquanto o número for
+ * literal em cada chamada, a dessincronia pode voltar.
+ */
+const CASAS_PCT_ERP = 4
+
 function pctFmt(v: number, casas = 2): string {
   if (!Number.isFinite(v)) return '—'
   return `${v.toFixed(casas).replace('.', ',')}%`
@@ -254,7 +272,12 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
   const [mostrarTodos, setMostrarTodos] = useState(false)
   const linhasExibidas = useMemo(() => {
     if (!data) return []
-    return mostrarTodos ? data.linhas : data.linhas.filter(l => l.quantidade_medida > 0)
+    // Item sem evolução física no mês continua na tela quando carrega
+    // desconto: é a linha de recuperação — o lastro entrou agora e o material
+    // de meses anteriores precisa ser lançado para poder ser deduzido.
+    return mostrarTodos
+      ? data.linhas
+      : data.linhas.filter(l => l.quantidade_medida > 0 || Number(l.nf_descontavel || 0) > 0.005)
   }, [data, mostrarTodos])
 
   // Quantos itens com ajuste aplicado (fonte: totais.itens_com_ajuste se vier
@@ -276,8 +299,8 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
       l.codigo,
       l.codigo_informakon ?? '',
       l.descricao,
-      pctFmt(l.pct_informakon, 4),
-      pctFmt(Number(l.pct_informakon_a_lancar ?? l.pct_informakon), 4),
+      pctFmt(l.pct_informakon, CASAS_PCT_ERP),
+      pctFmt(Number(l.pct_informakon_a_lancar ?? l.pct_informakon), CASAS_PCT_ERP),
       Number(l.informakon_a_lancar ?? l.dados_informakon).toFixed(2).replace('.', ','),
       l.material_medido.toFixed(2).replace('.', ','),
       l.nf_terceiro.toFixed(2).replace('.', ','),
@@ -287,7 +310,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
       l.faturamento_direto_em_aberto.toFixed(2).replace('.', ','),
       l.fip_faturar.toFixed(2).replace('.', ','),
       l.wave_servico.toFixed(2).replace('.', ','),
-      pctFmt(pctServMedExibido(l), 4),
+      pctFmt(pctServMedExibido(l), CASAS_PCT_ERP),
       l.valor_total_medido.toFixed(2).replace('.', ','),
       l.dados_informakon.toFixed(2).replace('.', ','),
       Number(l.correcao_informakon || 0).toFixed(2).replace('.', ','),
@@ -1137,8 +1160,8 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                     <th style={{ ...th(), textAlign: 'left' }}>Descrição</th>
                     <th style={{ ...th(), textAlign: 'right' }} title="Avanço físico medido no período.">% físico</th>
                     <th style={{ ...th(), textAlign: 'right' }} title="Material + serviço medidos no período, em reais.">Valor medido</th>
-                    <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.06)' }} title="O material medido no período, até o lastro que o Informakon tem lançado no macro grupo. Clique para ver a conta e as notas do item.">Desconto fat-direto <span style={{ opacity: 0.55, fontWeight: 400 }}>⧉</span></th>
-                    <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.10)', color: '#3B82F6' }} title="É este que se digita no Informakon: (serviço medido + desconto fat-direto) ÷ valor global do item. Nunca passa do % físico.">% a lançar</th>
+                    <th style={{ ...th(), textAlign: 'right', background: 'rgba(15,118,110,0.06)' }} title="O material ainda não lançado deste item — o do período mais o que sobrou de cortes anteriores — até o lastro que o Informakon tem no macro grupo. Clique para ver a conta e as notas do item.">Desconto fat-direto <span style={{ opacity: 0.55, fontWeight: 400 }}>⧉</span></th>
+                    <th style={{ ...th(), textAlign: 'right', background: 'rgba(59,130,246,0.10)', color: '#3B82F6' }} title="É este que se digita no Informakon: (serviço medido + desconto fat-direto) ÷ valor global do item. No acumulado nunca passa do % físico.">% a lançar</th>
                     <th style={th()} />
                   </tr>
                 </thead>
@@ -1152,7 +1175,17 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                         {/* Mesmas casas do "% a lançar": comparar quatro casas
                             contra duas fazia o percentual parecer acima do
                             físico sem estar. */}
-                        <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{pctFmt(pctServMedExibido(l), 4)}</td>
+                        <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>
+                          {pctFmt(pctServMedExibido(l), CASAS_PCT_ERP)}
+                          {ehRecuperacao(l) && (
+                            <span
+                              style={{ display: 'block', fontSize: 9, fontWeight: 600, color: '#F59E0B' }}
+                              title="O item não teve evolução física neste mês. O desconto ao lado é material de medições anteriores que ficou sem lastro na época e agora tem nota lançada no Informakon — precisa ser lançado para poder ser deduzido."
+                            >
+                              material de meses anteriores
+                            </span>
+                          )}
+                        </td>
                         <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(l.valor_total_medido)}</td>
                         <td style={{ ...td('tabular-nums'), textAlign: 'right', background: 'rgba(15,118,110,0.04)', padding: 0 }}>
                           <button
@@ -1165,7 +1198,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                           </button>
                         </td>
                         <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(59,130,246,0.08)', color: '#3B82F6' }}>
-                          {pctFmt(Number(l.pct_informakon_a_lancar ?? l.pct_informakon), 4)}
+                          {pctFmt(Number(l.pct_informakon_a_lancar ?? l.pct_informakon), CASAS_PCT_ERP)}
                           {semLastro > 0.01 && (
                             <span style={{ display: 'block', fontSize: 9, fontWeight: 600, color: '#EF4444' }}>
                               − {formatCurrency(semLastro)} sem lastro no Informakon
@@ -1333,7 +1366,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                           }}
                           title={l.alterado_por_retido ? 'Confirmado "sem mais NF": nada mais deste item aguarda o fornecedor, então o material sem cobertura passou inteiro para FIP precisa emitir. Não mexe no percentual — o serviço segue pago pelo % medido integral.' : undefined}
                         >
-                          {pctFmt(l.pct_informakon, 4)}
+                          {pctFmt(l.pct_informakon, CASAS_PCT_ERP)}
                         </td>
                       )}
                       {/* O número que se DIGITA. Difere do físico só quando o
@@ -1355,7 +1388,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                                 : `Serviço medido ${formatCurrency(l.wave_servico)} + desconto de material ${formatCurrency(l.nf_descontavel)}, sobre o valor global do item. O Informakon tem lastro para o desconto inteiro — este percentual é o próprio avanço físico.`
                             }
                           >
-                            {pctFmt(pctLancar, 4)}
+                            {pctFmt(pctLancar, CASAS_PCT_ERP)}
                             {semLastro > 0.01 && (
                               <span style={{ display: 'block', fontSize: 9, fontWeight: 600, color: '#EF4444' }}>
                                 − {formatCurrency(semLastro)} sem lastro no Informakon
@@ -1467,7 +1500,15 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                           {/* Quatro casas, as mesmas do "% a lançar": comparar
                               quatro contra duas fazia o percentual parecer
                               acima do físico sem estar. */}
-                          <span>{pctFmt(pctExibido, 4)}</span>
+                          <span>{pctFmt(pctExibido, CASAS_PCT_ERP)}</span>
+                          {ehRecuperacao(l) && (
+                            <span
+                              style={{ display: 'block', fontSize: 9, fontWeight: 600, color: '#F59E0B' }}
+                              title="Sem evolução física neste mês. O desconto da linha é material de medições anteriores que ficou sem lastro na época e agora tem nota lançada no Informakon."
+                            >
+                              material de meses anteriores
+                            </span>
+                          )}
                         </span>
                       </td>
                       <td style={{ ...td('tabular-nums'), textAlign: 'right' }}>{formatCurrency(l.valor_total_medido)}</td>
@@ -2090,24 +2131,47 @@ function pctServMedExibido(l: Linha): number {
 }
 
 /**
- * O "% a lançar" passou do físico? Compara os valores CRUS.
+ * O "% a lançar" passou do físico? Compara os valores CRUS, na base ACUMULADA.
  *
- * Comparar o que está na tela não serve: as duas colunas eram exibidas com
- * casas decimais diferentes (quatro contra duas), e onde a terceira casa
- * arredondava para baixo o percentual parecia acima do físico sem estar —
- * foram onze itens numa medição só, todos dentro de 0,0048 ponto percentual,
- * que é meia unidade da última casa exibida.
+ * Duas armadilhas foram aprendidas aqui.
+ *
+ * A primeira: comparar o que está na tela não serve. As duas colunas já foram
+ * exibidas com casas decimais diferentes (quatro contra duas), e onde a
+ * terceira casa arredondava para baixo o percentual parecia acima do físico
+ * sem estar — foram onze itens numa medição só, todos dentro de 0,0048 ponto
+ * percentual, que é meia unidade da última casa exibida.
+ *
+ * A segunda: comparar o PERÍODO não serve. A linha de recuperação — material
+ * de meses anteriores cujo lastro entrou agora — tem físico zero no mês e
+ * dispararia o alarme sempre, embora o item já esteja executado. O invariante
+ * é acumulado, e é ele que traduz "nunca lançar mais do que a obra fez":
+ *
+ *     (p_acum × MO + desconto já lançado + desconto de agora) / G  ≤  p_acum
  *
  * A tolerância é de um centésimo da última casa que se digita no ERP: abaixo
  * disso não há o que reportar, acima disso é adiantamento de medição.
  */
 const TOLERANCIA_PCT = 0.00005
 
+/** O percentual ACUMULADO que o contrato terá depois desta medição. */
+function pctALancarAcumulado(l: Linha): number {
+  const g = Number(l.valor_total_item || 0)
+  if (!(g > 0)) return 0
+  const servicoAcum = (Number(l.pct_acumulado || 0) / 100) * Number(l.valor_servico_total_item || 0)
+  const descontoAcum = Number(l.nf_ja_abatida || 0) + Number(l.nf_descontavel || 0)
+  return ((servicoAcum + descontoAcum) / g) * 100
+}
+
 function pctAcimaDoFisico(l: Linha): boolean {
-  const aLancar = Number(l.pct_informakon_a_lancar ?? l.pct_informakon)
-  const fisico = pctServMedExibido(l)
+  const aLancar = pctALancarAcumulado(l)
+  const fisico = Number(l.pct_acumulado || 0)
   if (!Number.isFinite(aLancar) || !Number.isFinite(fisico)) return false
   return aLancar > fisico + TOLERANCIA_PCT
+}
+
+/** Linha de recuperação: sem evolução física no mês, mas com desconto. */
+function ehRecuperacao(l: Linha): boolean {
+  return Number(l.quantidade_medida || 0) <= 0 && Number(l.nf_descontavel || 0) > 0.005
 }
 
 function HelpModal({ onClose, pctRetencao }: { onClose: () => void; pctRetencao: number }) {

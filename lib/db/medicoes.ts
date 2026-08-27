@@ -421,6 +421,57 @@ export async function aprovarMedicao(id: string, aprovadorNome: string, aprovado
     }))
   }
 
+  // ── Linhas de recuperação: item sem evolução física, mas com desconto ────
+  //
+  // Quando um corte por falta de lastro deixou material pendente e a nota
+  // finalmente entrou no Informakon, o boletim lança esse desconto num item
+  // que não tem quantidade medida no mês — e portanto não tem row em
+  // `medicao_itens`. Sem criar o row aqui, `nf_material_descontada` não é
+  // gravada em lugar nenhum e o MESMO desconto reaparece na medição seguinte,
+  // já consumido no ERP. O row entra com quantidade zero: ele não mede nada,
+  // só carrega a baixa do material.
+  if (snapshotOk && nfDescontadaPorDet.size > 0) {
+    const jaTemRow = new Set(
+      ((itensSnap || []) as any[]).map(it => String(it.detalhamento_id)),
+    )
+    const novos = Array.from(nfDescontadaPorDet.entries())
+      .filter(([detId, valor]) => valor > 0 && !jaTemRow.has(String(detId)))
+    if (novos.length > 0) {
+      const { data: detsRec } = await supabase
+        .from('detalhamentos')
+        .select('id, valor_unitario, valor_material_unit, valor_servico_unit')
+        .in('id', novos.map(([detId]) => detId))
+      const unitPorDet = new Map<string, number>()
+      for (const d of (detsRec || []) as any[]) {
+        unitPorDet.set(String(d.id), Number(
+          d.valor_unitario
+          || (Number(d.valor_material_unit || 0) + Number(d.valor_servico_unit || 0)),
+        ))
+      }
+      const rows = novos.map(([detId, valor]) => ({
+        medicao_id: id,
+        detalhamento_id: detId,
+        quantidade_medida: 0,
+        valor_unitario: unitPorDet.get(String(detId)) ?? 0,
+        valor_material_correspondente: 0,
+        valor_servico_correspondente: 0,
+        nf_material_descontada: valor,
+      }))
+      const ins = await supabase.from('medicao_itens').insert(rows)
+      if (ins.error) {
+        // Sem as colunas da migration 074 não há saldo corrido para gravar —
+        // criar o row vazio só poluiria a medição. Falha alto: gravar errado
+        // aqui vira desconto em dobro daqui a um mês.
+        console.error(
+          '[aprovarMedicao] falha ao criar linhas de recuperacao:',
+          (ins.error as any).message,
+          { medicaoId: id, itens: rows.length },
+        )
+        throw ins.error
+      }
+    }
+  }
+
   await supabase.from('aprovacoes').insert({
     medicao_id: id,
     aprovador_nome: aprovadorNome,

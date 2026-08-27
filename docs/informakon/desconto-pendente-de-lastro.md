@@ -1,8 +1,8 @@
 # Desconto pendente de lastro
 
-> Registro de uma lacuna da regra de três camadas, levantada pelo usuário em
-> 27/08/2026. **Ainda não implementada** — este documento é a análise e a
-> proposta, para decisão.
+> Lacuna da regra de três camadas, levantada pelo usuário em 27/08/2026.
+> **Implementada no mesmo dia**, com uma proteção a mais do que a proposta
+> original previa — ver "Medição sem snapshot", no fim.
 
 ## A pergunta
 
@@ -124,8 +124,30 @@ chega onde a obra já está.
 O dado já existe: `material_acumulado` e `nf_ja_abatida` por detalhamento já
 são calculados e carregados hoje.
 
-## Risco a checar antes
+## Riscos tratados na implementação
 
-O `Σ nf_descontavel já lançado` tem de sair **só de medições aprovadas**, senão
-duas medições abertas ao mesmo tempo consomem o mesmo pendente. É o mesmo
-cuidado do `snapshotAprovado`, que já congela o desconto das aprovadas.
+**Duas medições abertas.** O `Σ já lançado` sai só de medições **aprovadas**,
+senão duas medições abertas ao mesmo tempo consomem o mesmo pendente. É o
+mesmo cuidado do `snapshotAprovado`.
+
+**Medição sem snapshot.** Medição aprovada antes da migration 074 tem
+`nf_material_descontada` gravada como zero em todos os itens — não porque nada
+foi descontado, mas porque a coluna não existia. Somado cru, isso faria o
+material INTEIRO daquelas medições ressurgir como pendente, e o boletim
+mandaria lançar de novo o que já foi lançado e pago. Quando uma medição inteira
+não tem snapshot, ela passa a ser tratada como tendo lançado o próprio material
+medido. A detecção é por medição, não por item: um item pode legitimamente ter
+descontado zero num mês em que outros descontaram.
+
+**A linha precisa existir no banco.** A aprovação cria row em `medicao_itens`
+com quantidade zero para os itens que só carregam desconto. Sem isso
+`nf_material_descontada` não seria gravada em lugar nenhum e o mesmo desconto
+reapareceria no mês seguinte, já consumido no ERP.
+
+## O que ainda depende de conferência do usuário
+
+Se alguma medição aprovada COM snapshot lançou menos material do que mediu — o
+estoque retido por "nota a caminho", por exemplo —, essa diferença passa a
+aparecer como pendente na próxima medição, limitada ao lastro do ERP. É o
+comportamento correto, mas muda números que já foram conferidos. Confira o
+total do boletim antes de aprovar.

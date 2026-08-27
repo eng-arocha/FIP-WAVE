@@ -9,6 +9,7 @@ import { isSchemaMissingError } from '@/lib/db/resilient'
 import { nfReservaSaldo } from '@/lib/db/nf-status'
 import {
   descontoIdealDoItem,
+  descontoPendenteDeLastro,
   classificarCoberturaDoSite,
   type ItemCoberturaSite,
 } from '@/lib/db/desconto-material'
@@ -153,15 +154,39 @@ async function aplicarRetratoAdotado(
   }
 }
 
+/**
+ * Quanto de material cada item já teve LANÇADO como desconto nas medições
+ * informadas. É o que a camada ① desconta do material acumulado para achar o
+ * pendente de lastro.
+ *
+ * `matUnitDe` liga o modo tolerante, e ele é obrigatório sempre que o
+ * resultado vai virar pendente. O motivo: medição aprovada antes da migration
+ * 074 tem `nf_material_descontada` gravada como zero em todos os itens — não
+ * porque nada foi descontado, mas porque a coluna não existia. Somar zero ali
+ * faria o material INTEIRO daquelas medições ressurgir como pendente, e o
+ * boletim mandaria lançar de novo o que já foi lançado e pago.
+ *
+ * Sem snapshot, portanto, a medição é tratada como tendo lançado o próprio
+ * material medido — a mesma saída que `matAcumAprovadoPorDet` já usa. A
+ * detecção é por medição, não por item: um item pode legitimamente ter
+ * descontado zero num mês em que outros descontaram.
+ *
+ * Sem `matUnitDe` a função devolve o valor cru, que é o que o snapshot da
+ * própria medição aprovada precisa (ali zero significa zero mesmo).
+ */
 async function carregarNfJaAbatida(
   admin: SupabaseClient,
   medicaoIdsAnteriores: string[],
+  matUnitDe?: (detalhamentoId: string) => number,
 ): Promise<Record<string, number>> {
   const out: Record<string, number> = {}
   if (medicaoIdsAnteriores.length === 0) return out
+  const colunas = matUnitDe
+    ? 'detalhamento_id, nf_material_descontada, quantidade_medida, medicao_id'
+    : 'detalhamento_id, nf_material_descontada'
   const { data, error } = await admin
     .from('medicao_itens')
-    .select('detalhamento_id, nf_material_descontada')
+    .select(colunas)
     .in('medicao_id', medicaoIdsAnteriores)
   if (error) {
     if (!isSchemaMissingError(error, ['nf_material_descontada'])) {
@@ -169,9 +194,30 @@ async function carregarNfJaAbatida(
     }
     return out
   }
-  for (const r of (data || []) as any[]) {
-    if (!r.detalhamento_id) continue
-    out[r.detalhamento_id] = (out[r.detalhamento_id] || 0) + Number(r.nf_material_descontada || 0)
+  const linhas = (data || []) as any[]
+  if (!matUnitDe) {
+    for (const r of linhas) {
+      if (!r.detalhamento_id) continue
+      out[r.detalhamento_id] = (out[r.detalhamento_id] || 0) + Number(r.nf_material_descontada || 0)
+    }
+    return out
+  }
+  const porMedicao = new Map<string, any[]>()
+  for (const r of linhas) {
+    const k = String(r.medicao_id ?? '')
+    const lista = porMedicao.get(k)
+    if (lista) lista.push(r)
+    else porMedicao.set(k, [r])
+  }
+  for (const rows of porMedicao.values()) {
+    const temSnapshot = rows.some(r => Number(r.nf_material_descontada || 0) > 0)
+    for (const r of rows) {
+      if (!r.detalhamento_id) continue
+      const valor = temSnapshot
+        ? Number(r.nf_material_descontada || 0)
+        : Number(r.quantidade_medida || 0) * matUnitDe(String(r.detalhamento_id))
+      out[r.detalhamento_id] = (out[r.detalhamento_id] || 0) + valor
+    }
   }
   return out
 }
@@ -229,10 +275,16 @@ export interface InformaconLinha {
   nf_disponivel: number
   saldo_aprovado: number
   nf_descontavel: number
-  /** Parte do desconto que veio de NF ociosa de outro detalhamento do grupo. */
   /**
-   * Parte do desconto que excede o material medido NO PERÍODO — nota de
-   * medições anteriores recuperada pela régua acumulada. Já está dentro de
+   * O desconto ANTES do teto do ERP (camada ①): material acumulado do item
+   * menos o que já foi lançado em medições aprovadas. A diferença para
+   * `nf_descontavel` é o que ficou pendente de lastro — o valor que só pode
+   * ser lançado quando a nota entrar no Informakon.
+   */
+  desconto_ideal: number
+  /**
+   * Parte do desconto que excede o material medido NO PERÍODO — material de
+   * medições anteriores cujo lastro só apareceu agora. Já está dentro de
    * `nf_descontavel`; não somar de novo.
    */
   gap_material: number
@@ -284,8 +336,9 @@ export interface InformaconTotais {
   nf_terceiro: number
   saldo_aprovado: number
   nf_descontavel: number
-  /** Parte do desconto que veio de NF ociosa de outro detalhamento do grupo. */
-  /** Desconto que excede o material do período — recuperação de meses anteriores. */
+  /** Σ do desconto ideal antes do teto do ERP. */
+  desconto_ideal: number
+  /** Desconto que excede o material do período — material antigo com lastro novo. */
   gap_material: number
   faturamento_direto_em_aberto: number
   fip_faturar: number
@@ -514,7 +567,11 @@ export async function calcularBoletimSimulado(
       .select('id')
       .eq('contrato_id', contratoId)
       .eq('status', 'aprovado')
-    return carregarNfJaAbatida(admin, (aprovadas || []).map((m: any) => m.id))
+    return carregarNfJaAbatida(
+      admin,
+      (aprovadas || []).map((m: any) => m.id),
+      (detId) => Number(detMap.get(detId)?.valor_material_unit || 0),
+    )
   })()
 
   // Material já medido nas aprovadas — o teto da régua acumulada. Sem isto a
@@ -600,12 +657,22 @@ export async function calcularBoletimSimulado(
   // simulação: ela depende do retrato do ERP, que só existe na conferência da
   // medição fechada. O simulado mostra o desconto IDEAL — e o real pode ser
   // menor, nunca maior.
+  // Base acumulada, como na medição real: material já medido nas aprovadas
+  // mais o do período, menos o que já foi lançado. Usar só o período aqui
+  // prometeria um desconto menor do que a medição real vai entregar sempre
+  // que um corte anterior tenha deixado pendente.
+  const pendenteSimulado = (detId: string) => descontoPendenteDeLastro(
+    (matAcumAprovadoPorDet[detId] || 0) + (medidoPorDet.get(detId) ?? 0),
+    nfJaAbatidaPorDet[detId] || 0,
+  )
+
   const coberturaSimulada = classificarCoberturaDoSite(
     detIdsRelevantes.map(detId => ({
       detalhamentoId: detId,
-      matMedido: medidoPorDet.get(detId) ?? 0,
+      matMedido: pendenteSimulado(detId),
       nfTerceiro: nfAlocadaPorDet[detId] || 0,
       pedidoAprovado: aprovadoPorDet[detId] || 0,
+      jaConsumido: nfJaAbatidaPorDet[detId] || 0,
     })),
   )
 
@@ -623,7 +690,7 @@ export async function calcularBoletimSimulado(
     const aprovadoItem = aprovadoPorDet[det.id] || 0
     const saldoAprovDisponivel = Math.max(0, aprovadoItem - nfTerceiroItem)
     void saldoAprovDisponivel
-    const nfDescontavel = descontoIdealDoItem(matMedido)
+    const nfDescontavel = descontoIdealDoItem(pendenteSimulado(det.id))
     const cob = coberturaSimulada.get(det.id)
     const fatDiretoEmAberto = cob?.notaACaminho ?? 0
     const fipFaturar = cob?.fipPrecisaEmitir ?? 0
@@ -927,6 +994,7 @@ export async function calcularInformaconData(
     (medicoesDoContrato || [])
       .filter((m: any) => m.status === 'aprovado' && m.id !== medicaoId)
       .map((m: any) => m.id),
+    (detId) => matUnitPorDet[detId] || 0,
   )
 
   // 4) Solicitações fat-direto APROVADAS + NFs alocadas por detalhamento
@@ -1010,27 +1078,54 @@ export async function calcularInformaconData(
     return temValor ? snap : null
   })()
 
-  // ── CAMADA ① — o desconto ideal de cada item é o material medido ────────
+  // ── CAMADA ① — o desconto ideal é o material ainda não lançado ──────────
   //
-  //     desconto ideal = p × M
+  //     desconto ideal = material acumulado − desconto já lançado nas aprovadas
   //
-  // Sem régua acumulada e sem teto pela nota que temos cadastrada. O que
-  // limita esse ideal é a CAMADA ②, e ela olha o lastro real do Informakon
-  // (ver lib/informakon/aplicar-retrato.ts). Quem manda no desconto é o ERP,
-  // porque é ele que executa o abatimento.
+  // A base é ACUMULADA, não o material do período. O motivo é o mês em que o
+  // lastro sobe e o item não tem evolução física: a nota finalmente entra no
+  // Informakon, mas o item já está 100% executado e não seria medido. Com a
+  // base do período o desconto sairia zero, o lastro ficaria parado no ERP e
+  // o item congelaria abaixo do físico para sempre — sem liberação não há de
+  // onde deduzir o faturamento direto.
+  //
+  // Isto NÃO é a régua acumulada que foi removida. A régua liberava
+  // percentual contra material que ninguém tinha comprovado. Aqui o teto
+  // continua sendo a CAMADA ②, que só deixa passar o que o ERP tem lançado
+  // (ver lib/informakon/aplicar-retrato.ts). O invariante também é acumulado,
+  // e vale por construção:
+  //
+  //     desconto acumulado = jaLancado + ideal ≤ jaLancado + pendente = matAcum
+  //     ⇒ (p_acum × MO + desconto acumulado) / G ≤ p_acum
   //
   // Medição aprovada não recalcula: vale o que foi gravado na aprovação.
-  const calculoPorDet = new Map<string, { nfDescontavel: number; gapMaterial: number }>()
+  const calculoPorDet = new Map<string, {
+    nfDescontavel: number
+    descontoIdeal: number
+    gapMaterial: number
+    pendente: number
+  }>()
+  const pendenteDeLastro = (detId: string) => descontoPendenteDeLastro(
+    matAcumuladoDe(detId),
+    nfJaAbatidaPorDet[detId] || 0,
+  )
   for (const it of (medicaoItens || []) as any[]) {
     const det = it.detalhamento
     if (!det?.id) continue
-    const matMedido = Number(it.quantidade_medida || 0) * Number(det.valor_material_unit || 0)
+    const pendente = pendenteDeLastro(det.id)
+    const descontoIdeal = descontoIdealDoItem(pendente)
     const nfDescontavel = snapshotAprovado
       ? Number(snapshotAprovado[det.id] ?? 0)
-      : descontoIdealDoItem(matMedido)
+      : descontoIdeal
     calculoPorDet.set(det.id, {
       nfDescontavel,
-      gapMaterial: Math.max(0, matMedido - nfDescontavel),
+      descontoIdeal: snapshotAprovado ? nfDescontavel : descontoIdeal,
+      // `gap_material` é o desconto ideal que ficou SEM LASTRO. Ele nasce
+      // zero — o corte é somado aqui pela camada ② (aplicar-retrato.ts).
+      // Numa medição aprovada o snapshot já vem cortado, e a diferença para
+      // o pendente é justamente o que ficou de fora naquele mês.
+      gapMaterial: Math.max(0, pendente - nfDescontavel),
+      pendente,
     })
   }
 
@@ -1049,7 +1144,27 @@ export async function calcularInformaconData(
       if (!det?.id) continue
       entrada.push({
         detalhamentoId: det.id,
-        matMedido: Number(it.quantidade_medida || 0) * Number(det.valor_material_unit || 0),
+        // Mesma base da camada ①: o material que ainda falta descontar, não
+        // só o do período. Senão as duas camadas falariam de materiais
+        // diferentes e a pergunta "a FIP precisa emitir?" seria respondida
+        // sobre um valor que o boletim nem está mandando descontar.
+        matMedido: pendenteDeLastro(det.id),
+        nfTerceiro: nfAlocadaPorDet[det.id] || 0,
+        pedidoAprovado: aprovadoPorDet[det.id] || 0,
+        jaConsumido: nfJaAbatidaPorDet[det.id] || 0,
+      })
+    }
+    // Detalhamento sem linha nesta medição também precisa de veredito: se ele
+    // tem pendente de lastro, vai virar linha de recuperação e a pergunta
+    // "a FIP emite?" vale igual.
+    const jaTem = new Set(entrada.map(e => e.detalhamentoId))
+    for (const det of (todosDetalhamentos || []) as any[]) {
+      if (!det?.id || jaTem.has(det.id)) continue
+      const pendente = pendenteDeLastro(det.id)
+      if (pendente <= 0) continue
+      entrada.push({
+        detalhamentoId: det.id,
+        matMedido: pendente,
         nfTerceiro: nfAlocadaPorDet[det.id] || 0,
         pedidoAprovado: aprovadoPorDet[det.id] || 0,
         jaConsumido: nfJaAbatidaPorDet[det.id] || 0,
@@ -1086,7 +1201,9 @@ export async function calcularInformaconData(
       // lastro real do Informakon (aplicarRetratoNasLinhas).
       const c = calculoPorDet.get(det.id)
       const nfDescontavel  = c?.nfDescontavel ?? 0
+      const descontoIdeal  = c?.descontoIdeal ?? nfDescontavel
       const gapMaterial    = c?.gapMaterial ?? 0
+      const pendenteItem   = c?.pendente ?? 0
 
       // CAMADA ③ — o material já está comprado, ou a FIP precisa emitir?
       // Nenhuma das duas mexe no percentual: "Nota a caminho" é informação e
@@ -1097,7 +1214,7 @@ export async function calcularInformaconData(
         ? 0
         : (cob?.notaACaminho ?? 0)
       const fipFaturar = Boolean(it.confirmacao_sem_nf)
-        ? Math.max(0, matMedido - nfTerceiroItem)
+        ? Math.max(0, pendenteItem - nfTerceiroItem)
         : (cob?.fipPrecisaEmitir ?? 0)
 
       const valorGlobalItem = qtdContr * valorUnit
@@ -1210,6 +1327,7 @@ export async function calcularInformaconData(
         nf_disponivel: nfDisponivel,
         saldo_aprovado: saldoAprovDisponivel,
         nf_descontavel: nfDescontavel,
+        desconto_ideal: descontoIdeal,
         gap_material: gapMaterial,
         faturamento_direto_em_aberto: faturamentoDiretoEmAberto,
         fip_faturar: fipFaturar,
@@ -1254,6 +1372,10 @@ export async function calcularInformaconData(
     const valorGlobalItem = qtdContr * valorUnit
     const valorServicoTotalItem = qtdContr * servUnit
     const qtdAcum = acumulado[det.id] || 0
+    // Medição aprovada não inventa desconto novo: o que valeu está congelado
+    // nos itens que existiam. Linha virtual em medição aprovada é sempre zero.
+    const pendenteVirtual = snapshotAprovado ? 0 : pendenteDeLastro(det.id)
+    const coberturaVirtual = pendenteVirtual > 0 ? coberturaPorDet.get(det.id) : undefined
     const linhaVirtual: InformaconLinha = {
       medicao_item_id: null,
       existe_no_banco: false,
@@ -1281,10 +1403,15 @@ export async function calcularInformaconData(
       nf_ja_abatida: nfJaAbatidaPorDet[det.id] || 0,
       nf_disponivel: Math.max(0, (nfAlocadaPorDet[det.id] || 0) - (nfJaAbatidaPorDet[det.id] || 0)),
       saldo_aprovado: Math.max(0, (aprovadoPorDet[det.id] || 0) - (nfAlocadaPorDet[det.id] || 0)),
-      nf_descontavel: 0,
+      // Item sem evolução no mês NÃO é item sem desconto. Se um corte de
+      // medição anterior deixou material pendente e o lastro entrou agora,
+      // é exatamente aqui que ele tem de ser lançado — é a única linha em
+      // que isso pode aparecer, porque o item não vai mais ser medido.
+      nf_descontavel: pendenteVirtual,
+      desconto_ideal: pendenteVirtual,
       gap_material: 0,
-      faturamento_direto_em_aberto: 0,
-      fip_faturar: 0,
+      faturamento_direto_em_aberto: coberturaVirtual?.notaACaminho ?? 0,
+      fip_faturar: coberturaVirtual?.fipPrecisaEmitir ?? 0,
       nf_nao_lancada_no_erp: 0,
       wave_servico: 0,
       valor_total_medido: 0,
@@ -1350,6 +1477,7 @@ export async function calcularInformaconData(
     nf_terceiro:     acc.nf_terceiro     + l.nf_terceiro,
     saldo_aprovado:  acc.saldo_aprovado  + l.saldo_aprovado,
     nf_descontavel:  acc.nf_descontavel  + l.nf_descontavel,
+    desconto_ideal:  acc.desconto_ideal  + Number(l.desconto_ideal || 0),
     gap_material:    acc.gap_material    + l.gap_material,
     faturamento_direto_em_aberto: acc.faturamento_direto_em_aberto + l.faturamento_direto_em_aberto,
     fip_faturar:     acc.fip_faturar     + l.fip_faturar,
@@ -1371,7 +1499,7 @@ export async function calcularInformaconData(
     servico_liquido: 0,
   }), {
     material_medido: 0, servico_medido: 0,
-    nf_terceiro: 0, saldo_aprovado: 0, nf_descontavel: 0, gap_material: 0,
+    nf_terceiro: 0, saldo_aprovado: 0, nf_descontavel: 0, desconto_ideal: 0, gap_material: 0,
     faturamento_direto_em_aberto: 0, fip_faturar: 0, nf_nao_lancada_no_erp: 0, wave_servico: 0,
     valor_total_medido: 0, dados_informakon: 0, total_informakon: 0,
     informakon_a_lancar: 0, correcao_informakon: 0,

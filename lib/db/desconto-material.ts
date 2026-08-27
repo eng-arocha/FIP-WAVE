@@ -5,16 +5,30 @@
  * ─────────────────────────────────────────────────────────────────────────
  * ① A MEDIÇÃO, POR ITEM
  *
- *     desconto ideal = p × M      (material contratado × avanço físico do período)
+ *     desconto ideal = material acumulado do item − desconto já lançado
  *
- * É só isso. Sem régua acumulada, sem teto pela nota que temos cadastrada, sem
- * compensação entre itens. O item mediu 30% do material, o desconto ideal é
- * 30% do material — a mesma conta da coluna L da Folha de Rosto.
+ * Sem teto pela nota que temos cadastrada e sem compensação entre itens. Num
+ * mês em que nada foi cortado antes, isso é exatamente `p × M` — a mesma conta
+ * da coluna L da Folha de Rosto.
  *
- * O que limita esse ideal é a camada ②, e ela olha o LASTRO REAL do Informakon
- * por macro grupo, não a nossa nota. Nota nossa que ainda não foi lançada lá
- * não desconta nada; nota lançada lá que nós não temos cadastrada desconta.
- * Quem manda no desconto é o ERP, porque é ele que executa o abatimento.
+ * A base é ACUMULADA por um motivo só, e ele é decisivo: quando um corte por
+ * falta de lastro deixa material pendente, a nota entra no Informakon meses
+ * depois, e nesse mês o item pode não ter evolução física nenhuma. Com base no
+ * período o desconto sairia zero, o lastro ficaria parado no ERP e o item
+ * congelaria abaixo do físico para sempre — e sem liberação não há de onde
+ * deduzir o faturamento direto.
+ *
+ * Isto não é a régua acumulada que foi removida: aquela liberava percentual
+ * contra material que ninguém tinha comprovado. O que limita este ideal é a
+ * camada ②, e ela olha o LASTRO REAL do Informakon por macro grupo, não a
+ * nossa nota. Nota nossa que ainda não foi lançada lá não desconta nada; nota
+ * lançada lá que nós não temos cadastrada desconta. Quem manda no desconto é
+ * o ERP, porque é ele que executa o abatimento.
+ *
+ * O invariante vale por construção, na base acumulada:
+ *
+ *     desconto acumulado = jaLancado + ideal ≤ jaLancado + pendente = matAcum
+ *     ⇒ (p_acum × MO + desconto acumulado) / G ≤ p_acum
  *
  * ─────────────────────────────────────────────────────────────────────────
  * ③ A NOTA DA FIP, POR ITEM
@@ -37,9 +51,25 @@
 
 const norm = (v: unknown) => Math.max(0, Number(v) || 0)
 
-/** Camada ①: o desconto ideal do item é o material medido no período. */
-export function descontoIdealDoItem(matMedido: number): number {
-  return norm(matMedido)
+/** Camada ①: o desconto ideal do item é o material ainda não lançado. */
+export function descontoIdealDoItem(materialADescontar: number): number {
+  return norm(materialADescontar)
+}
+
+/**
+ * O material do item que ainda não virou desconto lançado.
+ *
+ * `matAcumulado` inclui o período corrente; `jaLancado` é a soma de
+ * `medicao_itens.nf_material_descontada` das medições APROVADAS anteriores —
+ * só das aprovadas, senão duas medições abertas ao mesmo tempo consomem o
+ * mesmo pendente e o desconto sai em dobro.
+ *
+ * Nunca negativo: se as aprovadas lançaram mais do que o material acumulado
+ * de hoje (um ajuste de quantidade para baixo, por exemplo), o item não deve
+ * nada — mas também não devolve.
+ */
+export function descontoPendenteDeLastro(matAcumulado: number, jaLancado: number): number {
+  return Math.max(0, norm(matAcumulado) - norm(jaLancado))
 }
 
 export interface ItemCoberturaSite {
