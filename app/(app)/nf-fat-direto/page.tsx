@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import Link from 'next/link'
+import { normalizarNumeroNota } from '@/lib/informakon/conferir-notas'
 import { Topbar } from '@/components/layout/topbar'
 import { MaximizableCard } from '@/components/ui/maximizable-card'
 import { ColumnFilter, passaFiltro } from '@/components/ui/column-filter'
@@ -50,6 +51,23 @@ export default function NfFatDiretoPage() {
   const [solicitacoes, setSolicitacoes] = useState<Solicitacao[]>([])
   const [loading, setLoading] = useState(true)
   const [filtroStatus, setFiltroStatus] = useState<'todos' | 'com_saldo' | 'sem_saldo'>('com_saldo')
+  /**
+   * `?nf=546` — chegou clicando no número da nota no painel de conferência do
+   * boletim. Sem isto, "a NF 546 não está no Informakon" obrigava a procurar
+   * pedido por pedido nesta lista para achar a nota e corrigi-la.
+   *
+   * O casamento usa `normalizarNumeroNota`, a mesma normalização da
+   * conferência — "000546", "546" e "NF-e 546" são a mesma nota.
+   */
+  // Lido de `window.location` e não de `useSearchParams`: o hook obriga a
+  // envolver a página inteira num Suspense (bailout de CSR) e quebra o
+  // prerender do build. Para um parâmetro opcional de deep-link não compensa.
+  const [nfParam, setNfParam] = useState<string | null>(null)
+  useEffect(() => {
+    setNfParam(new URLSearchParams(window.location.search).get('nf'))
+  }, [])
+  const nfBuscada = normalizarNumeroNota(nfParam)
+  const [buscaAtiva, setBuscaAtiva] = useState(true)
   const [expandedSolId, setExpandedSolId] = useState<string | null>(null)
   const [nfForm, setNfForm] = useState<NfForm>(EMPTY_FORM)
   const [nfFile, setNfFile] = useState<File | null>(null)
@@ -125,7 +143,22 @@ export default function NfFatDiretoPage() {
   const [fValor, setFValor] = useState<Set<string>>(new Set())
   const [fStatusCol, setFStatusCol] = useState<Set<string>>(new Set())
 
+  const buscandoNf = Boolean(nfBuscada) && buscaAtiva
+
+  useEffect(() => {
+    if (!nfBuscada || solicitacoes.length === 0) return
+    const alvo = solicitacoes.find(s =>
+      (s.notas_fiscais ?? []).some(n => normalizarNumeroNota(n.numero_nf) === nfBuscada))
+    if (alvo) setExpandedSolId(alvo.id)
+  }, [nfBuscada, solicitacoes])
+  const temNfBuscada = (s: Solicitacao) =>
+    (s.notas_fiscais ?? []).some(n => normalizarNumeroNota(n.numero_nf) === nfBuscada)
+
   const filtradasStatus = solicitacoes.filter(s => {
+    // Buscando uma nota específica, o filtro de saldo não vale: a nota pode
+    // estar num pedido já sem saldo, e escondê-la seria dizer que ela não
+    // existe.
+    if (buscandoNf) return temNfBuscada(s)
     if (filtroStatus === 'com_saldo') return s.status === 'aprovado' && temSaldo(s)
     if (filtroStatus === 'sem_saldo') return !temSaldo(s)
     return true
@@ -713,6 +746,28 @@ export default function NfFatDiretoPage() {
       <Topbar title="NF — Faturamento Direto" subtitle="Registrar notas fiscais para solicitações aprovadas" />
 
       <div className="p-4 sm:p-6 space-y-5">
+        {/* Chegou pelo número da nota, clicando no painel do boletim. */}
+        {buscandoNf && (
+          <div
+            className="rounded-xl p-3 flex items-center justify-between gap-3 flex-wrap text-xs"
+            style={{ background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.35)' }}
+          >
+            <span style={{ color: 'var(--text-2)' }}>
+              Mostrando {filtradasStatus.length === 0 ? 'nenhum pedido' : `${filtradasStatus.length} pedido(s)`} com a{' '}
+              <strong style={{ color: 'var(--text-1)' }}>NF {nfParam}</strong>.
+              {filtradasStatus.length === 0 && ' Esta nota não está cadastrada aqui — se ela existe no Informakon, o pedido está faltando no site.'}
+            </span>
+            <button
+              type="button"
+              onClick={() => setBuscaAtiva(false)}
+              className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-medium"
+              style={{ border: '1px solid var(--border)', color: 'var(--text-2)' }}
+            >
+              <X className="w-3 h-3" /> Ver todos
+            </button>
+          </div>
+        )}
+
         {/* Fila: NFs aguardando aprovação (workflow 065) */}
         <FilaAprovacaoNf solicitacoes={solicitacoes} reload={reload} />
 
