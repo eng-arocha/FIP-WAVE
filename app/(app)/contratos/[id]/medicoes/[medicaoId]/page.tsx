@@ -405,6 +405,15 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
   }
 
   const isPendente = status === 'submetido' || status === 'em_analise'
+  /**
+   * Ajustar quantidade continua liberado DEPOIS do portão 1.
+   *
+   * O portão 1 libera a NF de material da FIP; quem fecha a medição é a
+   * aprovação. Enquanto o botão dependia de `isPendente`, autorizar fazia ele
+   * sumir — e, como não existe rota para desfazer autorização, um item ficava
+   * sem saída. Mesma correção já feita no boletim.
+   */
+  const podeAjustarQty = isPendente || status === 'autorizado'
   const isCriador = userEmail !== null && medicao.solicitante_email === userEmail
 
   /**
@@ -1378,7 +1387,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
                                                         <Building2 className="inline w-3 h-3" />
                                                       </button>
                                                     )}
-                                                    {isAdmin && isPendente && it.detalhamento_id && (
+                                                    {isAdmin && podeAjustarQty && it.detalhamento_id && (
                                                       <button
                                                         onClick={() => abrirAjustar({
                                                           detalhamento_id: it.detalhamento_id!,
