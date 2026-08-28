@@ -87,7 +87,21 @@ const ParamsSchema = z.object({
   detalhamentoId: uuid(),
 })
 
-const STATUS_PERMITIDOS = new Set(['submetido', 'em_analise', 'rascunho'])
+/**
+ * Status em que a quantidade ainda pode ser ajustada.
+ *
+ * `autorizado` entra na lista porque o portão 1 não fecha a medição — ele
+ * libera a NF de material da FIP. Sem ele aqui, um item esquecido depois da
+ * autorização ficava sem saída: o botão some da tela e não existe rota para
+ * desfazer a autorização. Foi o caso do grupo 19, que precisa ser medido para
+ * o contrato fechar 100% e para entrar na base da retenção, mas não gera
+ * pedido de material da FIP (ver lib/db/fat-direto-grupos.ts) — ajustá-lo
+ * depois do portão 1 não invalida nada do que foi autorizado.
+ *
+ * Só `aprovado` fica de fora: ali existe NF emitida e snapshot congelado, e o
+ * caminho é `desfazer-aprovacao`.
+ */
+const STATUS_PERMITIDOS = new Set(['submetido', 'em_analise', 'rascunho', 'autorizado'])
 
 // ───────────────────────────────────────────────────────────────────────────
 // Contexto comum (GET + PATCH)

@@ -716,6 +716,20 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
   // NF de material pra liberar o portão 2 (emissão da NF de serviço).
   const isAutorizado = data.medicao.status === 'autorizado'
 
+  /**
+   * Ajustar quantidade continua liberado DEPOIS do portão 1.
+   *
+   * Antes só valia em `submetido`/`em_analise`, e a autorização fazia o botão
+   * sumir — deixando um item esquecido sem saída, porque não existe rota para
+   * desfazer a autorização. Foi o que aconteceu com o grupo 19: medição
+   * autorizada, item por medir, e nada a clicar.
+   *
+   * Só a aprovação fecha a medição de verdade; antes dela ainda é edição
+   * normal. O que exige atenção é que o pedido de material da FIP já foi
+   * criado com os números anteriores — por isso o aviso ao lado do botão.
+   */
+  const podeAjustarQty = (isPendente || isAutorizado) && podeAprovar
+
   // Mapa visual por status
   const statusInfo = (() => {
     switch (data.medicao.status) {
@@ -963,6 +977,13 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   Material já autorizado (portão 1). Aprove a emissão da NF de serviço da Wave
                   <strong> somente após a NF de material FIP ter sido lançada</strong> no sistema —
                   o sistema valida esse pré-requisito.
+                </p>
+                <p className="text-[11px] mt-1" style={{ color: '#F59E0B' }}>
+                  Ainda dá para ajustar quantidade — só a aprovação fecha a medição. Mas o pedido
+                  de material da FIP já foi criado com os números de antes: se o ajuste mexer em{' '}
+                  <strong>FIP precisa emitir</strong>, confira o pedido antes de aprovar. Item de
+                  grupo faturado por terceiro (o 19) não entra nesse pedido e pode ser ajustado à
+                  vontade.
                 </p>
               </div>
             </div>
@@ -1222,7 +1243,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                           )}
                         </td>
                         <td style={{ ...td(), textAlign: 'right' }}>
-                          {isPendente && podeAprovar && (
+                          {podeAjustarQty && (
                             <button
                               type="button"
                               onClick={() => abrirModalAjustar(l)}
@@ -1316,7 +1337,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                   const tooltipAjusteAdmin = foiAjustadoAdmin && ajusteRecente
                     ? `Quantidade ajustada pelo admin (${ajustesAdmin.length}× ${ajustesAdmin.length === 1 ? 'vez' : 'vezes'}). Último: ${ajusteRecente.quantidade_anterior} → ${ajusteRecente.quantidade_nova} por ${ajusteRecente.ajustado_por_nome ?? '—'}. Motivo: "${ajusteRecente.motivo}"`
                     : undefined
-                  const podeEditarQty = isPendente && podeAprovar
+                  const podeEditarQty = podeAjustarQty
 
                   return (
                     <tr key={l.medicao_item_id || l.detalhamento_id}
