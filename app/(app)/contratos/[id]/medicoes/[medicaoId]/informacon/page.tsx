@@ -275,9 +275,19 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
     // Item sem evolução física no mês continua na tela quando carrega
     // desconto: é a linha de recuperação — o lastro entrou agora e o material
     // de meses anteriores precisa ser lançado para poder ser deduzido.
-    return mostrarTodos
-      ? data.linhas
-      : data.linhas.filter(l => l.quantidade_medida > 0 || Number(l.nf_descontavel || 0) > 0.005)
+    //
+    // O filtro tem de cobrir os três motivos de a linha existir, não só o
+    // desconto lançado. Item com pendente que NÃO conseguiu lastro nenhum sai
+    // com `nf_descontavel` zero e é justamente o que mais exige ação — só ele
+    // manda a FIP emitir. Escondê-lo fazia o rodapé da coluna divergir do card
+    // "FIP (Material)", que soma todas as linhas: o card mostrava R$ 18.823,53
+    // e a coluna somava R$ 11.208,43, com R$ 7.615,10 invisíveis na tela.
+    const visivel = (l: Linha) =>
+      l.quantidade_medida > 0
+      || Number(l.nf_descontavel || 0) > 0.005
+      || Number(l.desconto_ideal || 0) > 0.005
+      || Number(l.fip_faturar || 0) > 0.005
+    return mostrarTodos ? data.linhas : data.linhas.filter(visivel)
   }, [data, mostrarTodos])
 
   // Quantos itens com ajuste aplicado (fonte: totais.itens_com_ajuste se vier
