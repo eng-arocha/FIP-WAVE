@@ -57,12 +57,24 @@
  *
  * Então, depois do corte:
  *
- *     fip_faturar = min( fip_faturar , desconto_ideal − nf_descontavel )
+ *     fip_faturar = max( 0 , fip_faturar − nf_descontavel )
  *
- * O segundo termo é o próprio corte: o material que NÃO teve lastro. O `min`
- * preserva o caso do pedido aprovado — se a nota do fornecedor está a caminho,
- * a FIP não emite, mesmo com corte. Em uma frase: a FIP só emite onde não há
- * lastro no ERP nem pedido no site.
+ * Em uma frase: do que a camada ③ ia mandar emitir, desconte o que o ERP já
+ * tem lançado. O que sobra é material sem nota em lugar nenhum.
+ *
+ * A primeira versão disto usava `min(fip_faturar, corte)`, que trata as duas
+ * coberturas como sobrepostas — a mesma nota contada dos dois lados. A
+ * autorização do pedido da FIP provou que elas são DISJUNTAS: no 18.1.6 o
+ * usuário autorizou os R$ 9.902,38 que faltavam, isso virou pedido aprovado no
+ * site, e o `min` devolveu R$ 1.154,88 "ainda a emitir" — justamente a parte
+ * que já tinha lastro no ERP. Autorizar de novo emitiria nota em duplicidade,
+ * e o ciclo só terminaria depois de emitir R$ 11.057,26 onde bastavam
+ * R$ 9.902,38.
+ *
+ * A subtração assume cobertura disjunta e pode, no caso oposto (nota nossa que
+ * é a MESMA nota do ERP), pedir de menos. É o erro que se prefere: pedir de
+ * menos volta sozinho no mês seguinte pelo pendente de lastro; pedir de mais
+ * cria uma segunda nota para o mesmo material, que não volta de lugar nenhum.
  */
 
 import { chaveMacroItem } from './comparar-saldo'
@@ -162,14 +174,12 @@ export function aplicarRetratoNasLinhas(
   for (const l of linhas) {
     // ── CAMADA ③ revisitada, agora que o corte é conhecido ───────────────
     //
-    //     fip_faturar = min( fip_faturar , desconto_ideal − nf_descontavel )
+    //     fip_faturar = max( 0 , fip_faturar − nf_descontavel )
     //
     // Só para grupo presente no retrato: ver "MACRO ITEM AUSENTE" no topo.
     if (l.fip_faturar !== undefined && saldoPorChave.has(chaveMacroItem(l.codigo))) {
-      const ideal = num(l.desconto_ideal ?? l.nf_descontavel)
-      const semLastro = Math.max(0, cent(ideal - num(l.nf_descontavel)))
       const antes = num(l.fip_faturar)
-      const depois = Math.min(antes, semLastro)
+      const depois = Math.max(0, cent(antes - num(l.nf_descontavel)))
       if (depois < antes) {
         resumo.fipAbatidoPeloLastro = cent(resumo.fipAbatidoPeloLastro + (antes - depois))
       }
