@@ -1187,7 +1187,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
               <table className="w-full text-xs" style={{ minWidth: 720, color: 'var(--text-1)', borderCollapse: 'collapse' }}>
                 <thead style={{ background: 'var(--surface-3)', position: 'sticky', top: 0, zIndex: 10 }}>
                   <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-3)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    <th style={th()}>Item</th>
+                    <th style={th()} title="Clique no código para ajustar a quantidade medida do item.">Item</th>
                     <th style={{ ...th(), textAlign: 'left' }}>Descrição</th>
                     <th style={{ ...th(), textAlign: 'right' }} title="Avanço físico medido no período.">% físico</th>
                     <th style={{ ...th(), textAlign: 'right' }} title="Material + serviço medidos no período, em reais.">Valor medido</th>
@@ -1201,7 +1201,25 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                     const semLastro = Number(l.nf_nao_lancada_no_erp || 0)
                     return (
                       <tr key={l.detalhamento_id} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td style={{ ...td('font-mono'), whiteSpace: 'nowrap' }}>{l.codigo}</td>
+                        {/* O código abre o ajuste de quantidade.
+                            O botão "Ajustar" vive na ÚLTIMA coluna de uma
+                            tabela de 720px: em tela estreita ele fica fora do
+                            campo de visão e só aparece rolando a tabela para o
+                            lado — na prática, invisível. O código é a primeira
+                            coluna e está sempre à vista. */}
+                        <td style={{ ...td('font-mono'), whiteSpace: 'nowrap', padding: podeAjustarQty ? 0 : undefined }}>
+                          {podeAjustarQty ? (
+                            <button
+                              type="button"
+                              onClick={() => abrirModalAjustar(l)}
+                              className="w-full h-full text-left px-2 py-1 hover:bg-blue-500/10 hover:underline decoration-dotted underline-offset-2 transition-colors print:hover:bg-transparent"
+                              style={{ color: 'inherit', font: 'inherit' }}
+                              title={`Ajustar a quantidade medida do item ${l.codigo}`}
+                            >
+                              {l.codigo}
+                            </button>
+                          ) : l.codigo}
+                        </td>
                         <td style={td()}>{l.descricao}</td>
                         {/* Mesmas casas do "% a lançar": comparar quatro casas
                             contra duas fazia o percentual parecer acima do
