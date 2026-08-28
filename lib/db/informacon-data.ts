@@ -171,13 +171,27 @@ async function aplicarRetratoAdotado(
  * detecção é por medição, não por item: um item pode legitimamente ter
  * descontado zero num mês em que outros descontaram.
  *
+ * `liquidadas` faz o mesmo pelo motivo oposto: medição aprovada ANTES desta
+ * regra conta como tendo lançado o próprio material, mesmo tendo snapshot que
+ * diz menos. Ela foi fechada e paga sob outra regra; o pendente não retroage.
+ *
  * Sem `matUnitDe` a função devolve o valor cru, que é o que o snapshot da
  * própria medição aprovada precisa (ali zero significa zero mesmo).
  */
+/**
+ * Quando a regra de três camadas entrou em produção.
+ *
+ * É a âncora do pendente de lastro: medição aprovada antes disso foi fechada e
+ * paga sob outra regra e não é reaberta. Data do deploy da camada ② com corte
+ * pelo lastro real do ERP (commit 191c1b9, 27/08/2026).
+ */
+const REGRA_TRES_CAMADAS_EM = Date.parse('2026-08-27T00:00:00Z')
+
 async function carregarNfJaAbatida(
   admin: SupabaseClient,
   medicaoIdsAnteriores: string[],
   matUnitDe?: (detalhamentoId: string) => number,
+  liquidadas?: Set<string>,
 ): Promise<Record<string, number>> {
   const out: Record<string, number> = {}
   if (medicaoIdsAnteriores.length === 0) return out
@@ -209,8 +223,9 @@ async function carregarNfJaAbatida(
     if (lista) lista.push(r)
     else porMedicao.set(k, [r])
   }
-  for (const rows of porMedicao.values()) {
-    const temSnapshot = rows.some(r => Number(r.nf_material_descontada || 0) > 0)
+  for (const [medId, rows] of porMedicao) {
+    const temSnapshot = !liquidadas?.has(medId)
+      && rows.some(r => Number(r.nf_material_descontada || 0) > 0)
     for (const r of rows) {
       if (!r.detalhamento_id) continue
       const valor = temSnapshot
@@ -948,7 +963,7 @@ export async function calcularInformaconData(
   // Acumulado de quantidade por detalhamento
   const { data: medicoesDoContrato } = await admin
     .from('medicoes')
-    .select('id, status')
+    .select('id, status, data_aprovacao')
     .eq('contrato_id', contratoId)
 
   const idsValidas = new Set(
@@ -989,12 +1004,37 @@ export async function calcularInformaconData(
 
   // Saldo corrido: o que já foi abatido nas medições aprovadas anteriores
   // (migration 074). Sem isto a mesma NF volta a ser descontável todo mês.
+  // Medição aprovada ANTES da regra de três camadas é LIQUIDADA: conta como
+  // tendo lançado o próprio material medido, mesmo que o snapshot diga menos.
+  //
+  // Sem essa âncora, o pendente de lastro retroagia: o material que as
+  // medições 1 a 4 seguraram por "nota a caminho" — regra que já não existe —
+  // ressurgia todo na medição atual, disputava o mesmo lastro do ERP e cortava
+  // o material do mês corrente para passar na frente. O mês pagava a conta de
+  // um passado já aprovado e pago.
+  //
+  // Não há perda: material é passagem — entra como liberação e sai como
+  // desconto, líquido zero para a Wave. Reabrir aquilo não põe dinheiro em
+  // lugar nenhum, só gera emissão de nota da FIP por material de meses
+  // fechados. O pendente vale para cortes feitos SOB esta regra, daqui em
+  // diante, que era o problema real.
+  const medicaoLiquidada = (m: any) => {
+    if (m?.status !== 'aprovado') return false
+    const quando = m?.data_aprovacao ? Date.parse(String(m.data_aprovacao)) : NaN
+    // Sem data de aprovação é medição antiga — liquidada.
+    return !Number.isFinite(quando) || quando < REGRA_TRES_CAMADAS_EM
+  }
+  const idsLiquidadas = new Set(
+    (medicoesDoContrato || []).filter(medicaoLiquidada).map((m: any) => String(m.id)),
+  )
+
   const nfJaAbatidaPorDet = await carregarNfJaAbatida(
     admin,
     (medicoesDoContrato || [])
       .filter((m: any) => m.status === 'aprovado' && m.id !== medicaoId)
       .map((m: any) => m.id),
     (detId) => matUnitPorDet[detId] || 0,
+    idsLiquidadas,
   )
 
   // 4) Solicitações fat-direto APROVADAS + NFs alocadas por detalhamento

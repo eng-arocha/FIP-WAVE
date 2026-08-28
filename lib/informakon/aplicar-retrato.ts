@@ -77,6 +77,8 @@ export interface LinhaAjustavel {
   gap_material: number
   /** O desconto ANTES do teto — base do abatimento da nota da FIP. */
   desconto_ideal?: number
+  /** `p × M` do PERÍODO. O que excede isso no ideal é material de meses anteriores. */
+  material_medido?: number
   /** Camada ③: quanto a FIP precisa emitir. Reduzido aqui pelo lastro do ERP. */
   fip_faturar?: number
   /** Valor global do item (qtd contratada × valor unitário) — base do %. */
@@ -129,6 +131,12 @@ export function aplicarRetratoNasLinhas(
       id: String(i),
       totalMedido: num(l.wave_servico) + num(l.nf_descontavel),
       desconto: num(l.nf_descontavel),
+      // O que o desconto tem além do material do período é recuperação de
+      // meses anteriores, e ela cede o lastro primeiro: sem isso o material
+      // velho passava inteiro e o do mês corrente é que era cortado.
+      pendente: l.material_medido === undefined
+        ? 0
+        : Math.max(0, num(l.nf_descontavel) - num(l.material_medido)),
     }))
     const r = ajustarGrupoPeloLastro(entrada, num(saldoPorChave.get(chave)))
     if (!(r.cortado > 0.005)) continue

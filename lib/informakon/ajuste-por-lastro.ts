@@ -33,6 +33,22 @@
  *
  * Qualquer distribuição dá o mesmo total no grupo, que é o número que o ERP
  * recebe no bloco. A ordem só decide o percentual de cada item.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * O MATERIAL DE MESES ANTERIORES CEDE PRIMEIRO
+ *
+ * Parte do desconto de um item pode ser material de medições passadas cujo
+ * lastro só apareceu agora (ver `descontoPendenteDeLastro`). Esse material
+ * disputa o MESMO lastro do mês corrente — e, disputando de igual para igual,
+ * a cascata pelo maior desconto fazia as parcelas antigas passarem inteiras e
+ * o material deste mês apanhar. O mês pagava a conta do passado.
+ *
+ * Então o corte tem duas passadas: primeiro consome a parcela PENDENTE de
+ * todos os itens, depois, se ainda faltar, o material do período. A
+ * recuperação só acontece com o lastro que sobrar depois de atender o mês.
+ *
+ * Sem pendente as duas passadas colapsam numa só, e o resultado é idêntico ao
+ * de antes — que é o que reproduz a Folha de Rosto no centavo.
  */
 
 /** Um item do grupo, já com o físico do período aplicado. */
@@ -41,8 +57,13 @@ export interface ItemAjuste {
   id: string
   /** `p × G` — o que a medição vale neste item. */
   totalMedido: number
-  /** `p × M` — o material do período, o desconto ideal. */
+  /** O desconto ideal do item: material do período + pendente de meses anteriores. */
   desconto: number
+  /**
+   * A parte de `desconto` que é material de MESES ANTERIORES. Cede o lastro
+   * antes do material do período. Ausente ou zero = tudo é do mês.
+   */
+  pendente?: number
 }
 
 export interface ItemAjustado extends ItemAjuste {
@@ -106,22 +127,31 @@ export function ajustarGrupoPeloLastro(
   const falta = cent(descontoIdeal - num(lastro))
   if (!(falta > 0.005)) return semAjuste(0)
 
-  // Cascata pelo maior desconto. O desempate pelo id mantém o resultado
-  // estável entre um refresh e outro — sem ele a ordem viria da query.
-  const ordem = [...itens].sort((a, b) => {
-    const d = num(b.desconto) - num(a.desconto)
-    return d !== 0 ? d : String(a.id).localeCompare(String(b.id), 'pt-BR', { numeric: true })
-  })
-
   const cortePorId = new Map<string, number>()
   let restante = falta
-  for (const it of ordem) {
-    if (restante <= 0.005) break
-    const cabe = cent(Math.min(num(it.desconto), restante))
-    if (cabe <= 0) continue
-    cortePorId.set(it.id, cabe)
-    restante = cent(restante - cabe)
+
+  // Cascata pelo maior, com desempate pelo id — sem o desempate a ordem viria
+  // da query e o resultado mudaria entre um refresh e outro.
+  const cascata = (teto: (i: ItemAjuste) => number) => {
+    const ordem = [...itens].sort((a, b) => {
+      const d = teto(b) - teto(a)
+      return d !== 0 ? d : String(a.id).localeCompare(String(b.id), 'pt-BR', { numeric: true })
+    })
+    for (const it of ordem) {
+      if (restante <= 0.005) break
+      const disponivel = cent(teto(it) - (cortePorId.get(it.id) ?? 0))
+      const cabe = cent(Math.min(disponivel, restante))
+      if (cabe <= 0) continue
+      cortePorId.set(it.id, cent((cortePorId.get(it.id) ?? 0) + cabe))
+      restante = cent(restante - cabe)
+    }
   }
+
+  // 1ª passada: o material de meses anteriores cede o lastro.
+  cascata(i => Math.min(num(i.pendente), num(i.desconto)))
+  // 2ª passada: se ainda falta, o material do próprio mês. O teto continua
+  // sendo o desconto do item — cortar além comeria a mão de obra.
+  cascata(i => num(i.desconto))
 
   const ajustados: ItemAjustado[] = itens.map(i => {
     const cortado = cortePorId.get(i.id) ?? 0
