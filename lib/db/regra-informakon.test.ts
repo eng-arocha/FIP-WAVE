@@ -247,3 +247,81 @@ describe('CAMADA ③ — a nota da FIP depois do corte', () => {
     expect(l.fip_faturar).toBe(1_000)
   })
 })
+
+/**
+ * A recuperação cede o lastro antes do material do mês.
+ *
+ * Números reais do grupo 18 da Medição 5 depois que o pendente de lastro
+ * entrou: 18.1.5 e parte do 18.1.14 são material de medições anteriores e
+ * disputavam o mesmo lastro de R$ 3.265,48. Disputando de igual para igual,
+ * a cascata pelo maior desconto fazia o 18.1.6 — material DESTE mês — cair de
+ * 1.154,88 para 583,77.
+ */
+describe('prioridade — o mês corrente antes da recuperação', () => {
+  const grupo18 = () => [
+    // Só material do mês.
+    linha({
+      codigo: '18.1.6', wave_servico: 7_708.44, nf_descontavel: 11_057.26,
+      material_medido: 11_057.26, desconto_ideal: 11_057.26,
+      fip_faturar: 11_057.26, valor_total_item: 19_753.37,
+    }),
+    // 2.110,60 do mês + 342,48 de meses anteriores.
+    linha({
+      codigo: '18.1.14', wave_servico: 2_367.23, nf_descontavel: 2_453.08,
+      material_medido: 2_110.60, desconto_ideal: 2_453.08,
+      fip_faturar: 0, valor_total_item: 53_733.96,
+    }),
+    // Linha de recuperação pura: nada foi medido no mês.
+    linha({
+      codigo: '18.1.5', wave_servico: 0, nf_descontavel: 228.64,
+      material_medido: 0, desconto_ideal: 228.64,
+      fip_faturar: 0, valor_total_item: 19_753.37,
+    }),
+  ]
+
+  it('a recuperação é cortada primeiro e o item do mês volta ao valor da planilha', () => {
+    const [l186, l1814, l185] = grupo18()
+    aplicarRetratoNasLinhas([l186, l1814, l185], new Map([['18', 3_265.48]]))
+    expect(l185.nf_descontavel).toBe(0)                    // recuperação pura cede tudo
+    expect(l1814.nf_descontavel).toBeCloseTo(2_110.60, 2)  // sobra só o material do mês
+    expect(l186.nf_descontavel).toBeCloseTo(1_154.88, 2)   // o número da Folha de Rosto
+    expect(l186.fip_faturar).toBeCloseTo(9_902.38, 2)
+  })
+
+  it('o total lançado do grupo não muda — só a distribuição', () => {
+    const itens = grupo18()
+    aplicarRetratoNasLinhas(itens, new Map([['18', 3_265.48]]))
+    const soma = itens.reduce((s, l) => s + l.nf_descontavel, 0)
+    expect(soma).toBeCloseTo(3_265.48, 2)
+  })
+
+  it('sem pendente o resultado é idêntico ao da cascata de antes', () => {
+    // Grupo 1 da Medição 5, tudo material do período.
+    const l181 = linha({
+      codigo: '1.8.1', wave_servico: 4_950.40, nf_descontavel: 119_977.36,
+      material_medido: 119_977.36, valor_total_item: 124_927.76,
+    })
+    const l1141 = linha({
+      codigo: '1.14.1', wave_servico: 2_029.45, nf_descontavel: 3_094.48,
+      material_medido: 3_094.48, valor_total_item: 25_619.67,
+    })
+    aplicarRetratoNasLinhas([l181, l1141], new Map([['1', 72_780.81]]))
+    expect(l181.nf_descontavel).toBeCloseTo(69_686.33, 2)
+    expect(l1141.nf_descontavel).toBeCloseTo(3_094.48, 2)
+  })
+
+  it('recuperação maior que a falta não derruba o material do mês', () => {
+    // Falta 500; a recuperação sozinha (800) já cobre — o mês fica intacto.
+    const mes = linha({
+      codigo: '9.1.1', wave_servico: 1_000, nf_descontavel: 2_000,
+      material_medido: 2_000, valor_total_item: 10_000,
+    })
+    const rec = linha({
+      codigo: '9.1.2', wave_servico: 0, nf_descontavel: 800,
+      material_medido: 0, valor_total_item: 10_000,
+    })
+    aplicarRetratoNasLinhas([mes, rec], new Map([['9', 2_300]]))
+    expect(mes.nf_descontavel).toBe(2_000)
+    expect(rec.nf_descontavel).toBe(300)
+  })
+})
