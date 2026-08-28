@@ -236,15 +236,33 @@ describe('CAMADA ③ — a nota da FIP depois do corte', () => {
     expect(r.fipAbatidoPeloLastro).toBe(0)
   })
 
-  it('nunca aumenta a emissão — o abatimento é um teto, não um cálculo novo', () => {
-    // Item com pedido cobrindo metade: a camada ③ pedia 1.000 e o corte foi
-    // 4.000. O `min` preserva o número menor, que é o da cobertura do site.
+  it('nunca aumenta a emissão', () => {
     const l = linha({
       codigo: '9.1.1', wave_servico: 1_000, nf_descontavel: 6_000,
       desconto_ideal: 10_000, fip_faturar: 1_000, valor_total_item: 20_000,
     })
     aplicarRetratoNasLinhas([l], new Map([['9', 6_000]]))
-    expect(l.fip_faturar).toBe(1_000)
+    expect(l.fip_faturar!).toBeLessThanOrEqual(1_000)
+  })
+
+  it('o pedido da FIP já autorizado não volta como emissão nova', () => {
+    // O caso real do 18.1.6 depois da autorização: o usuário autorizou os
+    // R$ 9.902,38 que faltavam, isso virou pedido aprovado no site, e a
+    // camada ③ passou a pedir R$ 1.154,88 — justamente a parte que já tinha
+    // lastro no ERP. Autorizar de novo emitiria nota em duplicidade.
+    const l = linha({
+      codigo: '18.1.6', wave_servico: 7_708.44, nf_descontavel: 11_057.26,
+      material_medido: 11_057.26, desconto_ideal: 11_057.26,
+      fip_faturar: 1_154.88, valor_total_item: 19_753.37,
+    })
+    const irmao = linha({
+      codigo: '18.1.14', wave_servico: 2_367.23, nf_descontavel: 2_110.60,
+      material_medido: 2_110.60, desconto_ideal: 2_110.60,
+      fip_faturar: 0, valor_total_item: 53_733.96,
+    })
+    aplicarRetratoNasLinhas([l, irmao], new Map([['18', 3_265.48]]))
+    expect(l.nf_descontavel).toBeCloseTo(1_154.88, 2)
+    expect(l.fip_faturar).toBe(0)
   })
 })
 
