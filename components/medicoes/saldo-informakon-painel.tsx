@@ -14,6 +14,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import {
   Loader2, ClipboardPaste, AlertTriangle, CheckCircle2, RefreshCw, ExternalLink, Search,
   ShieldCheck, Undo2, ListChecks,
@@ -445,6 +446,32 @@ function ModalNotasDoMacroItem({
 }
 
 /** O retrato em vigor nesta medição, como vem do boletim (migration 082). */
+
+/**
+ * O número da nota vira link para o cadastro dela.
+ *
+ * Sem isto, "a NF 546 não está no Informakon" obrigava a abrir /nf-fat-direto e
+ * caçar pedido por pedido até achar a nota — e é justamente ali que ela é
+ * corrigida. A lista do destino filtra pelo número e já abre o pedido.
+ *
+ * Também vale para a nota que só existe no ERP: o resultado vazio lá é a
+ * confirmação de que o pedido está faltando aqui.
+ */
+function LinkNf({ numero, rotulo }: { numero: string; rotulo?: string }) {
+  const texto = rotulo ?? `NF ${numero}`
+  if (!numero) return <>{texto}</>
+  return (
+    <Link
+      href={`/nf-fat-direto?nf=${encodeURIComponent(numero)}`}
+      className="hover:underline decoration-dotted underline-offset-2"
+      style={{ color: 'inherit', fontWeight: 700 }}
+      title={`Abrir o cadastro da ${texto}`}
+    >
+      {texto}
+    </Link>
+  )
+}
+
 export interface RetratoAdotadoUI {
   snapshot_id: string
   /** false = a medição aponta para um retrato que o boletim não conseguiu aplicar. */
@@ -723,9 +750,14 @@ export function SaldoInformakonPainel({
                     nenhum. Somam {formatCurrency(retrato.total_ausente || 0)}.
                   </strong>
                   <span className="block mt-1 font-mono" style={{ color: 'var(--text-2)' }}>
-                    {(retrato.notas_ausentes ?? []).slice(0, 15).map(n => (
-                      `${n.pedido ? `${n.pedido} · ` : ''}NF ${n.numero} (${formatCurrency(n.valor)})`
-                    )).join('  ·  ')}
+                    {(retrato.notas_ausentes ?? []).slice(0, 15).map((n, i) => (
+                      <span key={`${n.numero}-${i}`}>
+                        {i > 0 ? '  ·  ' : ''}
+                        {n.pedido ? `${n.pedido} · ` : ''}
+                        <LinkNf numero={n.numero} />
+                        {` (${formatCurrency(n.valor)})`}
+                      </span>
+                    ))}
                     {(retrato.qtd_ausentes ?? 0) > 15 ? `  ·  +${(retrato.qtd_ausentes ?? 0) - 15}` : ''}
                   </span>
                   <span className="block mt-1" style={{ color: 'var(--text-3)' }}>
@@ -764,9 +796,13 @@ export function SaldoInformakonPainel({
                 Somam {formatCurrency(retrato!.total_so_no_erp || 0)}.
               </strong>
               <span className="block mt-1 font-mono" style={{ color: 'var(--text-2)' }}>
-                {(retrato!.notas_so_no_erp ?? []).slice(0, 12).map(n => (
-                  `${n.documento || `NF ${n.numero}`} (${formatCurrency(n.valor)})`
-                )).join('  ·  ')}
+                {(retrato!.notas_so_no_erp ?? []).slice(0, 12).map((n, i) => (
+                  <span key={`${n.numero}-${i}`}>
+                    {i > 0 ? '  ·  ' : ''}
+                    <LinkNf numero={n.numero} rotulo={n.documento || `NF ${n.numero}`} />
+                    {` (${formatCurrency(n.valor)})`}
+                  </span>
+                ))}
                 {(retrato!.qtd_so_no_erp ?? 0) > 12 ? `  ·  +${(retrato!.qtd_so_no_erp ?? 0) - 12}` : ''}
               </span>
               <span className="block mt-1" style={{ color: 'var(--text-3)' }}>
@@ -790,9 +826,13 @@ export function SaldoInformakonPainel({
             >
               <strong>{retrato!.qtd_divergentes} nota(s) com valor diferente entre o site e o Informakon.</strong>
               <span className="block mt-1 font-mono" style={{ color: 'var(--text-2)' }}>
-                {(retrato!.notas_divergentes ?? []).slice(0, 10).map(n => (
-                  `NF ${n.numero}: aqui ${formatCurrency(n.nosso)} × lá ${formatCurrency(n.erp)} (${n.diferenca > 0 ? '+' : ''}${formatCurrency(n.diferenca)})`
-                )).join('  ·  ')}
+                {(retrato!.notas_divergentes ?? []).slice(0, 10).map((n, i) => (
+                  <span key={`${n.numero}-${i}`}>
+                    {i > 0 ? '  ·  ' : ''}
+                    <LinkNf numero={n.numero} />
+                    {`: aqui ${formatCurrency(n.nosso)} × lá ${formatCurrency(n.erp)} (${n.diferenca > 0 ? '+' : ''}${formatCurrency(n.diferenca)})`}
+                  </span>
+                ))}
                 {(retrato!.qtd_divergentes ?? 0) > 10 ? `  ·  +${(retrato!.qtd_divergentes ?? 0) - 10}` : ''}
               </span>
               <span className="block mt-1" style={{ color: 'var(--text-3)' }}>
