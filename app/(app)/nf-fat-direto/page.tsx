@@ -21,7 +21,6 @@ import {
   type Solicitacao,
 } from '@/components/nf-fat-direto/shared'
 import { FilaAprovacaoNf } from '@/components/nf-fat-direto/fila-aprovacao-nf'
-import { RelatorioMensalPendentes } from '@/components/nf-fat-direto/relatorio-mensal-pendentes'
 import {
   PedidosAtrasadosFlow,
   type AlertaPedidosAtrasados,
@@ -770,9 +769,6 @@ export default function NfFatDiretoPage() {
 
         {/* Fila: NFs aguardando aprovação (workflow 065) */}
         <FilaAprovacaoNf solicitacoes={solicitacoes} reload={reload} />
-
-        {/* Relatórios mensais pendentes (banner + modal) */}
-        <RelatorioMensalPendentes />
 
         {/* KPI cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
