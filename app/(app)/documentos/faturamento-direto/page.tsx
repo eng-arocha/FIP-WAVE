@@ -10,9 +10,10 @@ import { ColumnFilter, passaFiltro } from '@/components/ui/column-filter'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 import { formatCurrency } from '@/lib/utils'
 import {
-  FileText, Search, Filter, Download, Clock, CheckCircle2, Banknote,
+  FileText, Search, Filter, Download, Clock, CheckCircle2,
   X, Upload, RefreshCw, FolderOpen, Receipt,
   Paperclip, FileCheck, Trash2, Loader2, Undo2,
+  ChevronsUpDown, ChevronUp, ChevronDown,
 } from 'lucide-react'
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
@@ -34,6 +35,8 @@ interface Pedido {
   nf_numero: string | null
   nf_data: string | null
   nf_pdf_url: string | null
+  nf_count: number
+  nf_pdfs: { numero_nf: string; url: string }[]
   status_documento: string
   contrato: Contrato | null
   solicitante: PerfilMini | null
@@ -52,7 +55,7 @@ function nomeExibicao(p: PerfilMini | null | undefined): string {
 const STATUS_DOC: Record<string, { label: string; color: string; bg: string; Icon: any }> = {
   pendente_nf: { label: 'Pendente NF',  color: '#F59E0B', bg: 'rgba(245,158,11,0.12)',  Icon: Clock },
   nf_recebida: { label: 'NF Recebida',  color: '#3B82F6', bg: 'rgba(59,130,246,0.12)',  Icon: CheckCircle2 },
-  pago:        { label: 'Pago',         color: '#10B981', bg: 'rgba(16,185,129,0.12)',  Icon: Banknote },
+  pago:        { label: 'Pago',         color: '#10B981', bg: 'rgba(16,185,129,0.12)',  Icon: CheckCircle2 },
 }
 
 function formatDateBR(iso: string | null) {
@@ -245,7 +248,7 @@ const VIEW_CONFIG: Record<string, { title: string; subtitle: string; icon: any; 
   },
   'aprovadas': {
     title: 'Solicitações Aprovadas — Faturamento Direto',
-    subtitle: 'Todos os pedidos aprovados, com ou sem NF',
+    subtitle: 'Todos os pedidos aprovados e encerrados, com ou sem NF',
     icon: CheckCircle2,
     gradient: 'linear-gradient(135deg, #F59E0B, #EAB308)',
   },
@@ -305,6 +308,26 @@ function PedidosFatDiretoContent() {
   const [filtroSolicitante, setFiltroSolicitante] = useState<Set<string>>(new Set())
   const [filtroAprovador,   setFiltroAprovador]   = useState<Set<string>>(new Set())
   const [filtroStatus,      setFiltroStatus]      = useState<Set<string>>(new Set())
+
+  // Ordenação de colunas
+  const [sortKey, setSortKey] = useState<string>('data_solicitacao')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
+  function toggleSort(key: string) {
+    if (sortKey === key) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortKey(key)
+      setSortDir('desc')
+    }
+  }
+
+  function SortIcon({ colKey }: { colKey: string }) {
+    if (sortKey !== colKey) return <ChevronsUpDown className="w-3 h-3 opacity-40" strokeWidth={1.5} />
+    return sortDir === 'asc'
+      ? <ChevronUp className="w-3 h-3" strokeWidth={2} style={{ color: 'var(--accent)' }} />
+      : <ChevronDown className="w-3 h-3" strokeWidth={2} style={{ color: 'var(--accent)' }} />
+  }
 
   // Modais
   const [pdfModal, setPdfModal] = useState<{ url: string; nome: string } | null>(null)
@@ -400,19 +423,21 @@ function PedidosFatDiretoContent() {
     }
   }
 
-  async function marcarPago(pedido: Pedido) {
-    const res = await fetch(`/api/fat-direto/documentos/${pedido.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status_documento: 'pago' }),
-    })
-    if (res.ok) {
-      setPedidos(prev => prev.map(p => p.id === pedido.id ? { ...p, status_documento: 'pago' } : p))
-    }
-  }
-
   function onNfSaved(updated: Pedido) {
-    setPedidos(prev => prev.map(p => p.id === updated.id ? { ...p, ...updated } : p))
+    setPedidos(prev => prev.map(p => {
+      if (p.id !== updated.id) return p
+      const merged = { ...p, ...updated }
+      // Garante que nf_pdfs existe (GET /documentos/[id] não retorna o campo)
+      if (!merged.nf_pdfs) {
+        merged.nf_pdfs = merged.nf_pdf_url
+          ? [{ numero_nf: merged.nf_numero ?? 'NF', url: merged.nf_pdf_url }]
+          : []
+      }
+      if (typeof merged.nf_count !== 'number') {
+        merged.nf_count = merged.nf_pdfs.length
+      }
+      return merged
+    }))
   }
 
   // Exportar CSV (respeita os filtros de coluna aplicados na UI)
@@ -452,23 +477,18 @@ function PedidosFatDiretoContent() {
 
   // Lista final aplicando os filtros estilo Excel no client
   const pedidosFiltrados = useMemo(() => {
-    // Filtro de data no client (apenas pra views aprovadas/com-nf — endpoint
-    // já filtra a view padrão). Usa coalesce data_aprovacao || data_solicitacao ||
-    // created_at — se uma das datas faltar, cai pra próxima. Garante que
-    // pedidos sem data_aprovacao não sumam do range.
     const dataInicioISO = dataInicio ? new Date(dataInicio + 'T00:00:00').getTime() : -Infinity
     const dataFimISO    = dataFim    ? new Date(dataFim    + 'T23:59:59.999').getTime() : Infinity
 
-    return pedidos.filter(p => {
-      const pedidoStr      = p.numero_pedido_fip ? `FIP-${String(p.numero_pedido_fip).padStart(4,'0')}` : `#${p.numero}`
-      const statusStr      = STATUS_DOC[p.status_documento]?.label ?? p.status_documento
-      if (!passaFiltro(filtroPedido,      pedidoStr))                         return false
-      if (!passaFiltro(filtroFornecedor,  p.fornecedor_razao_social || '—'))  return false
-      if (!passaFiltro(filtroSolicitante, nomeExibicao(p.solicitante)))       return false
-      if (!passaFiltro(filtroAprovador,   nomeExibicao(p.aprovador)))         return false
-      if (!passaFiltro(filtroStatus,      statusStr))                         return false
+    const filtered = pedidos.filter(p => {
+      const pedidoStr = p.numero_pedido_fip ? `FIP-${String(p.numero_pedido_fip).padStart(4,'0')}` : `#${p.numero}`
+      const statusStr = STATUS_DOC[p.status_documento]?.label ?? p.status_documento
+      if (!passaFiltro(filtroPedido,      pedidoStr))                        return false
+      if (!passaFiltro(filtroFornecedor,  p.fornecedor_razao_social || '—')) return false
+      if (!passaFiltro(filtroSolicitante, nomeExibicao(p.solicitante)))      return false
+      if (!passaFiltro(filtroAprovador,   nomeExibicao(p.aprovador)))        return false
+      if (!passaFiltro(filtroStatus,      statusStr))                        return false
 
-      // Filtro de data — só pra views aprovadas/com-nf (resto já filtra no server)
       if (view === 'aprovadas' || view === 'com-nf') {
         const refStr = p.data_aprovacao || p.data_solicitacao || p.created_at
         if (refStr) {
@@ -478,11 +498,50 @@ function PedidosFatDiretoContent() {
             if (refTs > dataFimISO) return false
           }
         }
-        // Se nenhuma data conhecida, NÃO esconde — deixa aparecer
       }
       return true
     })
-  }, [pedidos, view, dataInicio, dataFim, filtroPedido, filtroFornecedor, filtroSolicitante, filtroAprovador, filtroStatus])
+
+    // Ordenação
+    filtered.sort((a, b) => {
+      let va: any
+      let vb: any
+      switch (sortKey) {
+        case 'pedido':
+          va = a.numero_pedido_fip ?? a.numero
+          vb = b.numero_pedido_fip ?? b.numero
+          break
+        case 'fornecedor':
+          va = (a.fornecedor_razao_social ?? '').toLowerCase()
+          vb = (b.fornecedor_razao_social ?? '').toLowerCase()
+          break
+        case 'solicitante':
+          va = nomeExibicao(a.solicitante).toLowerCase()
+          vb = nomeExibicao(b.solicitante).toLowerCase()
+          break
+        case 'data_aprovacao':
+          va = a.data_aprovacao ?? a.data_solicitacao ?? ''
+          vb = b.data_aprovacao ?? b.data_solicitacao ?? ''
+          break
+        case 'valor_total':
+          va = a.valor_total ?? 0
+          vb = b.valor_total ?? 0
+          break
+        case 'status':
+          va = (STATUS_DOC[a.status_documento]?.label ?? a.status_documento).toLowerCase()
+          vb = (STATUS_DOC[b.status_documento]?.label ?? b.status_documento).toLowerCase()
+          break
+        default: // data_solicitacao
+          va = a.data_solicitacao ?? ''
+          vb = b.data_solicitacao ?? ''
+      }
+      if (va < vb) return sortDir === 'asc' ? -1 : 1
+      if (va > vb) return sortDir === 'asc' ? 1 : -1
+      return 0
+    })
+
+    return filtered
+  }, [pedidos, view, dataInicio, dataFim, filtroPedido, filtroFornecedor, filtroSolicitante, filtroAprovador, filtroStatus, sortKey, sortDir])
 
   const totalFiltrado = pedidosFiltrados.reduce((s, p) => s + (p.valor_total || 0), 0)
   const temFiltroAtivo = !!(
@@ -621,29 +680,43 @@ function PedidosFatDiretoContent() {
                     color: 'var(--text-3)',
                   }}
                 >
-                  <span className="flex items-center gap-1">
+                  <button onClick={() => toggleSort('pedido')} className="flex items-center gap-1 cursor-pointer select-none hover:opacity-80">
                     Pedido
+                    <SortIcon colKey="pedido" />
                     <ColumnFilter label="Pedido" values={valoresUnicos.pedido} selected={filtroPedido} onChange={setFiltroPedido} />
-                  </span>
-                  <span className="flex items-center gap-1">
+                  </button>
+                  <button onClick={() => toggleSort('fornecedor')} className="flex items-center gap-1 cursor-pointer select-none hover:opacity-80">
                     Fornecedor
+                    <SortIcon colKey="fornecedor" />
                     <ColumnFilter label="Fornecedor" values={valoresUnicos.fornecedor} selected={filtroFornecedor} onChange={setFiltroFornecedor} />
-                  </span>
-                  <span className="flex items-center gap-1">
+                  </button>
+                  <button onClick={() => toggleSort('solicitante')} className="flex items-center gap-1 cursor-pointer select-none hover:opacity-80">
                     Solicitante
+                    <SortIcon colKey="solicitante" />
                     <ColumnFilter label="Solicitante" values={valoresUnicos.solicitante} selected={filtroSolicitante} onChange={setFiltroSolicitante} />
-                  </span>
-                  <span>Data solicit.</span>
-                  <span className="flex items-center gap-1">
+                  </button>
+                  <button onClick={() => toggleSort('data_solicitacao')} className="flex items-center gap-1 cursor-pointer select-none hover:opacity-80">
+                    Data solicit.
+                    <SortIcon colKey="data_solicitacao" />
+                  </button>
+                  <button onClick={() => toggleSort('aprovador')} className="flex items-center gap-1 cursor-pointer select-none hover:opacity-80">
                     Aprovador
+                    <SortIcon colKey="aprovador" />
                     <ColumnFilter label="Aprovador" values={valoresUnicos.aprovador} selected={filtroAprovador} onChange={setFiltroAprovador} />
-                  </span>
-                  <span>Data aprov.</span>
-                  <span className="text-right">Valor</span>
-                  <span className="flex items-center gap-1">
+                  </button>
+                  <button onClick={() => toggleSort('data_aprovacao')} className="flex items-center gap-1 cursor-pointer select-none hover:opacity-80">
+                    Data aprov.
+                    <SortIcon colKey="data_aprovacao" />
+                  </button>
+                  <button onClick={() => toggleSort('valor_total')} className="flex items-center gap-1 cursor-pointer select-none hover:opacity-80 ml-auto">
+                    Valor
+                    <SortIcon colKey="valor_total" />
+                  </button>
+                  <button onClick={() => toggleSort('status')} className="flex items-center gap-1 cursor-pointer select-none hover:opacity-80">
                     Status
+                    <SortIcon colKey="status" />
                     <ColumnFilter label="Status" values={valoresUnicos.status} selected={filtroStatus} onChange={setFiltroStatus} />
-                  </span>
+                  </button>
                   <span className="text-center">Pedido PDF</span>
                   <span className="text-center">NF PDF</span>
                   {mostrarAcoes && <span className="text-center" title="Ações">·</span>}
@@ -743,21 +816,10 @@ function PedidosFatDiretoContent() {
                           {formatCurrency(pedido.valor_total)}
                         </span>
 
-                        {/* Status */}
+                        {/* Status — sem botão "Marcar como Pago" (controle de pagamento
+                            não é usado nesta view; o status fica como referência histórica) */}
                         <div className="flex items-center gap-1">
                           <StatusBadge status={pedido.status_documento} />
-                          {pedido.status_documento === 'nf_recebida' && (
-                            <button
-                              onClick={() => marcarPago(pedido)}
-                              title="Marcar como Pago"
-                              className="w-5 h-5 rounded-full flex items-center justify-center transition-all"
-                              style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981' }}
-                              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.25)' }}
-                              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.12)' }}
-                            >
-                              <Banknote className="w-3 h-3" strokeWidth={2} />
-                            </button>
-                          )}
                         </div>
 
                         {/* PDF Pedido */}
@@ -769,9 +831,32 @@ function PedidosFatDiretoContent() {
                           />
                         </div>
 
-                        {/* PDF NF / Anexar NF */}
-                        <div className="flex justify-center">
-                          {pedido.nf_pdf_url ? (
+                        {/* PDF NF — suporte a múltiplas NFs por pedido.
+                            Se nf_pdfs tem mais de 1 entrada, exibe o 1º ícone + badge "+N".
+                            Se não tem nenhum PDF, exibe o clipe para anexar. */}
+                        <div className="flex justify-center items-center gap-0.5">
+                          {(pedido.nf_pdfs?.length ?? 0) > 0 ? (
+                            <>
+                              <PdfIcon
+                                url={pedido.nf_pdfs[0].url}
+                                nome={`NF-${pedido.nf_pdfs[0].numero_nf}.pdf`}
+                                onClick={() => setPdfModal({ url: pedido.nf_pdfs[0].url, nome: `NF-${pedido.nf_pdfs[0].numero_nf}.pdf` })}
+                              />
+                              {pedido.nf_pdfs.length > 1 && (
+                                <span
+                                  className="text-[10px] font-bold px-1 py-0.5 rounded cursor-pointer select-none"
+                                  style={{ background: 'rgba(239,68,68,0.12)', color: '#EF4444' }}
+                                  title={pedido.nf_pdfs.map(n => `NF-${n.numero_nf}`).join(', ')}
+                                  onClick={() => {
+                                    // Abre a segunda NF diretamente; se mais de 2, fica visível no tooltip
+                                    setPdfModal({ url: pedido.nf_pdfs[1].url, nome: `NF-${pedido.nf_pdfs[1].numero_nf}.pdf` })
+                                  }}
+                                >
+                                  +{pedido.nf_pdfs.length - 1}
+                                </span>
+                              )}
+                            </>
+                          ) : pedido.nf_pdf_url ? (
                             <PdfIcon
                               url={pedido.nf_pdf_url}
                               nome={`NF-${pedido.nf_numero ?? 'doc'}.pdf`}

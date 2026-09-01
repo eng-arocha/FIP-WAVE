@@ -1031,6 +1031,32 @@ export async function criarNotaFiscal(input: {
     })
   }
 
+  // Sincroniza os campos legacy da solicitação para que as views de documentos
+  // (view=com-nf, view=aprovadas) reflitam imediatamente a NF.
+  // criarNotaFiscal() grava em notas_fiscais_fat_direto mas não toca os
+  // campos nf_*/status_documento em solicitacoes_fat_direto — sem essa sync
+  // o filtro status_documento IN ('nf_recebida','pago') retorna zero rows.
+  try {
+    const nfSync: Record<string, unknown> = { status_documento: 'nf_recebida' }
+    // Popula campos legacy apenas se ainda estão vazios (não sobrescreve
+    // NF já anexada pelo fluxo simples AnexarNfModal).
+    const { data: solAtual } = await admin
+      .from('solicitacoes_fat_direto')
+      .select('nf_numero, nf_pdf_url')
+      .eq('id', input.solicitacao_id)
+      .single()
+    if (!(solAtual as any)?.nf_numero) {
+      nfSync.nf_numero = input.numero_nf
+      nfSync.nf_data   = input.data_emissao
+    }
+    if (!(solAtual as any)?.nf_pdf_url && input.arquivo_url) {
+      nfSync.nf_pdf_url = input.arquivo_url
+    }
+    await admin.from('solicitacoes_fat_direto').update(nfSync).eq('id', input.solicitacao_id)
+  } catch (syncErr) {
+    log.warn('nf_sync_status_documento_falhou', { solicitacao_id: input.solicitacao_id, err: String(syncErr) })
+  }
+
   // Anexa info do match pra UI exibir barra/alerta sem nova request
   return { ...data, _match: match }
 }
