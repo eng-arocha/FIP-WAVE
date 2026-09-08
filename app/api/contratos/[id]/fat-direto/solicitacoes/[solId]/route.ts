@@ -5,26 +5,18 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { apiError } from '@/lib/api/error-response'
 import { isSchemaMissingError } from '@/lib/db/resilient'
+import {
+  BUCKET_FAT_DIRETO,
+  anexoStoragePath,
+  sanitizarParaPersistir,
+  type AnexoParcial,
+} from '@/lib/db/fat-direto-anexos'
+import { log } from '@/lib/log'
 
 const ADMIN_EMAILS = ['eng.arocha@gmail.com']
-const STORAGE_BUCKET = 'faturamento-direto'
+const STORAGE_BUCKET = BUCKET_FAT_DIRETO
 const ANEXO_COLS = ['pedido_anexos', 'pedido_pdf_url', 'pedido_pdf_nome']
 const HEADER_EXTRA_COLS = ['fornecedor_contato_nome', 'fornecedor_contato_telefone', 'numero_pedido_fip']
-
-/**
- * Extrai o storage path (`pedidos/{solId}/{nome}`) de uma URL pública do Supabase
- * ou, em fallback, monta a partir de solId + nome do anexo.
- */
-function anexoStoragePath(anexo: { url?: string; nome?: string }, solId: string): string | null {
-  if (!anexo) return null
-  if (anexo.url) {
-    const marker = `/object/public/${STORAGE_BUCKET}/`
-    const i = anexo.url.indexOf(marker)
-    if (i >= 0) return anexo.url.slice(i + marker.length)
-  }
-  if (anexo.nome) return `pedidos/${solId}/${anexo.nome}`
-  return null
-}
 
 export async function GET(
   _req: Request,
@@ -68,20 +60,39 @@ export async function PUT(
       }
     }
 
+    // ── Trava contra apagamento acidental dos anexos ──
+    // Uma lista VAZIA só é aceita com `remover_todos_anexos: true` explícito.
+    // Antes, uma tela de edição que abriu sem os anexos (era o que acontecia
+    // com a coluna pedido_anexos ausente) mandava `pedido_anexos: []` num
+    // salvamento comum — e a rota DELETAVA os arquivos do bucket. Quem só
+    // editava o valor de um item apagava os anexos junto.
+    const anexosRecebidos: AnexoParcial[] | null =
+      Array.isArray(body.pedido_anexos) ? (body.pedido_anexos as AnexoParcial[]) : null
+    const removerTodos = body.remover_todos_anexos === true
+    const aplicarAnexos =
+      anexosRecebidos !== null && (anexosRecebidos.length > 0 || removerTodos)
+
+    if (anexosRecebidos !== null && !aplicarAnexos) {
+      log.warn('fat_direto_put_anexos_vazios_ignorados', {
+        solId,
+        motivo: 'lista vazia sem remover_todos_anexos — update de anexos ignorado',
+      })
+    }
+
     // Cleanup de Storage: arquivos removidos da lista pelo usuário precisam ser
     // deletados do bucket também (caso contrário ficam órfãos). Comparamos a
     // lista atual no DB com a recebida e removemos os que sumiram.
     // Resiliente a schema cache stale — se a coluna não está visível, skipa cleanup.
-    if (Array.isArray(body.pedido_anexos)) {
+    if (aplicarAnexos && anexosRecebidos) {
       const { data: current, error: errCurrent } = await admin
         .from('solicitacoes_fat_direto')
         .select('pedido_anexos')
         .eq('id', solId)
         .single()
       if (!errCurrent) {
-        const existing: any[] = (current as any)?.pedido_anexos ?? []
+        const existing: AnexoParcial[] = (current as any)?.pedido_anexos ?? []
         const novosUrls = new Set(
-          (body.pedido_anexos as any[]).map(a => a?.url).filter(Boolean),
+          anexosRecebidos.map(a => a?.url).filter(Boolean),
         )
         const removidos = existing.filter(a => a?.url && !novosUrls.has(a.url))
         const paths = removidos
@@ -107,9 +118,12 @@ export async function PUT(
     if (body.fornecedor_contato_nome !== undefined)     headerUpdate.fornecedor_contato_nome = body.fornecedor_contato_nome
     if (body.fornecedor_contato_telefone !== undefined) headerUpdate.fornecedor_contato_telefone = body.fornecedor_contato_telefone
     if (body.numero_pedido_fip !== undefined)           headerUpdate.numero_pedido_fip = body.numero_pedido_fip
-    if (Array.isArray(body.pedido_anexos)) {
-      headerUpdate.pedido_anexos = body.pedido_anexos
-      const first = body.pedido_anexos[0]
+    if (aplicarAnexos && anexosRecebidos) {
+      // `origem` é derivado na leitura (anexo resgatado do Storage) — não vai
+      // pro banco.
+      const limpos = sanitizarParaPersistir(anexosRecebidos)
+      headerUpdate.pedido_anexos = limpos
+      const first = limpos[0]
       headerUpdate.pedido_pdf_url = first?.url ?? null
       headerUpdate.pedido_pdf_nome = first?.nome ?? null
     }

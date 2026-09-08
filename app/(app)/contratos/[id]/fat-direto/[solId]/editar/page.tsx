@@ -163,6 +163,11 @@ export default function EditarSolicitacaoPage({ params }: { params: Promise<{ id
   const [anexosExistentes, setAnexosExistentes] = useState<Anexo[]>([])
   const [anexosNovos, setAnexosNovos] = useState<File[]>([])
   const anexoInputRef = useRef<HTMLInputElement>(null)
+  // Quantos anexos o servidor devolveu. Serve pra distinguir "o usuário
+  // removeu todos" de "a tela nunca carregou anexo nenhum" — só no primeiro
+  // caso o salvamento pode zerar a lista no banco (ver remover_todos_anexos
+  // na rota PUT).
+  const [anexosCarregadosDoServidor, setAnexosCarregadosDoServidor] = useState(0)
 
   // Carrega tarefas + solicitação existente
   useEffect(() => {
@@ -186,6 +191,7 @@ export default function EditarSolicitacaoPage({ params }: { params: Promise<{ id
       const anexosDb: Anexo[] = Array.isArray(sol.pedido_anexos) ? sol.pedido_anexos : []
       if (anexosDb.length > 0) {
         setAnexosExistentes(anexosDb)
+        setAnexosCarregadosDoServidor(anexosDb.length)
       } else if (sol.pedido_pdf_url) {
         setAnexosExistentes([{
           nome: sol.pedido_pdf_nome || 'pedido.pdf',
@@ -193,6 +199,7 @@ export default function EditarSolicitacaoPage({ params }: { params: Promise<{ id
           tamanho: 0,
           tipo: 'application/pdf',
         }])
+        setAnexosCarregadosDoServidor(1)
       }
 
       // Pré-popula contato
@@ -346,6 +353,12 @@ export default function EditarSolicitacaoPage({ params }: { params: Promise<{ id
         observacoes,
         // Envia a lista atualizada de anexos (permite remoção dos existentes)
         pedido_anexos: anexosExistentes,
+        // A rota só zera a lista com esta flag. Só a mandamos quando a tela
+        // REALMENTE carregou anexos e o usuário removeu todos — se a tela
+        // abriu sem anexo nenhum, um salvamento comum não pode apagar o que
+        // está no banco/bucket.
+        remover_todos_anexos:
+          anexosCarregadosDoServidor > 0 && anexosExistentes.length === 0,
         itens: filledItens.map(it => {
           const t = tarefas.find(x => x.id === it.tarefa_id)
           return {
