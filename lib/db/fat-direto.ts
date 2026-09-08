@@ -1,5 +1,10 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isSchemaMissingError, withSchemaFallback } from '@/lib/db/resilient'
+import {
+  reconciliarAnexosPedido,
+  solIdsComAnexoNoStorage,
+  type AnexoParcial,
+} from '@/lib/db/fat-direto-anexos'
 import { log } from '@/lib/log'
 import { nfReservaSaldo, nfPendente, statusInicialNf } from '@/lib/db/nf-status'
 import {
@@ -8,6 +13,36 @@ import {
   naturezaDoPedido,
   type NaturezaPedido,
 } from '@/lib/db/saldo-detalhamento'
+
+/** Linha de solicitação vista pelas funções de anexo — só o que interessa. */
+type LinhaComAnexos = Record<string, unknown> & {
+  id?: unknown
+  pedido_anexos?: unknown
+  pedido_pdf_url?: unknown
+  pedido_pdf_nome?: unknown
+}
+
+/**
+ * Anexos que o BANCO registra para a solicitação, normalizando o legado
+ * pré-016 (pedido_pdf_url/pedido_pdf_nome) no mesmo formato de lista.
+ *
+ * Não consulta o Storage — é só a leitura das colunas.
+ */
+export function anexosRegistrados(row: LinhaComAnexos | null | undefined): AnexoParcial[] {
+  if (!row) return []
+  const lista = Array.isArray(row.pedido_anexos) ? (row.pedido_anexos as AnexoParcial[]) : []
+  if (lista.length > 0) return lista
+  if (typeof row.pedido_pdf_url === 'string' && row.pedido_pdf_url) {
+    return [{
+      nome: typeof row.pedido_pdf_nome === 'string' && row.pedido_pdf_nome
+        ? row.pedido_pdf_nome
+        : 'pedido.pdf',
+      url: row.pedido_pdf_url,
+      tipo: 'application/pdf',
+    }]
+  }
+  return []
+}
 
 export async function listarSolicitacoes(contratoId: string) {
   const admin = createAdminClient()
@@ -42,7 +77,25 @@ export async function listarSolicitacoes(contratoId: string) {
     context: 'listarSolicitacoes',
   })
   if (error) throw error
-  return data || []
+
+  const linhas = (data || []) as unknown as LinhaComAnexos[]
+
+  // Pedidos sem anexo registrado podem ter arquivo órfão no bucket (upload
+  // que subiu mas não foi registrado). Uma única listagem do Storage resolve
+  // todos — sem ela a listagem afirma "sem anexo" com o arquivo existindo.
+  const semRegistro = linhas.filter(l => anexosRegistrados(l).length === 0)
+  if (semRegistro.length > 0) {
+    const comArquivo = await solIdsComAnexoNoStorage()
+    if (comArquivo.size > 0) {
+      for (const linha of semRegistro) {
+        if (typeof linha.id === 'string' && comArquivo.has(linha.id)) {
+          linha.anexos_no_storage = true
+        }
+      }
+    }
+  }
+
+  return linhas
 }
 
 export async function getSolicitacao(id: string) {
@@ -115,7 +168,40 @@ export async function getSolicitacao(id: string) {
   })
 
   if (error) throw error
-  return data
+  if (!data) return data
+
+  const row = data as unknown as LinhaComAnexos
+
+  // O extraSelect acima é tudo-ou-nada: QUALQUER coluna que o schema cache
+  // não conheça (data_encerramento, valor_devolvido, ...) derruba o select
+  // inteiro pro baseSelect, que não traz anexo nenhum — foi assim que os
+  // anexos sumiram da tela. Aqui buscamos só as colunas de anexo numa query
+  // separada, pra uma coluna ausente sem relação com anexo não levar os
+  // anexos junto.
+  if (!('pedido_anexos' in row)) {
+    const { data: soAnexos } = await withSchemaFallback({
+      primary: () => admin
+        .from('solicitacoes_fat_direto')
+        .select('pedido_anexos, pedido_pdf_url, pedido_pdf_nome')
+        .eq('id', id)
+        .single(),
+      fallback: () => admin
+        .from('solicitacoes_fat_direto')
+        .select('pedido_pdf_url, pedido_pdf_nome')
+        .eq('id', id)
+        .single(),
+      missingColumns: ['pedido_anexos', 'pedido_pdf_url', 'pedido_pdf_nome'],
+      context: 'getSolicitacao:anexos',
+    })
+    if (soAnexos) Object.assign(row, soAnexos)
+  }
+
+  // Resgate: arquivo que está no bucket mas não na lista do banco volta a
+  // aparecer (e a lista é regravada). Nunca lança — anexo é acessório na
+  // renderização do pedido.
+  const { anexos, recuperados } = await reconciliarAnexosPedido(id, anexosRegistrados(row))
+
+  return { ...row, pedido_anexos: anexos, anexos_recuperados_do_storage: recuperados }
 }
 
 export interface TetoViolation {

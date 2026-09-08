@@ -29,6 +29,8 @@ interface Solicitacao {
   /** Campos legados pre-016 — fallback quando pedido_anexos esta vazio. */
   pedido_pdf_url?: string | null
   pedido_pdf_nome?: string | null
+  /** Há arquivo no bucket sem registro em pedido_anexos (upload órfão). */
+  anexos_no_storage?: boolean
 }
 
 /** Quantos arquivos o pedido tem anexados (conta o legado pre-016). */
@@ -420,6 +422,19 @@ export default function FatDiretoPage({ params }: { params: Promise<{ id: string
                                 >
                                   <Paperclip className="w-2.5 h-2.5" />
                                   {qtdeAnexos(sol)}
+                                </span>
+                              )}
+                              {/* Arquivo existe no bucket mas não está na lista
+                                  do pedido. Antes a listagem dizia "sem anexo"
+                                  com o arquivo lá — abrir o pedido religa. */}
+                              {qtdeAnexos(sol) === 0 && sol.anexos_no_storage && (
+                                <span
+                                  title="Há arquivo no Storage que não consta na lista do pedido — abra o pedido para recuperá-lo"
+                                  className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded"
+                                  style={{ background: 'rgba(245,158,11,0.15)', color: '#F59E0B' }}
+                                >
+                                  <Paperclip className="w-2.5 h-2.5" />
+                                  ?
                                 </span>
                               )}
                             </span>

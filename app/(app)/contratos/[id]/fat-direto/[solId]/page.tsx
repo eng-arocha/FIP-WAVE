@@ -33,7 +33,9 @@ interface Solicitacao {
   fornecedor_cnpj?: string
   fornecedor_contato?: string
   /** Anexos do pedido (PDF, imagens). Migration 016. */
-  pedido_anexos?: Array<{ nome: string; url: string; tamanho?: number; tipo?: string }>
+  pedido_anexos?: Array<{ nome: string; url: string; tamanho?: number; tipo?: string; origem?: string }>
+  /** Quantos anexos vieram do bucket sem estar na lista do banco (resgate). */
+  anexos_recuperados_do_storage?: number
   /** Campos legados pre-016 — fallback quando pedido_anexos esta vazio. */
   pedido_pdf_url?: string | null
   pedido_pdf_nome?: string | null
@@ -633,6 +635,14 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                           ? 'Adicione o pedido FIP, proposta ou cotação diretamente aqui:'
                           : 'O solicitante não anexou nenhum PDF/imagem. Considere pedir o anexo antes de aprovar.'}
                       </p>
+                      {/* Caminho no Storage: quando o arquivo existe no bucket
+                          mas some da tela, "não aparece" vira diagnosticável
+                          sem abrir o banco. */}
+                      {isAdmin && (
+                        <p className="text-[10px] mt-1 font-mono break-all" style={{ color: 'var(--text-3)' }}>
+                          Storage: faturamento-direto/pedidos/{solId}/
+                        </p>
+                      )}
                       {uploadZone}
                     </div>
                   </div>
@@ -646,6 +656,13 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                 <CardTitle className="text-sm flex items-center gap-2" style={{ color: 'var(--text-1)' }}>
                   <Paperclip className="w-4 h-4 text-blue-400" />
                   Anexos do Pedido ({anexos.length})
+                  {!!sol.anexos_recuperados_do_storage && sol.anexos_recuperados_do_storage > 0 && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider"
+                          style={{ background: 'rgba(16,185,129,0.18)', color: '#10B981' }}
+                          title="Arquivos que estavam no Storage mas não constavam na lista do pedido — foram religados automaticamente.">
+                      {sol.anexos_recuperados_do_storage} recuperado{sol.anexos_recuperados_do_storage > 1 ? 's' : ''}
+                    </span>
+                  )}
                   {sol.status === 'aguardando_aprovacao' && (
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider"
                           style={{ background: 'rgba(245,158,11,0.18)', color: '#F59E0B' }}>
@@ -670,11 +687,22 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium truncate" style={{ color: 'var(--text-1)' }}>{a.nome}</p>
-                          {!!a.tamanho && (
-                            <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
-                              {(a.tamanho / 1024).toFixed(1)} KB
-                            </p>
-                          )}
+                          <div className="flex items-center gap-1.5">
+                            {!!a.tamanho && (
+                              <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
+                                {(a.tamanho / 1024).toFixed(1)} KB
+                              </p>
+                            )}
+                            {/* Arquivo achado no bucket sem registro na lista do
+                                pedido — o upload subiu e o registro falhou. */}
+                            {a.origem === 'storage' && (
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                                    style={{ background: 'rgba(16,185,129,0.14)', color: '#10B981' }}
+                                    title="Estava no Storage mas não constava na lista do pedido — religado automaticamente.">
+                                recuperado do Storage
+                              </span>
+                            )}
+                          </div>
                         </div>
                         {(isPdf || isImg) && (
                           <button
