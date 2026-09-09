@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   anexoStoragePath,
   mergeAnexos,
+  normalizarHosts,
+  normalizarUrlDoBucket,
   prefixoAnexosPedido,
   sanitizarParaPersistir,
 } from './fat-direto-anexos'
@@ -130,6 +132,75 @@ describe('mergeAnexos', () => {
 
     expect(recuperados).toBe(0)
     expect(anexos).toHaveLength(1)
+  })
+})
+
+describe('normalizarUrlDoBucket', () => {
+  const HOST_OK = 'https://projetoreal.supabase.co'
+  // Placeholder de template que entrou no banco numa religação manual e nunca
+  // foi trocado pelo ref do projeto — 112 de 168 solicitações ficaram assim.
+  const QUEBRADA = `https://XXXXXXXXXXXX.supabase.co/storage/v1/object/public/faturamento-direto/pedidos/${SOL}/1788887075563-Pedido.pdf`
+
+  it('reaponta o host placeholder pro projeto atual, preservando o path', () => {
+    expect(normalizarUrlDoBucket(QUEBRADA, HOST_OK)).toBe(
+      `${HOST_OK}/storage/v1/object/public/faturamento-direto/pedidos/${SOL}/1788887075563-Pedido.pdf`,
+    )
+  })
+
+  it('é idempotente — URL já correta não muda', () => {
+    const boa = `${HOST_OK}/storage/v1/object/public/faturamento-direto/pedidos/${SOL}/a.pdf`
+    expect(normalizarUrlDoBucket(boa, HOST_OK)).toBe(boa)
+  })
+
+  it('preserva percent-encoding do path', () => {
+    const url = `https://XXXXXXXXXXXX.supabase.co/storage/v1/object/public/faturamento-direto/pedidos/${SOL}/or%C3%A7amento%20final.pdf`
+    expect(normalizarUrlDoBucket(url, HOST_OK)).toBe(
+      `${HOST_OK}/storage/v1/object/public/faturamento-direto/pedidos/${SOL}/or%C3%A7amento%20final.pdf`,
+    )
+  })
+
+  it('não toca em URL que não é do nosso bucket', () => {
+    const externa = 'https://exemplo.com/algum/arquivo.pdf'
+    expect(normalizarUrlDoBucket(externa, HOST_OK)).toBe(externa)
+  })
+
+  it('tolera base ausente ou com barra sobrando', () => {
+    expect(normalizarUrlDoBucket(QUEBRADA, '')).toBe(QUEBRADA)
+    expect(normalizarUrlDoBucket(QUEBRADA, `${HOST_OK}/`)).toBe(
+      `${HOST_OK}/storage/v1/object/public/faturamento-direto/pedidos/${SOL}/1788887075563-Pedido.pdf`,
+    )
+    expect(normalizarUrlDoBucket('', HOST_OK)).toBe('')
+  })
+})
+
+describe('normalizarHosts', () => {
+  const HOST_OK = 'https://projetoreal.supabase.co'
+  const caminho = (n: string) => `/storage/v1/object/public/faturamento-direto/pedidos/${SOL}/${n}`
+
+  it('conta só as URLs que realmente mudaram', () => {
+    const { anexos, corrigidos } = normalizarHosts([
+      { nome: 'a.pdf', url: `https://XXXXXXXXXXXX.supabase.co${caminho('a.pdf')}` },
+      { nome: 'b.pdf', url: `${HOST_OK}${caminho('b.pdf')}` },
+    ], HOST_OK)
+
+    expect(corrigidos).toBe(1)
+    expect(anexos[0].url).toBe(`${HOST_OK}${caminho('a.pdf')}`)
+    expect(anexos[1].url).toBe(`${HOST_OK}${caminho('b.pdf')}`)
+  })
+
+  it('preserva os demais campos do anexo, inclusive origem', () => {
+    const { anexos } = normalizarHosts([
+      { nome: 'a.pdf', url: `https://XXXXXXXXXXXX.supabase.co${caminho('a.pdf')}`, tamanho: 13530, tipo: 'application/pdf', origem: 'storage' },
+    ], HOST_OK)
+
+    expect(anexos[0]).toMatchObject({ nome: 'a.pdf', tamanho: 13530, tipo: 'application/pdf', origem: 'storage' })
+  })
+
+  it('lista já correta não gera regravação', () => {
+    const { corrigidos } = normalizarHosts([
+      { nome: 'a.pdf', url: `${HOST_OK}${caminho('a.pdf')}` },
+    ], HOST_OK)
+    expect(corrigidos).toBe(0)
   })
 })
 

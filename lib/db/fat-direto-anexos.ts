@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getSupabaseUrl } from '@/lib/supabase/env'
 import { log } from '@/lib/log'
 
 /**
@@ -20,6 +21,9 @@ import { log } from '@/lib/log'
  */
 
 export const BUCKET_FAT_DIRETO = 'faturamento-direto'
+
+/** Trecho que identifica uma URL pública do nosso bucket. */
+const MARCADOR_BUCKET = `/object/public/${BUCKET_FAT_DIRETO}/`
 
 export interface AnexoPedido {
   nome: string
@@ -62,10 +66,9 @@ export function anexoStoragePath(
 ): string | null {
   if (!anexo) return null
   if (anexo.url) {
-    const marker = `/object/public/${BUCKET_FAT_DIRETO}/`
-    const i = anexo.url.indexOf(marker)
+    const i = anexo.url.indexOf(MARCADOR_BUCKET)
     if (i >= 0) {
-      const bruto = anexo.url.slice(i + marker.length)
+      const bruto = anexo.url.slice(i + MARCADOR_BUCKET.length)
       try {
         return decodeURIComponent(bruto)
       } catch {
@@ -128,6 +131,47 @@ export function sanitizarParaPersistir(anexos: AnexoParcial[]): AnexoPedido[] {
   return anexos.map(normalizar)
 }
 
+/**
+ * Reaponta uma URL do nosso bucket para o host atual do projeto Supabase,
+ * preservando o path.
+ *
+ * PURA. Por que existe: 112 das 168 solicitações ficaram com o host literal
+ * `https://XXXXXXXXXXXX.supabase.co` — um placeholder de template que entrou
+ * numa religação manual dos anexos órfãos e nunca foi trocado pelo ref real.
+ * O arquivo estava no bucket, o path estava certo, e mesmo assim o anexo não
+ * abria: o navegador falhava no DNS. Nada no app percebia.
+ *
+ * Só mexe em URL que aponta para o nosso bucket — o marcador tem que estar
+ * presente. O path (tudo depois do marcador) fica intacto.
+ */
+export function normalizarUrlDoBucket(url: string, supabaseUrl: string): string {
+  if (!url || !supabaseUrl) return url
+  const i = url.indexOf(MARCADOR_BUCKET)
+  if (i < 0) return url
+  const base = supabaseUrl.replace(/\/+$/, '')
+  return `${base}/storage/v1${url.slice(i)}`
+}
+
+/**
+ * Aplica `normalizarUrlDoBucket` na lista inteira e informa quantas URLs
+ * mudaram — o chamador usa isso pra decidir se vale regravar no banco.
+ *
+ * PURA.
+ */
+export function normalizarHosts(
+  anexos: AnexoPedido[],
+  supabaseUrl: string,
+): { anexos: AnexoPedido[]; corrigidos: number } {
+  let corrigidos = 0
+  const saida = anexos.map(a => {
+    const url = normalizarUrlDoBucket(a.url, supabaseUrl)
+    if (url === a.url) return a
+    corrigidos++
+    return { ...a, url }
+  })
+  return { anexos: saida, corrigidos }
+}
+
 interface ObjetoStorage {
   name: string
   id: string | null
@@ -174,20 +218,29 @@ export async function listarAnexosNoStorage(solId: string): Promise<AnexoPedido[
 }
 
 /**
- * Lista efetiva de anexos do pedido: banco + resgate do Storage.
+ * Lista efetiva de anexos do pedido: banco + resgate do Storage, com o host
+ * das URLs reapontado pro projeto atual.
  *
- * Quando encontra órfão, regrava a lista no banco (self-heal). A regravação
- * é best-effort: se falhar, a leitura continua devolvendo os anexos
- * resgatados — só vai resgatar de novo na próxima vez.
+ * Quando encontra órfão OU corrige host, regrava a lista no banco
+ * (self-heal). A regravação é best-effort: se falhar, a leitura continua
+ * devolvendo a lista já corrigida — só vai corrigir de novo na próxima vez.
  */
 export async function reconciliarAnexosPedido(
   solId: string,
   doPedido: AnexoParcial[] | null | undefined,
-): Promise<{ anexos: AnexoPedido[]; recuperados: number }> {
+): Promise<{ anexos: AnexoPedido[]; recuperados: number; hostsCorrigidos: number }> {
   const doStorage = await listarAnexosNoStorage(solId)
-  const { anexos, recuperados } = mergeAnexos(doPedido, doStorage, solId)
+  const merged = mergeAnexos(doPedido, doStorage, solId)
+  const recuperados = merged.recuperados
 
-  if (recuperados > 0) {
+  // Host errado gravado no banco não pode quebrar o link: o arquivo está no
+  // bucket e o path está certo, então reapontamos pro host atual.
+  const { anexos, corrigidos: hostsCorrigidos } = normalizarHosts(
+    merged.anexos,
+    getSupabaseUrl(),
+  )
+
+  if (recuperados > 0 || hostsCorrigidos > 0) {
     try {
       const paraGravar = sanitizarParaPersistir(anexos)
       const admin = createAdminClient()
@@ -200,16 +253,16 @@ export async function reconciliarAnexosPedido(
         })
         .eq('id', solId)
       if (error) {
-        log.warn('anexos_self_heal_falhou', { solId, recuperados, erro: error.message })
+        log.warn('anexos_self_heal_falhou', { solId, recuperados, hostsCorrigidos, erro: error.message })
       } else {
-        log.info('anexos_recuperados_do_storage', { solId, recuperados })
+        log.info('anexos_self_heal_aplicado', { solId, recuperados, hostsCorrigidos })
       }
     } catch (e) {
-      log.warn('anexos_self_heal_excecao', { solId, recuperados, erro: String(e) })
+      log.warn('anexos_self_heal_excecao', { solId, recuperados, hostsCorrigidos, erro: String(e) })
     }
   }
 
-  return { anexos, recuperados }
+  return { anexos, recuperados, hostsCorrigidos }
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
