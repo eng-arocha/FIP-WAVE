@@ -560,8 +560,16 @@ export function SaldoInformakonPainel({
           `a soma das linhas (${formatCurrency(body.total)}) não bate com o "Total Geral" colado (${formatCurrency(body.total_informado)}) — pode ter faltado linha`,
         )
       }
-      if ((body.nao_reconhecidas?.length ?? 0) > 0) {
-        problemas.push(`macro item não reconhecido: ${body.nao_reconhecidas.join('; ')}`)
+      // `nao_reconhecidas` é AMOSTRA (a rota corta em 6 rótulos curtos) e
+      // `nao_reconhecidas_total` é o tamanho real. Despejar a lista inteira
+      // aqui já tornou o aviso ilegível quando a colagem veio torta.
+      const amostraNaoReco: string[] = body.nao_reconhecidas ?? []
+      const totalNaoReco: number = body.nao_reconhecidas_total ?? amostraNaoReco.length
+      if (totalNaoReco > 0) {
+        const resto = totalNaoReco - amostraNaoReco.length
+        problemas.push(
+          `${totalNaoReco} macro item(ns) não reconhecido(s): ${amostraNaoReco.join('; ')}${resto > 0 ? ` … e outros ${resto}` : ''}`,
+        )
       }
       if (body.colunas_colapsadas) {
         problemas.push(

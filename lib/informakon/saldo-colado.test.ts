@@ -216,3 +216,44 @@ describe('coluna Vlr.Desc colada como cópia', () => {
     expect(r.colunasColapsadas).toBe(false)
   })
 })
+
+/**
+ * Grade detalhada colada SEM TABULAÇÃO.
+ *
+ * Aconteceu em produção: o texto passou por algum lugar que comeu o TAB e
+ * chegou como frase. Sem coluna, a leitura detalhada não acha cabeçalho nem
+ * infere nada, o layout agregado assume, e cada LINHA DE DADOS inteira vira o
+ * "rótulo de um macro item" — ~250 macro itens desconhecidos e um retrato
+ * inútil gravado por cima do que estava bom.
+ */
+describe('colagem sem tabulação', () => {
+  /** Linhas reais da grade do ERP, com os TABs trocados por espaço. */
+  const SEM_TAB = [
+    'Centro Nome do Centro de Negócio Nº Pedido Centro Associado Item Nº Entrada Nº Devolução Documento Insumo Especificação Unidade Qtd.a Desc Vlr. a Desc Qtd.Desc Vlr.Desc',
+    'CBM.01.0002 Condomínio Wave - Custo de Construção 1139 1 154859/001 NF-e 198 71635 Faturamento direto - ELÉTRICA SUBESTAÇÃO R$ 0,0000 0,00 5.261,8400 5.261,84',
+    'CBM.01.0002 Condomínio Wave - Custo de Construção 1139 1 158969/001 NF-e 534 71635 Faturamento direto - ELÉTRICA SUBESTAÇÃO R$ 72.780,8100 72.780,81 0,0000 0,00',
+    'CBM.01.0002 Condomínio Wave - Custo de Construção 1201 3 161233/001 NF-e 2385 71635 Faturamento direto - SISTEMA DE PROTEÇÃO CONTRA DESCARGA ATMOSFÉRICA R$ 7.280,0000 7.280,00 0,0000 0,00',
+    'CBM.01.0002 Condomínio Wave - Custo de Construção 1188 17 159410/001 NF-e 15400 71635 Faturamento direto - ADMINISTRAÇÃO OBRA R$ 220.000,0000 220.000,00 0,0000 0,00',
+  ].join('\n')
+
+  it('acusa a tabulação perdida em vez de fingir que é o layout agregado', () => {
+    const r = parseSaldoColado(SEM_TAB)
+    expect(r.tabulacaoPerdida).toBe(true)
+  })
+
+  it('a grade com TAB e a tabela somada seguem limpas', () => {
+    expect(parseSaldoColado(DETALHADO).tabulacaoPerdida).toBe(false)
+    expect(parseSaldoColado(AGREGADO).tabulacaoPerdida).toBe(false)
+  })
+
+  it('uma linha solta não derruba a colagem', () => {
+    // O rodapé de um relatório pode trazer uma frase parecida; uma só não é
+    // sinal de colagem estragada.
+    const r = parseSaldoColado([
+      'Faturamento direto  - ÁGUA PLUVIAL\t375.254,16',
+      'NF-e 198 71635 Faturamento direto - ELÉTRICA SUBESTAÇÃO R$ 0,00 5.261,84',
+      'Total Geral\t375.254,16',
+    ].join('\n'))
+    expect(r.tabulacaoPerdida).toBe(false)
+  })
+})

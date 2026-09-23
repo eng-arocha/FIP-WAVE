@@ -57,6 +57,27 @@ const Body = z.object({
   observacoes: z.string().max(2000).optional(),
 })
 
+/**
+ * Rótulos para AVISO na tela — amostra curta, não despejo.
+ *
+ * Quando a colagem vem torta, `naoReconhecidas` pode ter uma entrada por
+ * LINHA DE DADOS (foram ~250 de uma vez), cada uma com a linha inteira do ERP
+ * dentro. Jogado num aviso isso fica ilegível e esconde justamente a causa.
+ * Devolve no máximo `MAX_ROTULOS` etiquetas de `MAX_ROTULO` caracteres e diz
+ * o total à parte.
+ */
+const MAX_ROTULOS = 6
+const MAX_ROTULO = 60
+
+function resumirRotulo(s: unknown): string {
+  const t = String(s ?? '').replace(/\s+/g, ' ').trim()
+  return t.length > MAX_ROTULO ? `${t.slice(0, MAX_ROTULO - 1)}…` : t
+}
+
+function amostraDeRotulos(valores: unknown[]): string[] {
+  return valores.slice(0, MAX_ROTULOS).map(resumirRotulo)
+}
+
 function migrationPendente() {
   return NextResponse.json(
     {
@@ -77,12 +98,25 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const { texto, referencia, observacoes } = parsed.data
 
     const lido = parseSaldoColado(texto)
+    // Grade detalhada colada sem TAB: salvar produziria um retrato inútil POR
+    // CIMA do anterior, que era bom. Recusa e diz como colar. Ver
+    // `tabulacaoPerdida` em lib/informakon/saldo-colado.ts.
+    if (lido.tabulacaoPerdida) {
+      return NextResponse.json(
+        {
+          error: 'A colagem perdeu as tabulações: as colunas chegaram como uma frase só, então cada linha da grade viraria um "macro item". Copie direto do Excel (Ctrl+C na grade e Ctrl+V aqui) — ou salve a grade como CSV/TSV e cole o conteúdo. Não colei nada; o retrato anterior está intacto.',
+          code: 'COLAGEM_SEM_TABULACAO',
+          exemplos: amostraDeRotulos(lido.naoReconhecidas.map(l => l.macroItem)),
+        },
+        { status: 400 },
+      )
+    }
     if (lido.linhas.length === 0) {
       return NextResponse.json(
         {
           error: 'Nenhuma linha reconhecida. Cole a grade do ERP (Documento / Especificação / Vlr. a Desc) ou a tabela somada por macro item ("Faturamento direto - ESGOTO⇥413.942,67").',
           code: 'COLAGEM_VAZIA',
-          ignoradas: lido.ignoradas.slice(0, 10),
+          ignoradas: amostraDeRotulos(lido.ignoradas),
         },
         { status: 400 },
       )
@@ -199,12 +233,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       total_descontado: lido.totalDescontado,
       /** false = a soma das linhas não bate com o "Total Geral" colado. */
       soma_confere: somaConfere,
-      nao_reconhecidas: lido.naoReconhecidas.map(l => l.macroItem),
+      nao_reconhecidas: amostraDeRotulos(lido.naoReconhecidas.map(l => l.macroItem)),
+      /** Quantos macro itens não reconhecidos existem — `nao_reconhecidas` é amostra. */
+      nao_reconhecidas_total: lido.naoReconhecidas.length,
       /** Linhas idênticas descartadas — a grade foi colada duas vezes. */
       duplicadas: lido.duplicadas,
       /** `Vlr.Desc` veio como cópia de `Vlr. a Desc` — coluna faltando na colagem. */
       colunas_colapsadas: lido.colunasColapsadas,
-      ignoradas: lido.ignoradas.slice(0, 10),
+      ignoradas: amostraDeRotulos(lido.ignoradas),
     })
   } catch (e: any) {
     return apiError(e)
