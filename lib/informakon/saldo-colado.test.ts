@@ -157,3 +157,62 @@ describe('linha repetida na colagem', () => {
     expect(r.notas).toHaveLength(2)
   })
 })
+
+/**
+ * `Vlr.Desc` colado como cópia de `Vlr. a Desc`.
+ *
+ * Aconteceu em produção: o retrato entrou com os dois campos idênticos em
+ * todas as notas. A conferência nota a nota soma `a descontar + descontado`
+ * para saber quanto a nota vale no ERP, e com a cópia toda nota passou a
+ * valer o dobro — 196 divergências onde havia 13, cada "lá" exatamente 2× o
+ * "aqui". Fisicamente as duas colunas nunca são iguais em tudo: uma é o que
+ * falta descontar, a outra o que já foi consumido.
+ */
+describe('coluna Vlr.Desc colada como cópia', () => {
+  const CAB = 'Documento\tInsumo\tEspecificação\tUnidade\tQtd.a Desc\tVlr. a Desc\tQtd.Desc\tVlr.Desc'
+  const linha = (doc: string, grupo: string, a: string, d: string) =>
+    `${doc}\t71635\tFaturamento direto - ${grupo}\tR$\t0,00\t${a}\t0,00\t${d}`
+
+  const COLAPSADO = [
+    CAB,
+    linha('NF-e 850', 'ALIMENTAÇÃO ELÉTRICA', '419.682,57', '419.682,57'),
+    linha('NF-e 836', 'ALIMENTAÇÃO ELÉTRICA', '332.018,91', '332.018,91'),
+    linha('NF-e 557', 'GERAÇÃO', '257.377,25', '257.377,25'),
+    linha('NF-e 198', 'ELÉTRICA SUBESTAÇÃO', '0,00', '0,00'),
+    linha('NF-e 534', 'QUADROS ELÉTRICOS', '69.841,56', '69.841,56'),
+  ].join('\n')
+
+  it('detecta e descarta o "já descontado"', () => {
+    const r = parseSaldoColado(COLAPSADO)
+    expect(r.colunasColapsadas).toBe(true)
+    expect(r.notas.every(n => n.valorDescontado === 0)).toBe(true)
+    // O que importa — o lastro disponível — segue intacto.
+    expect(r.total).toBeCloseTo(419_682.57 + 332_018.91 + 257_377.25 + 69_841.56, 2)
+    expect(r.totalDescontado).toBe(0)
+  })
+
+  it('colagem correta não é tocada', () => {
+    const bom = [
+      CAB,
+      linha('NF-e 850', 'ALIMENTAÇÃO ELÉTRICA', '419.682,57', '0,00'),
+      linha('NF-e 198', 'ELÉTRICA SUBESTAÇÃO', '0,00', '5.261,84'),
+      linha('NF-e 534', 'ELÉTRICA SUBESTAÇÃO', '0,00', '72.780,81'),
+      linha('NF-e 557', 'GERAÇÃO', '257.377,25', '0,00'),
+      linha('NF-e 2385', 'SISTEMA DE PROTEÇÃO CONTRA DESCARGA ATMOSFÉRICA', '7.280,00', '0,00'),
+    ].join('\n')
+    const r = parseSaldoColado(bom)
+    expect(r.colunasColapsadas).toBe(false)
+    expect(r.totalDescontado).toBeCloseTo(5_261.84 + 72_780.81, 2)
+  })
+
+  it('poucas notas não disparam o alarme', () => {
+    // Duas notas sem nada descontado batem por acaso; não é sinal de coluna
+    // faltando, e zerar seria perder dado bom.
+    const r = parseSaldoColado([
+      CAB,
+      linha('NF-e 850', 'ALIMENTAÇÃO ELÉTRICA', '0,00', '0,00'),
+      linha('NF-e 836', 'GERAÇÃO', '0,00', '0,00'),
+    ].join('\n'))
+    expect(r.colunasColapsadas).toBe(false)
+  })
+})
