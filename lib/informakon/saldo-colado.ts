@@ -121,6 +121,20 @@ export interface SaldoColado {
    * honesta, a cópia é uma afirmação falsa que contamina toda comparação.
    */
   colunasColapsadas: boolean
+  /**
+   * A colagem é a grade detalhada do ERP, mas chegou SEM TABULAÇÃO.
+   *
+   * Acontece quando o texto passa por um campo que come o TAB (colar de um
+   * PDF, de um e-mail, do WhatsApp, ou copiar da tela em vez do Excel). Sem
+   * TAB não há coluna: `Documento`, `Especificação` e os quatro números viram
+   * uma única frase, a leitura detalhada não acha coluna nenhuma e o layout
+   * agregado assume — aí cada LINHA DE DADOS inteira passa a ser lida como se
+   * fosse o rótulo de um macro item, com o último número como valor.
+   *
+   * O resultado é um retrato inútil que ainda por cima SUBSTITUI o anterior,
+   * que era bom. Por isso quem chama deve recusar a colagem, não salvá-la.
+   */
+  tabulacaoPerdida: boolean
 }
 
 /** Cabeçalhos e rodapés da tabela dinâmica que não são dados. */
@@ -380,7 +394,37 @@ function tentarDetalhado(texto: string): SaldoColado | null {
     ignoradas,
     duplicadas,
     colunasColapsadas,
+    tabulacaoPerdida: false,
   }
+}
+
+/**
+ * Reconhece uma LINHA DE DADOS da grade detalhada que perdeu as tabulações.
+ *
+ * Três marcas juntas, que a tabela dinâmica somada nunca tem ao mesmo tempo:
+ * o rótulo do macro item ("Faturamento direto - ..."), um documento
+ * ("NF-e 198") e uma cauda de dois ou mais números (Qtd./Vlr. a Desc,
+ * Qtd./Vlr.Desc). Ver `tabulacaoPerdida`.
+ */
+function pareceGradeSemTab(linha: string): boolean {
+  if (linha.includes('\t')) return false
+  const norm = normalizar(linha)
+  if (!norm.includes('FATURAMENTO DIRETO')) return false
+  if (!/\bNFS?-?E?\s*\d/.test(norm)) return false
+  const campos = linha.trim().split(/\s+/)
+  let numeros = 0
+  for (let i = campos.length - 1; i >= 0 && valorPtBr(campos[i]) !== null; i--) numeros++
+  return numeros >= 2
+}
+
+/**
+ * Quantas linhas parecem grade detalhada sem TAB. Exige um punhado antes de
+ * acusar, para que uma observação solta colada junto não derrube a colagem.
+ */
+function contarGradeSemTab(texto: string): number {
+  let n = 0
+  for (const linha of String(texto ?? '').split('\n')) if (pareceGradeSemTab(linha)) n++
+  return n
 }
 
 /** Layout antigo: rótulo do macro item + valor, uma linha por grupo. */
@@ -433,6 +477,7 @@ function lerAgregado(texto: string): SaldoColado {
     // O layout agregado não tem nota; não há linha para repetir.
     duplicadas: 0,
     colunasColapsadas: false,
+    tabulacaoPerdida: false,
   }
 }
 
@@ -445,5 +490,12 @@ function lerAgregado(texto: string): SaldoColado {
  * detalhada sabe de qual nota veio.
  */
 export function parseSaldoColado(texto: string): SaldoColado {
-  return tentarDetalhado(texto) ?? lerAgregado(texto)
+  const detalhado = tentarDetalhado(texto)
+  if (detalhado) return detalhado
+  const agregado = lerAgregado(texto)
+  // Cair no agregado por FALTA DE TAB não é "outro layout", é colagem
+  // estragada. Marca para que quem chama recuse, em vez de gravar lixo sobre
+  // o retrato bom. Ver `tabulacaoPerdida`.
+  agregado.tabulacaoPerdida = contarGradeSemTab(texto) >= 3
+  return agregado
 }
