@@ -112,3 +112,48 @@ describe('parseSaldoColado — layout agregado (compatibilidade)', () => {
     expect(parseSaldoColado('Faturamento direto  - ESGOTO\t413.942,67').formato).toBe('agregado')
   })
 })
+
+/**
+ * A grade colada duas vezes.
+ *
+ * Aconteceu em produção: o retrato entrou com cada linha repetida. O total por
+ * macro item sobreviveu — o reendereçamento pela nossa alocação limita cada
+ * nota ao que ela cobre —, mas a conferência NOTA A NOTA soma as linhas cruas
+ * e passou a acusar 196 divergências onde havia 13, cada nota com o dobro do
+ * valor. Cabeçalho e linhas reais do export de 23/09/2026.
+ */
+describe('linha repetida na colagem', () => {
+  const CAB = 'Centro\tNome do Centro de Negócio\tNº Pedido Centro Associado\tItem\tNº Entrada\tNº Devolução\tDocumento\tInsumo\tEspecificação\tUnidade\tQtd.a Desc\tVlr. a Desc\tQtd.Desc\tVlr.Desc\tNº Pedido Associado'
+  const L1 = 'CBM.01.0002\tCondomínio Wave\t1139\t1\t158969/001\t\tNF-e 534\t71635\tFaturamento direto - ELÉTRICA SUBESTAÇÃO\tR$\t0,00\t7.280,00\t0,00\t72.780,81\t23797'
+  const L2 = 'CBM.01.0002\tCondomínio Wave\t1139\t2\t154859/002\t\tNF-e 198\t71635\tFaturamento direto - GERAÇÃO\tR$\t0,00\t19.367,62\t0,00\t0,00\t23797'
+
+  it('descarta a linha repetida e conta quantas', () => {
+    const r = parseSaldoColado([CAB, L1, L2, L1, L2].join('\n'))
+    expect(r.formato).toBe('detalhado')
+    expect(r.notas).toHaveLength(2)
+    expect(r.duplicadas).toBe(2)
+    expect(r.total).toBeCloseTo(7_280.00 + 19_367.62, 2)
+  })
+
+  it('a mesma NF em entradas diferentes é rateio, não repetição', () => {
+    // NF-e 534 aparece em dois itens do pedido — entradas distintas.
+    const outraEntrada = L1.replace('158969/001', '158969/002').replace('7.280,00', '1.500,00')
+    const r = parseSaldoColado([CAB, L1, outraEntrada].join('\n'))
+    expect(r.notas).toHaveLength(2)
+    expect(r.duplicadas).toBe(0)
+    expect(r.total).toBeCloseTo(8_780.00, 2)
+  })
+
+  it('sem cabeçalho, cai na identidade da linha e ainda pega a repetição', () => {
+    const semCab = 'NF-e 534\t71635\tFaturamento direto - ELÉTRICA SUBESTAÇÃO\tR$\t0,00\t7.280,00\t0,00\t72.780,81'
+    const r = parseSaldoColado([semCab, semCab].join('\n'))
+    expect(r.notas).toHaveLength(1)
+    expect(r.duplicadas).toBe(1)
+  })
+
+  it('colagem limpa não acusa nada', () => {
+    const r = parseSaldoColado([CAB, L1, L2].join('\n'))
+    expect(r.duplicadas).toBe(0)
+    expect(r.notas).toHaveLength(2)
+  })
+})

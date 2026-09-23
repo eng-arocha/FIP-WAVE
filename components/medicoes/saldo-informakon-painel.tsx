@@ -563,6 +563,11 @@ export function SaldoInformakonPainel({
       if ((body.nao_reconhecidas?.length ?? 0) > 0) {
         problemas.push(`macro item não reconhecido: ${body.nao_reconhecidas.join('; ')}`)
       }
+      if ((body.duplicadas ?? 0) > 0) {
+        problemas.push(
+          `${body.duplicadas} linha(s) repetida(s) foram descartadas — a grade parece ter sido colada duas vezes. Se o número surpreender, cole de novo selecionando a tabela uma vez só`,
+        )
+      }
       if (body.detalhe_descartado) {
         problemas.push('você colou nota a nota mas a migration 081 ainda não rodou no Supabase — guardei só o somatório por macro item')
       }
