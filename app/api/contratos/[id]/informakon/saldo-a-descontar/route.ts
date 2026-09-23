@@ -8,7 +8,7 @@ import { parseBody } from '@/lib/api/schema'
 import { isSchemaMissingError } from '@/lib/db/resilient'
 import { parseSaldoColado, formaDaColagem } from '@/lib/informakon/saldo-colado'
 import { rechavearRetrato } from '@/lib/informakon/rechavear'
-import { normalizarNumeroNota } from '@/lib/informakon/conferir-notas'
+import { normalizarNumeroNota, detectarNumerosRepetidos } from '@/lib/informakon/conferir-notas'
 import { carregarAlocacaoDeNotas, carregarNumerosDeNotasConhecidas } from '@/lib/db/alocacao-notas'
 
 export const runtime = 'nodejs'
@@ -393,6 +393,19 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     let notasSoNoErp: Array<{ numero: string; documento: string; macroItem: string; valor: number }> = []
     /** Mesma nota nos dois lados, com valor diferente — compra divergente. */
     let notasDivergentes: Array<{ numero: string; nosso: number; erp: number; diferenca: number }> = []
+    /**
+     * Número que existe nos dois lados mas identifica notas DIFERENTES.
+     * Sai da faixa de valor: ali só geraria o ajuste errado. Ver
+     * `detectarNumerosRepetidos`.
+     */
+    let notasNumeroRepetido: Array<{
+      numero: string
+      nosso: number
+      erp: number
+      diferenca: number
+      docs_erp: Array<{ documento: string; valor: number }>
+      pedidos_aqui: string[]
+    }> = []
 
     if (notasSaida.length > 0) {
       const alocacao = await carregarAlocacaoDeNotas(admin, contratoId)
@@ -462,8 +475,19 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         const v = (Number(n.valorADescontar) || 0) + (Number(n.valorDescontado) || 0)
         erpPorNumero.set(numero, (erpPorNumero.get(numero) || 0) + v)
       }
+      // Antes de acusar valor diferente: o número identifica UMA nota dos dois
+      // lados, ou está colidindo? Ver `detectarNumerosRepetidos`.
+      const colisoes = detectarNumerosRepetidos(
+        notasSaida.map(n => ({
+          numeroNf: n.numeroNf ?? n.documento,
+          documento: n.documento,
+          valor: (Number(n.valorADescontar) || 0) + (Number(n.valorDescontado) || 0),
+        })),
+        alocacao.map(a => ({ numeroNf: a.numeroNf, pedido: a.pedido })),
+      )
+
       const TOLERANCIA = 1
-      notasDivergentes = [...nossoPorNumero.entries()]
+      const candidatas = [...nossoPorNumero.entries()]
         .filter(([numero]) => erpPorNumero.has(numero))
         .map(([numero, v]) => {
           const erp = Math.round((erpPorNumero.get(numero) || 0) * 100) / 100
@@ -478,6 +502,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         .filter(n => n.erp > 0.01)
         .filter(n => Math.abs(n.diferenca) > TOLERANCIA)
         .sort((a, b) => Math.abs(b.diferenca) - Math.abs(a.diferenca))
+
+      notasDivergentes = candidatas.filter(n => !colisoes.has(n.numero))
+      notasNumeroRepetido = candidatas
+        .filter(n => colisoes.has(n.numero))
+        .map(n => ({
+          ...n,
+          docs_erp: colisoes.get(n.numero)!.docsErp.slice(0, 6),
+          pedidos_aqui: colisoes.get(n.numero)!.pedidosAqui.slice(0, 6),
+        }))
       const rech = rechavearRetrato(notasSaida, alocacao)
       linhasSaida = [...rech.porChave.entries()].map(([chave, v]) => ({
         chave,
@@ -532,6 +565,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       /** Mesma nota nos dois lados com valor diferente — compra divergente. */
       notas_divergentes: notasDivergentes.slice(0, 30),
       qtd_divergentes: notasDivergentes.length,
+      /** Número repetido: mesma numeração, notas diferentes. Nunca é ajuste de valor. */
+      notas_numero_repetido: notasNumeroRepetido.slice(0, 20),
+      qtd_numero_repetido: notasNumeroRepetido.length,
       /**
        * true = o retrato não trouxe o "já descontado". A faixa de divergência
        * de valor fica enviesada para baixo do lado do ERP; o teto de lastro

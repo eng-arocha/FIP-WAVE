@@ -93,6 +93,16 @@ interface RetratoSaldo {
   qtd_divergentes?: number
   /** O retrato não trouxe o "já descontado" — a faixa de valor fica enviesada. */
   descontado_desconhecido?: boolean
+  /** Mesma numeração, notas diferentes — nunca é ajuste de valor. */
+  notas_numero_repetido?: Array<{
+    numero: string
+    nosso: number
+    erp: number
+    diferenca: number
+    docs_erp: Array<{ documento: string; valor: number }>
+    pedidos_aqui: string[]
+  }>
+  qtd_numero_repetido?: number
 }
 
 const EXEMPLO = `Documento\tInsumo\tEspecificação\tUnidade\tQtd.a Desc\tVlr. a Desc\tQtd.Desc\tVlr.Desc
@@ -846,6 +856,40 @@ export function SaldoInformakonPainel({
                 abatimento. Confira uma a uma: ou cadastre o pedido, ou confirme que a nota é de outra
                 obra. Este alarme não some sozinho e nenhum outro número do boletim o denuncia.
               </span>
+            </div>
+          </div>
+        )}
+
+        {/* ── NÚMERO REPETIDO: o número existe nos dois lados, mas não é a
+            mesma nota. Fica FORA da faixa de valor de propósito: ali a leitura
+            natural é "ajusta o site para bater com o ERP", e foi exatamente
+            isso que entrou errado na NF 91 da Medição 5. */}
+        {(retrato?.qtd_numero_repetido ?? 0) > 0 && (
+          <div className="px-3 pb-3">
+            <div
+              className="p-2.5 rounded-lg text-[11px]"
+              style={{ background: 'rgba(148,163,184,0.06)', border: '1px solid rgba(148,163,184,0.30)', color: 'var(--text-2)' }}
+            >
+              <strong>
+                {retrato!.qtd_numero_repetido} número(s) repetido(s) — mesma numeração, notas diferentes.
+              </strong>
+              <span className="block mt-1" style={{ color: 'var(--text-3)' }}>
+                Não é divergência de valor: <strong>não ajuste o site para bater com o &quot;lá&quot;</strong>.
+                Confira emitente e valor de cada documento.
+              </span>
+              {(retrato!.notas_numero_repetido ?? []).slice(0, 8).map(n => (
+                <span key={n.numero} className="block mt-1.5 font-mono" style={{ color: 'var(--text-2)' }}>
+                  <LinkNf numero={n.numero} />
+                  {`: aqui ${formatCurrency(n.nosso)}`}
+                  {n.pedidos_aqui.length > 1 ? ` em ${n.pedidos_aqui.length} pedidos (${n.pedidos_aqui.join(', ')})` : ''}
+                  {n.docs_erp.length > 0
+                    ? `  ·  no ERP: ${n.docs_erp.map(d => `${d.documento} ${formatCurrency(d.valor)}`).join(' + ')}`
+                    : ''}
+                </span>
+              ))}
+              {(retrato!.qtd_numero_repetido ?? 0) > 8
+                ? <span className="block mt-1" style={{ color: 'var(--text-3)' }}>{`+${(retrato!.qtd_numero_repetido ?? 0) - 8} outro(s)`}</span>
+                : null}
             </div>
           </div>
         )}
