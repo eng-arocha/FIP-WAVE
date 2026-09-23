@@ -41,6 +41,12 @@ export interface NotaSaldoColada {
   tipoDoc: string | null
   /** Só os dígitos: '534'. É por aqui que a nota casa com a do nosso lado. */
   numeroNf: string | null
+  /**
+   * 'Nº Entrada' do ERP — '158969/001'. Identifica a LINHA da grade, não a
+   * nota: a mesma NF rateada em dois itens do pedido vem em duas entradas
+   * diferentes. É a chave que distingue rateio legítimo de linha repetida.
+   */
+  entrada: string | null
   /** Código do insumo do ERP (71635 = faturamento direto). Só rastreabilidade. */
   insumo: string | null
   /** Rótulo do macro item exatamente como veio. */
@@ -88,6 +94,16 @@ export interface SaldoColado {
   naoReconhecidas: LinhaSaldoColada[]
   /** Linhas que não puderam ser lidas (sem valor numérico). Só para diagnóstico. */
   ignoradas: string[]
+  /**
+   * Linhas idênticas descartadas — a mesma grade colada duas vezes.
+   *
+   * Acontece: seleciona-se a planilha, cola, e o conteúdo entra duplicado. O
+   * estrago é silencioso onde mais dói. O total por macro item sobrevive,
+   * porque o reendereçamento pela nossa alocação limita cada nota ao que ela
+   * de fato cobre; mas a conferência NOTA A NOTA soma as linhas cruas, e aí
+   * toda nota aparece com o dobro do valor — 196 divergências onde havia 13.
+   */
+  duplicadas: number
 }
 
 /** Cabeçalhos e rodapés da tabela dinâmica que não são dados. */
@@ -158,6 +174,8 @@ interface ColunasDetalhado {
   espec: number
   vlrADesc: number
   vlrDesc: number
+  /** 'Nº Entrada'. -1 quando a colagem veio sem cabeçalho. */
+  entrada: number
 }
 
 /**
@@ -173,7 +191,10 @@ function lerCabecalhoDetalhado(campos: string[]): ColunasDetalhado | null {
   const vlrADesc = acha('VLRADESC', 'VALORADESCONTAR')
   const vlrDesc = acha('VLRDESC', 'VALORDESCONTADO')
   if (doc < 0 || espec < 0 || vlrADesc < 0) return null
-  return { doc, insumo: acha('INSUMO'), espec, vlrADesc, vlrDesc }
+  return {
+    doc, insumo: acha('INSUMO'), espec, vlrADesc, vlrDesc,
+    entrada: acha('NENTRADA', 'ENTRADA', 'NOENTRADA'),
+  }
 }
 
 /**
@@ -195,8 +216,8 @@ function inferirColunasDetalhado(campos: string[]): ColunasDetalhado | null {
   let inicioCauda = campos.length
   while (inicioCauda > espec + 1 && valorPtBr(campos[inicioCauda - 1]) !== null) inicioCauda--
   const cauda = campos.length - inicioCauda
-  if (cauda === 4) return { doc: 0, insumo: espec > 1 ? 1 : -1, espec, vlrADesc: inicioCauda + 1, vlrDesc: inicioCauda + 3 }
-  if (cauda === 2) return { doc: 0, insumo: espec > 1 ? 1 : -1, espec, vlrADesc: inicioCauda, vlrDesc: inicioCauda + 1 }
+  if (cauda === 4) return { doc: 0, insumo: espec > 1 ? 1 : -1, espec, vlrADesc: inicioCauda + 1, vlrDesc: inicioCauda + 3, entrada: -1 }
+  if (cauda === 2) return { doc: 0, insumo: espec > 1 ? 1 : -1, espec, vlrADesc: inicioCauda, vlrDesc: inicioCauda + 1, entrada: -1 }
   return null
 }
 
@@ -221,6 +242,7 @@ function montarNota(campos: string[], col: ColunasDetalhado): NotaSaldoColada | 
     tipoDoc: tipo,
     numeroNf: numero,
     insumo: campoTexto(campos, col.insumo) || null,
+    entrada: campoTexto(campos, col.entrada) || null,
     macroItem: especTexto,
     chave: macro,
     grupoCodigo: dePara.grupo ?? null,
@@ -272,6 +294,9 @@ function tentarDetalhado(texto: string): SaldoColado | null {
   const linhas = String(texto ?? '').split('\n')
   const notas: NotaSaldoColada[] = []
   const ignoradas: string[] = []
+  /** Chaves de linha já vistas — ver `duplicadas` em SaldoColado. */
+  const vistas = new Set<string>()
+  let duplicadas = 0
   let col: ColunasDetalhado | null = null
   let totalInformado: number | null = null
   let totalDescontadoInformado: number | null = null
@@ -302,8 +327,18 @@ function tentarDetalhado(texto: string): SaldoColado | null {
     }
 
     const nota = montarNota(campos, col)
-    if (nota) notas.push(nota)
-    else ignoradas.push(linha.trim())
+    if (!nota) { ignoradas.push(linha.trim()); continue }
+    // Chave da LINHA da grade. O 'Nº Entrada' é o identificador do ERP e
+    // distingue rateio legítimo (mesma NF, entradas diferentes) de linha
+    // repetida. Sem ele — colagem sem cabeçalho — cai no conjunto de campos
+    // que define a linha, que é conservador na direção certa: linha
+    // realmente igual não acrescenta informação nenhuma.
+    const chaveLinha = nota.entrada
+      ? `E:${nota.entrada}`
+      : `D:${nota.documento}|${nota.chave}|${nota.valorADescontar}|${nota.valorDescontado}`
+    if (vistas.has(chaveLinha)) { duplicadas++; continue }
+    vistas.add(chaveLinha)
+    notas.push(nota)
   }
 
   if (notas.length === 0) return null
@@ -319,6 +354,7 @@ function tentarDetalhado(texto: string): SaldoColado | null {
     totalDescontadoInformado,
     naoReconhecidas: agregadas.filter(l => !l.reconhecido),
     ignoradas,
+    duplicadas,
   }
 }
 
@@ -369,6 +405,8 @@ function lerAgregado(texto: string): SaldoColado {
     totalDescontadoInformado: null,
     naoReconhecidas: linhas.filter(l => !l.reconhecido),
     ignoradas,
+    // O layout agregado não tem nota; não há linha para repetir.
+    duplicadas: 0,
   }
 }
 
