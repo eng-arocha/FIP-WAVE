@@ -517,6 +517,9 @@ export function parseRelatorio(
   let medicoesServico: MedicaoServico[] = []
   let lancamentos: LancamentoWave[] = []
 
+  /** Abas que o nome não classificou — resolvidas depois, pelas colunas. */
+  const naoClassificadas: { nome: string; aoa: Linha[] }[] = []
+
   for (const { nome, aoa } of abas) {
     const n = normalizar(nome)
     try {
@@ -526,15 +529,58 @@ export function parseRelatorio(
       else if (n.includes('MEDICOES SERVICO') || n.includes('MEDICAO SERVICO')) {
         medicoesServico = parseMedicoesServico(aoa)
       } else {
-        avisos.push(`Aba "${nome}" ignorada — não corresponde a nenhum formato conhecido.`)
+        naoClassificadas.push({ nome, aoa })
       }
     } catch (e) {
       avisos.push(e instanceof Error ? e.message : String(e))
     }
   }
 
+  // ── Reconhecimento pelas COLUNAS ────────────────────────────────────────
+  //
+  // O nome da aba é escolha de quem exporta, não do relatório: o Informakon
+  // entrega a mesma grade como "Pagina01" dependendo de por onde se exporta,
+  // e o arquivo era recusado inteiro por causa disso — com uma mensagem que
+  // mandava o usuário procurar uma aba que o ERP nunca produziu.
+  //
+  // O conteúdo é que identifica. `parseGlobal` exige Entrada + Documento +
+  // Especificação; `parseNfsWaveGlobal` exige Fornecedor + Documento + Valor.
+  // Nenhum dos dois formatos satisfaz o cabeçalho do outro, então não há
+  // ambiguidade — e uma aba que não bate com nenhum continua ignorada.
+  for (const { nome, aoa } of naoClassificadas) {
+    let reconhecida = false
+    if (!nfs.length) {
+      try {
+        const r = parseGlobal(aoa)
+        if (r.length) {
+          nfs = r
+          reconhecida = true
+          avisos.push(`Aba "${nome}" reconhecida pelas colunas como "faturamento direto global".`)
+        }
+      } catch { /* não é esta aba */ }
+    }
+    if (!reconhecida && !lancamentos.length) {
+      try {
+        const r = parseNfsWaveGlobal(aoa)
+        if (r.length) {
+          lancamentos = r
+          reconhecida = true
+          avisos.push(`Aba "${nome}" reconhecida pelas colunas como "NFS WAVE GLOBAL".`)
+        }
+      } catch { /* não é esta aba */ }
+    }
+    if (!reconhecida) {
+      avisos.push(`Aba "${nome}" ignorada — não corresponde a nenhum formato conhecido.`)
+    }
+  }
+
   if (!nfs.length) {
-    throw new Error('Nenhuma linha de NF encontrada. O arquivo precisa ter a aba "faturamento direto global".')
+    const nomes = abas.map(a => `"${a.nome}"`).join(', ') || 'nenhuma'
+    throw new Error(
+      'Nenhuma linha de NF encontrada. É preciso a grade de faturamento direto — ' +
+      'as colunas Nº Entrada, Documento, Especificação e Vlr. a Desc. ' +
+      `Abas lidas: ${nomes}.`,
+    )
   }
 
   const desconhecidos = Array.from(

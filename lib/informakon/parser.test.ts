@@ -369,6 +369,61 @@ describe('parseRelatorio', () => {
 
   it('recusa arquivo sem a aba de faturamento direto', () => {
     expect(() => parseRelatorio([{ nome: 'outra coisa', aoa: [['a']] }]))
-      .toThrow(/faturamento direto global/)
+      .toThrow(/grade de faturamento direto/)
+  })
+})
+
+/**
+ * O nome da aba é escolha de quem exporta, não do relatório.
+ *
+ * O Informakon entrega a mesma grade de faturamento direto como "Pagina01"
+ * dependendo de por onde se exporta, e o arquivo inteiro era recusado por
+ * causa disso — com uma mensagem mandando procurar uma aba que o ERP nunca
+ * produziu. Cabeçalhos reais dos dois exports de 23/09/2026.
+ */
+describe('reconhecimento de aba pelas colunas', () => {
+  const GRADE_FAT_DIRETO = [
+    ['Centro', 'Nome do Centro de Negócio', 'Nº Pedido Centro Associado', 'Item',
+     'Nº Entrada', 'Nº Devolução', 'Documento ', 'Insumo', 'Especificação',
+     'Unidade', 'Qtd.a Desc', 'Vlr. a Desc', 'Qtd.Desc', 'Vlr.Desc', 'Nº Pedido Associado'],
+    ['CBM.01.0002', 'Condomínio Wave', 1139, 1, '158969/001', null, 'NF-e 534', 71635,
+     'Faturamento direto  - ELÉTRICA SUBESTAÇÃO  ', 'R$', 0, 7280, 0, 72780.81, 23797],
+  ]
+
+  const LISTA_DE_ENTRADAS = [
+    ['Nº AR', 'Data AR', 'Forn', 'Fornecedor', 'Nat', 'NatOpe', 'TpDoc.',
+     'Nº Documento', 'Série', 'Complemento', 'Data Entrada', 'Data Doc.', 'Valor'],
+    [4117, 46288, '008523', 'NOVEMP INDUSTRIA E COMERCIO LTDA', 'SM', '21201',
+     'NF-e', '15400', '0', null, 46288, 46269, 220000],
+  ]
+
+  it('aceita a grade de fat-direto numa aba chamada "Pagina01"', () => {
+    const r = parseRelatorio([{ nome: 'Pagina01', aoa: GRADE_FAT_DIRETO }])
+    expect(r.nfs).toHaveLength(1)
+    expect(r.nfs[0].numero_nf).toBe('534')
+    expect(r.nfs[0].valor_a_descontar).toBe(7280)
+    expect(r.avisos.some(a => a.includes('reconhecida pelas colunas'))).toBe(true)
+  })
+
+  it('reconhece as duas abas no mesmo arquivo, qualquer que seja o nome', () => {
+    const r = parseRelatorio([
+      { nome: 'Pagina01', aoa: GRADE_FAT_DIRETO },
+      { nome: 'Pagina01 (2)', aoa: LISTA_DE_ENTRADAS },
+    ])
+    expect(r.nfs).toHaveLength(1)
+    // A lista de entradas entrou como "NFS WAVE GLOBAL" — some o aviso de
+    // que as notas ficariam sem fornecedor.
+    expect(r.avisos.some(a => a.includes('NFS WAVE GLOBAL" não encontrada'))).toBe(false)
+  })
+
+  it('o nome continua mandando quando existe', () => {
+    const r = parseRelatorio([{ nome: 'faturamento direto global', aoa: GRADE_FAT_DIRETO }])
+    expect(r.nfs).toHaveLength(1)
+    expect(r.avisos.some(a => a.includes('reconhecida pelas colunas'))).toBe(false)
+  })
+
+  it('aba que não bate com formato nenhum continua ignorada, e o erro diz o que falta', () => {
+    expect(() => parseRelatorio([{ nome: 'Resumo', aoa: [['Mês', 'Total'], ['08', 10]] }]))
+      .toThrow(/Nº Entrada, Documento, Especificação/)
   })
 })
