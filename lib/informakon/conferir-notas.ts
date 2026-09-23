@@ -253,3 +253,92 @@ export function conferirNotas({
     explicaFalta: falta > TOL && Math.abs(totalNaoLancado - falta) <= 1,
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NÚMERO REPETIDO
+//
+// O casamento entre os dois lados é feito só pelo NÚMERO da nota — é o único
+// campo que existe nas duas bases. Isso junta o que não devia ser junto:
+//
+//   • `NF-e 550` (material, R$ 39.140,57) e `NFS-e 550` (serviço, R$ 12.560,00)
+//     são notas DIFERENTES, de emitentes diferentes, e viram um "550" só.
+//   • NFS-e de administração de obra têm numeração baixa (2, 6, 10, 90, 91,
+//     93...). Cada prestador tem a própria sequência, então números pequenos
+//     colidem entre fornecedores.
+//
+// Somados, viram "compra divergente" — e a leitura natural ("o site está com o
+// valor errado, ajusta para bater com o ERP") produz um erro real. Foi o que
+// aconteceu com a NF 91 na Medição 5: o 29.500 do ERP era a soma de dois
+// prestadores, o ajuste entrou errado e precisou do manual-fix 087 para voltar.
+//
+// Detectar é simples e o efeito é grande: o caso sai da faixa de valor e vira
+// um aviso que diz o que realmente há — dois documentos com o mesmo número.
+
+/** Uma nota do retrato, reduzida ao que o detector precisa. */
+export interface DocumentoErp {
+  numeroNf: string | null
+  documento: string
+  valor: number
+}
+
+/** Uma das nossas alocações, reduzida ao que o detector precisa. */
+export interface NotaNossaResumida {
+  numeroNf: string
+  pedido?: string | null
+}
+
+export interface ColisaoDeNumero {
+  numero: string
+  /** Documentos distintos no ERP com esse número, do maior valor para o menor. */
+  docsErp: Array<{ documento: string; valor: number }>
+  /** Pedidos de fat-direto distintos do nosso lado com esse número. */
+  pedidosAqui: string[]
+}
+
+/**
+ * Números que o comparador junta mas que pertencem a notas diferentes.
+ *
+ * Dois sinais, qualquer um basta:
+ *   • mais de um DOCUMENTO no ERP com o mesmo número ('NF-e 550' + 'NFS-e 550');
+ *   • mais de um PEDIDO nosso com o mesmo número — pedidos diferentes são, na
+ *     prática, fornecedores diferentes.
+ *
+ * Devolve só os números em colisão; número limpo não entra no mapa.
+ */
+export function detectarNumerosRepetidos(
+  notasErp: DocumentoErp[],
+  nossas: NotaNossaResumida[],
+): Map<string, ColisaoDeNumero> {
+  const docsPorNumero = new Map<string, Map<string, number>>()
+  for (const n of notasErp) {
+    const numero = normalizarNumeroNota(n.numeroNf ?? n.documento)
+    const documento = String(n.documento ?? '').trim()
+    if (!numero || !documento) continue
+    const docs = docsPorNumero.get(numero) ?? new Map<string, number>()
+    docs.set(documento, cent((docs.get(documento) ?? 0) + (Number(n.valor) || 0)))
+    docsPorNumero.set(numero, docs)
+  }
+
+  const pedidosPorNumero = new Map<string, Set<string>>()
+  for (const a of nossas) {
+    const numero = normalizarNumeroNota(a.numeroNf)
+    const pedido = String(a.pedido ?? '').trim()
+    if (!numero || !pedido) continue
+    const set = pedidosPorNumero.get(numero) ?? new Set<string>()
+    set.add(pedido)
+    pedidosPorNumero.set(numero, set)
+  }
+
+  const out = new Map<string, ColisaoDeNumero>()
+  const numeros = new Set([...docsPorNumero.keys(), ...pedidosPorNumero.keys()])
+  for (const numero of numeros) {
+    const docs = [...(docsPorNumero.get(numero) ?? new Map<string, number>())]
+      .map(([documento, valor]) => ({ documento, valor }))
+      .sort((a, b) => b.valor - a.valor)
+    const pedidos = [...(pedidosPorNumero.get(numero) ?? new Set<string>())].sort()
+    if (docs.length > 1 || pedidos.length > 1) {
+      out.set(numero, { numero, docsErp: docs, pedidosAqui: pedidos })
+    }
+  }
+  return out
+}

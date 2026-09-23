@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { conferirNotas, normalizarNumeroNota, type NotaDoErp, type NotaDoSistema } from './conferir-notas'
+import { conferirNotas, normalizarNumeroNota, type NotaDoErp, type NotaDoSistema, detectarNumerosRepetidos } from './conferir-notas'
 
 const nossa = (numero: string, valorAlocado: number, data = '2026-08-01'): NotaDoSistema => ({
   id: `id-${numero}`, numero, data, emitente: 'Fornecedor X', valorAlocado,
@@ -124,5 +124,55 @@ describe('conferirNotas', () => {
     })
     expect(r.linhas).toHaveLength(0)
     expect(r.soNoErp).toHaveLength(0)
+  })
+})
+
+/**
+ * Número repetido — o caso NF 550 e a armadilha da NF 91.
+ *
+ * Os dois lados só têm o número em comum, então `NF-e 550` e `NFS-e 550` viram
+ * um "550" só e são somados. Na Medição 5 isso fez o ERP mostrar R$ 29.500
+ * para a NF 91 (soma de dois prestadores), o ajuste entrou errado e precisou do
+ * manual-fix 087 para voltar.
+ */
+describe('detectarNumerosRepetidos', () => {
+  it('pega dois documentos diferentes com o mesmo número no ERP', () => {
+    const colisoes = detectarNumerosRepetidos(
+      [
+        { numeroNf: '550', documento: 'NFS-e 550', valor: 12_560 },
+        { numeroNf: '550', documento: 'NF-e 550', valor: 39_140.57 },
+        { numeroNf: '2385', documento: 'NF-e 2385', valor: 7_280 },
+      ],
+      [{ numeroNf: '550', pedido: 'FIP-1085' }, { numeroNf: '2385', pedido: 'FIP-1201' }],
+    )
+    expect([...colisoes.keys()]).toEqual(['550'])
+    // Maior valor primeiro: é o documento que provavelmente falta cadastrar.
+    expect(colisoes.get('550')!.docsErp).toEqual([
+      { documento: 'NF-e 550', valor: 39_140.57 },
+      { documento: 'NFS-e 550', valor: 12_560 },
+    ])
+  })
+
+  it('pega o mesmo número em dois pedidos nossos', () => {
+    // Prestadores diferentes, cada um com a própria sequência de NFS-e.
+    const colisoes = detectarNumerosRepetidos(
+      [{ numeroNf: '91', documento: 'NFS-e 91', valor: 29_500 }],
+      [{ numeroNf: '91', pedido: 'FIP-1140' }, { numeroNf: '91', pedido: 'FIP-1177' }],
+    )
+    expect(colisoes.get('91')?.pedidosAqui).toEqual(['FIP-1140', 'FIP-1177'])
+  })
+
+  it('a mesma nota rateada em vários macro itens NÃO é colisão', () => {
+    // A NF-e 206 aparece em sete macro itens do ERP — mesmo documento, várias
+    // linhas. Acusar colisão aí encheria a tela de ruído.
+    const colisoes = detectarNumerosRepetidos(
+      [
+        { numeroNf: '206', documento: 'NF-e 206', valor: 0 },
+        { numeroNf: '206', documento: 'NF-e 206', valor: 1_000 },
+        { numeroNf: '206', documento: 'NF-e 206', valor: 500 },
+      ],
+      [{ numeroNf: '206', pedido: 'FIP-1085' }, { numeroNf: '206', pedido: 'FIP-1085' }],
+    )
+    expect(colisoes.size).toBe(0)
   })
 })
