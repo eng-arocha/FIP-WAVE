@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 import { apiError } from '@/lib/api/error-response'
 import { parseBody } from '@/lib/api/schema'
 import { isSchemaMissingError } from '@/lib/db/resilient'
-import { parseSaldoColado } from '@/lib/informakon/saldo-colado'
+import { parseSaldoColado, formaDaColagem } from '@/lib/informakon/saldo-colado'
 import { rechavearRetrato } from '@/lib/informakon/rechavear'
 import { normalizarNumeroNota } from '@/lib/informakon/conferir-notas'
 import { carregarAlocacaoDeNotas, carregarNumerosDeNotasConhecidas } from '@/lib/db/alocacao-notas'
@@ -117,6 +117,32 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           error: 'Nenhuma linha reconhecida. Cole a grade do ERP (Documento / Especificação / Vlr. a Desc) ou a tabela somada por macro item ("Faturamento direto - ESGOTO⇥413.942,67").',
           code: 'COLAGEM_VAZIA',
           ignoradas: amostraDeRotulos(lido.ignoradas),
+          forma: formaDaColagem(texto),
+        },
+        { status: 400 },
+      )
+    }
+
+    // ── A TRAVA QUE VALE PARA QUALQUER FORMA DE COLAGEM ERRADA ──────────
+    //
+    // Retrato em que NENHUM macro item foi reconhecido não tem uso possível:
+    // não há uma única linha para comparar com o boletim. Salvá-lo só faz uma
+    // coisa — virar o retrato mais recente do contrato e aposentar o anterior,
+    // que era bom.
+    //
+    // Isso aconteceu duas vezes no mesmo dia, por dois motivos diferentes (TAB
+    // perdido; TAB presente com colunas de menos). Em vez de caçar cada forma
+    // de colagem torta, a recusa passa a olhar o RESULTADO: zero reconhecido é
+    // recusa, sempre. `forma` diz o que chegou, para o conserto não ser chute.
+    if (lido.naoReconhecidas.length === lido.linhas.length) {
+      return NextResponse.json(
+        {
+          error: 'Nenhum macro item foi reconhecido — a colagem chegou fora de forma e eu não salvei nada (o retrato anterior está intacto). Cole a grade do ERP direto do Excel, COM a linha de cabeçalho e até a coluna "Vlr.Desc".',
+          code: 'NADA_RECONHECIDO',
+          formato: lido.formato,
+          qtd_linhas: lido.linhas.length,
+          exemplos: amostraDeRotulos(lido.naoReconhecidas.map(l => l.macroItem)),
+          forma: formaDaColagem(texto),
         },
         { status: 400 },
       )
