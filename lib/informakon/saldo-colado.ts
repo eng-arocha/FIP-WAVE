@@ -259,13 +259,21 @@ function inferirColunasDetalhado(campos: string[]): ColunasDetalhado | null {
     return !!macro && (normalizar(c).includes('FATURAMENTO DIRETO') || !!resolverDePara(macro).grupo || !!resolverDePara(macro).detalhamento)
   })
   if (espec < 1) return null
-  if (!parseDocumento(campos[0]).numero) return null
+
+  // A coluna do Documento NÃO é a primeira. Na grade completa a linha começa
+  // em `Centro` ('CBM.01.0002'), e `parseDocumento` acha um número em qualquer
+  // texto que termine em dígito — assumir a coluna 0 fazia toda nota do retrato
+  // virar 'CBM.01.0002' / nº 0002, silenciosamente. Procura o campo que é de
+  // fato um documento ('NF-e 198', 'NFS-e 91'), antes da Especificação.
+  const doc = campos.findIndex((c, i) => i < espec && !!parseDocumento(c).tipo)
+  if (doc < 0) return null
 
   let inicioCauda = campos.length
   while (inicioCauda > espec + 1 && valorPtBr(campos[inicioCauda - 1]) !== null) inicioCauda--
   const cauda = campos.length - inicioCauda
-  const insumo = espec > 1 ? 1 : -1
-  if (cauda === 4) return { doc: 0, insumo, espec, vlrADesc: inicioCauda + 1, vlrDesc: inicioCauda + 3, entrada: -1 }
+  // O Insumo fica entre o Documento e a Especificação, quando há espaço.
+  const insumo = espec - doc > 1 ? doc + 1 : -1
+  if (cauda === 4) return { doc, insumo, espec, vlrADesc: inicioCauda + 1, vlrDesc: inicioCauda + 3, entrada: -1 }
   if (cauda === 2) {
     // Dois números podem ser duas coisas MUITO diferentes:
     //
@@ -283,8 +291,8 @@ function inferirColunasDetalhado(campos: string[]): ColunasDetalhado | null {
     const parQtdVlr = casasDecimais(a) === 4 && casasDecimais(b) <= 2
       && valorPtBr(a) === valorPtBr(b)
     return parQtdVlr
-      ? { doc: 0, insumo, espec, vlrADesc: inicioCauda + 1, vlrDesc: -1, entrada: -1 }
-      : { doc: 0, insumo, espec, vlrADesc: inicioCauda, vlrDesc: inicioCauda + 1, entrada: -1 }
+      ? { doc, insumo, espec, vlrADesc: inicioCauda + 1, vlrDesc: -1, entrada: -1 }
+      : { doc, insumo, espec, vlrADesc: inicioCauda, vlrDesc: inicioCauda + 1, entrada: -1 }
   }
   return null
 }
@@ -540,6 +548,41 @@ function lerAgregado(texto: string): SaldoColado {
     tabulacaoPerdida: false,
     // O layout agregado nunca traz o "já descontado"; avisar seria ruído.
     semColunaDescontado: false,
+  }
+}
+
+/**
+ * Forma bruta da colagem — para diagnóstico quando ela é recusada.
+ *
+ * Duas colagens erradas dão a MESMA mensagem na tela ("macro item não
+ * reconhecido") por motivos opostos: uma perdeu o TAB, a outra tinha TAB mas
+ * poucas colunas. Sem saber qual, o conserto é chute. Isto responde em uma
+ * linha: quantas linhas vieram, quantas tinham TAB, e quantos campos por linha.
+ */
+export interface FormaDaColagem {
+  linhas: number
+  comTab: number
+  /** Campos por linha nas linhas com TAB: mínimo, mais comum, máximo. */
+  camposMin: number
+  camposComum: number
+  camposMax: number
+}
+
+export function formaDaColagem(texto: string): FormaDaColagem {
+  const linhas = String(texto ?? '').split('\n').filter(l => l.trim() || l.includes('\t'))
+  const comTab = linhas.filter(l => l.includes('\t'))
+  const contagens = comTab.map(l => l.split('\t').length)
+  const freq = new Map<number, number>()
+  for (const c of contagens) freq.set(c, (freq.get(c) ?? 0) + 1)
+  let camposComum = 0
+  let melhor = -1
+  for (const [campos, vezes] of freq) if (vezes > melhor) { melhor = vezes; camposComum = campos }
+  return {
+    linhas: linhas.length,
+    comTab: comTab.length,
+    camposMin: contagens.length ? Math.min(...contagens) : 0,
+    camposComum,
+    camposMax: contagens.length ? Math.max(...contagens) : 0,
   }
 }
 

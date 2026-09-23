@@ -552,7 +552,17 @@ export function SaldoInformakonPainel({
         body: JSON.stringify({ texto }),
       })
       const body = await res.json().catch(() => ({}))
-      if (!res.ok) { setErro(body?.error || `Falha (HTTP ${res.status}).`); return }
+      if (!res.ok) {
+        // A "forma" da colagem vem junto na recusa: sem ela, duas colagens
+        // erradas por motivos opostos dão a mesma mensagem e o conserto é
+        // chute. Ver `formaDaColagem` em lib/informakon/saldo-colado.ts.
+        const f = body?.forma
+        const forma = f
+          ? ` (recebi ${f.linhas} linha(s), ${f.comTab} com tabulação, ${f.camposComum} coluna(s) por linha)`
+          : ''
+        setErro(`${body?.error || `Falha (HTTP ${res.status}).`}${forma}`)
+        return
+      }
 
       const problemas: string[] = []
       if (body.soma_confere === false) {

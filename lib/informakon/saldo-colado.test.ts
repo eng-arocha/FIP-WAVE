@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseSaldoColado, valorPtBr } from './saldo-colado'
+import { parseSaldoColado, valorPtBr, formaDaColagem } from './saldo-colado'
 
 const CAB = 'Documento\tInsumo\tEspecificação\tUnidade\tQtd.a Desc\tVlr. a Desc\tQtd.Desc\tVlr.Desc'
 
@@ -346,5 +346,45 @@ describe('coluna copiada em MAIORIA das notas', () => {
     ].join('\n'))
     expect(r.colunasColapsadas).toBe(false)
     expect(r.totalDescontado).toBeCloseTo(5_261.84 + 72_780.81 + 10_000, 2)
+  })
+})
+
+/**
+ * Sem cabeçalho, a coluna do Documento tem de ser PROCURADA.
+ *
+ * A grade completa começa em `Centro` ('CBM.01.0002'). Assumir que a primeira
+ * coluna é o Documento fazia `parseDocumento` achar o "número" 0002 ali e TODA
+ * nota do retrato virava 'CBM.01.0002' nº 0002 — sem erro, sem aviso, e a
+ * conferência nota a nota inteira sem sentido.
+ */
+describe('grade completa sem cabeçalho', () => {
+  const linha = (doc: string, entrada: string, grupo: string, a: string, d: string) => [
+    'CBM.01.0002', 'Condomínio Wave - Custo de Construção', '1139', '1', entrada, '',
+    doc, '71635', `Faturamento direto  - ${grupo}`, 'R$', a.replace(',', ',') + '00', a, d + '00', d,
+  ].join('\t')
+
+  const r = parseSaldoColado([
+    linha('NF-e 198', '154859/001', 'ELÉTRICA SUBESTAÇÃO', '0,00', '5.261,84'),
+    linha('NF-e 534', '158969/001', 'ELÉTRICA SUBESTAÇÃO', '72.780,81', '0,00'),
+    linha('NFS-e 91', '160112/001', 'SISTEMA DE PROTEÇÃO CONTRA DESCARGA ATMOSFÉRICA', '13.500,00', '0,00'),
+  ].join('\n'))
+
+  it('acha o documento na coluna certa', () => {
+    expect(r.formato).toBe('detalhado')
+    expect(r.notas.map(n => n.numeroNf)).toEqual(['198', '534', '91'])
+    expect(r.notas.every(n => n.documento !== 'CBM.01.0002')).toBe(true)
+  })
+
+  it('acerta os dois valores e o macro item', () => {
+    expect(r.total).toBeCloseTo(72_780.81 + 13_500, 2)
+    expect(r.totalDescontado).toBeCloseTo(5_261.84, 2)
+    expect(r.naoReconhecidas).toHaveLength(0)
+  })
+})
+
+describe('formaDaColagem', () => {
+  it('descreve o que chegou', () => {
+    const f = formaDaColagem(['a\tb\tc', 'd\te\tf', 'sem tab'].join('\n'))
+    expect(f).toEqual({ linhas: 3, comTab: 2, camposMin: 3, camposComum: 3, camposMax: 3 })
   })
 })
