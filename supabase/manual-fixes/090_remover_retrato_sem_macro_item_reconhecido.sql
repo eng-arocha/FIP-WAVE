@@ -54,3 +54,29 @@ LEFT JOIN informakon_saldo_linhas l ON l.snapshot_id = s.id
 WHERE s.contrato_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
 GROUP BY s.id, s.referencia, s.informado_em, s.total
 ORDER BY s.referencia DESC, s.informado_em DESC;
+
+-- BLOCO 4 — saúde do retrato que sobrou (os 3 mais recentes).
+--
+-- Duas perguntas de uma vez:
+--   • total_descontado = 0 com notas > 0  → a trava de "coluna Vlr.Desc colada
+--     como cópia" agiu (ou o ERP não descontou nada ainda). É estado limpo.
+--   • notas_colunas_iguais alto            → o retrato entrou ANTES da trava,
+--     com Vlr.Desc = Vlr. a Desc em toda nota. É a causa das 196 divergências:
+--     a conferência nota a nota soma as duas colunas, e a nota vale o dobro.
+--     Nesse caso, basta colar a grade de novo (do Excel) — a trava cuida.
+SELECT
+  s.id,
+  s.referencia,
+  s.informado_em,
+  s.formato,
+  s.total,
+  s.total_descontado,
+  count(n.id)                                                   AS notas,
+  count(n.id) FILTER (WHERE n.valor_a_descontar = n.valor_descontado
+                        AND n.valor_a_descontar <> 0)            AS notas_colunas_iguais
+FROM informakon_saldo_snapshots s
+LEFT JOIN informakon_saldo_notas n ON n.snapshot_id = s.id
+WHERE s.contrato_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+GROUP BY s.id, s.referencia, s.informado_em, s.formato, s.total, s.total_descontado
+ORDER BY s.referencia DESC, s.informado_em DESC
+LIMIT 3;
