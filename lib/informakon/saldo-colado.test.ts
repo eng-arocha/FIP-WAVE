@@ -257,3 +257,94 @@ describe('colagem sem tabulação', () => {
     expect(r.tabulacaoPerdida).toBe(false)
   })
 })
+
+/**
+ * Colagem que terminou em `Vlr. a Desc`, sem o par `Qtd.Desc | Vlr.Desc`.
+ *
+ * Foi o que entrou em produção às 20:55 de 23/09/2026: sobraram dois números
+ * na cauda — `Qtd.a Desc` (4 decimais) e `Vlr. a Desc` (2 decimais) — que são
+ * o MESMO valor, porque neste ERP a coluna Qtd. carrega reais. Lidos como
+ * (a descontar, descontado), produziram 187 notas com as duas colunas iguais,
+ * `total_descontado` um centavo acima do `total` (assinatura dos 4 decimais) e
+ * 196 divergências falsas, cada "lá" valendo 2× o "aqui".
+ */
+describe('colagem sem o par Qtd.Desc / Vlr.Desc', () => {
+  /** Sem cabeçalho, como veio: ... Documento, Insumo, Especificação, R$, Qtd.a Desc, Vlr. a Desc. */
+  const linha = (doc: string, grupo: string, valor: string, valor4: string) =>
+    `${doc}\t71635\tFaturamento direto  - ${grupo}\tR$\t${valor4}\t${valor}`
+
+  const SEM_PAR = [
+    linha('NF-e 534', 'ELÉTRICA SUBESTAÇÃO', '72.780,81', '72.780,8100'),
+    linha('NF-e 2385', 'SISTEMA DE PROTEÇÃO CONTRA DESCARGA ATMOSFÉRICA', '7.280,00', '7.280,0000'),
+    linha('NF-e 15400', 'ADMINISTRAÇÃO OBRA', '220.000,00', '220.000,0000'),
+    linha('NF-e 850', 'ALIMENTAÇÃO ELÉTRICA', '419.682,57', '419.682,5700'),
+    // Nota que o ERP já consumiu inteira: sem a coluna Vlr.Desc ela vem zerada.
+    linha('NF-e 198', 'ELÉTRICA SUBESTAÇÃO', '0,00', '0,0000'),
+  ].join('\n')
+
+  const r = parseSaldoColado(SEM_PAR)
+
+  it('não confunde Qtd.a Desc com o "já descontado"', () => {
+    expect(r.formato).toBe('detalhado')
+    expect(r.notas).toHaveLength(5)
+    expect(r.notas.every(n => n.valorDescontado === 0)).toBe(true)
+    expect(r.totalDescontado).toBe(0)
+  })
+
+  it('usa a coluna de 2 decimais como valor a descontar', () => {
+    expect(r.total).toBeCloseTo(72_780.81 + 7_280 + 220_000 + 419_682.57, 2)
+    expect(r.notas.find(n => n.numeroNf === '2385')?.valorADescontar).toBe(7_280)
+  })
+
+  it('avisa que a coluna do "já descontado" não veio', () => {
+    expect(r.semColunaDescontado).toBe(true)
+    // Não é cópia de coluna: é coluna ausente. Avisos diferentes.
+    expect(r.colunasColapsadas).toBe(false)
+  })
+
+  it('a grade completa não dispara o aviso', () => {
+    expect(parseSaldoColado(DETALHADO).semColunaDescontado).toBe(false)
+  })
+})
+
+/**
+ * A trava da coluna copiada não pode depender de unanimidade.
+ *
+ * No retrato real, 187 de 248 notas vieram idênticas e 61 estavam zeradas dos
+ * dois lados — nota que o ERP já consumiu, sem valor a mostrar quando a coluna
+ * `Vlr.Desc` não veio. Uma única nota zerada fazia o `every` passar.
+ */
+describe('coluna copiada em MAIORIA das notas', () => {
+  const CAB = 'Documento\tInsumo\tEspecificação\tUnidade\tVlr. a Desc\tVlr.Desc'
+  const linha = (doc: string, grupo: string, a: string, d: string) =>
+    `${doc}\t71635\tFaturamento direto - ${grupo}\tR$\t${a}\t${d}`
+
+  it('dispara com a maioria copiada e as demais zeradas', () => {
+    const r = parseSaldoColado([
+      CAB,
+      linha('NF-e 850', 'ALIMENTAÇÃO ELÉTRICA', '419.682,57', '419.682,57'),
+      linha('NF-e 836', 'ALIMENTAÇÃO ELÉTRICA', '332.018,91', '332.018,91'),
+      linha('NF-e 557', 'GERAÇÃO', '257.377,25', '257.377,25'),
+      linha('NF-e 534', 'QUADROS ELÉTRICOS', '69.841,56', '69.841,56'),
+      linha('NF-e 198', 'ELÉTRICA SUBESTAÇÃO', '0,00', '0,00'),
+      linha('NF-e 218', 'SPDA', '0,00', '0,00'),
+    ].join('\n'))
+    expect(r.colunasColapsadas).toBe(true)
+    expect(r.totalDescontado).toBe(0)
+  })
+
+  it('uma coincidência isolada não condena a colagem', () => {
+    // Nota com metade descontada ao centavo é raríssima, mas possível; uma só
+    // entre várias corretas é coincidência, não cópia de coluna.
+    const r = parseSaldoColado([
+      CAB,
+      linha('NF-e 850', 'ALIMENTAÇÃO ELÉTRICA', '419.682,57', '0,00'),
+      linha('NF-e 198', 'ELÉTRICA SUBESTAÇÃO', '0,00', '5.261,84'),
+      linha('NF-e 534', 'ELÉTRICA SUBESTAÇÃO', '0,00', '72.780,81'),
+      linha('NF-e 557', 'GERAÇÃO', '257.377,25', '0,00'),
+      linha('NF-e 2385', 'SPDA', '10.000,00', '10.000,00'),
+    ].join('\n'))
+    expect(r.colunasColapsadas).toBe(false)
+    expect(r.totalDescontado).toBeCloseTo(5_261.84 + 72_780.81 + 10_000, 2)
+  })
+})

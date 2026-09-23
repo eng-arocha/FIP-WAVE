@@ -240,6 +240,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       duplicadas: lido.duplicadas,
       /** `Vlr.Desc` veio como cópia de `Vlr. a Desc` — coluna faltando na colagem. */
       colunas_colapsadas: lido.colunasColapsadas,
+      /** A colagem parou em `Vlr. a Desc`: o "já descontado" não veio. */
+      sem_coluna_descontado: lido.semColunaDescontado,
       ignoradas: amostraDeRotulos(lido.ignoradas),
     })
   } catch (e: any) {
@@ -424,6 +426,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           const nosso = Math.round(v.valor * 100) / 100
           return { numero, nosso, erp, diferenca: Math.round((nosso - erp) * 100) / 100 }
         })
+        // Nota presente no retrato mas zerada dos dois lados não é "compra
+        // divergente": é linha sem saldo. Acusar "aqui R$ 5.000 × lá R$ 0"
+        // manda o usuário conferir uma nota que está lançada e correta — e é o
+        // que acontece em massa quando a colagem vem sem a coluna `Vlr.Desc`,
+        // porque aí toda nota já consumida pelo ERP chega zerada.
+        .filter(n => n.erp > 0.01)
         .filter(n => Math.abs(n.diferenca) > TOLERANCIA)
         .sort((a, b) => Math.abs(b.diferenca) - Math.abs(a.diferenca))
       const rech = rechavearRetrato(notasSaida, alocacao)

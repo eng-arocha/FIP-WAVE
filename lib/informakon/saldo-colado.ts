@@ -108,9 +108,16 @@ export interface SaldoColado {
    * `Vlr.Desc` saiu idêntico a `Vlr. a Desc` em TODAS as notas.
    *
    * Fisicamente impossível: as duas colunas são o que falta descontar e o que
-   * o ERP já consumiu. Iguais em tudo significa que a colagem trouxe a mesma
-   * coluna duas vezes — colunas ocultas no Excel, seleção parcial, ou a grade
-   * exportada sem o par Qtd.Desc/Vlr.Desc.
+   * o ERP já consumiu. Iguais ao centavo significa que a colagem trouxe a
+   * mesma coluna duas vezes.
+   *
+   * A causa, medida em produção: a seleção terminou em `Vlr. a Desc`, sem o
+   * par `Qtd.Desc | Vlr.Desc`. Sobraram dois números na cauda
+   * (`Qtd.a Desc | Vlr. a Desc`) e `inferirColunasDetalhado` os leu como
+   * (a descontar, descontado) — mas NESTE ERP a coluna `Qtd.a Desc` carrega
+   * VALOR EM R$, com 4 decimais. É o mesmo número duas vezes, e a prova fica
+   * no centavo: Σ da coluna de 4 decimais deu 3.842.945,25 contra
+   * 3.842.945,24 da de 2 decimais.
    *
    * O estrago é grande e silencioso: a conferência nota a nota soma
    * `a descontar + descontado` para achar quanto a nota vale no ERP, e com a
@@ -135,6 +142,16 @@ export interface SaldoColado {
    * que era bom. Por isso quem chama deve recusar a colagem, não salvá-la.
    */
   tabulacaoPerdida: boolean
+  /**
+   * A colagem não trouxe a coluna `Vlr.Desc` — o que o ERP JÁ descontou.
+   *
+   * Acontece quando a seleção termina em `Vlr. a Desc`. O teto de lastro (o
+   * que falta descontar) continua correto, então o retrato vale; o que se
+   * perde é saber QUAIS notas o ERP já consumiu. Vira aviso, não erro: melhor
+   * um retrato com o "já descontado" desconhecido (zero) do que um com ele
+   * inventado pela cópia da coluna vizinha.
+   */
+  semColunaDescontado: boolean
 }
 
 /** Cabeçalhos e rodapés da tabela dinâmica que não são dados. */
@@ -247,9 +264,38 @@ function inferirColunasDetalhado(campos: string[]): ColunasDetalhado | null {
   let inicioCauda = campos.length
   while (inicioCauda > espec + 1 && valorPtBr(campos[inicioCauda - 1]) !== null) inicioCauda--
   const cauda = campos.length - inicioCauda
-  if (cauda === 4) return { doc: 0, insumo: espec > 1 ? 1 : -1, espec, vlrADesc: inicioCauda + 1, vlrDesc: inicioCauda + 3, entrada: -1 }
-  if (cauda === 2) return { doc: 0, insumo: espec > 1 ? 1 : -1, espec, vlrADesc: inicioCauda, vlrDesc: inicioCauda + 1, entrada: -1 }
+  const insumo = espec > 1 ? 1 : -1
+  if (cauda === 4) return { doc: 0, insumo, espec, vlrADesc: inicioCauda + 1, vlrDesc: inicioCauda + 3, entrada: -1 }
+  if (cauda === 2) {
+    // Dois números podem ser duas coisas MUITO diferentes:
+    //
+    //   `Qtd.a Desc | Vlr. a Desc` → o MESMO valor duas vezes (a seleção
+    //      parou antes do par Qtd.Desc/Vlr.Desc). Reconhecível pelas casas:
+    //      4 decimais na coluna Qtd., 2 na Vlr., e valor idêntico.
+    //   `Vlr. a Desc | Vlr.Desc`   → os dois valores de fato, com as colunas
+    //      Qtd. escondidas.
+    //
+    // Ler o primeiro caso como o segundo foi o que produziu, em produção, 187
+    // notas com as duas colunas iguais e 196 divergências falsas de valor. Na
+    // dúvida entre inventar o "já descontado" e admitir que não veio, admite.
+    const a = campos[inicioCauda]
+    const b = campos[inicioCauda + 1]
+    const parQtdVlr = casasDecimais(a) === 4 && casasDecimais(b) <= 2
+      && valorPtBr(a) === valorPtBr(b)
+    return parQtdVlr
+      ? { doc: 0, insumo, espec, vlrADesc: inicioCauda + 1, vlrDesc: -1, entrada: -1 }
+      : { doc: 0, insumo, espec, vlrADesc: inicioCauda, vlrDesc: inicioCauda + 1, entrada: -1 }
+  }
   return null
+}
+
+/**
+ * Casas decimais do texto. Quatro é a assinatura de uma coluna `Qtd.` do
+ * Informakon — que neste ERP carrega VALOR em R$, não quantidade.
+ */
+function casasDecimais(texto: unknown): number {
+  const m = String(texto ?? '').trim().match(/,(\d+)$/)
+  return m ? m[1].length : 0
 }
 
 function campoTexto(campos: string[], i: number): string {
@@ -374,11 +420,23 @@ function tentarDetalhado(texto: string): SaldoColado | null {
 
   if (notas.length === 0) return null
 
-  // `Vlr.Desc` igual a `Vlr. a Desc` em TODAS as notas é colagem defeituosa,
-  // não dado. Ver `colunasColapsadas`. Exige um mínimo de notas para não
-  // acusar uma colagem de duas linhas que por acaso batem.
-  const colunasColapsadas = notas.length >= 5
-    && notas.every(n => n.valorADescontar === n.valorDescontado)
+  // `Vlr.Desc` igual a `Vlr. a Desc` é colagem defeituosa, não dado. Ver
+  // `colunasColapsadas`.
+  //
+  // Exigir unanimidade não serviu: no retrato real 187 de 248 notas vieram
+  // idênticas e as outras 61 estavam zeradas dos DOIS lados — nota que o ERP
+  // já consumiu inteira, que na colagem sem a coluna `Vlr.Desc` não tem valor
+  // nenhum para mostrar. Uma única nota zerada fazia o `every` passar e a
+  // trava dormir.
+  //
+  // Então o teste é a PROPORÇÃO entre as notas que têm algum valor: nota com
+  // saldo a descontar normalmente tem `Vlr.Desc` zero, e nota já consumida tem
+  // `Vlr. a Desc` zero. Iguais e não-zero ao centavo é quase impossível uma
+  // vez; ser a maioria é cópia de coluna, não coincidência.
+  const comValor = notas.filter(n => n.valorADescontar !== 0 || n.valorDescontado !== 0)
+  const iguais = comValor.filter(n => n.valorADescontar === n.valorDescontado)
+  const colunasColapsadas = comValor.length >= 4
+    && iguais.length / comValor.length >= 0.6
   if (colunasColapsadas) for (const n of notas) n.valorDescontado = 0
 
   const agregadas = agregarNotas(notas)
@@ -395,6 +453,8 @@ function tentarDetalhado(texto: string): SaldoColado | null {
     duplicadas,
     colunasColapsadas,
     tabulacaoPerdida: false,
+    // Sem a coluna, `valorDescontado` é zero por ignorância, não por dado.
+    semColunaDescontado: !!col && col.vlrDesc < 0,
   }
 }
 
@@ -478,6 +538,8 @@ function lerAgregado(texto: string): SaldoColado {
     duplicadas: 0,
     colunasColapsadas: false,
     tabulacaoPerdida: false,
+    // O layout agregado nunca traz o "já descontado"; avisar seria ruído.
+    semColunaDescontado: false,
   }
 }
 
