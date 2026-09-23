@@ -563,6 +563,11 @@ export function SaldoInformakonPainel({
       if ((body.nao_reconhecidas?.length ?? 0) > 0) {
         problemas.push(`macro item não reconhecido: ${body.nao_reconhecidas.join('; ')}`)
       }
+      if (body.colunas_colapsadas) {
+        problemas.push(
+          'a coluna "Vlr.Desc" veio igual à "Vlr. a Desc" em todas as notas — faltou coluna na colagem. Descartei o "já descontado"; copie a grade inteira, sem esconder colunas, para a conferência nota a nota valer',
+        )
+      }
       if ((body.duplicadas ?? 0) > 0) {
         problemas.push(
           `${body.duplicadas} linha(s) repetida(s) foram descartadas — a grade parece ter sido colada duas vezes. Se o número surpreender, cole de novo selecionando a tabela uma vez só`,

@@ -104,6 +104,23 @@ export interface SaldoColado {
    * toda nota aparece com o dobro do valor — 196 divergências onde havia 13.
    */
   duplicadas: number
+  /**
+   * `Vlr.Desc` saiu idêntico a `Vlr. a Desc` em TODAS as notas.
+   *
+   * Fisicamente impossível: as duas colunas são o que falta descontar e o que
+   * o ERP já consumiu. Iguais em tudo significa que a colagem trouxe a mesma
+   * coluna duas vezes — colunas ocultas no Excel, seleção parcial, ou a grade
+   * exportada sem o par Qtd.Desc/Vlr.Desc.
+   *
+   * O estrago é grande e silencioso: a conferência nota a nota soma
+   * `a descontar + descontado` para achar quanto a nota vale no ERP, e com a
+   * cópia toda nota passa a valer o dobro. Foram 196 divergências onde havia
+   * 13, todas com o "lá" exatamente 2× o "aqui".
+   *
+   * Quando isso acontece, `valorDescontado` é descartado — zero é ignorância
+   * honesta, a cópia é uma afirmação falsa que contamina toda comparação.
+   */
+  colunasColapsadas: boolean
 }
 
 /** Cabeçalhos e rodapés da tabela dinâmica que não são dados. */
@@ -343,6 +360,13 @@ function tentarDetalhado(texto: string): SaldoColado | null {
 
   if (notas.length === 0) return null
 
+  // `Vlr.Desc` igual a `Vlr. a Desc` em TODAS as notas é colagem defeituosa,
+  // não dado. Ver `colunasColapsadas`. Exige um mínimo de notas para não
+  // acusar uma colagem de duas linhas que por acaso batem.
+  const colunasColapsadas = notas.length >= 5
+    && notas.every(n => n.valorADescontar === n.valorDescontado)
+  if (colunasColapsadas) for (const n of notas) n.valorDescontado = 0
+
   const agregadas = agregarNotas(notas)
   return {
     formato: 'detalhado',
@@ -355,6 +379,7 @@ function tentarDetalhado(texto: string): SaldoColado | null {
     naoReconhecidas: agregadas.filter(l => !l.reconhecido),
     ignoradas,
     duplicadas,
+    colunasColapsadas,
   }
 }
 
@@ -407,6 +432,7 @@ function lerAgregado(texto: string): SaldoColado {
     ignoradas,
     // O layout agregado não tem nota; não há linha para repetir.
     duplicadas: 0,
+    colunasColapsadas: false,
   }
 }
 

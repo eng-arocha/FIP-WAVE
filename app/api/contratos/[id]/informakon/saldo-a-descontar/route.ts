@@ -202,6 +202,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       nao_reconhecidas: lido.naoReconhecidas.map(l => l.macroItem),
       /** Linhas idênticas descartadas — a grade foi colada duas vezes. */
       duplicadas: lido.duplicadas,
+      /** `Vlr.Desc` veio como cópia de `Vlr. a Desc` — coluna faltando na colagem. */
+      colunas_colapsadas: lido.colunasColapsadas,
       ignoradas: lido.ignoradas.slice(0, 10),
     })
   } catch (e: any) {
