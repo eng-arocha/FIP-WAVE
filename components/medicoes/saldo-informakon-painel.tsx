@@ -91,6 +91,8 @@ interface RetratoSaldo {
   /** Mesma nota nos dois lados com valor diferente — compra divergente. */
   notas_divergentes?: Array<{ numero: string; nosso: number; erp: number; diferenca: number }>
   qtd_divergentes?: number
+  /** O retrato não trouxe o "já descontado" — a faixa de valor fica enviesada. */
+  descontado_desconhecido?: boolean
 }
 
 const EXEMPLO = `Documento\tInsumo\tEspecificação\tUnidade\tQtd.a Desc\tVlr. a Desc\tQtd.Desc\tVlr.Desc
@@ -872,6 +874,16 @@ export function SaldoInformakonPainel({
                 Compra lançada com valor divergente, ou nota parcialmente lançada de um dos lados.
                 Positivo = temos mais aqui do que existe lá, e o desconto vai travar na diferença.
               </span>
+              {retrato!.descontado_desconhecido && (
+                <span className="block mt-1.5 pt-1.5" style={{ color: '#F59E0B', borderTop: '1px solid rgba(245,158,11,0.20)' }}>
+                  <strong>Leia esta faixa com reserva:</strong> este retrato veio sem a coluna
+                  {' '}<span className="font-mono">Vlr.Desc</span>, então o &quot;lá&quot; conta só o que
+                  FALTA descontar. Toda nota que o Informakon já consumiu em medição anterior aparece
+                  menor do que a nossa — divergência falsa. O teto de lastro acima não é afetado.
+                  Cole a grade incluindo <span className="font-mono">Qtd.Desc | Vlr.Desc</span> para
+                  esta faixa valer.
+                </span>
+              )}
             </div>
           </div>
         )}

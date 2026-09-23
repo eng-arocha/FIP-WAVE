@@ -327,6 +327,24 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     if (notasRes.error && !isSchemaMissingError(notasRes.error, SCHEMA_081)) throw notasRes.error
     const notasBrutas: Registro[] = notasRes.error ? [] : ((notasRes.data || []) as Registro[])
 
+    /**
+     * O retrato não sabe o que o ERP já descontou.
+     *
+     * Acontece quando a colagem para na coluna `Vlr. a Desc`, sem o par
+     * `Qtd.Desc | Vlr.Desc`. O TETO DE LASTRO continua correto — ele é feito
+     * de `Vlr. a Desc`. O que deixa de valer é a comparação de VALOR nota a
+     * nota: o "lá" passa a contar só o que falta descontar, então toda nota
+     * que o ERP já consumiu aparece menor do que a nossa e vira divergência
+     * falsa. Uma nota rateada em dois macro itens, com um já descontado,
+     * aparece pela metade.
+     *
+     * Zero legítimo (contrato no começo, ERP ainda não descontou nada) dá o
+     * mesmo sinal — e a ressalva continua correta: não há como distinguir, e
+     * nos dois casos o "lá" está incompleto para comparar valor.
+     */
+    const descontadoDesconhecido = notasBrutas.length > 0
+      && notasBrutas.every(n => Number(n.valor_descontado || 0) === 0)
+
     /** Chave de comparação: grupo macro, ou o detalhamento no grupo 19. */
     const chaveDe = (l: Registro) => String(l.detalhamento_codigo || l.grupo_codigo || '')
 
@@ -514,6 +532,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       /** Mesma nota nos dois lados com valor diferente — compra divergente. */
       notas_divergentes: notasDivergentes.slice(0, 30),
       qtd_divergentes: notasDivergentes.length,
+      /**
+       * true = o retrato não trouxe o "já descontado". A faixa de divergência
+       * de valor fica enviesada para baixo do lado do ERP; o teto de lastro
+       * não é afetado.
+       */
+      descontado_desconhecido: descontadoDesconhecido,
     })
   } catch (e: any) {
     return apiError(e)
