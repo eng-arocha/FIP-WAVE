@@ -573,7 +573,12 @@ export function SaldoInformakonPainel({
       }
       if (body.colunas_colapsadas) {
         problemas.push(
-          'a coluna "Vlr.Desc" veio igual à "Vlr. a Desc" em todas as notas — faltou coluna na colagem. Descartei o "já descontado"; copie a grade inteira, sem esconder colunas, para a conferência nota a nota valer',
+          'a coluna "Vlr.Desc" veio igual à "Vlr. a Desc" na maioria das notas — é a mesma coluna colada duas vezes. Descartei o "já descontado"; copie a grade inteira, incluindo o par "Qtd.Desc | Vlr.Desc", para a conferência nota a nota valer',
+        )
+      }
+      if (body.sem_coluna_descontado) {
+        problemas.push(
+          'a colagem parou na coluna "Vlr. a Desc": o par "Qtd.Desc | Vlr.Desc" não veio. O teto de lastro está correto, mas eu não sei quais notas o ERP já consumiu — inclua as duas colunas na seleção',
         )
       }
       if ((body.duplicadas ?? 0) > 0) {
