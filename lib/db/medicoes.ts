@@ -236,7 +236,7 @@ async function assertRetratoInformakonImportado(
 ) {
   const { data, error } = await supabase
     .from('medicoes')
-    .select('informakon_snapshot_id')
+    .select('informakon_snapshot_id, contrato_id')
     .eq('id', medicaoId)
     .maybeSingle()
 
@@ -246,11 +246,36 @@ async function assertRetratoInformakonImportado(
   }
   if (!data || (data as any).informakon_snapshot_id) return
 
+  // Sem retrato fixado, o boletim já usa o mais recente do contrato
+  // (aplicarRetratoAdotado em informacon-data). A aprovação congela esse
+  // mesmo retrato na medição, em vez de exigir um clique que a tela só
+  // oferece quando há falta de lastro — sem falta, o botão não aparecia e
+  // a aprovação travava para sempre.
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const admin = createAdminClient()
+  const { data: ultimo } = await admin
+    .from('informakon_saldo_snapshots')
+    .select('id')
+    .eq('contrato_id', (data as any).contrato_id)
+    .order('referencia', { ascending: false })
+    .order('informado_em', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (ultimo?.id) {
+    const fix = await admin
+      .from('medicoes')
+      .update({ informakon_snapshot_id: ultimo.id })
+      .eq('id', medicaoId)
+    if (fix.error) throw fix.error
+    return
+  }
+
   // Pré-condição de negócio, não falha de servidor: carrega status 409 para
   // que apiError devolva a mensagem ao usuário em vez do 500 genérico.
   throw Object.assign(
     new Error(
-      'Importação do Informakon pendente. Cole o retrato do ERP no painel do boletim e clique em "Adotar nesta medição" antes de aprovar — sem ele não há como conferir o que está lançado do outro lado, e a aprovação marca a nota como abatida em definitivo.',
+      'Importação do Informakon pendente. Este contrato ainda não tem nenhum retrato do ERP: no painel do boletim, clique em "Colar do Informakon" e cole o saldo a descontar antes de aprovar — sem ele não há como conferir o que está lançado do outro lado, e a aprovação marca a nota como abatida em definitivo.',
     ),
     { status: 409, code: 'INFORMAKON_PENDENTE' },
   )
