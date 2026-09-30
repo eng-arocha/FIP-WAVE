@@ -443,6 +443,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       },
     })
   } catch (e: any) {
+    // Pré-condições de negócio (ex.: Informakon pendente) chegam com status
+    // 4xx — a mensagem precisa chegar ao usuário, não virar "Erro interno".
+    if (typeof e?.status === 'number' && e.status >= 400 && e.status < 500) {
+      return NextResponse.json({ error: e.message, code: e.code }, { status: e.status })
+    }
     return apiError(e)
   }
 }

@@ -125,6 +125,7 @@ export default function AprovacoesPage() {
   const [comentario, setComentario] = useState('')
   const [motivo, setMotivo] = useState('')
   const [saving, setSaving] = useState(false)
+  const [erroAprovar, setErroAprovar] = useState('')
   const [quickAprovando, setQuickAprovando] = useState<string | null>(null)
   const [rtConnected, setRtConnected] = useState(false)
 
@@ -292,6 +293,7 @@ export default function AprovacoesPage() {
   async function confirmarAprovacao() {
     if (!modalAprovar || !medicaoAprovar) return
     setSaving(true)
+    setErroAprovar('')
     try {
       const res = await fetch(`/api/contratos/${medicaoAprovar.contrato.id}/medicoes/${medicaoAprovar.id}/aprovar`, {
         method: 'POST',
@@ -314,11 +316,18 @@ export default function AprovacoesPage() {
           },
           ...prev,
         ])
+        setModalAprovar(null)
+        setComentario('')
+      } else {
+        // Mantém o modal aberto com o motivo — antes a falha fechava o modal
+        // em silêncio e o usuário só via o 500 no console.
+        const body = await res.json().catch(() => ({}))
+        setErroAprovar(body?.error || `Falha ao aprovar (HTTP ${res.status}).`)
       }
+    } catch {
+      setErroAprovar('Falha de rede ao aprovar. Tente novamente.')
     } finally {
       setSaving(false)
-      setModalAprovar(null)
-      setComentario('')
     }
   }
 
@@ -1269,7 +1278,7 @@ export default function AprovacoesPage() {
       </div>
 
       {/* Modal Aprovar */}
-      <Dialog open={!!modalAprovar} onOpenChange={() => setModalAprovar(null)}>
+      <Dialog open={!!modalAprovar} onOpenChange={() => { setModalAprovar(null); setErroAprovar('') }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2" style={{ color: 'var(--green)' }}>
@@ -1306,9 +1315,21 @@ export default function AprovacoesPage() {
                 onChange={e => setComentario(e.target.value)}
               />
             </div>
+            {erroAprovar && (
+              <div
+                className="p-3 rounded-lg text-xs"
+                style={{
+                  background: 'rgba(239,68,68,0.08)',
+                  border: '1px solid rgba(239,68,68,0.25)',
+                  color: '#FCA5A5',
+                }}
+              >
+                {erroAprovar}
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setModalAprovar(null)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => { setModalAprovar(null); setErroAprovar('') }}>Cancelar</Button>
             <Button variant="success" onClick={confirmarAprovacao} loading={saving}>
               <CheckCircle2 className="w-4 h-4" />
               Aprovar Medição
