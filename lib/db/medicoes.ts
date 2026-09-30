@@ -246,8 +246,13 @@ async function assertRetratoInformakonImportado(
   }
   if (!data || (data as any).informakon_snapshot_id) return
 
-  throw new Error(
-    'Importação do Informakon pendente. Cole o retrato do ERP no painel do boletim e clique em "Adotar nesta medição" antes de aprovar — sem ele não há como conferir o que está lançado do outro lado, e a aprovação marca a nota como abatida em definitivo.',
+  // Pré-condição de negócio, não falha de servidor: carrega status 409 para
+  // que apiError devolva a mensagem ao usuário em vez do 500 genérico.
+  throw Object.assign(
+    new Error(
+      'Importação do Informakon pendente. Cole o retrato do ERP no painel do boletim e clique em "Adotar nesta medição" antes de aprovar — sem ele não há como conferir o que está lançado do outro lado, e a aprovação marca a nota como abatida em definitivo.',
+    ),
+    { status: 409, code: 'INFORMAKON_PENDENTE' },
   )
 }
 
