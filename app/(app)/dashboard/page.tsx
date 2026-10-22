@@ -12,7 +12,7 @@ import {
 } from 'recharts'
 import {
   TrendingUp, FileText, Clock, CheckCircle2, AlertCircle,
-  DollarSign, ArrowRight, Loader2, Receipt, Package, BarChart3,
+  DollarSign, ArrowRight, Loader2, Receipt, Package, BarChart3, FlaskConical,
 } from 'lucide-react'
 import { formatCurrency, formatPercent, getContratoStatusColor, getMedicaoStatusColor } from '@/lib/utils'
 import { CONTRATO_STATUS_LABELS, MEDICAO_STATUS_LABELS, type MedicaoStatus } from '@/types'
@@ -75,22 +75,60 @@ function useCountUp(target: number, duration = 1200) {
   return val
 }
 
+/** Chave do localStorage que lembra se o usuário quer ver a simulação. */
+const SIM_STORAGE_KEY = 'dashboard:simular-medicao-em-aprovacao'
+
+interface SimulacaoMedicao {
+  id: string
+  numero: number
+  status: string
+  contrato_id: string
+  periodo_referencia: string | null
+  material: number
+  servico: number
+  total: number
+  retencao: number
+  estimado: boolean
+}
+
+interface Simulacao {
+  medicoes: SimulacaoMedicao[]
+  total_material: number
+  total_servico: number
+  total_medicao: number
+  total_retencao: number
+  por_contrato: Record<string, number>
+}
+
+/** Linha "+ R$ X em aprovação" que aparece nos cards afetados pela simulação. */
+function SimTag({ valor }: { valor: number }) {
+  if (!valor) return null
+  return (
+    <p className="text-[10px] mt-0.5 font-medium" style={{ color: 'var(--amber)' }}>
+      {valor > 0 ? 'inclui +' : 'inclui −'} {formatCurrency(Math.abs(valor))} em aprovação
+    </p>
+  )
+}
+
 export default function DashboardPage() {
-  const [contratos, setContratos] = useState<any[]>([])
+  const [contratosAprovados, setContratos] = useState<any[]>([])
   const [medicoesRecentes, setMedicoesRecentes] = useState<any[]>([])
   const [grupos, setGrupos] = useState<any[]>([])
   const [hierarquia, setHierarquia] = useState<any[]>([])
   const [totalNfFatDireto, setTotalNfFatDireto] = useState(0)
   const [totalNfsLancadas, setTotalNfsLancadas] = useState(0)
   const [totalSolAprovadas, setTotalSolAprovadas] = useState(0)
-  const [totalRetencao, setTotalRetencao] = useState(0)
+  const [totalRetencaoAprovada, setTotalRetencao] = useState(0)
   const [qtdMedicoesComRetencao, setQtdMedicoesComRetencao] = useState(0)
   const [valorServicos, setValorServicos] = useState(0)
   const [valorMaterialDireto, setValorMaterialDireto] = useState(0)
   // Split medição (spec 2026-05-06)
-  const [totalServicoMedido, setTotalServicoMedido] = useState(0)
-  const [totalMaterialMedido, setTotalMaterialMedido] = useState(0)
-  const [totalMedicao, setTotalMedicao] = useState(0)
+  const [totalServicoAprovado, setTotalServicoMedido] = useState(0)
+  const [totalMaterialAprovado, setTotalMaterialMedido] = useState(0)
+  const [totalMedicaoAprovada, setTotalMedicao] = useState(0)
+  const [simulacao, setSimulacao] = useState<Simulacao | null>(null)
+  // Simulação ligada por padrão; a escolha do usuário fica salva no navegador.
+  const [simAtiva, setSimAtiva] = useState(true)
   const [retencaoPrevistaFinal, setRetencaoPrevistaFinal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [rtConnected, setRtConnected] = useState(false)
@@ -125,6 +163,7 @@ export default function DashboardPage() {
         setTotalMaterialMedido(data.total_material_medido || 0)
         setTotalMedicao(data.total_medicao || 0)
         setRetencaoPrevistaFinal(data.retencao_prevista_final || 0)
+        setSimulacao(data.simulacao || null)
       }
       if (hierRes.ok) {
         const data = await hierRes.json()
@@ -137,7 +176,17 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchDashboard(true)
+    try {
+      if (localStorage.getItem(SIM_STORAGE_KEY) === '0') setSimAtiva(false)
+    } catch { /* sem storage: fica o padrão */ }
   }, [])
+
+  function alternarSimulacao() {
+    setSimAtiva(v => {
+      try { localStorage.setItem(SIM_STORAGE_KEY, v ? '0' : '1') } catch { /* ignora */ }
+      return !v
+    })
+  }
 
   // Realtime subscription — refresh KPIs when any measurement changes
   useEffect(() => {
@@ -153,6 +202,41 @@ export default function DashboardPage() {
 
     return () => { supabase.removeChannel(channel) }
   }, [])
+
+  // ── Simulação da medição em aprovação ──
+  // Os valores da API são só de medições APROVADAS. Com a simulação ligada,
+  // soma por cima o que as medições enviadas-e-não-aprovadas vão gerar quando
+  // forem aprovadas. Nada é gravado: é só exibição, e o aviso no topo deixa
+  // claro que o número só vale após a aprovação.
+  const medicoesEmAprovacao = useMemo(() => simulacao?.medicoes ?? [], [simulacao])
+  const temSimulacao = medicoesEmAprovacao.length > 0
+  const sim = temSimulacao && simAtiva
+  const simServico  = sim ? simulacao!.total_servico : 0
+  const simMaterial = sim ? simulacao!.total_material : 0
+  const simTotal    = sim ? simulacao!.total_medicao : 0
+  const simRetencao = sim ? simulacao!.total_retencao : 0
+
+  const totalServicoMedido  = totalServicoAprovado + simServico
+  const totalMaterialMedido = totalMaterialAprovado + simMaterial
+  const totalMedicao        = totalMedicaoAprovada + simTotal
+  const totalRetencao       = totalRetencaoAprovada + simRetencao
+
+  const contratos = useMemo(() => {
+    if (!sim) return contratosAprovados
+    return contratosAprovados.map((c: any) => {
+      const extra = simulacao!.por_contrato[String(c.contrato_id)] ?? 0
+      if (!extra) return c
+      const contratado = Number(c.valor_contratado || 0)
+      const medido = Number(c.valor_medido || 0) + extra
+      return {
+        ...c,
+        valor_medido: medido,
+        saldo: contratado - medido,
+        percentual_medido: contratado > 0 ? (medido / contratado) * 100 : 0,
+        valor_medido_em_aprovacao: extra,
+      }
+    })
+  }, [contratosAprovados, sim, simulacao])
 
   const totalContratado = contratos.reduce((a, c) => a + (c.valor_contratado || 0), 0)
   const totalMedidoServico = contratos.reduce((a, c) => a + (c.valor_medido || 0), 0)
@@ -203,6 +287,13 @@ export default function DashboardPage() {
       const label = periodoToMesLabel(m.periodo_referencia)
       realByPeriod[label] = (realByPeriod[label] || 0) + (m.valor_total as number)
     })
+    if (sim) {
+      for (const m of medicoesEmAprovacao) {
+        if (!m.periodo_referencia || !m.total) continue
+        const label = periodoToMesLabel(m.periodo_referencia)
+        realByPeriod[label] = (realByPeriod[label] || 0) + m.total
+      }
+    }
     const hasRealData = Object.keys(realByPeriod).length > 0
     if (!hasRealData) return CURVA_S_DATA
 
@@ -219,7 +310,7 @@ export default function DashboardPage() {
         ? { ...row, acumulado_real: acumuladoReal }
         : row
     })
-  }, [medicoesRecentes, totalContratado])
+  }, [medicoesRecentes, totalContratado, sim, medicoesEmAprovacao])
 
   // Opções dos filtros cascata (dependentes entre si)
   const opcoesN1 = hierarquia
@@ -241,7 +332,7 @@ export default function DashboardPage() {
       return (tarefaSelecionada.detalhamentos || []).map((d: any, i: number) => ({
         nome: `${d.codigo} ${d.descricao}`.substring(0, 40),
         contratado: d.valor_total,
-        medido: d.valor_medido,
+        medido: d.valor_medido + (sim ? d.valor_medido_pendente || 0 : 0),
         color: GROUP_PALETTE[i % GROUP_PALETTE.length],
       }))
     }
@@ -249,17 +340,17 @@ export default function DashboardPage() {
       return (grupoSelecionado.tarefas || []).map((t: any, i: number) => ({
         nome: `${t.codigo} ${t.nome}`.substring(0, 40),
         contratado: t.valor_total,
-        medido: t.valor_medido,
+        medido: t.valor_medido + (sim ? t.valor_medido_pendente || 0 : 0),
         color: GROUP_PALETTE[i % GROUP_PALETTE.length],
       }))
     }
     return hierarquia.map((g: any, i: number) => ({
       nome: g.nome.substring(0, 40),
       contratado: g.valor_contratado,
-      medido: g.valor_medido,
+      medido: g.valor_medido + (sim ? g.valor_medido_pendente || 0 : 0),
       color: GROUP_PALETTE[i % GROUP_PALETTE.length],
     }))
-  }, [hierarquia, filtroN1, filtroN2, grupoSelecionado, tarefaSelecionada])
+  }, [hierarquia, filtroN1, filtroN2, grupoSelecionado, tarefaSelecionada, sim])
 
   if (loading) {
     return (
@@ -293,6 +384,46 @@ export default function DashboardPage() {
           Linha 2 — Medição (spec 2026-05-06): Serviço, Fat. Direto, Total, Retenção
        */}
       <div className="sticky top-14 z-10 px-3 sm:px-6 py-3 border-b space-y-2 sm:space-y-3" style={{ background: 'var(--background)', borderColor: 'var(--border)' }}>
+        {/* ── Aviso + chave da simulação de medição em aprovação ── */}
+        {temSimulacao && (
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-3 py-2 rounded-lg text-xs border"
+            style={{
+              background: sim ? 'rgba(245,158,11,0.12)' : 'var(--surface-2)',
+              borderColor: sim ? 'rgba(245,158,11,0.35)' : 'var(--border)',
+              color: 'var(--text-2)',
+            }}>
+            <FlaskConical className="w-4 h-4 flex-shrink-0 hidden sm:block" style={{ color: 'var(--amber)' }} />
+            <p className="flex-1 min-w-0">
+              {sim ? (
+                <>
+                  <span className="font-semibold" style={{ color: 'var(--amber)' }}>Simulação:</span>{' '}
+                  os valores de medição incluem{' '}
+                  {medicoesEmAprovacao.map((m, i) => (
+                    <span key={m.id}>
+                      {i > 0 && ', '}
+                      <Link href={`/contratos/${m.contrato_id}/medicoes/${m.id}/informacon`} className="font-semibold underline">
+                        MED-{String(m.numero).padStart(3, '0')}
+                      </Link>
+                    </span>
+                  ))}{' '}
+                  ({formatCurrency(simulacao!.total_medicao)}), ainda em aprovação.
+                  Só valem após a aprovação da medição.
+                  {medicoesEmAprovacao.some(m => m.estimado) && ' Valor estimado pelo orçamento — o boletim ainda não pôde ser calculado.'}
+                </>
+              ) : (
+                <>
+                  Exibindo só medições aprovadas.{' '}
+                  {medicoesEmAprovacao.length} medição(ões) em aprovação ({formatCurrency(simulacao!.total_medicao)}) fora dos totais.
+                </>
+              )}
+            </p>
+            <label className="flex items-center gap-2 cursor-pointer select-none flex-shrink-0 font-medium" style={{ color: 'var(--text-1)' }}>
+              <input type="checkbox" checked={simAtiva} onChange={alternarSimulacao} className="accent-amber-500" />
+              Simular medição em aprovação
+            </label>
+          </div>
+        )}
+
         {/* ── Linha 1 — Visão geral financeira ── */}
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
 
@@ -326,6 +457,7 @@ export default function DashboardPage() {
                   <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
                     <span className="font-semibold" style={{ color: 'var(--text-2)' }}>{formatPercent(pctSaldo)}</span> do contrato → estrutura
                   </p>
+                  <SimTag valor={-simTotal} />
                 </div>
                 <DollarSign className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: 'var(--text-2)' }} />
               </div>
@@ -387,6 +519,7 @@ export default function DashboardPage() {
                   <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
                     <span className="font-semibold" style={{ color: '#10B981' }}>{valorServicos > 0 ? formatPercent((totalServicoMedido / valorServicos) * 100) : '0,00%'}</span> do valor de serviços
                   </p>
+                  <SimTag valor={simServico} />
                 </div>
                 <TrendingUp className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: 'var(--green)' }} />
               </div>
@@ -406,6 +539,7 @@ export default function DashboardPage() {
                   <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
                     <span className="font-semibold" style={{ color: '#06B6D4' }}>{valorMaterialDireto > 0 ? formatPercent((totalMaterialMedido / valorMaterialDireto) * 100) : '0,00%'}</span> do material direto
                   </p>
+                  <SimTag valor={simMaterial} />
                 </div>
                 <Package className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: '#06B6D4' }} />
               </div>
@@ -425,6 +559,7 @@ export default function DashboardPage() {
                   <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
                     <span className="font-semibold" style={{ color: '#A855F7' }}>{totalContratado > 0 ? formatPercent((totalMedicao / totalContratado) * 100) : '0,00%'}</span> do contrato (mat + serv)
                   </p>
+                  <SimTag valor={simTotal} />
                 </div>
                 <BarChart3 className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: '#A855F7' }} />
               </div>
@@ -446,6 +581,7 @@ export default function DashboardPage() {
                       {retencaoPrevistaFinal > 0 ? formatPercent((totalRetencao / retencaoPrevistaFinal) * 100) : '0,00%'}
                     </span> de {formatCurrency(retencaoPrevistaFinal)} previsto
                   </p>
+                  <SimTag valor={simRetencao} />
                 </div>
                 <TrendingUp className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: '#818CF8' }} />
               </div>
