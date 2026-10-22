@@ -22,6 +22,7 @@
  */
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { Loader2, FileText, ExternalLink } from 'lucide-react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -72,6 +73,7 @@ interface OrigemNota {
   valorAlocado: number
   valorTotalNf: number
   status: string
+  pedidoId: string | null
   pedidoNumero: string
   emitente: string | null
   arquivoUrl: string | null
@@ -92,6 +94,36 @@ const ROTULO_STATUS: Record<string, { texto: string; cor: string }> = {
   aguardando_aprovacao: { texto: 'aguardando aprovação', cor: '#F59E0B' },
   em_correcao: { texto: 'em correção', cor: '#F97316' },
   cancelada: { texto: 'cancelada', cor: '#EF4444' },
+}
+
+/**
+ * Leva ao cadastro do pedido de faturamento direto. Abre em outra aba: quem
+ * clica está rastreando um valor do boletim e precisa voltar a ele.
+ */
+function LinkPedido({
+  contratoId,
+  pedidoId,
+  titulo,
+  children,
+}: {
+  contratoId: string
+  pedidoId: string | null | undefined
+  titulo: string
+  children: React.ReactNode
+}) {
+  if (!pedidoId) return <>{children}</>
+  return (
+    <Link
+      href={`/contratos/${contratoId}/fat-direto/${pedidoId}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="hover:underline decoration-dotted underline-offset-2"
+      style={{ color: 'inherit' }}
+      title={titulo}
+    >
+      {children}
+    </Link>
+  )
 }
 
 export function NfDescDrilldown({
@@ -294,11 +326,23 @@ export function NfDescDrilldown({
                   <tbody>
                     {pedidos.map(pd => (
                       <tr key={pd.id} className="border-b" style={{ borderColor: 'var(--border)' }}>
-                        <td className="py-1.5 px-2 font-mono" style={{ color: 'var(--text-1)' }}>{pd.numero || '—'}</td>
+                        <td className="py-1.5 px-2 font-mono" style={{ color: '#60A5FA' }}>
+                          <LinkPedido contratoId={contratoId} pedidoId={pd.id} titulo={`Abrir o pedido ${pd.numero}`}>
+                            {pd.numero || '—'}
+                          </LinkPedido>
+                        </td>
                         <td className="py-1.5 px-2 tabular-nums" style={{ color: 'var(--text-3)' }}>{pd.aprovadoEm ? formatDate(pd.aprovadoEm) : '—'}</td>
-                        <td className="py-1.5 px-2 text-right tabular-nums" style={{ color: 'var(--text-2)' }}>{formatCurrency(pd.aprovado)}</td>
+                        <td className="py-1.5 px-2 text-right tabular-nums" style={{ color: 'var(--text-2)' }}>
+                          <LinkPedido contratoId={contratoId} pedidoId={pd.id} titulo={`Abrir o pedido ${pd.numero}`}>
+                            {formatCurrency(pd.aprovado)}
+                          </LinkPedido>
+                        </td>
                         <td className="py-1.5 px-2 text-right tabular-nums" style={{ color: 'var(--text-3)' }}>{formatCurrency(pd.emNf)}</td>
-                        <td className="py-1.5 px-2 text-right tabular-nums font-semibold" style={{ color: '#F59E0B' }}>{formatCurrency(pd.saldo)}</td>
+                        <td className="py-1.5 px-2 text-right tabular-nums font-semibold" style={{ color: '#F59E0B' }}>
+                          <LinkPedido contratoId={contratoId} pedidoId={pd.id} titulo={`Abrir o pedido ${pd.numero}`}>
+                            {formatCurrency(pd.saldo)}
+                          </LinkPedido>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -338,7 +382,11 @@ export function NfDescDrilldown({
                         <tr key={nf.id} className="border-b" style={{ borderColor: 'var(--border)' }}>
                           <td className="py-1.5 px-2 font-mono" style={{ color: 'var(--text-1)' }}>{nf.numero || '—'}</td>
                           <td className="py-1.5 px-2" style={{ color: 'var(--text-2)' }}>{nf.emitente || '—'}</td>
-                          <td className="py-1.5 px-2 font-mono" style={{ color: 'var(--text-3)' }}>{nf.pedidoNumero || '—'}</td>
+                          <td className="py-1.5 px-2 font-mono" style={{ color: nf.pedidoId ? '#60A5FA' : 'var(--text-3)' }}>
+                            <LinkPedido contratoId={contratoId} pedidoId={nf.pedidoId} titulo={`Abrir o pedido ${nf.pedidoNumero}`}>
+                              {nf.pedidoNumero || '—'}
+                            </LinkPedido>
+                          </td>
                           <td className="py-1.5 px-2 tabular-nums" style={{ color: 'var(--text-3)' }}>{nf.data ? formatDate(nf.data) : '—'}</td>
                           <td className="py-1.5 px-2 text-right tabular-nums" style={{ color: 'var(--text-2)' }}>{formatCurrency(nf.valorTotalNf)}</td>
                           <td className="py-1.5 px-2 text-right tabular-nums font-semibold" style={{ color: '#10B981' }}>{formatCurrency(nf.valorAlocado)}</td>
