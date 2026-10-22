@@ -1,7 +1,8 @@
 # Retenção da MED-005 fora do livro-razão — decisão em espera
 
-**Registrado em:** 22/10/2026 · **Status:** diagnóstico fechado, correção NÃO aplicada
-(o usuário pediu para guardar a decisão por enquanto).
+**Registrado em:** 22/10/2026 · **Status:** decisão tomada — seguir o Informakon.
+Correção de dados em `supabase/manual-fixes/092_regularizar_med5_pedido_nf_wave_e_retencao.sql`
+(o usuário roda no SQL Editor). Correção de código ainda pendente.
 
 ## Sintoma
 
@@ -68,8 +69,10 @@ passa a ser divergência conhecida site × ERP, não medição sumida.
 
 ## Decisões pendentes do usuário
 
-1. Retenção do site espelha o ERP (R$ 54.734,53, recomendado) ou a regra física (R$ 57.260,27)?
-2. Data de emissão da NF nº 5.
+1. ~~Retenção do site espelha o ERP ou a regra física?~~ **Decidido 22/10/2026: espelha o ERP (R$ 54.734,53).**
+   Motivo: é o que foi retido e pago de fato; a regra física criaria R$ 2.525,74 a cobrar da Wave
+   sobre serviço cuja diferença site × ERP ainda não foi explicada.
+2. Data de emissão da NF nº 5 — não informada; o 092 usa 09/09/2026, corrigível na tela da NF.
 3. Investigar os R$ 38.223,75 de serviço da MED-005 e os R$ 6.019,82 da NF da MED-006
    (NF 591.790,96 × pedido 597.810,78) — recomendado antes de aprovar a MED-007.
 
