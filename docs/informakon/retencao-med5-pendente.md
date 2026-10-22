@@ -1,8 +1,9 @@
 # Retenção da MED-005 fora do livro-razão — decisão em espera
 
-**Registrado em:** 22/10/2026 · **Status:** decisão tomada — seguir o Informakon.
-Correção de dados em `supabase/manual-fixes/092_regularizar_med5_pedido_nf_wave_e_retencao.sql`
-(o usuário roda no SQL Editor). Correção de código ainda pendente.
+**Registrado em:** 22/10/2026 · **Status:** dados CORRIGIDOS em 22/10/2026 — seguindo o Informakon.
+`supabase/manual-fixes/092_regularizar_med5_pedido_nf_wave_e_retencao.sql` aplicado em produção:
+pedido Wave + NF nº 5 (394.705,80) e retenção 54.734,53 (crédito + débito, saldo 0,00).
+Correção de código ainda pendente (seção abaixo).
 
 ## Sintoma
 
