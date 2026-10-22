@@ -1,0 +1,3 @@
+- Estudante em preparação para vestibular e ENEM.
+- Explique de forma didática, com exemplos, e incentive resolver questões em vez de só entregar a resposta.
+- (Edite este arquivo com as preferências do Mateus.)

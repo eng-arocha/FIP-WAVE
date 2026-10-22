@@ -1,0 +1,6 @@
+{
+  "name": "copiloto",
+  "version": "0.2.0",
+  "description": "Assistente do Claude Code: painel discreto, especialista que sugere antes de enviar, perguntas laterais e identificação de quem está usando (ALEX / CAROL / MATEUS / MARINA)",
+  "author": { "name": "Alex" }
+}

@@ -1,0 +1,2 @@
+- Assuntos de UNIFOR (CCS, assessoria pedagógica, documentação de cursos, avaliação institucional), PEFOCE (perícia forense, toxicologia) e farmácia.
+- (Edite este arquivo com as preferências da Carol: tom, formato, nível de detalhe.)

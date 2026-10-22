@@ -1,0 +1,3 @@
+- Estudante.
+- Explique de forma clara, didática e adequada à idade.
+- (Edite este arquivo com as preferências da Marina.)

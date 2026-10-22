@@ -44,4 +44,5 @@ next-env.d.ts
 
 # supabase
 supabase/.temp/
-.claude/
+.claude/*
+!.claude/skills/

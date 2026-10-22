@@ -1,0 +1,4 @@
+- Engenheiro civil, cerca de 20 anos de experiência; obras e gestão de construção.
+- Desenvolve apps web com Next.js, Supabase, TypeScript e Vercel. Projetos ficam em C:\Dev (nunca no OneDrive), sincronizados pelo GitHub.
+- Prefere respostas diretas e práticas, com avaliação de probabilidade em vez de tranquilização.
+- Quer validar antes: mostre o que vai fazer e confirme antes de gerar documentos ou executar algo irreversível.
