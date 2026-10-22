@@ -105,6 +105,9 @@ export function EmailLiberacaoMedicaoModal({
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { setErro(data.error || 'Erro ao aprovar/enviar.'); return }
+      if (Array.isArray(data?.alertas) && data.alertas.length > 0) {
+        window.alert('Medição aprovada, mas com pendência:\n\n' + data.alertas.join('\n\n'))
+      }
       onSent?.(selecionados.size)
       onClose()
     } catch (e: any) {

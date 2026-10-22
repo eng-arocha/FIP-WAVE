@@ -205,3 +205,89 @@ export async function aplicarRetencaoDaAprovacao(
     wave_liquido: waveLiquido,
   }
 }
+
+/**
+ * Estorno que "desfazer aprovação" precisa aplicar no livro-razão.
+ *
+ * Soma, por medição, o que ainda está de pé: créditos menos estornos de
+ * crédito, débitos menos estornos de débito. Função pura — a gravação fica
+ * em `estornarRetencaoDaMedicao`.
+ *
+ * Sem isto a reaprovação creditava os 5% de novo e a medição passava a
+ * contar em dobro no card de retenção.
+ */
+export function planejarEstornoRetencao(
+  movimentos: Array<Pick<MovimentoRetencao, 'tipo' | 'valor' | 'origem_id'>>,
+  medicaoId: string,
+): { estornar_debito: number; estornar_credito: number } {
+  let credito = 0
+  let debito = 0
+  for (const m of movimentos) {
+    if (m.origem_id !== medicaoId) continue
+    const v = Number(m.valor || 0)
+    if (m.tipo === 'credito') credito += v
+    else if (m.tipo === 'reversao_credito') credito -= v
+    else if (m.tipo === 'debito') debito += v
+    else if (m.tipo === 'reversao_debito') debito -= v
+  }
+  const r2 = (n: number) => Math.max(0, Math.round(n * 100) / 100)
+  return { estornar_debito: r2(debito), estornar_credito: r2(credito) }
+}
+
+/**
+ * Estorna a retenção de uma medição cuja aprovação está sendo desfeita.
+ *
+ * Ordem: primeiro devolve o débito (a NF Wave daquela medição deixa de valer),
+ * depois retira o crédito. Recusa ANTES de gravar qualquer coisa se o crédito
+ * já foi consumido por NF Wave de outra medição — aí o saldo não comporta o
+ * estorno e desfazer deixaria o livro-razão negativo.
+ */
+export async function estornarRetencaoDaMedicao(
+  admin: SupabaseClient,
+  args: { contrato_id: string; medicao_id: string; medicao_numero: number; usuario_id: string },
+): Promise<{ estornado_debito: number; estornado_credito: number }> {
+  const { data, error } = await admin
+    .from('retencao_movimentos')
+    .select('tipo, valor, origem_id')
+    .eq('contrato_id', args.contrato_id)
+    .eq('origem_id', args.medicao_id)
+  if (error) throw error
+
+  const plano = planejarEstornoRetencao((data || []) as any[], args.medicao_id)
+  if (plano.estornar_debito === 0 && plano.estornar_credito === 0) {
+    return { estornado_debito: 0, estornado_credito: 0 }
+  }
+
+  const saldo = await getSaldoRetencao(admin, args.contrato_id)
+  if (plano.estornar_credito > saldo + plano.estornar_debito + 0.01) {
+    throw new Error(
+      `Retenção da medição já foi consumida por outra NF Wave: estornar R$ ${plano.estornar_credito.toFixed(2)} ` +
+      `com saldo de R$ ${(saldo + plano.estornar_debito).toFixed(2)}.`,
+    )
+  }
+
+  const tag = `MED-${String(args.medicao_numero).padStart(3, '0')}`
+  if (plano.estornar_debito > 0) {
+    await aplicarMovimentoRetencao(admin, {
+      contrato_id: args.contrato_id,
+      tipo: 'reversao_debito',
+      origem_tipo: 'desfazer_aprovacao',
+      origem_id: args.medicao_id,
+      valor: plano.estornar_debito,
+      descricao: `Estorno do desconto na NF Wave da ${tag} (aprovação desfeita)`,
+      criado_por: args.usuario_id,
+    })
+  }
+  if (plano.estornar_credito > 0) {
+    await aplicarMovimentoRetencao(admin, {
+      contrato_id: args.contrato_id,
+      tipo: 'reversao_credito',
+      origem_tipo: 'desfazer_aprovacao',
+      origem_id: args.medicao_id,
+      valor: plano.estornar_credito,
+      descricao: `Estorno da retenção da ${tag} (aprovação desfeita)`,
+      criado_por: args.usuario_id,
+    })
+  }
+  return { estornado_debito: plano.estornar_debito, estornado_credito: plano.estornar_credito }
+}

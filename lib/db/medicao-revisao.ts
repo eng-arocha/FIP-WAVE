@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isSchemaMissingError } from '@/lib/db/resilient'
+import { estornarRetencaoDaMedicao } from '@/lib/db/retencao'
 
 /**
  * Helper para "desfazer aprovação" de uma medição.
@@ -21,7 +22,7 @@ import { isSchemaMissingError } from '@/lib/db/resilient'
  */
 
 export class DesfazerAprovacaoError extends Error {
-  code: 'NFS_POSTERIORES' | 'STATUS_INVALIDO' | 'NAO_ENCONTRADA'
+  code: 'NFS_POSTERIORES' | 'STATUS_INVALIDO' | 'NAO_ENCONTRADA' | 'RETENCAO_CONSUMIDA'
   detail: Record<string, unknown>
   constructor(
     code: DesfazerAprovacaoError['code'],
@@ -47,7 +48,7 @@ export async function desfazerAprovacaoMedicao(input: DesfazerAprovacaoInput) {
   // 1) Carrega medição
   const { data: med, error } = await admin
     .from('medicoes')
-    .select('id, status, contrato_id, data_aprovacao')
+    .select('id, numero, status, contrato_id, data_aprovacao')
     .eq('id', input.medicao_id)
     .single()
   if (error) throw error
@@ -90,6 +91,24 @@ export async function desfazerAprovacaoMedicao(input: DesfazerAprovacaoInput) {
     }
   }
 
+  // 2b) Estorna a retenção desta medição no livro-razão ANTES de mexer no
+  // status. Sem isto a reaprovação creditava os 5% de novo (medição contada
+  // em dobro no card). Se o crédito já foi consumido por NF Wave de outra
+  // medição, recusa aqui — nada foi gravado ainda.
+  try {
+    await estornarRetencaoDaMedicao(admin, {
+      contrato_id: (med as any).contrato_id,
+      medicao_id: input.medicao_id,
+      medicao_numero: Number((med as any).numero || 0),
+      usuario_id: input.revisado_por_id,
+    })
+  } catch (e: any) {
+    throw new DesfazerAprovacaoError(
+      'RETENCAO_CONSUMIDA',
+      `Não é possível desfazer: ${e?.message || 'falha ao estornar a retenção.'}`,
+    )
+  }
+
   // 3) Atualiza status (volta pra 'submetido'), zera data_aprovacao
   const { error: updErr } = await admin
     .from('medicoes')
@@ -113,6 +132,31 @@ export async function desfazerAprovacaoMedicao(input: DesfazerAprovacaoInput) {
       .eq('medicao_id', input.medicao_id)
     if (error && !isSchemaMissingError(error, ['nf_material_descontada'])) {
       console.warn('[desfazerAprovacao] falha ao limpar nf_material_descontada:', error.message)
+    }
+  }
+
+  // 3c) Tira de cena o pedido Wave de serviço que esta aprovação criou.
+  // Desfazer só chega aqui sem NF lançada depois da aprovação (passo 2), então
+  // o pedido ainda está sem nota. Mantê-lo faria a reaprovação criar outro —
+  // dois pedidos Wave para a mesma medição. Soft delete: o histórico fica.
+  {
+    const tag = `MED-${String((med as any).numero || 0).padStart(3, '0')}`
+    const { data: pedidosWave } = await admin
+      .from('solicitacoes_fat_direto')
+      .select('id, notas:notas_fiscais_fat_direto!solicitacao_id(id, status)')
+      .eq('contrato_id', (med as any).contrato_id)
+      .eq('tipo', 'wave_servico')
+      .is('deletado_em', null)
+      .ilike('observacoes', `%Aprovação da medição ${tag} %`)
+    const semNota = ((pedidosWave ?? []) as any[])
+      .filter(p => !(p.notas ?? []).some((n: any) => n.status !== 'cancelada'))
+      .map(p => p.id as string)
+    if (semNota.length > 0) {
+      const { error } = await admin
+        .from('solicitacoes_fat_direto')
+        .update({ deletado_em: new Date().toISOString(), deletado_por: input.revisado_por_id })
+        .in('id', semNota)
+      if (error) console.warn('[desfazerAprovacao] falha ao remover pedido Wave:', error.message)
     }
   }
 

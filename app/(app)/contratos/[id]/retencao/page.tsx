@@ -61,6 +61,10 @@ export default async function RetencaoPage({ params }: Props) {
     valor_medido: number
     retencao: number
     pct: number
+    /** Aprovada sem crédito no livro-razão — a retenção nunca foi gravada. */
+    sem_registro: boolean
+    /** 5% do valor medido: o que deveria estar lá. Só informativo. */
+    esperado: number
   }
   const linhasPorMedicao: LinhaMedicao[] = []
   const medicoesAprovadas = await admin
@@ -71,15 +75,19 @@ export default async function RetencaoPage({ params }: Props) {
     .order('numero', { ascending: false })
   for (const m of (medicoesAprovadas.data || []) as any[]) {
     // Soma créditos do livro-razão originados nesta medição
+    // Líquido de estornos: aprovação desfeita estorna o crédito (reversao_credito).
     const creditoLivroRazao = movimentos
-      .filter(mv => mv.origem_tipo === 'medicao_aprovada' && mv.origem_id === m.id && mv.tipo === 'credito')
-      .reduce((s, mv) => s + Number(mv.valor || 0), 0)
-    // Fallback: se não há entrada no livro-razão (medições aprovadas antes da
-    // 062), calcula 5% × valor_total da medição como estimativa informativa.
+      .filter(mv => mv.origem_id === m.id && (mv.tipo === 'credito' || mv.tipo === 'reversao_credito'))
+      .reduce((s, mv) => s + (mv.tipo === 'credito' ? 1 : -1) * Number(mv.valor || 0), 0)
     const valorMedido = Number(m.valor_total || 0)
-    const retencao = creditoLivroRazao > 0
-      ? creditoLivroRazao
-      : Math.round(valorMedido * (pctRetencao / 100) * 100) / 100
+    const esperado = Math.round(valorMedido * (pctRetencao / 100) * 100) / 100
+    // Antes, medição sem crédito aparecia com a estimativa de 5% como se
+    // estivesse retida. Foi isso que escondeu a MED-005 (aprovada sem
+    // retenção) — só o card do dashboard mostrava o buraco. Agora a linha
+    // mostra o que o livro-razão tem (zero) e fica marcada em vermelho.
+    // A estimativa só vale quando o livro-razão nem existe (062 pendente).
+    const semRegistro = !migrationPendente && creditoLivroRazao <= 0
+    const retencao = migrationPendente ? esperado : Math.max(0, creditoLivroRazao)
     linhasPorMedicao.push({
       medicao_id: m.id,
       numero: m.numero,
@@ -88,6 +96,8 @@ export default async function RetencaoPage({ params }: Props) {
       valor_medido: valorMedido,
       retencao,
       pct: pctRetencao,
+      sem_registro: semRegistro,
+      esperado,
     })
   }
 
@@ -222,8 +232,14 @@ export default async function RetencaoPage({ params }: Props) {
                       <td style={{ padding: 10, textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--text-3)' }}>
                         {l.pct.toFixed(2).replace('.', ',')}%
                       </td>
-                      <td style={{ padding: 10, textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: '#F59E0B' }}>
+                      <td style={{ padding: 10, textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: l.sem_registro ? '#EF4444' : '#F59E0B' }}>
                         {formatCurrency(l.retencao)}
+                        {l.sem_registro && (
+                          <div style={{ fontSize: 10, fontWeight: 600, fontFamily: 'inherit' }}
+                               title="A medição foi aprovada, mas o crédito de retenção não está no livro-razão. O card do dashboard não conta esta medição.">
+                            sem retenção registrada · esperado {formatCurrency(l.esperado)}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}

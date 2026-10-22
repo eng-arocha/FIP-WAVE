@@ -84,7 +84,7 @@ export async function POST(
       // 422: status inválido (já é 'submetido' etc.)
       // 404: não encontrada
       const status =
-        e.code === 'NFS_POSTERIORES' ? 409 :
+        e.code === 'NFS_POSTERIORES' || e.code === 'RETENCAO_CONSUMIDA' ? 409 :
         e.code === 'STATUS_INVALIDO' ? 422 :
         404
       return NextResponse.json(

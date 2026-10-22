@@ -141,6 +141,32 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const aprovadorNome  = perfilAprovador?.nome  ?? check.userEmail ?? 'Aprovador'
     const aprovadorEmail = perfilAprovador?.email ?? check.userEmail ?? ''
 
+    // Pré-voo: a retenção e o pedido Wave saem do boletim. Se ele não
+    // calcula agora, não calcula depois da aprovação — e foi assim que a
+    // MED-005 (09/09/2026) ficou aprovada sem retenção, sem pedido Wave e
+    // sem a NF nº 5 no site (manual-fix 092). Melhor recusar antes de gravar.
+    {
+      const { calcularInformaconData } = await import('@/lib/db/informacon-data')
+      let motivo = ''
+      try {
+        const previa = await calcularInformaconData(admin, contratoId, medicaoId)
+        if (!previa) motivo = 'o boletim da medição voltou vazio'
+      } catch (e: any) {
+        motivo = e?.message || 'erro ao calcular o boletim'
+      }
+      if (motivo) {
+        log.error('aprovacao_recusada_boletim_indisponivel', { medicao_id: medicaoId, motivo })
+        return NextResponse.json(
+          {
+            error: `Não dá para aprovar: o boletim desta medição não pôde ser calculado (${motivo}). ` +
+              'Sem ele a retenção e o pedido da NF Wave não seriam gravados. Corrija o boletim e tente de novo.',
+            code: 'BOLETIM_INDISPONIVEL',
+          },
+          { status: 409 },
+        )
+      }
+    }
+
     await aprovarMedicao(medicaoId, aprovadorNome, aprovadorEmail, comentario)
 
     await audit({
@@ -170,11 +196,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     let creditoRetencao = 0
     let debitoRetencao = 0
     let saldoRetencaoDepois = 0
+    /** O que a aprovação deveria ter gravado e não gravou. Volta na resposta. */
+    const alertas: string[] = []
     try {
       const { calcularInformaconData } = await import('@/lib/db/informacon-data')
       const { criarSolicitacaoRascunhoDeMedicao } = await import('@/lib/db/fat-direto')
       const { aplicarRetencaoDaAprovacao } = await import('@/lib/db/retencao')
       const informacon = await calcularInformaconData(admin, contratoId, medicaoId)
+      if (!informacon) throw new Error('o boletim voltou vazio depois da aprovação')
       if (informacon) {
         const dataAprovacao = new Date().toISOString()
         const pctRetencao = informacon.medicao.contrato.percentual_retencao || 5
@@ -203,21 +232,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           saldoRetencaoDepois = ret.saldo_depois
           valorWaveLiquido = ret.wave_liquido
         } catch (e: any) {
-          const msg = e?.message || ''
-          if (msg.includes('retencao_movimentos') || msg.includes('aplicar_movimento_retencao')) {
-            log.warn('migration_062_pendente_fallback_retencao', {
-              medicao_id: medicaoId,
-              error: msg,
-            })
-            // Fallback legado: NF Wave continua bruta, retenção é só informativa.
-            // Ao rodar a 062, próximas medições começam com saldo zero — pode
-            // gerar uma "calibragem" se houver medições já aprovadas antes.
-            valorWaveLiquido = Math.max(0, valorWaveBruto - informacon.totais.retencao)
-            creditoRetencao = informacon.totais.retencao
-            debitoRetencao = creditoRetencao
-          } else {
-            throw e
-          }
+          // Antes havia um "fallback legado" que seguia sem gravar nada no
+          // livro-razão. Era silencioso: o card de retenção ficava para trás
+          // para sempre. Agora a falha volta como alerta e não segue para o
+          // pedido Wave, que sairia com o líquido errado.
+          log.error('retencao_nao_gravada_na_aprovacao', { medicao_id: medicaoId, error: e?.message })
+          alertas.push(
+            `A retenção desta medição NÃO foi gravada no livro-razão (${e?.message || 'erro desconhecido'}). ` +
+            'O pedido da NF Wave também não foi criado. Avise o administrador antes de lançar a NF Wave.',
+          )
+          throw e
         }
 
         // === FIP Material — JÁ criado/vinculado no portão 1 (autorizar) ===
@@ -363,15 +387,25 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
               request: req,
             })
           } catch (e: any) {
-            log.warn('rascunho_wave_servico_falhou', { medicao_id: medicaoId, error: e?.message })
+            log.error('rascunho_wave_servico_falhou', { medicao_id: medicaoId, error: e?.message })
+            alertas.push(
+              `O pedido da NF Wave de serviço NÃO foi criado (${e?.message || 'erro desconhecido'}). ` +
+              'A retenção já está gravada; crie o pedido Wave manualmente pelo valor líquido.',
+            )
           }
         }
       }
     } catch (e: any) {
-      log.warn('rascunhos_auto_falharam', {
+      log.error('rascunhos_auto_falharam', {
         medicao_id: medicaoId,
         error: e?.message,
       })
+      if (alertas.length === 0) {
+        alertas.push(
+          `Retenção e pedido da NF Wave NÃO foram gravados (${e?.message || 'erro desconhecido'}). ` +
+          'Avise o administrador antes de lançar a NF Wave.',
+        )
+      }
     }
     // Mantém o nome antigo `solicitacaoFatDiretoId` pra compat com o resto
     // do código (usado no template e no response).
@@ -426,6 +460,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     return NextResponse.json({
       ok: true,
+      alertas,
       email_liberacao: emailLiberacao,
       rascunhos_criados: {
         fip_material: solicitacaoFipId

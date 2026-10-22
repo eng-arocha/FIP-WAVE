@@ -490,7 +490,12 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
       body: JSON.stringify({ aprovadorNome: 'Fiscal FIP', aprovadorEmail: 'fiscal@fipengenharia.com.br', comentario, medicao })
     })
     setSaving(false)
-    if (res.ok) { setStatus('aprovado'); setModalAprovar(false) }
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) { window.alert(data?.error || `Falha ao aprovar (HTTP ${res.status}).`); return }
+    if (Array.isArray(data?.alertas) && data.alertas.length > 0) {
+      window.alert('Medição aprovada, mas com pendência:\n\n' + data.alertas.join('\n\n'))
+    }
+    setStatus('aprovado'); setModalAprovar(false)
   }
 
   async function rejeitar() {

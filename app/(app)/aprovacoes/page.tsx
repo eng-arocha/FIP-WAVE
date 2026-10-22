@@ -306,6 +306,12 @@ export default function AprovacoesPage() {
         }),
       })
       if (res.ok) {
+        // A aprovação vale mesmo quando retenção ou pedido Wave falham — mas
+        // isso não pode passar em silêncio (foi o caso da MED-005).
+        const data = await res.json().catch(() => ({}))
+        if (Array.isArray(data?.alertas) && data.alertas.length > 0) {
+          window.alert('Medição aprovada, mas com pendência:\n\n' + data.alertas.join('\n\n'))
+        }
         setPendentes(prev => prev.filter(m => m.id !== modalAprovar))
         setHistorico(prev => [
           {
