@@ -2,6 +2,13 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { apiError } from '@/lib/api/error-response'
+import { calcularInformaconData } from '@/lib/db/informacon-data'
+
+/**
+ * Status de uma medição que já foi enviada mas ainda não foi aprovada. São
+ * as que entram na simulação do dashboard ("como fica se aprovar").
+ */
+const STATUS_EM_APROVACAO = ['submetido', 'em_analise', 'autorizado']
 
 export async function GET() {
   try {
@@ -16,6 +23,7 @@ export async function GET() {
       { data: contratosRaw },
       { data: allNfs },
       medicoesAprovadasComItens,
+      { data: medicoesEmAprovacao },
     ] = await Promise.all([
       supabase.from('vw_resumo_contrato').select('*'),
       supabase.from('medicoes')
@@ -38,6 +46,15 @@ export async function GET() {
           )
         `)
         .eq('status', 'aprovado'),
+      admin.from('medicoes')
+        .select(`id, numero, status, contrato_id, periodo_referencia,
+          medicao_itens (
+            quantidade_medida,
+            detalhamento:detalhamentos ( valor_material_unit, valor_servico_unit )
+          )
+        `)
+        .in('status', STATUS_EM_APROVACAO)
+        .order('numero'),
     ])
 
     // NFs de solicitações aprovadas (para Medição Fat. Direto legado)
@@ -215,7 +232,69 @@ export async function GET() {
       }
     })
 
+    // Simulação: medições enviadas e ainda não aprovadas. Nada daqui entra
+    // nos totais acima — vai num bloco à parte que a tela soma só quando o
+    // usuário liga a chave "Simular medição em aprovação".
+    //
+    // Usa `calcularInformaconData`, a MESMA função que a rota de aprovação
+    // chama pra gravar o snapshot e o crédito de retenção. Assim o número
+    // simulado é o número que vai ser gravado se a medição for aprovada
+    // como está. Se o cálculo falhar (ex.: Informakon pendente), cai no
+    // cálculo ao vivo itens × preço unitário, igual ao das aprovadas antigas.
+    const pctRetencaoPadrao = 5
+    const simMedicoes = await Promise.all(
+      ((medicoesEmAprovacao || []) as any[]).map(async (m) => {
+        let mat = 0
+        let serv = 0
+        let ret = 0
+        let estimado = false
+        try {
+          const info = await calcularInformaconData(admin, String(m.contrato_id), String(m.id))
+          if (!info) throw new Error('sem dados')
+          mat = info.totais.material_medido
+          serv = info.totais.servico_medido
+          ret = info.totais.retencao
+        } catch {
+          estimado = true
+          for (const it of (m.medicao_itens || []) as any[]) {
+            const qtde = Number(it.quantidade_medida || 0)
+            mat  += qtde * Number(it.detalhamento?.valor_material_unit || 0)
+            serv += qtde * Number(it.detalhamento?.valor_servico_unit || 0)
+          }
+          ret = (mat + serv) * (pctRetencaoPadrao / 100)
+        }
+        const r2 = (n: number) => Math.round(n * 100) / 100
+        return {
+          id: m.id,
+          numero: m.numero,
+          status: m.status,
+          contrato_id: m.contrato_id,
+          periodo_referencia: m.periodo_referencia,
+          material: r2(mat),
+          servico: r2(serv),
+          total: r2(mat + serv),
+          retencao: r2(ret),
+          estimado,
+        }
+      }),
+    )
+    const simPorContrato: Record<string, number> = {}
+    for (const m of simMedicoes) {
+      const k = String(m.contrato_id)
+      simPorContrato[k] = Math.round(((simPorContrato[k] ?? 0) + m.total) * 100) / 100
+    }
+    const somaSim = (k: 'material' | 'servico' | 'total' | 'retencao') =>
+      Math.round(simMedicoes.reduce((a, m) => a + m[k], 0) * 100) / 100
+
     return NextResponse.json({
+      simulacao: {
+        medicoes: simMedicoes,
+        total_material: somaSim('material'),
+        total_servico: somaSim('servico'),
+        total_medicao: somaSim('total'),
+        total_retencao: somaSim('retencao'),
+        por_contrato: simPorContrato,
+      },
       contratos: contratosAlinhados,
       medicoes_recentes: medicoesRecentes,
       grupos: grupos || [],
