@@ -80,7 +80,13 @@ passa a ser divergência conhecida site × ERP, não medição sumida.
 3. Investigar os R$ 38.223,75 de serviço da MED-005 e os R$ 6.019,82 da NF da MED-006
    (NF 591.790,96 × pedido 597.810,78) — recomendado antes de aprovar a MED-007.
 
-## Correção de código (também pendente)
+## Correção de código — FEITA em 22/10/2026 (commit 133e558)
+
+Regra mantida por decisão do usuário: retenção = 5% sobre material + serviço
+medidos no SITE (não a base do Informakon). A MED-005 foi exceção, regularizada
+pelo ERP porque foi o que efetivamente se pagou.
+
+O que existia (corrigido):
 
 - Aprovação não pode concluir em silêncio sem gravar retenção e pedido Wave.
 - "Desfazer aprovação" (`lib/db/medicao-revisao.ts`) não estorna a retenção — reaprovar credita em dobro.
