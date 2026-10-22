@@ -53,8 +53,11 @@ não registrou.
 | Retenção 5% | 57.260,27 | 54.734,53 | 2.525,74 |
 
 - Material: esperado — o ERP só desconta material com NF (lastro); o corte volta depois.
-- Serviço: **sem explicação confirmada.** Hipótese: ajuste de quantidade no site
-  depois de o boletim ter sido lançado no ERP.
+- Serviço: **CORREÇÃO (prévia do 092):** o serviço medido no site é R$ 449.440,33, igual
+  ao do ERP (449.440,78; diferença de 0,45 = "descontos diversos"). A conta acima, que
+  derivou o serviço de `valor_total − material`, estava errada. A diferença de base
+  R$ 50.514,77 é toda de **material** — material medido no site que o ERP não descontou
+  por falta de lastro. Comportamento esperado; não há serviço a investigar na MED-005.
 
 ## Correção proposta (aguardando decisão)
 
