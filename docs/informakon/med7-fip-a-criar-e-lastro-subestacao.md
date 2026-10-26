@@ -128,3 +128,38 @@ da camada ②), a saída é no ERP — reapropriar para SUBESTAÇÃO/GERAÇÃO a
 entradas MSF ainda não consumidas (Vlr.Desc = 0). Se o ERP abate de qualquer
 nota do pedido 1139, a camada ② está estrita demais e o corte é falso.
 
+## Regra decidida (usuário, 26/10/2026) e proposta: COMPENSAÇÃO DE LASTRO
+
+Regra: o Informakon só abate nota lançada no MESMO macro item. Quando a nota
+de material de um macro item (G) foi lançada em outro (D), a FIP fatura a
+falta de G, e o saldo a gastar dos itens de D é reduzido no mesmo valor,
+começando pelos primeiros itens de D.
+
+Por quê: a nota parada em D vai abater material de D no futuro. Sem reduzir o
+saldo de D, alguém compraria de novo esse material de D, e a obra pagaria duas
+vezes (nota da FIP em G + nova compra em D).
+
+Números da MED-007 (estimativa; saldo a gastar = material do item − pedidos aprovados):
+
+- G1 SUBESTAÇÃO, falta 185.387,82. Notas MSF livres em D6 QUADROS: 164.443,94
+  − 8.795,43 de demanda atual = **155.648,51 compensáveis**.
+  Restam 29.739,31 de material sem nota em lugar nenhum (FIP pura).
+- G2 GERAÇÃO, falta 35.268,99. Sem lastro livre de MSF depois do G1: FIP pura.
+- Redução em QUADROS pelos primeiros itens: 6.1.1 13.276,31 · 6.1.2 6.692,05
+  · 6.1.3 6.819,22 · 6.1.4 10.110,05 · 6.1.5 118.750,88.
+
+Desenho (a fazer, aguardando ok):
+1. Tabela `compensacoes_lastro` (medição, macro com falta, macro onde a nota
+   está, valor, notas de referência, quem/quando/motivo) + itens destino
+   (detalhamento, valor), gravados pelo usuário a partir de sugestão.
+2. Saldo por item e trava de novo pedido (`saldo-por-item`, `fat-direto.ts`)
+   somam a compensação ao consumo do item destino.
+3. Camada ③: FIP a criar de G += compensação; cobertura do balde D += compensação
+   (senão, ao medir quadros, o site pediria FIP de novo).
+4. Painel no boletim: sugestão calculada (falta × lastro livre de D), botão
+   "registrar compensação", desfazer enquanto a medição está aberta.
+
+Risco a validar fora do sistema: a NF da FIP em G cobre material que foi
+faturado pela MSF e lançado em D. Isso só fecha porque D deixa de comprar o
+mesmo valor; fiscalmente, quem confirma é a FIP.
+
