@@ -26,7 +26,7 @@ import { aplicarRetratoNasLinhas } from '@/lib/informakon/aplicar-retrato'
 import { chaveMacroItem } from '@/lib/informakon/comparar-saldo'
 import { rechavearRetrato } from '@/lib/informakon/rechavear'
 import { carregarAlocacaoDeNotas } from '@/lib/db/alocacao-notas'
-import { carregarCompensacoes, somarPorChave, type CompensacaoRegistrada } from '@/lib/db/compensacao-lastro'
+import { carregarCompensacoes, saldoMaterialDoMacroItem, somarPorChave, type CompensacaoRegistrada } from '@/lib/db/compensacao-lastro'
 import {
   sugerirCompensacoes,
   type AlocacaoDaNota,
@@ -484,8 +484,12 @@ export interface CompensacaoLastroBoletim {
   disponivel: boolean
   /** Registradas NESTA medição — as que o painel pode desfazer. */
   registradas: CompensacaoRegistrada[]
-  /** Sugestões calculadas agora. Vazio em medição aprovada. */
-  sugestoes: SugestaoCompensacao[]
+  /**
+   * Sugestões calculadas agora. Vazio em medição aprovada. `saldoDestino` é o
+   * saldo a gastar de material que o macro item da nota ainda tem — a
+   * compensação não pode passar disso (a rota recusa).
+   */
+  sugestoes: Array<SugestaoCompensacao & { saldoDestino: number }>
   /** chave do macro item → nome, para a tela. */
   rotulos: Record<string, string>
 }
@@ -1793,5 +1797,22 @@ async function montarCompensacaoLastro(
     }
   }
 
-  return { disponivel: true, registradas, sugestoes, rotulos }
+  // Saldo a gastar de cada macro item de destino: a compensação só cabe até
+  // ele. Mostrar antes evita o clique que volta com "nada foi gravado".
+  const saldoDestino = new Map<string, number>()
+  for (const d of new Set(sugestoes.map(x => x.chaveNota))) {
+    try {
+      const itens = await saldoMaterialDoMacroItem(admin, contratoId, d)
+      saldoDestino.set(d, Math.round(itens.reduce((t, i) => t + Math.max(0, i.saldo), 0) * 100) / 100)
+    } catch (e: any) {
+      console.warn('[informacon] saldo do destino da compensação:', e?.message)
+    }
+  }
+
+  return {
+    disponivel: true,
+    registradas,
+    sugestoes: sugestoes.map(x => ({ ...x, saldoDestino: saldoDestino.get(x.chaveNota) ?? 0 })),
+    rotulos,
+  }
 }

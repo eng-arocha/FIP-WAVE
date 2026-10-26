@@ -25,7 +25,7 @@ export interface CompensacaoLastroDados {
     created_at: string
     itens: Array<{ detalhamento_id: string; valor: number }>
   }>
-  sugestoes: Array<{ chaveFalta: string; chaveNota: string; valor: number; notas: string[] }>
+  sugestoes: Array<{ chaveFalta: string; chaveNota: string; valor: number; notas: string[]; saldoDestino?: number }>
   rotulos: Record<string, string>
 }
 
@@ -65,15 +65,19 @@ export function CompensacaoLastroPainel({
     return r ? `${chave} · ${r}` : `Macro item ${chave}`
   }
   const podeMexer = medicaoAberta && podeEditar
+  /** Lastro compensável, limitado ao saldo a gastar que o destino ainda tem. */
+  const maximoDe = (s: CompensacaoLastroDados['sugestoes'][number]) =>
+    s.saldoDestino === undefined ? s.valor : Math.max(0, Math.min(s.valor, s.saldoDestino))
 
   async function registrar(s: CompensacaoLastroDados['sugestoes'][number]) {
     const k = `${s.chaveFalta}|${s.chaveNota}`
+    const maximo = maximoDe(s)
     const texto = valores[k]
     const valor = texto === undefined || texto.trim() === ''
-      ? s.valor
+      ? maximo
       : Number(texto.replace(/\./g, '').replace(',', '.'))
-    if (!(valor > 0) || valor > s.valor + 0.01) {
-      setErro(`Informe um valor entre 0 e ${formatCurrency(s.valor)}.`)
+    if (!(valor > 0) || valor > maximo + 0.01) {
+      setErro(`Informe um valor entre 0 e ${formatCurrency(maximo)}.`)
       return
     }
     setOcupado(k)
@@ -151,12 +155,20 @@ export function CompensacaoLastroPainel({
               <p className="text-[11px] mt-1" style={{ color: 'var(--text-3)' }}>
                 Notas: {s.notas.map(n => `NF ${n}`).join(' · ')}
               </p>
-              {podeMexer && (
+              {s.saldoDestino !== undefined && s.saldoDestino < s.valor - 0.01 && (
+                <p className="text-[11px] mt-1" style={{ color: '#F59E0B' }}>
+                  {nome(s.chaveNota)} só tem {formatCurrency(s.saldoDestino)} de saldo a gastar — é o máximo que cabe agora.
+                  {s.saldoDestino <= 0.01
+                    ? ' Todo o material deste macro item já está comprometido em pedidos. Se algum pedido não vai mais receber nota, encerre-o: o saldo volta e a compensação passa a caber.'
+                    : ' O restante continua como corte no percentual.'}
+                </p>
+              )}
+              {podeMexer && maximoDe(s) > 0.01 && (
                 <div className="flex flex-wrap items-center gap-2 mt-2">
                   <input
                     type="text"
                     inputMode="decimal"
-                    placeholder={s.valor.toFixed(2).replace('.', ',')}
+                    placeholder={maximoDe(s).toFixed(2).replace('.', ',')}
                     value={valores[k] ?? ''}
                     onChange={e => setValores(v => ({ ...v, [k]: e.target.value }))}
                     className="w-36 px-2 py-1 rounded border text-xs tabular-nums"

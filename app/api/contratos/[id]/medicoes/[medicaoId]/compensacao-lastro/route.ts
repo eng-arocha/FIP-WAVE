@@ -105,7 +105,7 @@ export async function POST(
     if (semEspaco > 0.01) {
       return NextResponse.json(
         {
-          error: `Os itens do macro item ${chave_nota} não têm saldo a gastar para absorver tudo: faltam ${semEspaco.toFixed(2)}. Nada foi gravado.`,
+          error: `O macro item ${chave_nota} só tem ${(valor - semEspaco).toFixed(2)} de saldo a gastar; faltam ${semEspaco.toFixed(2)}. Nada foi gravado. Compense até o saldo, ou encerre o pedido que não vai mais receber nota para liberar saldo.`,
           code: 'SEM_SALDO_NO_DESTINO',
         },
         { status: 409 },
