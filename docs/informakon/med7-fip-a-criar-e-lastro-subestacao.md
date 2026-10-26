@@ -148,7 +148,7 @@ Números da MED-007 (estimativa; saldo a gastar = material do item − pedidos a
 - Redução em QUADROS pelos primeiros itens: 6.1.1 13.276,31 · 6.1.2 6.692,05
   · 6.1.3 6.819,22 · 6.1.4 10.110,05 · 6.1.5 118.750,88.
 
-Desenho (a fazer, aguardando ok):
+Desenho (implementado em `4d73e16`, migration 085):
 1. Tabela `compensacoes_lastro` (medição, macro com falta, macro onde a nota
    está, valor, notas de referência, quem/quando/motivo) + itens destino
    (detalhamento, valor), gravados pelo usuário a partir de sugestão.
@@ -162,4 +162,18 @@ Desenho (a fazer, aguardando ok):
 Risco a validar fora do sistema: a NF da FIP em G cobre material que foi
 faturado pela MSF e lançado em D. Isso só fecha porque D deixa de comprar o
 mesmo valor; fiscalmente, quem confirma é a FIP.
+
+## Implementado (26/10/2026, `4d73e16`)
+
+- Lógica: `lib/informakon/compensacao-lastro.ts` (sugestão + distribuição, testes).
+- Persistência: migration 085, `lib/db/compensacao-lastro.ts`.
+- Efeitos: `informacon-data.ts` (FIP em G, cobertura em D, sugestões),
+  `saldo-por-item` e `fat-direto.ts` (consumo de material do item destino).
+- Tela: `components/medicoes/compensacao-lastro-painel.tsx` no boletim.
+
+Limite conhecido: a sugestão desconta TODAS as compensações já registradas
+dos dois lados, mesmo depois de a nota da FIP entrar no ERP. É conservador
+(sugere de menos), de propósito. Revisitar quando houver a primeira
+compensação "vencida" — o momento é quando a NF da FIP de uma compensação for
+lançada no Informakon e o painel ainda sugerir menos do que a falta real.
 
