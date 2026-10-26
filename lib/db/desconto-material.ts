@@ -110,6 +110,69 @@ export interface CoberturaDoItem {
  * vizinho. `cobertura = max(NF, aprovado)` porque o pedido aprovado já contém o
  * que dele virou nota — somar os dois contaria a mesma compra duas vezes.
  */
+/**
+ * Camada ③ no nível do BALDE — a mesma chave da camada ② (`chaveMacroItem`:
+ * o grupo macro, ou o detalhamento no grupo 19).
+ *
+ * Por item a conta estava cega para o transbordo. A nota é do balde — o
+ * Informakon consolida por macro item — e o abatimento das medições
+ * aprovadas é gravado no item que MEDIU material, não no item que tem a
+ * nota. Então um item sem nota (quadros da subestação, 100% medidos) consome
+ * as notas do vizinho (equipamentos), o `jaConsumido` fica no primeiro e o
+ * segundo segue com consumo zero, "coberto". Na MED-007 o grupo 1 mostrava
+ * R$ 497 mil disponíveis com R$ 289 mil de líquido real, e a FIP não era
+ * chamada para R$ 185 mil de material que não tem nota em lugar nenhum.
+ *
+ *     cobertura do balde = Σ max(NF, aprovado) − Σ jaConsumido
+ *     FIP do balde       = max(0, Σ pendente − cobertura)
+ *
+ * O resultado volta para os itens rateado pelo pendente de cada um — a
+ * pergunta "quem emite?" é do balde, mas a tela é por linha. Item sem balde
+ * (código fora do padrão) segue na regra por item.
+ */
+export function classificarCoberturaPorBalde(
+  itens: Array<ItemCoberturaSite & { balde: string }>,
+): Map<string, CoberturaDoItem> {
+  const out = new Map<string, CoberturaDoItem>()
+  const porBalde = new Map<string, Array<ItemCoberturaSite & { balde: string }>>()
+  const semBalde: ItemCoberturaSite[] = []
+  for (const it of itens) {
+    if (!it.balde) { semBalde.push(it); continue }
+    const lista = porBalde.get(it.balde)
+    if (lista) lista.push(it)
+    else porBalde.set(it.balde, [it])
+  }
+  for (const [id, cob] of classificarCoberturaDoSite(semBalde)) out.set(id, cob)
+
+  for (const lista of porBalde.values()) {
+    let pendente = 0
+    let comprado = 0
+    let aprovadoSemNota = 0
+    let consumido = 0
+    for (const it of lista) {
+      const nf = norm(it.nfTerceiro)
+      const aprovado = norm(it.pedidoAprovado)
+      pendente += norm(it.matMedido)
+      comprado += Math.max(nf, aprovado)
+      aprovadoSemNota += Math.max(0, aprovado - nf)
+      consumido += norm(it.jaConsumido)
+    }
+    const cobertura = Math.max(0, comprado - consumido)
+    const fipBalde = Math.max(0, pendente - cobertura)
+    const aCaminhoBalde = Math.min(pendente, Math.min(aprovadoSemNota, cobertura))
+
+    for (const it of lista) {
+      const peso = pendente > 0 ? norm(it.matMedido) / pendente : 0
+      out.set(it.detalhamentoId, {
+        cobertura: cobertura * peso,
+        notaACaminho: aCaminhoBalde * peso,
+        fipPrecisaEmitir: fipBalde * peso,
+      })
+    }
+  }
+  return out
+}
+
 export function classificarCoberturaDoSite(
   itens: ItemCoberturaSite[],
 ): Map<string, CoberturaDoItem> {

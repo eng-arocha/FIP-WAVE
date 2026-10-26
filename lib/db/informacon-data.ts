@@ -10,7 +10,7 @@ import { nfReservaSaldo } from '@/lib/db/nf-status'
 import {
   descontoIdealDoItem,
   descontoPendenteDeLastro,
-  classificarCoberturaDoSite,
+  classificarCoberturaPorBalde,
   type ItemCoberturaSite,
 } from '@/lib/db/desconto-material'
 import { getCodigoInformakon } from '@/lib/data/informakon-codigos'
@@ -23,6 +23,7 @@ import { getCodigoInformakon } from '@/lib/data/informakon-codigos'
 export { ehPedidoDeServicoWave } from '@/lib/db/saldo-detalhamento'
 import { ehPedidoDeServicoWave } from '@/lib/db/saldo-detalhamento'
 import { aplicarRetratoNasLinhas } from '@/lib/informakon/aplicar-retrato'
+import { chaveMacroItem } from '@/lib/informakon/comparar-saldo'
 import { rechavearRetrato } from '@/lib/informakon/rechavear'
 import { carregarAlocacaoDeNotas } from '@/lib/db/alocacao-notas'
 
@@ -681,9 +682,11 @@ export async function calcularBoletimSimulado(
     nfJaAbatidaPorDet[detId] || 0,
   )
 
-  const coberturaSimulada = classificarCoberturaDoSite(
+  // No nível do balde, como a medição real — ver classificarCoberturaPorBalde.
+  const coberturaSimulada = classificarCoberturaPorBalde(
     detIdsRelevantes.map(detId => ({
       detalhamentoId: detId,
+      balde: chaveMacroItem(detMap.get(detId)?.codigo),
       matMedido: pendenteSimulado(detId),
       nfTerceiro: nfAlocadaPorDet[detId] || 0,
       pedidoAprovado: aprovadoPorDet[detId] || 0,
@@ -1169,21 +1172,24 @@ export async function calcularInformaconData(
     })
   }
 
-  // ── CAMADA ③ — a nota da FIP, por item ──────────────────────────────────
+  // ── CAMADA ③ — a nota da FIP, por BALDE ─────────────────────────────────
   //
   //     cobertura no site = NF de terceiro lançada + saldo de pedido aprovado
+  //                         − o que as medições aprovadas já consumiram,
+  //                         somados no balde da camada ② (chaveMacroItem)
   //     cobertura ≥ p × M  →  a FIP não emite; falta lançar a nota no ERP
   //     cobertura <  p × M  →  a FIP emite a diferença
   //
   // Não mexe no percentual. Responde outra pergunta: alguém precisa emitir
   // nota, ou é só atraso de lançamento? Ver lib/db/desconto-material.ts.
   const coberturaPorDet = (() => {
-    const entrada: ItemCoberturaSite[] = []
+    const entrada: Array<ItemCoberturaSite & { balde: string }> = []
     for (const it of (medicaoItens || []) as any[]) {
       const det = it.detalhamento
       if (!det?.id) continue
       entrada.push({
         detalhamentoId: det.id,
+        balde: chaveMacroItem(det.codigo),
         // Mesma base da camada ①: o material que ainda falta descontar, não
         // só o do período. Senão as duas camadas falariam de materiais
         // diferentes e a pergunta "a FIP precisa emitir?" seria respondida
@@ -1204,13 +1210,14 @@ export async function calcularInformaconData(
       if (pendente <= 0) continue
       entrada.push({
         detalhamentoId: det.id,
+        balde: chaveMacroItem(det.codigo),
         matMedido: pendente,
         nfTerceiro: nfAlocadaPorDet[det.id] || 0,
         pedidoAprovado: aprovadoPorDet[det.id] || 0,
         jaConsumido: nfJaAbatidaPorDet[det.id] || 0,
       })
     }
-    return classificarCoberturaDoSite(entrada)
+    return classificarCoberturaPorBalde(entrada)
   })()
 
   // Monta linhas
