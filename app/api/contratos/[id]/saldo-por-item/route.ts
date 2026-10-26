@@ -13,6 +13,7 @@ import {
   piorAlerta,
   type NaturezaPedido,
 } from '@/lib/db/saldo-detalhamento'
+import { carregarCompensadoPorDetalhamento } from '@/lib/db/compensacao-lastro'
 
 /**
  * GET /api/contratos/[id]/saldo-por-item?codigo=8.1.1
@@ -113,6 +114,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     const sols = (solsRes.data || []) as any[]
 
+    // Compensação de lastro (migration 085): a nota de outro macro item que
+    // ficou parada aqui vai abater material deste item, então o saldo a gastar
+    // cai no mesmo valor. Ver lib/informakon/compensacao-lastro.ts.
+    const compensadoPorDet = await carregarCompensadoPorDetalhamento(admin, dets.map(d => d.id))
+
     // 3) Para cada detalhamento, calcula métricas por natureza
     const itens = dets.map(d => {
       const bases = basesDoDetalhamento(d)
@@ -154,7 +160,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       const baseMaterial = baseParaNatureza(bases, 'material')
       const baseServico = baseParaNatureza(bases, 'servico')
 
-      const consumidoMaterial = aprovado.material + pendente.material
+      const compensadoLastro = compensadoPorDet[d.id] || 0
+      const consumidoMaterial = aprovado.material + pendente.material + compensadoLastro
       const consumidoServico = aprovado.servico + pendente.servico
 
       const saldoMaterial = baseMaterial - consumidoMaterial
@@ -186,6 +193,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         solicitado_pendente_material: pendente.material,
         solicitado_aprovado_servico: aprovado.servico,
         solicitado_pendente_servico: pendente.servico,
+        /** Saldo reduzido por compensação de lastro (migration 085). Entra no consumo de material. */
+        compensado_lastro_material: compensadoLastro,
 
         // Totais (todas as naturezas somadas)
         solicitado_aprovado: aprovado.material + aprovado.servico,

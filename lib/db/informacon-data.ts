@@ -26,6 +26,13 @@ import { aplicarRetratoNasLinhas } from '@/lib/informakon/aplicar-retrato'
 import { chaveMacroItem } from '@/lib/informakon/comparar-saldo'
 import { rechavearRetrato } from '@/lib/informakon/rechavear'
 import { carregarAlocacaoDeNotas } from '@/lib/db/alocacao-notas'
+import { carregarCompensacoes, somarPorChave, type CompensacaoRegistrada } from '@/lib/db/compensacao-lastro'
+import {
+  sugerirCompensacoes,
+  type AlocacaoDaNota,
+  type NotaNoMacroItem,
+  type SugestaoCompensacao,
+} from '@/lib/informakon/compensacao-lastro'
 
 /**
  * Quanto de NF de material já foi abatido em cada detalhamento nas medições
@@ -53,6 +60,8 @@ async function aplicarRetratoAdotado(
   contratoId: string,
   snapshotId: string | null | undefined,
   linhas: InformaconLinha[],
+  /** Preenchido com o retrato nota a nota — insumo da compensação de lastro. */
+  insumos?: InsumosCompensacao,
 ): Promise<RetratoAdotado | null> {
   // Sem retrato adotado nesta medição, cai no mais recente do contrato: a
   // CAMADA ② não é opcional. Lançar percentual que o ERP não consegue
@@ -124,6 +133,15 @@ async function aplicarRetratoAdotado(
     )
     for (const [chave, v] of rech.porChave) saldoPorChave.set(chave, v.aDescontar)
     realocado = rech.totalRealocado
+    if (insumos) {
+      insumos.notas = rech.notas.map(n => ({
+        chave: String(n.chave),
+        numeroNf: n.numeroNf ?? null,
+        valorADescontar: Number(n.valorADescontar || 0),
+      }))
+      insumos.alocacao = alocacao.map(a => ({ numeroNf: a.numeroNf, chave: a.chave, valor: a.valor }))
+      insumos.saldoPorChave = saldoPorChave
+    }
   } else {
     const linhasRes = await admin
       .from('informakon_saldo_linhas')
@@ -418,6 +436,7 @@ export interface InformaconData {
    * quando não há — e aí o boletim é idêntico ao que era antes.
    */
   retrato_adotado: RetratoAdotado | null
+  compensacao_lastro: CompensacaoLastroBoletim
 }
 
 /** O que a UI mostra sobre o retrato em vigor nesta medição. */
@@ -450,6 +469,25 @@ export interface RetratoAdotado {
    * total do retrato — só o endereço. Ver lib/informakon/rechavear.ts.
    */
   total_realocado: number
+}
+
+/** O retrato nota a nota, guardado para a compensação de lastro. */
+interface InsumosCompensacao {
+  notas?: NotaNoMacroItem[]
+  alocacao?: AlocacaoDaNota[]
+  saldoPorChave?: Map<string, number>
+}
+
+/** Compensação de lastro entre macro itens (migration 085). */
+export interface CompensacaoLastroBoletim {
+  /** false = migration 085 pendente. */
+  disponivel: boolean
+  /** Registradas NESTA medição — as que o painel pode desfazer. */
+  registradas: CompensacaoRegistrada[]
+  /** Sugestões calculadas agora. Vazio em medição aprovada. */
+  sugestoes: SugestaoCompensacao[]
+  /** chave do macro item → nome, para a tela. */
+  rotulos: Record<string, string>
 }
 
 // ============================================================
@@ -1182,6 +1220,11 @@ export async function calcularInformaconData(
   //
   // Não mexe no percentual. Responde outra pergunta: alguém precisa emitir
   // nota, ou é só atraso de lançamento? Ver lib/db/desconto-material.ts.
+  // Compensação de lastro (migration 085): o que foi compensado contra um
+  // macro item conta como cobertura dele. Ver lib/informakon/compensacao-lastro.ts.
+  const compensacoes = await carregarCompensacoes(admin, contratoId)
+  const coberturaCompensada = somarPorChave(compensacoes.lista, 'chave_nota')
+
   const coberturaPorDet = (() => {
     const entrada: Array<ItemCoberturaSite & { balde: string }> = []
     for (const it of (medicaoItens || []) as any[]) {
@@ -1217,7 +1260,7 @@ export async function calcularInformaconData(
         jaConsumido: nfJaAbatidaPorDet[det.id] || 0,
       })
     }
-    return classificarCoberturaPorBalde(entrada)
+    return classificarCoberturaPorBalde(entrada, coberturaCompensada)
   })()
 
   // Monta linhas
@@ -1514,9 +1557,20 @@ export async function calcularInformaconData(
   // aquele valor contra o lastro do ERP de HOJE — que a própria medição já
   // consumiu. O boletim reimpresso deixaria de bater com o que foi assinado.
   // Só o percentual precisa ser rederivado, com a fórmula única.
-  const retratoAdotado = (medicao as any).status === 'aprovado'
+  const insumosCompensacao: InsumosCompensacao = {}
+  const medicaoAprovada = (medicao as any).status === 'aprovado'
+  const retratoAdotado = medicaoAprovada
     ? (aplicarRetratoNasLinhas(linhas, new Map()), null)
-    : await aplicarRetratoAdotado(admin, contratoId, snapshotIdAdotado, linhas)
+    : await aplicarRetratoAdotado(admin, contratoId, snapshotIdAdotado, linhas, insumosCompensacao)
+
+  const compensacaoLastro = await montarCompensacaoLastro(admin, contratoId, {
+    medicaoId,
+    aberta: !medicaoAprovada,
+    linhas,
+    retrato: retratoAdotado,
+    insumos: insumosCompensacao,
+    compensacoes,
+  })
 
   const totais: InformaconTotais = linhas.reduce<InformaconTotais>((acc, l) => ({
     material_medido: acc.material_medido + l.material_medido,
@@ -1663,5 +1717,81 @@ export async function calcularInformaconData(
     linhas,
     totais,
     retrato_adotado: retratoAdotado,
+    compensacao_lastro: compensacaoLastro,
   }
+}
+
+/**
+ * Compensação de lastro no boletim.
+ *
+ * 1. A compensação registrada NESTA medição vira "FIP precisa emitir" no
+ *    macro item da falta, rateada pelas linhas na proporção do corte de cada
+ *    uma. A camada ② já tirou esse valor do percentual; aqui ele ganha dono.
+ * 2. Medição aberta com retrato nota a nota: calcula o que ainda dá para
+ *    compensar (lib/informakon/compensacao-lastro.ts).
+ *
+ * Muta `linhas` (só `fip_faturar`). Não mexe em percentual nem em desconto.
+ */
+async function montarCompensacaoLastro(
+  admin: SupabaseClient,
+  contratoId: string,
+  ctx: {
+    medicaoId: string
+    aberta: boolean
+    linhas: InformaconLinha[]
+    retrato: RetratoAdotado | null
+    insumos: InsumosCompensacao
+    compensacoes: { disponivel: boolean; lista: CompensacaoRegistrada[] }
+  },
+): Promise<CompensacaoLastroBoletim> {
+  if (!ctx.compensacoes.disponivel) {
+    return { disponivel: false, registradas: [], sugestoes: [], rotulos: {} }
+  }
+
+  const registradas = ctx.compensacoes.lista.filter(c => c.medicao_id === ctx.medicaoId)
+  for (const [chave, valor] of somarPorChave(registradas, 'chave_falta')) {
+    const doGrupo = ctx.linhas.filter(l => chaveMacroItem(l.codigo) === chave)
+    if (doGrupo.length === 0) continue
+    // Rateio pelo corte de cada linha; sem corte, pelo desconto ideal.
+    const corte = (l: InformaconLinha) => Number(l.nf_nao_lancada_no_erp || 0)
+    const ideal = (l: InformaconLinha) => Number(l.desconto_ideal || 0)
+    const peso = doGrupo.reduce((s, l) => s + corte(l), 0) > 0.005 ? corte : ideal
+    const base = doGrupo.reduce((s, l) => s + peso(l), 0)
+    for (const l of doGrupo) {
+      const parte = base > 0.005 ? valor * (peso(l) / base) : valor / doGrupo.length
+      l.fip_faturar = Math.round((Number(l.fip_faturar || 0) + parte) * 100) / 100
+    }
+  }
+
+  let sugestoes: SugestaoCompensacao[] = []
+  const { notas, alocacao, saldoPorChave } = ctx.insumos
+  if (ctx.aberta && ctx.retrato?.aplicado && notas && alocacao && saldoPorChave) {
+    const demandaPorChave = new Map<string, number>()
+    for (const l of ctx.linhas) {
+      const k = chaveMacroItem(l.codigo)
+      if (k) demandaPorChave.set(k, (demandaPorChave.get(k) || 0) + Number(l.nf_descontavel || 0))
+    }
+    sugestoes = sugerirCompensacoes({
+      faltas: new Map(ctx.retrato.por_macro_item.map(m => [m.chave, m.falta])),
+      notas,
+      alocacao,
+      saldoPorChave,
+      demandaPorChave,
+      compensadoPorChaveFalta: somarPorChave(ctx.compensacoes.lista, 'chave_falta'),
+      compensadoPorChaveNota: somarPorChave(ctx.compensacoes.lista, 'chave_nota'),
+    })
+  }
+
+  const chaves = new Set<string>()
+  for (const c of registradas) { chaves.add(c.chave_falta); chaves.add(c.chave_nota) }
+  for (const x of sugestoes) { chaves.add(x.chaveFalta); chaves.add(x.chaveNota) }
+  const rotulos: Record<string, string> = {}
+  if (chaves.size > 0) {
+    const { data } = await admin.from('grupos_macro').select('codigo, nome').eq('contrato_id', contratoId)
+    for (const g of (data || []) as any[]) {
+      if (chaves.has(String(g.codigo))) rotulos[String(g.codigo)] = String(g.nome ?? '')
+    }
+  }
+
+  return { disponivel: true, registradas, sugestoes, rotulos }
 }

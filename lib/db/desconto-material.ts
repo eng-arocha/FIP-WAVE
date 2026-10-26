@@ -132,6 +132,13 @@ export interface CoberturaDoItem {
  */
 export function classificarCoberturaPorBalde(
   itens: Array<ItemCoberturaSite & { balde: string }>,
+  /**
+   * Cobertura que não vem de nota alocada aqui: a compensação de lastro
+   * (migration 085). A nota de outro macro item parada neste balde paga
+   * material deste balde — sem somá-la, ao medir esse material o site
+   * pediria à FIP uma segunda nota. Ver lib/informakon/compensacao-lastro.ts.
+   */
+  coberturaExtraPorBalde?: Map<string, number>,
 ): Map<string, CoberturaDoItem> {
   const out = new Map<string, CoberturaDoItem>()
   const porBalde = new Map<string, Array<ItemCoberturaSite & { balde: string }>>()
@@ -144,9 +151,9 @@ export function classificarCoberturaPorBalde(
   }
   for (const [id, cob] of classificarCoberturaDoSite(semBalde)) out.set(id, cob)
 
-  for (const lista of porBalde.values()) {
+  for (const [balde, lista] of porBalde) {
     let pendente = 0
-    let comprado = 0
+    let comprado = norm(coberturaExtraPorBalde?.get(balde))
     let aprovadoSemNota = 0
     let consumido = 0
     for (const it of lista) {

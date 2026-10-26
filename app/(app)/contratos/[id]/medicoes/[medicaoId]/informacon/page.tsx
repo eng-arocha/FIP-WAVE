@@ -15,6 +15,7 @@ import {
 } from '@/components/medicoes/breakdown-ajuste'
 import { excedeTeto, mensagemExcedeTeto } from '@/lib/medicao-teto'
 import { SaldoInformakonPainel } from '@/components/medicoes/saldo-informakon-painel'
+import { CompensacaoLastroPainel, type CompensacaoLastroDados } from '@/components/medicoes/compensacao-lastro-painel'
 import { RoteiroInformakonModal } from '@/components/medicoes/roteiro-informakon'
 import {
   NfDescDrilldown, type NfDescLinha, type ColunaDrilldown,
@@ -132,6 +133,8 @@ interface Resp {
     total_reclassificado: number
     por_macro_item: Array<{ chave: string; pedido: number; disponivel: number; falta: number }>
   } | null
+  /** Compensação de lastro entre macro itens (migration 085). */
+  compensacao_lastro?: CompensacaoLastroDados
   totais: {
     material_medido: number
     servico_medido: number
@@ -1155,6 +1158,17 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
               detalhamento_id: l.detalhamento_id,
             }))}
             retratoAdotado={data.retrato_adotado ?? null}
+            medicaoAberta={data.medicao.status !== 'aprovado'}
+            podeEditar={podeAprovar}
+            onMudou={carregar}
+          />
+        </div>
+
+        <div className="mb-3">
+          <CompensacaoLastroPainel
+            contratoId={contratoId}
+            medicaoId={medicaoId}
+            dados={data.compensacao_lastro}
             medicaoAberta={data.medicao.status !== 'aprovado'}
             podeEditar={podeAprovar}
             onMudou={carregar}

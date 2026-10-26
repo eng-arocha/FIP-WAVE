@@ -67,3 +67,12 @@ describe('cobertura por balde', () => {
     expect(r.get('A')!.notaACaminho).toBe(0)
   })
 })
+
+describe('cobertura extra do balde (compensação de lastro)', () => {
+  it('nota de outro macro item parada aqui cobre o material deste balde', () => {
+    const itens = [{ detalhamentoId: 'Q', matMedido: 100, nfTerceiro: 0, pedidoAprovado: 0, jaConsumido: 0, balde: '6' }]
+    expect(classificarCoberturaPorBalde(itens).get('Q')!.fipPrecisaEmitir).toBe(100)
+    const comExtra = classificarCoberturaPorBalde(itens, new Map([['6', 70]]))
+    expect(comExtra.get('Q')!.fipPrecisaEmitir).toBeCloseTo(30, 2)
+  })
+})

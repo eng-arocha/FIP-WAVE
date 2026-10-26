@@ -13,6 +13,7 @@ import {
   naturezaDoPedido,
   type NaturezaPedido,
 } from '@/lib/db/saldo-detalhamento'
+import { carregarCompensadoPorDetalhamento } from '@/lib/db/compensacao-lastro'
 
 /** Linha de solicitação vista pelas funções de anexo — só o que interessa. */
 type LinhaComAnexos = Record<string, unknown> & {
@@ -417,6 +418,13 @@ export async function criarSolicitacao(input: {
       if (sol.status === 'aprovado') aprovByDet[it.detalhamento_id] = (aprovByDet[it.detalhamento_id] || 0) + efetivo
       else if (sol.status === 'aguardando_aprovacao') pendByDet[it.detalhamento_id] = (pendByDet[it.detalhamento_id] || 0) + efetivo
     })
+
+    // Compensação de lastro (migration 085) consome a base de MATERIAL do
+    // item como um pedido aprovado. Ver lib/informakon/compensacao-lastro.ts.
+    if (naturezaNova === 'material') {
+      const compensado = await carregarCompensadoPorDetalhamento(admin, detIdsReq)
+      for (const [detId, v] of Object.entries(compensado)) aprovByDet[detId] = (aprovByDet[detId] || 0) + v
+    }
 
     // Group new items by detalhamento
     const novoByDet: Record<string, number> = {}
@@ -1177,6 +1185,12 @@ export async function verificarSaldoDetalhamento(input: {
     const efetivo = Number(it.valor_total || 0) - Number(it.valor_devolvido || 0)
     if (sol.status === 'aprovado') aprovado += efetivo
     else pendente += efetivo
+  }
+
+  // Compensação de lastro consome a base de material como pedido aprovado.
+  if (natureza === 'material') {
+    const compensado = await carregarCompensadoPorDetalhamento(admin, [input.detalhamento_id])
+    aprovado += compensado[input.detalhamento_id] || 0
   }
 
   const saldo = limite - aprovado - pendente
