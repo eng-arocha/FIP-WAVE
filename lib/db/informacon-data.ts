@@ -1728,13 +1728,9 @@ export async function calcularInformaconData(
 /**
  * Compensação de lastro no boletim.
  *
- * 1. A compensação registrada NESTA medição vira "FIP precisa emitir" no
- *    macro item da falta, rateada pelas linhas na proporção do corte de cada
- *    uma. A camada ② já tirou esse valor do percentual; aqui ele ganha dono.
- * 2. Medição aberta com retrato nota a nota: calcula o que ainda dá para
- *    compensar (lib/informakon/compensacao-lastro.ts).
- *
- * Muta `linhas` (só `fip_faturar`). Não mexe em percentual nem em desconto.
+ * Lista as compensações desta medição e, com a medição aberta e retrato nota
+ * a nota, calcula o que ainda dá para compensar
+ * (lib/informakon/compensacao-lastro.ts). Não mexe nas linhas.
  */
 async function montarCompensacaoLastro(
   admin: SupabaseClient,
@@ -1752,20 +1748,11 @@ async function montarCompensacaoLastro(
     return { disponivel: false, registradas: [], sugestoes: [], rotulos: {} }
   }
 
+  // A FIP do macro item da falta já sai do piso da camada ③ (corte − nota a
+  // caminho, em aplicar-retrato.ts). Somar a compensação de novo aqui pediria
+  // a mesma nota duas vezes; a compensação só mexe no destino: saldo a gastar
+  // e cobertura.
   const registradas = ctx.compensacoes.lista.filter(c => c.medicao_id === ctx.medicaoId)
-  for (const [chave, valor] of somarPorChave(registradas, 'chave_falta')) {
-    const doGrupo = ctx.linhas.filter(l => chaveMacroItem(l.codigo) === chave)
-    if (doGrupo.length === 0) continue
-    // Rateio pelo corte de cada linha; sem corte, pelo desconto ideal.
-    const corte = (l: InformaconLinha) => Number(l.nf_nao_lancada_no_erp || 0)
-    const ideal = (l: InformaconLinha) => Number(l.desconto_ideal || 0)
-    const peso = doGrupo.reduce((s, l) => s + corte(l), 0) > 0.005 ? corte : ideal
-    const base = doGrupo.reduce((s, l) => s + peso(l), 0)
-    for (const l of doGrupo) {
-      const parte = base > 0.005 ? valor * (peso(l) / base) : valor / doGrupo.length
-      l.fip_faturar = Math.round((Number(l.fip_faturar || 0) + parte) * 100) / 100
-    }
-  }
 
   let sugestoes: SugestaoCompensacao[] = []
   const { notas, alocacao, saldoPorChave } = ctx.insumos

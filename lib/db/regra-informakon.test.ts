@@ -343,3 +343,43 @@ describe('prioridade — o mês corrente antes da recuperação', () => {
     expect(rec.nf_descontavel).toBe(300)
   })
 })
+
+/**
+ * Decisão do usuário (26/10/2026), MED-007: "não tem lastro e só tem nota a
+ * caminho — a FIP deveria lançar a diferença". O corte da camada ② é o que o
+ * ERP não tem; o que não está a caminho em pedido aprovado, a FIP fatura.
+ */
+describe('CAMADA ③ — a FIP fatura o corte que nenhuma nota a caminho cobre', () => {
+  it('MED-007 grupo 1: corte 185.387,82, a caminho 31.916,58 → FIP 153.471,24', () => {
+    const l131 = linha({
+      codigo: '1.3.1', wave_servico: 0, nf_descontavel: 320_380.45, desconto_ideal: 320_380.45,
+      fip_faturar: 0, faturamento_direto_em_aberto: 17_625.35, valor_total_item: 400_000,
+    })
+    const l161 = linha({
+      codigo: '1.6.1', wave_servico: 0, nf_descontavel: 216_610.84, desconto_ideal: 216_610.84,
+      fip_faturar: 0, faturamento_direto_em_aberto: 14_291.23, valor_total_item: 300_000,
+    })
+    const r = aplicarRetratoNasLinhas([l131, l161], new Map([['1', 351_603.47]]))
+    const fip = (l131.fip_faturar ?? 0) + (l161.fip_faturar ?? 0)
+    expect(fip).toBeCloseTo(153_471.24, 2)
+    expect(r.fipPeloCorte).toBeCloseTo(153_471.24, 2)
+  })
+
+  it('nota a caminho maior que o corte: a FIP não emite', () => {
+    const l = linha({
+      codigo: '1.8.1', wave_servico: 0, nf_descontavel: 119_977.36, desconto_ideal: 119_977.36,
+      fip_faturar: 0, faturamento_direto_em_aberto: 73_057.03, valor_total_item: 124_927.76,
+    })
+    aplicarRetratoNasLinhas([l], new Map([['1', 69_686.33]]))
+    expect(l.fip_faturar).toBe(0)
+  })
+
+  it('não soma duas vezes o que a camada ③ já pediu', () => {
+    const l = linha({
+      codigo: '2.2.1', wave_servico: 0, nf_descontavel: 35_268.99, desconto_ideal: 35_268.99,
+      fip_faturar: 35_268.99, faturamento_direto_em_aberto: 0, valor_total_item: 400_000,
+    })
+    aplicarRetratoNasLinhas([l], new Map([['2', 0]]))
+    expect(l.fip_faturar).toBeCloseTo(35_268.99, 2)
+  })
+})

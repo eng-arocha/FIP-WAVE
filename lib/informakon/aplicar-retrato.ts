@@ -93,6 +93,11 @@ export interface LinhaAjustavel {
   material_medido?: number
   /** Camada ③: quanto a FIP precisa emitir. Reduzido aqui pelo lastro do ERP. */
   fip_faturar?: number
+  /**
+   * Camada ③: material com pedido aprovado esperando a nota do fornecedor.
+   * Ausente = desconhecido, e aí o piso da FIP pelo corte não é aplicado.
+   */
+  faturamento_direto_em_aberto?: number
   /** Valor global do item (qtd contratada × valor unitário) — base do %. */
   valor_total_item: number
   informakon_a_lancar?: number
@@ -109,6 +114,8 @@ export interface ResumoRetratoAplicado {
   porMacroItem: Array<{ chave: string; pedido: number; disponivel: number; falta: number }>
   /** Quanto saiu de "FIP precisa emitir" por já haver nota lançada no ERP. */
   fipAbatidoPeloLastro: number
+  /** Quanto entrou em "FIP precisa emitir" pelo corte sem nota a caminho. */
+  fipPeloCorte: number
 }
 
 const cent = (n: number) => Math.round(n * 100) / 100
@@ -132,7 +139,7 @@ export function aplicarRetratoNasLinhas(
     else porChave.set(k, [l])
   }
 
-  const resumo: ResumoRetratoAplicado = { total: 0, porMacroItem: [], fipAbatidoPeloLastro: 0 }
+  const resumo: ResumoRetratoAplicado = { total: 0, porMacroItem: [], fipAbatidoPeloLastro: 0, fipPeloCorte: 0 }
 
   for (const [chave, doGrupo] of porChave) {
     // Grupo fora do retrato não é conferido — nem para cortar, nem para
@@ -202,5 +209,35 @@ export function aplicarRetratoNasLinhas(
   }
 
   resumo.porMacroItem.sort((a, b) => b.falta - a.falta)
+  // ── O PISO DA FIP: o corte que nenhuma nota a caminho cobre ───────────
+  //
+  //     FIP do grupo ≥ corte do grupo − nota a caminho do grupo
+  //
+  // Decisão do usuário (26/10/2026), MED-007: "não tem lastro e só tem nota a
+  // caminho — a FIP deveria lançar a diferença". O abatimento acima só olha
+  // para baixo (`fip − nf_descontavel`) e, quando o site conta como cobertura
+  // uma nota que o ERP lançou em outro macro item, zera a FIP com R$ 185 mil
+  // cortados e R$ 32 mil a caminho. O corte é o que o ERP NÃO tem; se nenhum
+  // pedido aprovado vai trazer a nota, ninguém mais fatura esse material.
+  //
+  // Pedido da FIP já autorizado e sem nota conta como "a caminho", então a
+  // nota autorizada não volta como emissão nova. Grupo com nota a caminho
+  // desconhecida (linha sem o campo) fica como estava.
+  for (const [chave, doGrupo] of porChave) {
+    if (!saldoPorChave.has(chave)) continue
+    if (doGrupo.some(l => l.faturamento_direto_em_aberto === undefined)) continue
+    const corte = doGrupo.reduce((t, l) => t + num(l.nf_nao_lancada_no_erp), 0)
+    if (!(corte > 0.005)) continue
+    const aCaminho = doGrupo.reduce((t, l) => t + num(l.faturamento_direto_em_aberto), 0)
+    const jaPedido = doGrupo.reduce((t, l) => t + num(l.fip_faturar), 0)
+    const extra = cent(corte - aCaminho - jaPedido)
+    if (!(extra > 0.005)) continue
+    for (const l of doGrupo) {
+      const parte = extra * (num(l.nf_nao_lancada_no_erp) / corte)
+      if (parte > 0) l.fip_faturar = cent(num(l.fip_faturar) + parte)
+    }
+    resumo.fipPeloCorte = cent(resumo.fipPeloCorte + extra)
+  }
+
   return resumo
 }
