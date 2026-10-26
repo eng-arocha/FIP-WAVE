@@ -76,3 +76,26 @@ caminho"): no grupo 1 há ≈ R$ 160 mil disso (1.7.1, 1.12.1, 1.8.1, 1.13.1,
 1.2.1, 1.3.1, 1.10.1), então a FIP a criar do grupo sobe para ≈ R$ 86 mil,
 não para os R$ 185 mil do corte. A diferença é material comprado cuja nota
 ainda não chegou — e enquanto não chega, o corte da camada ② segura.
+
+## Conferido em produção depois do deploy (26/10/2026, `2d2897e`)
+
+- "Nota a caminho" subiu de R$ 120.086,83 para R$ 214.466,24 — o balde
+  passou a enxergar os pedidos aprovados sem nota dos itens vizinhos.
+- "FIP (Material)" **continuou R$ 35.268,99** (só o 2.2.1). No grupo 1 a FIP
+  do balde (≈ R$ 86 mil) é abatida em seguida pelo lastro do ERP
+  (`fip_faturar − nf_descontavel`, aplicar-retrato.ts): o ERP tem
+  R$ 351.603,47 de notas em SUBESTAÇÃO, e isso zera o pedido.
+
+Leitura correta do grupo 1, juntando site e ERP: 536.991,29 de pendente −
+351.603,47 lançado no ERP − ≈ 160 mil de pedido aprovado aguardando nota ≈
+**R$ 24 mil** de material sem nota em lugar nenhum. A afirmação da seção 3
+("a FIP deveria ser chamada para ≈ R$ 185–216 mil") estava errada: ela
+ignorava os pedidos aprovados sem nota. O corte de R$ 185.387,82 é, na maior
+parte, nota de fornecedor que ainda não chegou e, portanto, não foi lançada
+no ERP — não é tarefa da FIP, é cobrança de nota dos fornecedores dos
+pedidos 1.7.1, 1.12.1, 1.8.1, 1.13.1, 1.2.1, 1.3.1 e 1.10.1.
+
+Não reconciliado: "Nota a caminho" do grupo 1 saiu R$ 43.044,44 na API,
+abaixo dos ≈ R$ 160 mil de `saldo_aprovado` somado nas linhas. Provável
+`confirmacao_sem_nf` em alguns itens (zera a espera) — a conferir.
+
