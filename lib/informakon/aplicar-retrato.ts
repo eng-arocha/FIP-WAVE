@@ -241,3 +241,31 @@ export function aplicarRetratoNasLinhas(
 
   return resumo
 }
+
+/**
+ * Lastro EM LANÇAMENTO: o pedido de NF de material da FIP autorizado no
+ * portão 1 e ainda sem nota.
+ *
+ * Decisão do usuário (26/10/2026), MED-007: o "% a lançar" já deve sair
+ * correto considerando a NF de material da FIP, com um aviso. É seguro só
+ * para a FIP: o portão 2 exige a NF de material lançada antes de liberar a
+ * NF de serviço, então essa nota está no Informakon quando a medição é
+ * digitada lá. Nota de fornecedor a caminho não tem essa trava e continua
+ * fora do lastro — foi a aposta que a Medição 5 desmentiu.
+ *
+ * Soma por macro item (a mesma chave da camada ②) a partir do pendente por
+ * detalhamento. Detalhamento sem código conhecido é ignorado.
+ */
+export function lastroFipEmLancamento(
+  fipPendentePorDet: Record<string, number>,
+  codigoPorDet: Map<string, string>,
+): Map<string, number> {
+  const out = new Map<string, number>()
+  for (const [detId, valor] of Object.entries(fipPendentePorDet)) {
+    const chave = chaveMacroItem(codigoPorDet.get(detId))
+    if (!chave || !(num(valor) > 0.005)) continue
+    out.set(chave, cent((out.get(chave) || 0) + num(valor)))
+  }
+  return out
+}
+

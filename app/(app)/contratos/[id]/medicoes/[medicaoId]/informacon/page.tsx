@@ -132,6 +132,9 @@ interface Resp {
     informado_em: string | null
     total_reclassificado: number
     por_macro_item: Array<{ chave: string; pedido: number; disponivel: number; falta: number }>
+    /** NF de material da FIP autorizada (portão 1) e ainda sem nota, já somada ao lastro. */
+    fip_em_lancamento?: number
+    fip_em_lancamento_pedidos?: Array<{ numero: number; valor: number }>
   } | null
   /** Compensação de lastro entre macro itens (migration 085). */
   compensacao_lastro?: CompensacaoLastroDados
@@ -1107,6 +1110,30 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
             </div>
           )
         })()}
+
+        {/* O "% a lançar" já conta com a NF de material da FIP autorizada no
+            portão 1. O portão 2 trava a NF de serviço até ela estar lançada,
+            mas o Informakon só aceita o desconto depois que ela entrar lá. */}
+        {Number(data.retrato_adotado?.fip_em_lancamento || 0) > 0.01 && (
+          <div
+            className="rounded-lg px-4 py-3 flex items-start gap-3"
+            style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.40)' }}
+          >
+            <Info className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: '#3B82F6' }} />
+            <div className="flex-1 text-xs" style={{ color: 'var(--text-2)' }}>
+              <p className="font-semibold" style={{ color: '#3B82F6' }}>
+                O % a lançar já considera {formatCurrency(Number(data.retrato_adotado!.fip_em_lancamento))} da NF de material FIP
+                {(data.retrato_adotado!.fip_em_lancamento_pedidos ?? []).length > 0 && (
+                  <> (pedido{(data.retrato_adotado!.fip_em_lancamento_pedidos ?? []).length > 1 ? 's' : ''} nº {(data.retrato_adotado!.fip_em_lancamento_pedidos ?? []).map(p => p.numero).join(', ')})</>
+                )}
+                , que ainda não está no Informakon.
+              </p>
+              <p className="mt-0.5" style={{ color: 'var(--text-3)' }}>
+                Lance essa NF no Informakon antes de digitar a medição lá — sem ela, o ERP recusa o desconto. Nota de fornecedor a caminho não entra nesta conta e segue como &quot;sem lastro&quot;.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Aviso agregado — só aparece se há ao menos 1 ajuste aplicado */}
         {itensComAjuste > 0 && (

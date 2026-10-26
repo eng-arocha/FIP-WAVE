@@ -22,7 +22,7 @@ import { getCodigoInformakon } from '@/lib/data/informakon-codigos'
 // importadores existentes.
 export { ehPedidoDeServicoWave } from '@/lib/db/saldo-detalhamento'
 import { ehPedidoDeServicoWave } from '@/lib/db/saldo-detalhamento'
-import { aplicarRetratoNasLinhas } from '@/lib/informakon/aplicar-retrato'
+import { aplicarRetratoNasLinhas, lastroFipEmLancamento } from '@/lib/informakon/aplicar-retrato'
 import { chaveMacroItem } from '@/lib/informakon/comparar-saldo'
 import { rechavearRetrato } from '@/lib/informakon/rechavear'
 import { carregarAlocacaoDeNotas } from '@/lib/db/alocacao-notas'
@@ -62,6 +62,8 @@ async function aplicarRetratoAdotado(
   linhas: InformaconLinha[],
   /** Preenchido com o retrato nota a nota — insumo da compensação de lastro. */
   insumos?: InsumosCompensacao,
+  /** NF de material da FIP autorizada e ainda sem nota — ver `lastroFipEmLancamento`. */
+  fipEmLancamento?: { porChave: Map<string, number>; pedidos: Array<{ numero: number; valor: number }> },
 ): Promise<RetratoAdotado | null> {
   // Sem retrato adotado nesta medição, cai no mais recente do contrato: a
   // CAMADA ② não é opcional. Lançar percentual que o ERP não consegue
@@ -140,7 +142,9 @@ async function aplicarRetratoAdotado(
         valorADescontar: Number(n.valorADescontar || 0),
       }))
       insumos.alocacao = alocacao.map(a => ({ numeroNf: a.numeroNf, chave: a.chave, valor: a.valor }))
-      insumos.saldoPorChave = saldoPorChave
+      // Cópia: o lastro em lançamento da FIP entra depois e não é nota que
+      // possa servir de origem para compensação.
+      insumos.saldoPorChave = new Map(saldoPorChave)
     }
   } else {
     const linhasRes = await admin
@@ -159,6 +163,17 @@ async function aplicarRetratoAdotado(
   }
   if (saldoPorChave.size === 0) return vazio('nenhum macro item do retrato foi reconhecido')
 
+  // NF de material da FIP autorizada no portão 1: o portão 2 garante que ela
+  // está no Informakon antes da medição ser digitada lá. Só soma em macro item
+  // que o retrato conhece — ver `lastroFipEmLancamento`.
+  const fipConsiderado: Record<string, number> = {}
+  for (const [chave, valor] of fipEmLancamento?.porChave ?? []) {
+    if (!saldoPorChave.has(chave)) continue
+    saldoPorChave.set(chave, (saldoPorChave.get(chave) || 0) + valor)
+    fipConsiderado[chave] = valor
+  }
+  const totalFipConsiderado = Math.round(Object.values(fipConsiderado).reduce((t, v) => t + v, 0) * 100) / 100
+
   const resumo = aplicarRetratoNasLinhas(linhas, saldoPorChave)
   const snap = snapRes.data as any
   return {
@@ -170,6 +185,9 @@ async function aplicarRetratoAdotado(
     total_reclassificado: resumo.total,
     por_macro_item: resumo.porMacroItem,
     total_realocado: realocado,
+    fip_em_lancamento: totalFipConsiderado,
+    fip_em_lancamento_por_chave: fipConsiderado,
+    fip_em_lancamento_pedidos: totalFipConsiderado > 0 ? (fipEmLancamento?.pedidos ?? []) : [],
   }
 }
 
@@ -469,6 +487,13 @@ export interface RetratoAdotado {
    * total do retrato — só o endereço. Ver lib/informakon/rechavear.ts.
    */
   total_realocado: number
+  /**
+   * NF de material da FIP autorizada (portão 1) e ainda sem nota, somada ao
+   * lastro: o "% a lançar" já a considera. Ver `lastroFipEmLancamento`.
+   */
+  fip_em_lancamento?: number
+  fip_em_lancamento_por_chave?: Record<string, number>
+  fip_em_lancamento_pedidos?: Array<{ numero: number; valor: number }>
 }
 
 /** O retrato nota a nota, guardado para a compensação de lastro. */
@@ -1100,9 +1125,10 @@ export async function calcularInformaconData(
   const nfAlocadaPorDet: Record<string, number> = {}
   /** Pedido de NF de material da FIP aprovado e ainda sem nota, por item. */
   const fipPendentePorDet: Record<string, number> = {}
+  const fipPendentePedidos: Array<{ numero: number; valor: number }> = []
   {
     const SELECT_SOL = `
-        id, status, deletado_em, fornecedor_cnpj, fornecedor_razao_social,
+        id, numero, status, deletado_em, fornecedor_cnpj, fornecedor_razao_social,
         itens:itens_solicitacao_fat_direto ( detalhamento_id, valor_total ),
         nfs:notas_fiscais_fat_direto!solicitacao_id ( valor, status )
     `
@@ -1166,6 +1192,7 @@ export async function calcularInformaconData(
       const ehFip = sol.tipo === 'fip_material' || /^FIP ENGENHARIA/i.test(String(sol.fornecedor_razao_social ?? '').trim())
       const pendenteFip = totalSol - totalNfsSol
       if (ehFip && totalSol > 0 && pendenteFip > 0.005) {
+        fipPendentePedidos.push({ numero: Number(sol.numero ?? 0), valor: Math.round(pendenteFip * 100) / 100 })
         for (const it of itensVal) {
           fipPendentePorDet[it.detId!] = (fipPendentePorDet[it.detId!] || 0) + pendenteFip * (it.valor / totalSol)
         }
@@ -1592,7 +1619,16 @@ export async function calcularInformaconData(
   const medicaoAprovada = (medicao as any).status === 'aprovado'
   const retratoAdotado = medicaoAprovada
     ? (aplicarRetratoNasLinhas(linhas, new Map()), null)
-    : await aplicarRetratoAdotado(admin, contratoId, snapshotIdAdotado, linhas, insumosCompensacao)
+    : await aplicarRetratoAdotado(admin, contratoId, snapshotIdAdotado, linhas, insumosCompensacao, {
+        porChave: lastroFipEmLancamento(
+          fipPendentePorDet,
+          new Map([
+            ...(todosDetalhamentos as any[]).map(d => [d.id, d.codigo] as [string, string]),
+            ...((medicaoItens || []) as any[]).filter(it => it.detalhamento?.id).map(it => [it.detalhamento.id, it.detalhamento.codigo] as [string, string]),
+          ]),
+        ),
+        pedidos: fipPendentePedidos,
+      })
 
   const compensacaoLastro = await montarCompensacaoLastro(admin, contratoId, {
     medicaoId,

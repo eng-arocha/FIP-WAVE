@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { descontoIdealDoItem, classificarCoberturaDoSite } from './desconto-material'
-import { aplicarRetratoNasLinhas, type LinhaAjustavel } from '@/lib/informakon/aplicar-retrato'
+import { aplicarRetratoNasLinhas, lastroFipEmLancamento, type LinhaAjustavel } from '@/lib/informakon/aplicar-retrato'
 
 /**
  * A regra de medição, nas três camadas, travada nos números reais.
@@ -383,3 +383,31 @@ describe('CAMADA ③ — a FIP fatura o corte que nenhuma nota a caminho cobre',
     expect(l.fip_faturar).toBeCloseTo(35_268.99, 2)
   })
 })
+
+/**
+ * Decisão do usuário (26/10/2026), MED-007: autorizada a NF de material da
+ * FIP (portão 1), o "% a lançar" já sai considerando ela — o portão 2 garante
+ * que ela está no Informakon antes da medição ser digitada lá.
+ */
+describe('CAMADA ② — NF de material FIP autorizada entra como lastro', () => {
+  it('soma o pedido FIP pendente por macro item', () => {
+    const r = lastroFipEmLancamento(
+      { a: 153_471.24, b: 35_268.99, c: 0 },
+      new Map([['a', '1.3.1'], ['b', '2.2.1'], ['c', '4.2.1']]),
+    )
+    expect(r.get('1')).toBeCloseTo(153_471.24, 2)
+    expect(r.get('2')).toBeCloseTo(35_268.99, 2)
+    expect(r.has('4')).toBe(false)
+  })
+
+  it('MED-007: o corte de SUBESTAÇÃO cai para a nota de fornecedor a caminho', () => {
+    const l = linha({
+      codigo: '1.3.1', wave_servico: 0, nf_descontavel: 536_991.29, desconto_ideal: 536_991.29,
+      fip_faturar: 0, faturamento_direto_em_aberto: 185_387.82, valor_total_item: 683_545.03,
+    })
+    const r = aplicarRetratoNasLinhas([l], new Map([['1', 351_603.47 + 153_471.24]]))
+    expect(r.total).toBeCloseTo(31_916.58, 2)
+    expect(l.fip_faturar).toBe(0)
+  })
+})
+
