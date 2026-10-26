@@ -64,14 +64,15 @@ quando o líquido real é R$ 288.556.
 Pelo dado do próprio site, a camada ③ deveria pedir à FIP ≈ R$ 216.841 no
 grupo 1 (536.991,29 − 320.149,91); pelo ERP, R$ 185.387,82. Hoje pede zero.
 
-## Decisão pendente (produto)
+## Decisão (26/10/2026): corrigido em `2d2897e`
 
-A camada ③ precisa consumir a cobertura no MESMO nível em que o abatimento é
-feito (grupo, ou tarefa onde `nivel_apuracao_nf` manda), ou a FIP nunca é
-chamada em grupo que já gastou as notas por transbordo. Trocar isso muda o
-card "FIP (Material)" de todas as medições abertas; não muda percentual nem
-aprovação (camada ③ não entra no % a lançar).
+`classificarCoberturaPorBalde` (lib/db/desconto-material.ts): cobertura e
+FIP são calculadas no balde da camada ② (`chaveMacroItem`) e rateadas pelo
+pendente de cada item. Muda só o card "FIP (Material)" e "Nota a caminho" das
+medições abertas; não muda percentual nem aprovação.
 
-Até decidir: o corte de R$ 185.387,82 já protege a Wave (o % cai). O que fica
-errado é só a mensagem — o boletim diz que ninguém precisa emitir nota, e
-precisa.
+Pedido aprovado sem nota continua contando como cobertura ("nota a
+caminho"): no grupo 1 há ≈ R$ 160 mil disso (1.7.1, 1.12.1, 1.8.1, 1.13.1,
+1.2.1, 1.3.1, 1.10.1), então a FIP a criar do grupo sobe para ≈ R$ 86 mil,
+não para os R$ 185 mil do corte. A diferença é material comprado cuja nota
+ainda não chegou — e enquanto não chega, o corte da camada ② segura.
