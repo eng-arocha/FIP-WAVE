@@ -177,3 +177,28 @@ dos dois lados, mesmo depois de a nota da FIP entrar no ERP. É conservador
 compensação "vencida" — o momento é quando a NF da FIP de uma compensação for
 lançada no Informakon e o painel ainda sugerir menos do que a falta real.
 
+## Correção de rumo (26/10/2026, depois de testar a compensação)
+
+O usuário NÃO disse que o pedido 1085 parou de faturar. Disse que todas as
+notas do site estão no Informakon e que a FIP precisa emitir a nota dela. A
+sugestão de encerrar o 1085 foi retirada.
+
+A compensação contra QUADROS foi recusada pelo sistema (saldo a gastar zero).
+Conferindo a obra inteira, a recusa está certa:
+
+- Grupo 6 QUADROS: material contratado 661.523,62 ≈ notas no ERP 543.659,16
+  + saldo do pedido 1085 em 6.1 116.153,94 = 659.813,10. QUADROS NÃO tem lastro
+  sobrando ao fim da obra; a MSF só faturou antes de os quadros serem medidos.
+  Compensar ali deixaria os quadros sem lastro mais à frente.
+- Grupo 1 SUBESTAÇÃO: a falta é nota que ainda não foi emitida em pedido aprovado
+  com material já medido:
+  - pedido 17 FIP ENGENHARIA, R$ 192.522,69 aprovado, nenhuma NF; 43.879,06
+    dele em 1.5/1.13 (100% medidos) — é a nota da FIP a emitir;
+  - pedido 1085 MSF, 38.691,63 em 1.3/1.8;
+  - pedido 1712 Cordeiro, ≈ 13.968,57 do material medido em 1.2.1/1.10.1.
+- O desvio de classificação da MSF que existe é SUBESTAÇÃO ↔ GERAÇÃO (NF 557
+  inteira em GERAÇÃO, já consumida), sem lastro livre para compensar.
+
+A compensação de lastro (085) continua disponível para o caso em que o destino
+realmente sobra; aqui não se aplica.
+
