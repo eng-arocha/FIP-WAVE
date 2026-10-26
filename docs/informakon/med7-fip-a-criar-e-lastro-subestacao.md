@@ -225,3 +225,15 @@ corte de SUBESTAÇÃO 185.387,82 → ≈ 141.508,76; GERAÇÃO 35.268,99 → 0.
 A nota FIP da própria MED-007 (2.2.1, 35.268,99 — os 10% finais dos painéis)
 nasce na aprovação da MED-007, como pedido novo.
 
+## Fechamento (26/10/2026)
+
+- Pedido 17 (MED-006, R$ 192.522,69) nunca teve NF: excluído (lógico) pelo
+  manual-fix 094. O material FIP da MED-006 foi o pedido 27, NF 224, R$ 6.762,96.
+  A seção "NF de material FIP a emitir" acima estava errada por causa dele.
+- Regra nova (`32099d2`): FIP do grupo ≥ corte do ERP − nota a caminho.
+- MED-007 em produção depois disso: FIP (Material) **R$ 188.740,23** =
+  1.3.1 R$ 153.471,24 (SUBESTAÇÃO) + 2.2.1 R$ 35.268,99 (GERAÇÃO). Percentual
+  a lançar inalterado (R$ 1.613.560,09).
+- Na aprovação da MED-007 o site cria o pedido FIP com esse valor; a NF é
+  lançada no Informakon em ELÉTRICA SUBESTAÇÃO e GERAÇÃO.
+
