@@ -388,3 +388,34 @@ describe('formaDaColagem', () => {
     expect(f).toEqual({ linhas: 3, comTab: 2, camposMin: 3, camposComum: 3, camposMax: 3 })
   })
 })
+
+describe('célula com ENTER dentro (aspas do Excel)', () => {
+  // Recorte fiel da colagem de 22/10/2026: a Especificação de ELÉTRICA
+  // SUBESTAÇÃO vem com um ENTER no fim, e o Excel a cerca de aspas.
+  const CAB_COMPLETO = 'Centro\tNome do Centro de Negócio\tNº Pedido Centro Associado\tItem\tNº Entrada\tNº Devolução\tDocumento \tInsumo\tEspecificação\tUnidade\t Qtd.a Desc \t Vlr. a Desc \t Qtd.Desc \t Vlr.Desc \tNº Pedido Associado'
+  const texto = [
+    CAB_COMPLETO,
+    'CBM010002\tCondomínio Wave - Custo de Construção\t1139\t1\t160612/001\t\tNF-e 15400\t71635\t"Faturamento direto  - ELÉTRICA SUBESTAÇÃO',
+    '"\tR$\t 125.829,91 \t 125.829,91 \t 94.170,09 \t 94.170,09 \t23797',
+    'CBM010002\tCondomínio Wave - Custo de Construção\t1139\t8\t161752/001\t\tNF-e 1748316\t71635\tFaturamento direto  - ESGOTO\tR$\t4.811,21\t4.811,21\t0,00\t0,00\t23797',
+  ].join('\r\n')
+  const lido = parseSaldoColado(texto)
+
+  it('não corta a nota em duas', () => {
+    expect(lido.notas).toHaveLength(2)
+    expect(lido.ignoradas).toHaveLength(0)
+  })
+
+  it('reconhece o macro item e mantém os dois valores', () => {
+    const nf = lido.notas.find(n => n.numeroNf === '15400')!
+    expect(nf.reconhecido).toBe(true)
+    expect(nf.chave).not.toContain('"')
+    expect(nf.valorADescontar).toBe(125829.91)
+    expect(nf.valorDescontado).toBe(94170.09)
+  })
+
+  it('aspa sem fechamento volta a partir por linha', () => {
+    const torto = [CAB, 'NF-e 534\t71635\t"Faturamento direto  - ESGOTO\tR$\t1,0000\t1,00\t0,0000\t0,00'].join('\n')
+    expect(parseSaldoColado(torto).notas).toHaveLength(1)
+  })
+})

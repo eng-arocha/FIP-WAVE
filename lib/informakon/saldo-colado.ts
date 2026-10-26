@@ -368,6 +368,57 @@ function agregarNotas(notas: NotaSaldoColada[]): LinhaSaldoColada[] {
 }
 
 /**
+ * Quebra a colagem em registros × campos respeitando as ASPAS do Excel.
+ *
+ * Célula com ENTER dentro chega do Excel entre aspas, com a quebra de linha
+ * no meio. A grade do ERP faz isso em alguns macro itens: a Especificação de
+ * "ELÉTRICA SUBESTAÇÃO" e "GERAÇÃO" vem com um ENTER no fim. Partir por
+ * linha cortava cada uma dessas notas em duas: a primeira metade virava nota
+ * de macro item `"FATURAMENTO DIRETO…` (com a aspa, sem de-para) e valor
+ * zero; a segunda, sem documento, era descartada levando os valores. Foram 20
+ * notas — R$ 727 mil — acusadas de "não estão no Informakon" estando lá.
+ *
+ * Aspa só abre campo quando é o PRIMEIRO caractere dele (regra do Excel);
+ * `""` dentro do campo é uma aspa literal. Aspa que nunca fecha devolve
+ * `null` e quem chama volta a partir por linha — melhor o comportamento
+ * antigo do que engolir o resto da colagem num campo só.
+ */
+function separarRegistros(texto: string): string[][] | null {
+  const t = String(texto ?? '').replace(/\r\n?/g, '\n')
+  const registros: string[][] = []
+  let campos: string[] = []
+  let campo = ''
+  let i = 0
+  while (i < t.length) {
+    if (campo === '' && t[i] === '"') {
+      let j = i + 1
+      let valor = ''
+      let fechou = false
+      while (j < t.length) {
+        if (t[j] === '"') {
+          if (t[j + 1] === '"') { valor += '"'; j += 2; continue }
+          fechou = true
+          j++
+          break
+        }
+        valor += t[j++]
+      }
+      if (!fechou) return null
+      // ENTER ou TAB dentro da célula é formatação, não dado.
+      campo = valor.replace(/[\n\t]+/g, ' ')
+      i = j
+      continue
+    }
+    const c = t[i++]
+    if (c === '\t') { campos.push(campo); campo = '' }
+    else if (c === '\n') { campos.push(campo); registros.push(campos); campos = []; campo = '' }
+    else campo += c
+  }
+  if (campo !== '' || campos.length) { campos.push(campo); registros.push(campos) }
+  return registros
+}
+
+/**
  * Tenta ler o texto como a grade detalhada (uma linha por nota).
  *
  * Só entra nesse caminho quando há TAB: sem TAB a coluna Especificação
@@ -376,7 +427,11 @@ function agregarNotas(notas: NotaSaldoColada[]): LinhaSaldoColada[] {
  * lixo. Devolve `null` quando o layout não é esse — aí o agregado assume.
  */
 function tentarDetalhado(texto: string): SaldoColado | null {
-  const linhas = String(texto ?? '').split('\n')
+  // Só tenta respeitar aspas quando há TAB: sem TAB este caminho nem lê nada.
+  const registros = String(texto ?? '').includes('\t') ? separarRegistros(texto) : null
+  const linhas = registros
+    ? registros.map(r => r.join('\t'))
+    : String(texto ?? '').split('\n')
   const notas: NotaSaldoColada[] = []
   const ignoradas: string[] = []
   /** Chaves de linha já vistas — ver `duplicadas` em SaldoColado. */
