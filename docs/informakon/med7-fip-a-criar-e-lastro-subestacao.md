@@ -99,3 +99,32 @@ Não reconciliado: "Nota a caminho" do grupo 1 saiu R$ 43.044,44 na API,
 abaixo dos ≈ R$ 160 mil de `saldo_aprovado` somado nas linhas. Provável
 `confirmacao_sem_nf` em alguns itens (zera a espera) — a conferir.
 
+## Correção da leitura (26/10/2026, depois do "não vem mais nota")
+
+O usuário confirmou que não vem mais nota do grupo 1. As 15 notas do item 1.3.1
+(Novemp 15400 + 14 MSF do pedido 1085) estão TODAS no retrato do ERP, com as
+duas colunas lidas certo. O problema é o macro item em que o ERP as lançou:
+
+| Nota | ERP: macro item | Vlr. a Desc | Vlr.Desc |
+|---|---|---:|---:|
+| 584, 579, 576, 572, 559 | QUADROS ELÉTRICOS | 105.953,20 | 0 |
+| 550 | QUADROS + ÁGUA PLUVIAL | 51.700,57 | 0 |
+| 570 | SUBESTAÇÃO 31.837,28 + QUADROS 5.608,22 | 37.445,50 | 0 |
+| 541, 506 | QUADROS | 13.741,95 | 46.715,12 |
+| 557, 556, 546, 539, 534 | GERAÇÃO / QUADROS / SUBESTAÇÃO | 0 | consumido |
+| 15400 | SUBESTAÇÃO | 125.829,91 | 94.170,09 |
+
+MSF ainda não consumida e fora de SUBESTAÇÃO: ≈ R$ 177 mil. O grupo 6
+(QUADROS) pede só R$ 8.795 nesta medição e tem R$ 164 mil de saldo lá.
+
+O reendereçamento (`rechavear.ts`) não move essas notas porque nós também
+alocamos MSF no grupo 6 (o pedido 1085 tem 6.1), e a regra "já está num macro
+item em que também alocamos → nada a mover" segura o valor inteiro onde o ERP
+pôs. Mesmo movendo pela nossa alocação, só 9,14% da MSF é do 1.3.1 — não
+resolveria.
+
+Decisão pendente com o usuário: se o Informakon abate por macro item (premissa
+da camada ②), a saída é no ERP — reapropriar para SUBESTAÇÃO/GERAÇÃO as
+entradas MSF ainda não consumidas (Vlr.Desc = 0). Se o ERP abate de qualquer
+nota do pedido 1139, a camada ② está estrita demais e o corte é falso.
+
