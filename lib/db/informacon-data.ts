@@ -1192,7 +1192,8 @@ export async function calcularInformaconData(
       const ehFip = sol.tipo === 'fip_material' || /^FIP ENGENHARIA/i.test(String(sol.fornecedor_razao_social ?? '').trim())
       const pendenteFip = totalSol - totalNfsSol
       if (ehFip && totalSol > 0 && pendenteFip > 0.005) {
-        fipPendentePedidos.push({ numero: Number(sol.numero ?? 0), valor: Math.round(pendenteFip * 100) / 100 })
+        // Resíduo de centavos (pedido de MED-002 com R$ 0,01) não é nota a emitir.
+        if (pendenteFip >= 1) fipPendentePedidos.push({ numero: Number(sol.numero ?? 0), valor: Math.round(pendenteFip * 100) / 100 })
         for (const it of itensVal) {
           fipPendentePorDet[it.detId!] = (fipPendentePorDet[it.detId!] || 0) + pendenteFip * (it.valor / totalSol)
         }
