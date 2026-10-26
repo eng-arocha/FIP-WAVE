@@ -91,6 +91,12 @@ export interface ItemCoberturaSite {
    * emitir — nem o portão de aprovação que exige essa nota seria acionado.
    */
   jaConsumido?: number
+  /**
+   * Parte de `pedidoAprovado` que é pedido de NF de material da FIP ainda sem
+   * nota. Não pode ter sido consumida por abatimento nenhum — sem nota não há
+   * lastro no ERP — então não entra no desconto de `jaConsumido`.
+   */
+  fipPendente?: number
 }
 
 export interface CoberturaDoItem {
@@ -156,15 +162,22 @@ export function classificarCoberturaPorBalde(
     let comprado = norm(coberturaExtraPorBalde?.get(balde))
     let aprovadoSemNota = 0
     let consumido = 0
+    let fipPendente = 0
     for (const it of lista) {
       const nf = norm(it.nfTerceiro)
       const aprovado = norm(it.pedidoAprovado)
+      const fip = Math.min(norm(it.fipPendente), aprovado)
       pendente += norm(it.matMedido)
-      comprado += Math.max(nf, aprovado)
+      comprado += Math.max(nf, aprovado - fip)
       aprovadoSemNota += Math.max(0, aprovado - nf)
       consumido += norm(it.jaConsumido)
+      fipPendente += fip
     }
-    const cobertura = Math.max(0, comprado - consumido)
+    // O pedido da FIP sem nota fica fora do desconto do consumido. Sem isso,
+    // um item que já abateu mais nota do que tem comprada no site (rateio
+    // diferente do ERP) engolia o pedido recém-autorizado, e o card pedia a
+    // mesma nota de novo — MED-007, 2.2.1, R$ 35.268,99.
+    const cobertura = Math.max(0, comprado - consumido) + fipPendente
     const fipBalde = Math.max(0, pendente - cobertura)
     const aCaminhoBalde = Math.min(pendente, Math.min(aprovadoSemNota, cobertura))
 

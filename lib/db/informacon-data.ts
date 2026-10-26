@@ -583,6 +583,8 @@ export async function calcularBoletimSimulado(
   // (mesma lógica de calcularInformaconData)
   const aprovadoPorDet: Record<string, number> = {}
   const nfAlocadaPorDet: Record<string, number> = {}
+  /** Pedido de NF de material da FIP aprovado e ainda sem nota, por item. */
+  const fipPendentePorDet: Record<string, number> = {}
   {
     const { data: solRaw } = await admin
       .from('solicitacoes_fat_direto')
@@ -613,6 +615,16 @@ export async function calcularBoletimSimulado(
         for (const it of itensVal) {
           const share = it.valor / totalSol
           nfAlocadaPorDet[it.detId!] = (nfAlocadaPorDet[it.detId!] || 0) + totalNfsSol * share
+        }
+      }
+
+      // Pedido da FIP autorizado e sem nota: a camada ③ não deixa abatimento
+      // antigo consumi-lo. Ver `fipPendente` em lib/db/desconto-material.ts.
+      const ehFip = sol.tipo === 'fip_material' || /^FIP ENGENHARIA/i.test(String(sol.fornecedor_razao_social ?? '').trim())
+      const pendenteFip = totalSol - totalNfsSol
+      if (ehFip && totalSol > 0 && pendenteFip > 0.005) {
+        for (const it of itensVal) {
+          fipPendentePorDet[it.detId!] = (fipPendentePorDet[it.detId!] || 0) + pendenteFip * (it.valor / totalSol)
         }
       }
     }
@@ -733,6 +745,7 @@ export async function calcularBoletimSimulado(
       nfTerceiro: nfAlocadaPorDet[detId] || 0,
       pedidoAprovado: aprovadoPorDet[detId] || 0,
       jaConsumido: nfJaAbatidaPorDet[detId] || 0,
+      fipPendente: fipPendentePorDet[detId] || 0,
     })),
   )
 
@@ -1085,6 +1098,8 @@ export async function calcularInformaconData(
   // 4) Solicitações fat-direto APROVADAS + NFs alocadas por detalhamento
   const aprovadoPorDet: Record<string, number> = {}
   const nfAlocadaPorDet: Record<string, number> = {}
+  /** Pedido de NF de material da FIP aprovado e ainda sem nota, por item. */
+  const fipPendentePorDet: Record<string, number> = {}
   {
     const SELECT_SOL = `
         id, status, deletado_em, fornecedor_cnpj, fornecedor_razao_social,
@@ -1143,6 +1158,16 @@ export async function calcularInformaconData(
         for (const it of itensVal) {
           const share = it.valor / totalSol
           nfAlocadaPorDet[it.detId!] = (nfAlocadaPorDet[it.detId!] || 0) + totalNfsSol * share
+        }
+      }
+
+      // Pedido da FIP autorizado e sem nota: a camada ③ não deixa abatimento
+      // antigo consumi-lo. Ver `fipPendente` em lib/db/desconto-material.ts.
+      const ehFip = sol.tipo === 'fip_material' || /^FIP ENGENHARIA/i.test(String(sol.fornecedor_razao_social ?? '').trim())
+      const pendenteFip = totalSol - totalNfsSol
+      if (ehFip && totalSol > 0 && pendenteFip > 0.005) {
+        for (const it of itensVal) {
+          fipPendentePorDet[it.detId!] = (fipPendentePorDet[it.detId!] || 0) + pendenteFip * (it.valor / totalSol)
         }
       }
     }
@@ -1245,6 +1270,7 @@ export async function calcularInformaconData(
         nfTerceiro: nfAlocadaPorDet[det.id] || 0,
         pedidoAprovado: aprovadoPorDet[det.id] || 0,
         jaConsumido: nfJaAbatidaPorDet[det.id] || 0,
+        fipPendente: fipPendentePorDet[det.id] || 0,
       })
     }
     // Detalhamento sem linha nesta medição também precisa de veredito: se ele
@@ -1262,6 +1288,7 @@ export async function calcularInformaconData(
         nfTerceiro: nfAlocadaPorDet[det.id] || 0,
         pedidoAprovado: aprovadoPorDet[det.id] || 0,
         jaConsumido: nfJaAbatidaPorDet[det.id] || 0,
+        fipPendente: fipPendentePorDet[det.id] || 0,
       })
     }
     return classificarCoberturaPorBalde(entrada, coberturaCompensada)

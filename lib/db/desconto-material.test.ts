@@ -76,3 +76,22 @@ describe('cobertura extra do balde (compensação de lastro)', () => {
     expect(comExtra.get('Q')!.fipPrecisaEmitir).toBeCloseTo(30, 2)
   })
 })
+
+describe('pedido FIP autorizado e sem nota', () => {
+  // MED-007, 2.2.1: o portão 1 criou o pedido 20 com R$ 35.268,99 para os
+  // painéis. O item já consumiu mais nota do que tem comprada no site
+  // (317.420,91 × 216.661,19), e esse déficit comia o pedido novo: o card
+  // seguia pedindo R$ 35.268,99 — autorizar de novo emitiria a nota em dobro.
+  const base = { detalhamentoId: 'P', matMedido: 35268.99, nfTerceiro: 178618.63, jaConsumido: 317420.91, balde: '2' }
+
+  it('não é consumido por abatimento antigo: segue como nota a caminho', () => {
+    const r = classificarCoberturaPorBalde([{ ...base, pedidoAprovado: 216661.19 + 35268.99, fipPendente: 35268.99 }])
+    expect(r.get('P')!.fipPrecisaEmitir).toBe(0)
+    expect(r.get('P')!.notaACaminho).toBeCloseTo(35268.99, 2)
+  })
+
+  it('sem o pedido, a FIP continua sendo chamada', () => {
+    const r = classificarCoberturaPorBalde([{ ...base, pedidoAprovado: 216661.19 }])
+    expect(r.get('P')!.fipPrecisaEmitir).toBeCloseTo(35268.99, 2)
+  })
+})
