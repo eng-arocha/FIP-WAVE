@@ -202,3 +202,26 @@ Conferindo a obra inteira, a recusa está certa:
 A compensação de lastro (085) continua disponível para o caso em que o destino
 realmente sobra; aqui não se aplica.
 
+## NF de material FIP a emitir (26/10/2026)
+
+É o pedido 17 FIP ENGENHARIA (id d16fbd62), criado na aprovação da MED-006 em
+30/09/2026, R$ 192.522,69, nenhuma NF até hoje. Lançamento no Informakon por
+macro item:
+
+| Macro item | Itens do pedido | Valor |
+|---|---|---:|
+| ELÉTRICA SUBESTAÇÃO | 1.5, 1.13 | 43.879,06 |
+| GERAÇÃO | 2.2 | 100.759,72 |
+| ALIMENTAÇÃO ELÉTRICA | 3.1 | 206,22 |
+| DISTRIBUIÇÃO ELÉTRICA | 4.2, 4.3 | 16.320,61 |
+| ÁGUA PLUVIAL | 8.1 | 1.781,96 |
+| ESGOTO | 9.1 | 2.179,94 |
+| COMBATE AO INCÊNDIO | 14.2 | 18.456,38 |
+| SDAI | 16.3 | 1.658,79 |
+| SPDA | 18.1 | 7.280,00 |
+
+Efeito esperado na MED-007 depois de lançada e com o retrato colado de novo:
+corte de SUBESTAÇÃO 185.387,82 → ≈ 141.508,76; GERAÇÃO 35.268,99 → 0.
+A nota FIP da própria MED-007 (2.2.1, 35.268,99 — os 10% finais dos painéis)
+nasce na aprovação da MED-007, como pedido novo.
+
