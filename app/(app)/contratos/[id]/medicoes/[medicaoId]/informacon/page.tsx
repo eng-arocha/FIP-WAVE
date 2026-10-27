@@ -24,6 +24,7 @@ import { EmailLiberacaoMedicaoModal } from '@/components/medicoes/email-liberaca
 import { usePermissoes } from '@/lib/context/permissoes-context'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { exportCsv } from '@/lib/utils/csv'
+import { recuperadoDeMedicoesAnteriores } from '@/lib/informakon/aplicar-retrato'
 import {
   ArrowLeft, Loader2, Download, Copy, Check, FileText, TrendingUp, Printer, HelpCircle, X,
   CheckCircle2, XCircle, Mail, AlertTriangle, Info, Undo2, Pencil, ListChecks, ClipboardList,
@@ -1135,6 +1136,34 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
           </div>
         )}
 
+        {/* Corte de medição anterior que voltou: a nota entrou no Informakon e o
+            desconto deste mês traz o material de antes junto. Sem o aviso o %
+            parece maior que o avanço do mês. Ver `recuperadoDeMedicoesAnteriores`. */}
+        {(() => {
+          const recuperadas = data.linhas
+            .map(l => ({ codigo: l.codigo, valor: recuperadoDeMedicoesAnteriores(l) }))
+            .filter(r => r.valor > 0)
+          const total = recuperadas.reduce((t, r) => t + r.valor, 0)
+          if (!(total > 0.01)) return null
+          return (
+            <div
+              className="rounded-lg px-4 py-3 flex items-start gap-3"
+              style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.40)' }}
+            >
+              <Info className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: '#10B981' }} />
+              <div className="flex-1 text-xs" style={{ color: 'var(--text-2)' }}>
+                <p className="font-semibold" style={{ color: '#10B981' }}>
+                  O % a lançar inclui {formatCurrency(total)} de material de medições anteriores que agora tem lastro no Informakon
+                  {' '}({recuperadas.map(r => r.codigo).join(', ')}).
+                </p>
+                <p className="mt-0.5" style={{ color: 'var(--text-3)' }}>
+                  Foi cortado na época por falta de nota lançada no ERP. A nota entrou, então o desconto volta agora — o percentual destes itens sobe além do avanço do mês, até o acumulado do físico.
+                </p>
+              </div>
+            </div>
+          )
+        })()}
+
         {/* Aviso agregado — só aparece se há ao menos 1 ajuste aplicado */}
         {itensComAjuste > 0 && (
           <div
@@ -1287,11 +1316,22 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                             {formatCurrency(l.nf_descontavel)}
                           </button>
                         </td>
-                        <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: 'rgba(59,130,246,0.08)', color: '#3B82F6' }}>
+                        <td style={{ ...td('tabular-nums font-semibold'), textAlign: 'right', background: recuperadoDeMedicoesAnteriores(l) > 0 ? 'rgba(16,185,129,0.12)' : 'rgba(59,130,246,0.08)', color: '#3B82F6' }}>
                           {pctFmt(Number(l.pct_informakon_a_lancar ?? l.pct_informakon), CASAS_PCT_ERP)}
                           {semLastro > 0.01 && (
-                            <span style={{ display: 'block', fontSize: 9, fontWeight: 600, color: '#EF4444' }}>
+                            <span
+                              style={{ display: 'block', fontSize: 9, fontWeight: 600, color: '#EF4444' }}
+                              title="Cortado por falta de nota lançada no Informakon. Volta sozinho na medição em que a nota entrar lá, destacado em verde."
+                            >
                               − {formatCurrency(semLastro)} sem lastro no Informakon
+                            </span>
+                          )}
+                          {recuperadoDeMedicoesAnteriores(l) > 0 && (
+                            <span
+                              style={{ display: 'block', fontSize: 9, fontWeight: 700, color: '#10B981' }}
+                              title="Material de medições anteriores, cortado na época por falta de lastro. A nota entrou no Informakon e o desconto volta nesta medição."
+                            >
+                              + {formatCurrency(recuperadoDeMedicoesAnteriores(l))} de medições anteriores
                             </span>
                           )}
                           {/* Comparação feita nos valores CRUS, não nos exibidos. */}
@@ -1469,7 +1509,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                             style={{
                               ...td('tabular-nums font-semibold'),
                               textAlign: 'right',
-                              background: 'rgba(59,130,246,0.08)',
+                              background: recuperadoDeMedicoesAnteriores(l) > 0 ? 'rgba(16,185,129,0.12)' : 'rgba(59,130,246,0.08)',
                               color: '#3B82F6',
                             }}
                             title={
@@ -1482,6 +1522,14 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                             {semLastro > 0.01 && (
                               <span style={{ display: 'block', fontSize: 9, fontWeight: 600, color: '#EF4444' }}>
                                 − {formatCurrency(semLastro)} sem lastro no Informakon
+                              </span>
+                            )}
+                            {recuperadoDeMedicoesAnteriores(l) > 0 && (
+                              <span
+                                style={{ display: 'block', fontSize: 9, fontWeight: 700, color: '#10B981' }}
+                                title="Material de medições anteriores, cortado na época por falta de lastro. A nota entrou no Informakon e o desconto volta nesta medição."
+                              >
+                                + {formatCurrency(recuperadoDeMedicoesAnteriores(l))} de medições anteriores
                               </span>
                             )}
                             {/* Comparação feita nos valores CRUS, não nos exibidos. */}

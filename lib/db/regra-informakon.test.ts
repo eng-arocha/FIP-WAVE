@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { descontoIdealDoItem, classificarCoberturaDoSite } from './desconto-material'
-import { aplicarRetratoNasLinhas, lastroFipEmLancamento, type LinhaAjustavel } from '@/lib/informakon/aplicar-retrato'
+import { aplicarRetratoNasLinhas, lastroFipEmLancamento, recuperadoDeMedicoesAnteriores, type LinhaAjustavel } from '@/lib/informakon/aplicar-retrato'
 
 /**
  * A regra de medição, nas três camadas, travada nos números reais.
@@ -411,3 +411,37 @@ describe('CAMADA ② — NF de material FIP autorizada entra como lastro', () =>
   })
 })
 
+describe('recuperação — o corte de uma medição volta quando a nota entra', () => {
+  // MED-007, 1.3.1: R$ 31.916,58 cortados por falta de lastro (MSF/Cordeiro).
+  // Na medição seguinte o desconto ideal traz esse valor junto com o material
+  // do período.
+  const linha = (): LinhaAjustavel & { material_medido: number } => ({
+    codigo: '1.3.1',
+    wave_servico: 10_000,
+    material_medido: 20_000,
+    nf_descontavel: 20_000 + 31_916.58,
+    gap_material: 0,
+    valor_total_item: 1_000_000,
+    dados_informakon: 0,
+  })
+
+  it('nota entrou: o desconto passa inteiro e a recuperação aparece', () => {
+    const l = linha()
+    aplicarRetratoNasLinhas([l], new Map([['1', 60_000]]))
+    expect(l.nf_nao_lancada_no_erp).toBe(0)
+    expect(recuperadoDeMedicoesAnteriores(l)).toBe(31_916.58)
+  })
+
+  it('nota ainda não entrou: a recuperação é cortada primeiro e não aparece', () => {
+    const l = linha()
+    aplicarRetratoNasLinhas([l], new Map([['1', 20_000]]))
+    expect(l.nf_nao_lancada_no_erp).toBe(31_916.58)
+    expect(recuperadoDeMedicoesAnteriores(l)).toBe(0)
+  })
+
+  it('nota entrou em parte: aparece só o que passou', () => {
+    const l = linha()
+    aplicarRetratoNasLinhas([l], new Map([['1', 30_000]]))
+    expect(recuperadoDeMedicoesAnteriores(l)).toBe(10_000)
+  })
+})

@@ -269,3 +269,22 @@ export function lastroFipEmLancamento(
   return out
 }
 
+
+/**
+ * Quanto do desconto da linha é material de medições ANTERIORES que voltou
+ * agora — o corte de um mês sem lastro que o Informakon passou a cobrir.
+ *
+ * Não precisa de registro próprio: a camada ① já carrega o corte (o desconto
+ * ideal é o material acumulado menos o já lançado nas aprovadas), e a camada ②
+ * corta a recuperação antes do mês corrente. Então, depois do teto, o que o
+ * desconto tem além do material do período é recuperação que passou.
+ *
+ * Decisão do usuário (27/10/2026), MED-007: os R$ 31.916,58 da MSF/Cordeiro
+ * cortados no 1.3.1 voltam sozinhos quando as notas entrarem — e o boletim
+ * precisa mostrar isso em destaque, para não parecer % acima do mês.
+ */
+export function recuperadoDeMedicoesAnteriores(l: { nf_descontavel: number; material_medido?: number }): number {
+  if (l.material_medido === undefined) return 0
+  const r = cent(num(l.nf_descontavel) - num(l.material_medido))
+  return r > 0.01 ? r : 0
+}
