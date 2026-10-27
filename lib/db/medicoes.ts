@@ -335,6 +335,45 @@ export async function aprovarMedicao(id: string, aprovadorNome: string, aprovado
     ? (baseRetencao / valorTotalContrato) * 100
     : 0
 
+  // Snapshot de quanto de NF de material foi abatido em cada item nesta
+  // medição (migration 074). É o que faz o saldo corrido funcionar: sem
+  // congelar isto aqui, as notas desta medição voltariam a ser descontáveis
+  // na medição seguinte — a mesma nota abatendo duas vezes, em dois meses.
+  //
+  // `snapshotOk` distingue "calculei e deu zero" de "não consegui calcular".
+  // Antes, qualquer falha aqui era engolida por um console.warn e o UPDATE
+  // abaixo gravava 0 em TODOS os itens, com a rota devolvendo sucesso — o
+  // resultado é indistinguível de uma medição que legitimamente não abateu
+  // nada, e o erro só apareceria meses depois como desconto em dobro.
+  //
+  // Calculado ANTES de a medição virar 'aprovado'. O boletim de medição
+  // aprovada não aplica o retrato do Informakon (reexibe o congelado), então
+  // calcular depois do UPDATE de status congelava o desconto IDEAL, sem o
+  // corte por falta de lastro: a MED-007 gravou o 1.3.1 a 100% com 90,8530%
+  // digitado, e os R$ 31.916,58 da MSF/Cordeiro sumiram da fila.
+  const nfDescontadaPorDet = new Map<string, number>()
+  let snapshotOk = false
+  if (medSnap) {
+    try {
+      const { createAdminClient } = await import('@/lib/supabase/admin')
+      const { calcularInformaconData } = await import('@/lib/db/informacon-data')
+      const boletim = await calcularInformaconData(
+        createAdminClient(),
+        String((medSnap as any).contrato_id),
+        id,
+      )
+      if (boletim) {
+        for (const l of boletim.linhas ?? []) {
+          if (l.nf_descontavel > 0) nfDescontadaPorDet.set(l.detalhamento_id, l.nf_descontavel)
+        }
+        snapshotOk = true
+      } else {
+        console.error('[aprovarMedicao] boletim vazio — snapshot de NF não gravado', { medicaoId: id })
+      }
+    } catch (e: any) {
+      console.error('[aprovarMedicao] snapshot de nf_material_descontada falhou:', e?.message, { medicaoId: id })
+    }
+  }
   // UPDATE da medição com snapshots
   const updateBase: Record<string, unknown> = {
     status: 'aprovado',
@@ -361,40 +400,6 @@ export async function aprovarMedicao(id: string, aprovadorNome: string, aprovado
       if (retry.error) throw retry.error
     } else {
       throw tryUpdate.error
-    }
-  }
-
-  // Snapshot de quanto de NF de material foi abatido em cada item nesta
-  // medição (migration 074). É o que faz o saldo corrido funcionar: sem
-  // congelar isto aqui, as notas desta medição voltariam a ser descontáveis
-  // na medição seguinte — a mesma nota abatendo duas vezes, em dois meses.
-  //
-  // `snapshotOk` distingue "calculei e deu zero" de "não consegui calcular".
-  // Antes, qualquer falha aqui era engolida por um console.warn e o UPDATE
-  // abaixo gravava 0 em TODOS os itens, com a rota devolvendo sucesso — o
-  // resultado é indistinguível de uma medição que legitimamente não abateu
-  // nada, e o erro só apareceria meses depois como desconto em dobro.
-  const nfDescontadaPorDet = new Map<string, number>()
-  let snapshotOk = false
-  if (medSnap) {
-    try {
-      const { createAdminClient } = await import('@/lib/supabase/admin')
-      const { calcularInformaconData } = await import('@/lib/db/informacon-data')
-      const boletim = await calcularInformaconData(
-        createAdminClient(),
-        String((medSnap as any).contrato_id),
-        id,
-      )
-      if (boletim) {
-        for (const l of boletim.linhas ?? []) {
-          if (l.nf_descontavel > 0) nfDescontadaPorDet.set(l.detalhamento_id, l.nf_descontavel)
-        }
-        snapshotOk = true
-      } else {
-        console.error('[aprovarMedicao] boletim vazio — snapshot de NF não gravado', { medicaoId: id })
-      }
-    } catch (e: any) {
-      console.error('[aprovarMedicao] snapshot de nf_material_descontada falhou:', e?.message, { medicaoId: id })
     }
   }
 
