@@ -2,49 +2,41 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { ArrowLeft, ChevronsDownUp, ChevronsUpDown, Loader2 } from 'lucide-react'
+import { ArrowLeft, ChevronsDownUp, ChevronsUpDown, Clock, Info, Loader2 } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import type { DashboardItem, DashboardModo } from '@/types/dashboard'
 import { useTreeExpansion } from '@/lib/hooks/use-tree-expansion'
 import { useDashboardTreeData } from '@/lib/hooks/use-dashboard-tree-data'
-import { useTableLayout, type ColumnDef } from '@/lib/hooks/use-table-layout'
-import { valoresPorModo, rotuloSaldo, rotuloPendenteNf, totalizarRows } from '@/lib/export/visao-geral'
-import { DashboardTreeRow } from './dashboard-tree-row'
+import { useTableLayout } from '@/lib/hooks/use-table-layout'
+import { valoresPorModo, totalizarRows, percentuais, fmtPct } from '@/lib/export/visao-geral'
+import { DashboardTreeRow, PctMedido, PctRealizadoMaterial } from './dashboard-tree-row'
+import { colunasDoModo, COR_EM_APROVACAO, COR_FIP_ATRASADA, type ColunaVisaoGeral } from './colunas'
 import { DashboardBarChart } from './dashboard-bar-chart'
+
+export type MedicaoEmAprovacao = { numero: number; status: string }
 
 type Props = {
   contratoId: string
   modo: DashboardModo
+  /** Medições submetidas/em análise/autorizadas — nomeadas no aviso do "% Medido". */
+  medicoesEmAprovacao?: MedicaoEmAprovacao[]
 }
 
 type FlatItem = { item: DashboardItem; level: number }
 
 const DOUBLE_CLICK_GUARD_MS = 250
 
-type ColunaVisaoGeral = 'item' | 'contratado' | 'realizado' | 'saldo' | 'pendente'
-
-const COLUNAS_BASE: Array<ColumnDef<ColunaVisaoGeral> & { label: string }> = [
-  { key: 'item', label: 'Item', defaultWidth: 420, min: 160, max: 1200, type: 'string' },
-  { key: 'contratado', label: 'Contratado', defaultWidth: 140, min: 90, type: 'number' },
-  { key: 'realizado', label: 'Realizado', defaultWidth: 140, min: 90, type: 'number' },
-  { key: 'saldo', label: 'Saldo', defaultWidth: 140, min: 90, type: 'number' },
-]
-// Só em Material/Serviço — rótulo vem de rotuloPendenteNf().
-const COLUNA_PENDENTE: ColumnDef<ColunaVisaoGeral> & { label: string } =
-  { key: 'pendente', label: 'Pendente NF', defaultWidth: 140, min: 90, type: 'number' }
-const COLUNAS_COM_PENDENTE = [...COLUNAS_BASE, COLUNA_PENDENTE]
-
 const fmt = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-export function DashboardTree({ contratoId, modo }: Props) {
+export function DashboardTree({ contratoId, modo, medicoesEmAprovacao = [] }: Props) {
   const router = useRouter()
   const pathname = usePathname()
   const params = useSearchParams()
 
-  const pendLabel = rotuloPendenteNf(modo)
-  const colunas = pendLabel ? COLUNAS_COM_PENDENTE : COLUNAS_BASE
+  const colunas = colunasDoModo(modo)
+  // Chave por modo: cada modo tem seu conjunto de colunas e larguras.
   const { gridTemplateColumns, startResize, reset: resetLayout } =
-    useTableLayout<ColunaVisaoGeral>('contrato:visao-geral:v2', colunas)
+    useTableLayout<ColunaVisaoGeral>(`contrato:visao-geral:v3:${modo}`, colunas)
 
   const scopeRaw = params.get('scope')
   const rootScope = scopeRaw === null || scopeRaw === '' || scopeRaw === 'null' ? null : scopeRaw
@@ -93,6 +85,9 @@ export function DashboardTree({ contratoId, modo }: Props) {
   // Subtotal do que está na tela. totalizarRows soma só as raízes do
   // conjunto — grupo aberto não conta de novo as tarefas dele.
   const totais = useMemo(() => totalizarRows(flat, modo), [flat, modo])
+  const mostraPct = modo !== 'total'
+  const algumEmAprovacao = mostraPct && totais.pct.servEmAprovacao > 0.0001
+  const algumaFipAtrasada = modo === 'material' && flat.some(({ item }) => percentuais(item).fipAtrasada)
 
   const lastClickRef = useRef<{ id: string; t: number } | null>(null)
 
@@ -157,6 +152,37 @@ export function DashboardTree({ contratoId, modo }: Props) {
           <span>Foco em um subgrupo</span>
         </div>
       )}
+      {(algumEmAprovacao || algumaFipAtrasada) && (
+        <div className="flex flex-col gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-xs text-[var(--text-2)]">
+          {algumEmAprovacao && (
+            <p className="flex items-start gap-1.5">
+              <Clock className="w-3.5 h-3.5 mt-px shrink-0" style={{ color: COR_EM_APROVACAO }} />
+              <span>
+                O <b>% {modo === 'material' ? 'serv. medido' : 'medido'}</b> já considera{' '}
+                {medicoesEmAprovacao.length > 0
+                  ? medicoesEmAprovacao
+                      .map(m => `a Medição nº ${String(m.numero).padStart(2, '0')} (${m.status})`)
+                      .join(', ')
+                  : 'medição'}
+                {' '}— ainda não aprovada. Valores em{' '}
+                <span style={{ color: COR_EM_APROVACAO, fontWeight: 600 }}>azul</span> têm parte do % vinda dela
+                {' '}({fmtPct(totais.pct.servEmAprovacao)} do serviço{rootScope ? ' deste subgrupo' : ' do contrato'}).
+                Realizado e Saldo contam só medição aprovada.
+              </span>
+            </p>
+          )}
+          {algumaFipAtrasada && (
+            <p className="flex items-start gap-1.5">
+              <Info className="w-3.5 h-3.5 mt-px shrink-0" style={{ color: COR_FIP_ATRASADA }} />
+              <span>
+                Realizado em <span style={{ color: COR_FIP_ATRASADA, fontWeight: 600 }}>laranja</span>: o material
+                faturado (entre parênteses) está atrás do serviço medido — a FIP precisa faturar.
+                Passe o mouse sobre o % para ver quanto.
+              </span>
+            </p>
+          )}
+        </div>
+      )}
       <div className="border border-[var(--border)] rounded-md overflow-hidden bg-[var(--surface-1)]">
         <div className="flex items-center justify-between gap-2 px-2 py-1">
           <div className="flex items-center gap-1">
@@ -201,13 +227,9 @@ export function DashboardTree({ contratoId, modo }: Props) {
               <div
                 key={col.key}
                 className={`relative ${i === 0 ? '' : 'text-right'}`}
-                title={col.key === 'saldo'
-                  ? 'Contratado − Realizado'
-                  : col.key === 'pendente'
-                    ? (modo === 'servico' ? 'Medição aprovada ainda sem NF de serviço' : 'Pedido aprovado ainda sem NF')
-                    : undefined}
+                title={col.dica}
               >
-                {col.key === 'saldo' ? rotuloSaldo(modo) : col.key === 'pendente' ? pendLabel : col.label}
+                {col.label}
                 <span
                   onMouseDown={e => startResize(col.key, e)}
                   onClick={e => e.stopPropagation()}
@@ -250,12 +272,33 @@ export function DashboardTree({ contratoId, modo }: Props) {
               <div className="text-[11px] uppercase text-[var(--text-2)]">
                 {rootScope ? 'Subtotal do subgrupo' : 'Subtotal'}
               </div>
-              <div className="text-right text-[var(--text-1)]">{fmt(totais.contratado)}</div>
-              <div className="text-right text-[var(--text-1)]">{fmt(totais.realizado)}</div>
-              <div className="text-right" style={{ color: totais.saldo < 0 ? '#EF4444' : 'var(--text-1)' }}>
-                {fmt(totais.saldo)}
-              </div>
-              {pendLabel && <div className="text-right text-[var(--text-1)]">{fmt(totais.pendenteNf)}</div>}
+              {colunas.slice(1).map(col => {
+                switch (col.key) {
+                  case 'contratado':
+                    return <div key={col.key} className="text-right text-[var(--text-1)]">{fmt(totais.contratado)}</div>
+                  case 'realizado':
+                    return (
+                      <div key={col.key} className="text-right text-[var(--text-1)] whitespace-nowrap">
+                        <span style={modo === 'material' && totais.pct.fipAtrasada ? { color: COR_FIP_ATRASADA } : undefined}>
+                          {fmt(totais.realizado)}
+                        </span>
+                        {modo === 'material' && <PctRealizadoMaterial p={totais.pct} />}
+                      </div>
+                    )
+                  case 'pctMedido':
+                    return <div key={col.key} className="text-right"><PctMedido p={totais.pct} /></div>
+                  case 'saldo':
+                    return (
+                      <div key={col.key} className="text-right" style={{ color: totais.saldo < 0 ? '#EF4444' : 'var(--text-1)' }}>
+                        {fmt(totais.saldo)}
+                      </div>
+                    )
+                  case 'pendente':
+                    return <div key={col.key} className="text-right text-[var(--text-1)]">{fmt(totais.pendenteNf)}</div>
+                  default:
+                    return null
+                }
+              })}
             </div>
           )}
         </div>

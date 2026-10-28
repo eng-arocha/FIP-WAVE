@@ -62,6 +62,60 @@ export function rotuloPendenteNf(modo: DashboardModo): string | null {
   return null
 }
 
+type CamposPercentual = Pick<DashboardItem,
+  'valor_contratado_servico' | 'realizado_servico' | 'servico_em_aprovacao' |
+  'valor_contratado_material' | 'realizado_material'>
+
+export interface Percentuais {
+  /** % do serviço contratado já medido — aprovado + em aprovação. null sem serviço contratado. */
+  servMedido: number | null
+  /** Pedaço de `servMedido` que vem de medição ainda em aprovação (p.p.). */
+  servEmAprovacao: number
+  /** % do material contratado já faturado (NF lançada). null sem material contratado. */
+  matRealizado: number | null
+  /** Material faturado atrás do serviço medido: a FIP precisa faturar. */
+  fipAtrasada: boolean
+  /** R$ de material que a FIP precisa faturar pra alcançar o % de serviço medido. */
+  aFaturar: number
+}
+
+const pct1 = (n: number) => Math.round(n * 10) / 10
+
+/**
+ * Avanço físico (serviço medido) × avanço de faturamento de material.
+ *
+ * Material e serviço do mesmo item andam juntos na obra: se o serviço já foi
+ * medido em 60% e a NF de material cobre só 40%, a FIP está atrás no
+ * faturamento — é isso que a coluna sinaliza. A comparação é feita com uma
+ * casa decimal (a mesma que aparece na tela), pra não acender alerta por
+ * diferença invisível.
+ */
+export function percentuais(item: CamposPercentual): Percentuais {
+  const cs = item.valor_contratado_servico || 0
+  const cm = item.valor_contratado_material || 0
+  const aprovado = item.realizado_servico || 0
+  const emAprov = item.servico_em_aprovacao || 0
+  const servMedido = cs > 0 ? ((aprovado + emAprov) / cs) * 100 : null
+  const matRealizado = cm > 0 ? ((item.realizado_material || 0) / cm) * 100 : null
+  const fipAtrasada = servMedido !== null && matRealizado !== null && pct1(matRealizado) < pct1(servMedido)
+  const aFaturar = fipAtrasada && servMedido !== null
+    ? centavos(Math.max(0, (servMedido / 100) * cm - (item.realizado_material || 0)))
+    : 0
+  return {
+    servMedido,
+    servEmAprovacao: cs > 0 ? (emAprov / cs) * 100 : 0,
+    matRealizado,
+    fipAtrasada,
+    aFaturar,
+  }
+}
+
+/** "52,3%" — ou "—" quando não há base pra calcular. */
+export function fmtPct(n: number | null): string {
+  if (n === null) return '—'
+  return `${n.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
+}
+
 /**
  * Aplica filtro por texto (código/nome) e por saldo.
  *
@@ -103,22 +157,64 @@ export function totalizarRows(rows: FlatRow[], modo: DashboardModo) {
   let realizado = 0
   let saldo = 0
   let pendenteNf = 0
+  const base: CamposPercentual = {
+    valor_contratado_servico: 0, realizado_servico: 0, servico_em_aprovacao: 0,
+    valor_contratado_material: 0, realizado_material: 0,
+  }
   for (const { item } of rows) {
     // Se o pai está na lista, este item já foi contado dentro dele.
     if (item.pai_id && idsPresentes.has(item.pai_id)) continue
+    base.valor_contratado_servico += item.valor_contratado_servico || 0
+    base.realizado_servico += item.realizado_servico || 0
+    base.servico_em_aprovacao += item.servico_em_aprovacao || 0
+    base.valor_contratado_material += item.valor_contratado_material || 0
+    base.realizado_material += item.realizado_material || 0
     const v = valoresPorModo(item, modo)
     contratado += v.contratado
     realizado += v.realizado
     saldo += v.saldo
     pendenteNf += v.pendenteNf ?? 0
   }
-  return { contratado, realizado, saldo, pendenteNf }
+  return { contratado, realizado, saldo, pendenteNf, pct: percentuais(base) }
 }
 
 function nomeArquivo(base: string, ext: string) {
   const d = new Date()
   const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
   return `${base}-${stamp}.${ext}`
+}
+
+/**
+ * Colunas numéricas exportadas (Excel/PDF/painel de filtro), na MESMA ordem
+ * da tabela da tela (components/contratos/visao-geral/colunas.ts).
+ * `pct` = percentual (0–100); `alerta` = FIP atrás no faturamento de material.
+ */
+export interface ColunaExport {
+  label: string
+  tipo: 'money' | 'pct'
+  valor: (v: ReturnType<typeof valoresPorModo>, p: Percentuais) => number | null
+  alerta?: (p: Percentuais) => boolean
+}
+
+export function colunasExport(modo: DashboardModo): ColunaExport[] {
+  const contratado: ColunaExport = { label: 'Contratado', tipo: 'money', valor: v => v.contratado }
+  const realizado: ColunaExport = { label: 'Realizado', tipo: 'money', valor: v => v.realizado }
+  const saldo: ColunaExport = { label: rotuloSaldo(modo), tipo: 'money', valor: v => v.saldo }
+  const pendente: ColunaExport = { label: rotuloPendenteNf(modo) ?? '', tipo: 'money', valor: v => v.pendenteNf ?? 0 }
+  if (modo === 'servico') {
+    return [contratado, realizado, { label: '% Medido', tipo: 'pct', valor: (_v, p) => p.servMedido }, saldo, pendente]
+  }
+  if (modo === 'material') {
+    return [
+      contratado,
+      { label: '% Serv. med.', tipo: 'pct', valor: (_v, p) => p.servMedido },
+      { ...realizado, alerta: p => p.fipAtrasada },
+      { label: '% Realizado', tipo: 'pct', valor: (_v, p) => p.matRealizado, alerta: p => p.fipAtrasada },
+      saldo,
+      pendente,
+    ]
+  }
+  return [contratado, realizado, saldo]
 }
 
 /** Gera e baixa um .xlsx formatado da Visão Geral filtrada. */
@@ -129,11 +225,11 @@ export async function exportarExcelVisaoGeral(
 ) {
   const XLSX = await import('xlsx-js-style')
   const modoLabel = modo === 'material' ? 'Material' : modo === 'servico' ? 'Serviço' : 'Total'
-  const saldoLabel = rotuloSaldo(modo)
-  const pendLabel = rotuloPendenteNf(modo)
-  const ultimaCol = pendLabel ? 5 : 4
+  const colunas = colunasExport(modo)
+  const ultimaCol = 1 + colunas.length
 
   const azul = '1E3A8A'
+  const laranja = 'B45309'
   const headerStyle = {
     font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 },
     fill: { fgColor: { rgb: azul } },
@@ -141,6 +237,7 @@ export async function exportarExcelVisaoGeral(
     border: bordas('CBD5E1'),
   }
   const money = '#,##0.00'
+  const pctFmt = '0.0"%"'
 
   const aoa: any[][] = []
   // Título
@@ -148,15 +245,23 @@ export async function exportarExcelVisaoGeral(
   aoa.push([{ v: `Gerado em ${new Date().toLocaleString('pt-BR')}`, s: { font: { italic: true, sz: 8, color: { rgb: '64748B' } } } }])
   aoa.push([])
   // Cabeçalho
-  aoa.push([
-    cell('Código', headerStyle), cell('Item', headerStyle),
-    cell('Contratado', headerStyle), cell('Realizado', headerStyle), cell(saldoLabel, headerStyle),
-    ...(pendLabel ? [cell(pendLabel, headerStyle)] : []),
-  ])
+  aoa.push([cell('Código', headerStyle), cell('Item', headerStyle), ...colunas.map(c => cell(c.label, headerStyle))])
 
-  let totC = 0, totR = 0, totS = 0
+  const celula = (c: ColunaExport, v: ReturnType<typeof valoresPorModo>, p: Percentuais, estilo: any) => {
+    const val = c.valor(v, p)
+    const alerta = c.alerta?.(p) ?? false
+    const s = {
+      ...estilo,
+      alignment: { horizontal: 'right' },
+      ...(alerta ? { font: { ...estilo.font, bold: true, color: { rgb: laranja } } } : {}),
+    }
+    if (val === null) return { v: '—', s }
+    return { v: val, t: 'n', z: c.tipo === 'pct' ? pctFmt : money, s }
+  }
+
   for (const { item, level } of rows) {
     const v = valoresPorModo(item, modo)
+    const p = percentuais(item)
     const isGrupo = level === 0
     const isTarefa = level === 1
     const base = {
@@ -164,26 +269,36 @@ export async function exportarExcelVisaoGeral(
       fill: isGrupo ? { fgColor: { rgb: 'DBEAFE' } } : isTarefa ? { fgColor: { rgb: 'F1F5F9' } } : undefined,
       border: bordas('E2E8F0'),
     }
-    const num = (val: number) => ({ v: val, t: 'n', z: money, s: { ...base, alignment: { horizontal: 'right' } } })
     aoa.push([
       { v: item.codigo, s: base },
       { v: `${'    '.repeat(level)}${item.nome}`, s: base },
-      num(v.contratado), num(v.realizado), num(v.saldo),
-      ...(pendLabel ? [num(v.pendenteNf ?? 0)] : []),
+      ...colunas.map(c => celula(c, v, p, base)),
     ])
   }
   // Totais: raízes do conjunto filtrado, pra não duplicar entre níveis.
   const tot = totalizarRows(rows, modo)
-  totC = tot.contratado; totR = tot.realizado; totS = tot.saldo
-  const totStyle = { font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: azul } }, alignment: { horizontal: 'right' }, border: bordas('CBD5E1') }
+  const totStyle = { font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: azul } }, border: bordas('CBD5E1') }
+  const vTot = { contratado: tot.contratado, realizado: tot.realizado, saldo: tot.saldo, pendenteNf: tot.pendenteNf }
   aoa.push([
     { v: 'TOTAL', s: { ...totStyle, alignment: { horizontal: 'left' } } }, { v: '', s: totStyle },
-    { v: totC, t: 'n', z: money, s: totStyle }, { v: totR, t: 'n', z: money, s: totStyle }, { v: totS, t: 'n', z: money, s: totStyle },
-    ...(pendLabel ? [{ v: tot.pendenteNf, t: 'n', z: money, s: totStyle }] : []),
+    ...colunas.map(c => {
+      const val = c.valor(vTot, tot.pct)
+      const s = { ...totStyle, alignment: { horizontal: 'right' } }
+      return val === null ? { v: '—', s } : { v: val, t: 'n', z: c.tipo === 'pct' ? pctFmt : money, s }
+    }),
   ])
 
+  if (modo !== 'total') {
+    aoa.push([])
+    const nota = { font: { italic: true, sz: 8, color: { rgb: '64748B' } } }
+    aoa.push([{ v: '% de serviço medido inclui medições em aprovação (submetidas, em análise ou autorizadas). Realizado e Saldo contam só medição aprovada.', s: nota }])
+    if (modo === 'material') {
+      aoa.push([{ v: 'Em laranja: material faturado atrás do serviço medido — a FIP precisa faturar.', s: nota }])
+    }
+  }
+
   const ws = XLSX.utils.aoa_to_sheet(aoa)
-  ws['!cols'] = [{ wch: 12 }, { wch: 60 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, ...(pendLabel ? [{ wch: 16 }] : [])]
+  ws['!cols'] = [{ wch: 12 }, { wch: 60 }, ...colunas.map(c => ({ wch: c.tipo === 'pct' ? 11 : 16 }))]
   ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: ultimaCol } }, { s: { r: 1, c: 0 }, e: { r: 1, c: ultimaCol } }]
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Visão Geral')

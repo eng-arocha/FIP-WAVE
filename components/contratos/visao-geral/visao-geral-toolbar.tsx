@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Search, FileSpreadsheet, FileText, Loader2, X } from 'lucide-react'
 import type { DashboardModo } from '@/types/dashboard'
 import {
-  filtrarRows, valoresPorModo, rotuloSaldo, rotuloPendenteNf, totalizarRows,
+  filtrarRows, valoresPorModo, totalizarRows, percentuais, colunasExport, fmtPct,
   exportarExcelVisaoGeral, type FlatRow,
 } from '@/lib/export/visao-geral'
 
@@ -68,7 +68,8 @@ export function VisaoGeralToolbar({
   )
   const totais = useMemo(() => totalizarRows(filtradas, modo), [filtradas, modo])
   const filtrando = texto.trim() !== '' || somenteSaldo
-  const pendLabel = rotuloPendenteNf(modo)
+  const colunas = colunasExport(modo)
+  const texto2 = (tipo: 'money' | 'pct', val: number | null) => (tipo === 'pct' ? fmtPct(val) : fmt(val ?? 0))
 
   async function baixarExcel() {
     if (filtradas.length === 0) return
@@ -150,31 +151,36 @@ export function VisaoGeralToolbar({
                 <tr className="border-b border-[var(--border)]">
                   <th className="text-left py-1 px-2 font-semibold">Código</th>
                   <th className="text-left py-1 px-2 font-semibold">Item</th>
-                  <th className="text-right py-1 px-2 font-semibold">Contratado</th>
-                  <th className="text-right py-1 px-2 font-semibold">Realizado</th>
-                  <th className="text-right py-1 px-2 font-semibold">{rotuloSaldo(modo)}</th>
-                  {pendLabel && <th className="text-right py-1 px-2 font-semibold">{pendLabel}</th>}
+                  {colunas.map(c => <th key={c.label} className="text-right py-1 px-2 font-semibold">{c.label}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {filtradas.map(({ item, level }) => {
                   const v = valoresPorModo(item, modo)
+                  const p = percentuais(item)
                   return (
                     <tr key={`${item.id}-${level}`} className="border-b border-[var(--border)]/40">
                       <td className="py-1 px-2 font-mono text-[10px] text-[var(--text-3)]">{item.codigo}</td>
                       <td className="py-1 px-2 text-[var(--text-2)]" style={{ paddingLeft: 8 + level * 12 }}>{item.nome}</td>
-                      <td className="py-1 px-2 text-right tabular-nums text-[var(--text-2)]">{fmt(v.contratado)}</td>
-                      <td className="py-1 px-2 text-right tabular-nums text-[var(--text-2)]">{fmt(v.realizado)}</td>
-                      <td
-                        className="py-1 px-2 text-right tabular-nums"
-                        style={{ color: v.saldo < 0 ? '#EF4444' : v.saldo > 0 ? '#eab308' : 'var(--text-3)' }}
-                        title={v.saldo < 0 ? 'Realizado maior que o contratado' : undefined}
-                      >
-                        {fmt(v.saldo)}
-                      </td>
-                      {pendLabel && (
-                        <td className="py-1 px-2 text-right tabular-nums text-[var(--text-2)]">{fmt(v.pendenteNf ?? 0)}</td>
-                      )}
+                      {colunas.map(c => {
+                        const val = c.valor(v, p)
+                        const alerta = c.alerta?.(p) ?? false
+                        const ehSaldo = c.label === 'Saldo'
+                        return (
+                          <td
+                            key={c.label}
+                            className="py-1 px-2 text-right tabular-nums"
+                            style={{
+                              color: alerta ? '#F59E0B'
+                                : ehSaldo && (val ?? 0) < 0 ? '#EF4444'
+                                : 'var(--text-2)',
+                              fontWeight: alerta ? 600 : undefined,
+                            }}
+                          >
+                            {texto2(c.tipo, val)}
+                          </td>
+                        )
+                      })}
                     </tr>
                   )
                 })}
@@ -184,14 +190,11 @@ export function VisaoGeralToolbar({
               <tfoot>
                 <tr className="border-t-2 border-[var(--border)] font-semibold bg-[var(--surface-2)]">
                   <td className="py-1 px-2 text-[10px] uppercase text-[var(--text-3)]" colSpan={2}>Total do resultado</td>
-                  <td className="py-1 px-2 text-right tabular-nums text-[var(--text-1)]">{fmt(totais.contratado)}</td>
-                  <td className="py-1 px-2 text-right tabular-nums text-[var(--text-1)]">{fmt(totais.realizado)}</td>
-                  <td className="py-1 px-2 text-right tabular-nums" style={{ color: totais.saldo < 0 ? '#EF4444' : 'var(--text-1)' }}>
-                    {fmt(totais.saldo)}
-                  </td>
-                  {pendLabel && (
-                    <td className="py-1 px-2 text-right tabular-nums text-[var(--text-1)]">{fmt(totais.pendenteNf)}</td>
-                  )}
+                  {colunas.map(c => (
+                    <td key={c.label} className="py-1 px-2 text-right tabular-nums text-[var(--text-1)]">
+                      {texto2(c.tipo, c.valor({ contratado: totais.contratado, realizado: totais.realizado, saldo: totais.saldo, pendenteNf: totais.pendenteNf }, totais.pct))}
+                    </td>
+                  ))}
                 </tr>
               </tfoot>
             </table>

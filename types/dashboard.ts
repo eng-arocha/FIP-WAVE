@@ -22,6 +22,12 @@
 
 export type DashboardModo = 'total' | 'material' | 'servico'
 
+/**
+ * Status de medição "em aprovação": já tem quantidade medida, ainda não foi
+ * aprovada. Não conta como realizado, mas entra no "% serviço medido".
+ */
+export const MEDICAO_STATUS_EM_APROVACAO = ['submetido', 'em_analise', 'autorizado'] as const
+
 export type DashboardNivel = 1 | 2 | 3
 
 export interface DashboardItem {
@@ -48,6 +54,11 @@ export interface DashboardItem {
   realizado_material: number
   /** Medições com status='aprovado' (somando valor_medido dos itens) */
   realizado_servico: number
+  /**
+   * Serviço de medições EM APROVAÇÃO (ver MEDICAO_STATUS_EM_APROVACAO).
+   * Não é realizado — só alimenta o "% serviço medido" da Visão Geral.
+   */
+  servico_em_aprovacao: number
 
   // ---- saldos aprovados (compromisso aprovado, ainda sem NF) ----
   /**

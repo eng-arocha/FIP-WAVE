@@ -1,11 +1,53 @@
 // components/contratos/visao-geral/dashboard-tree-row.tsx
 'use client'
 
-import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Clock, Loader2 } from 'lucide-react'
 import { memo } from 'react'
 import type { DashboardItem, DashboardModo } from '@/types/dashboard'
-import { valoresPorModo } from '@/lib/export/visao-geral'
+import { valoresPorModo, percentuais, fmtPct, type Percentuais } from '@/lib/export/visao-geral'
 import { NumeroClicavel } from './numero-clicavel'
+import { colunasDoModo, COR_EM_APROVACAO, COR_FIP_ATRASADA } from './colunas'
+
+const fmt = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+/**
+ * "% Medido" do serviço. Quando parte do % vem de medição ainda em
+ * aprovação, o número fica azul com relógio e o tooltip abre a conta.
+ */
+export function PctMedido({ p }: { p: Percentuais }) {
+  if (p.servMedido === null) return <span className="text-[var(--text-3)]">—</span>
+  const temPendente = p.servEmAprovacao > 0.0001
+  if (!temPendente) return <span className="text-[var(--text-2)]">{fmtPct(p.servMedido)}</span>
+  return (
+    <span
+      className="inline-flex items-center justify-end gap-1"
+      style={{ color: COR_EM_APROVACAO }}
+      title={`${fmtPct(p.servMedido - p.servEmAprovacao)} aprovado + ${fmtPct(p.servEmAprovacao)} de medição em aprovação`}
+    >
+      <Clock className="w-3 h-3" aria-hidden />
+      {fmtPct(p.servMedido)}
+    </span>
+  )
+}
+
+/**
+ * "(40,0%)" ao lado do realizado de material. Laranja quando o faturamento
+ * de material está atrás do serviço medido — a FIP precisa faturar.
+ */
+export function PctRealizadoMaterial({ p }: { p: Percentuais }) {
+  if (p.matRealizado === null) return null
+  return (
+    <span
+      className="ml-1 text-[11px]"
+      style={p.fipAtrasada ? { color: COR_FIP_ATRASADA, fontWeight: 600 } : { color: 'var(--text-3)' }}
+      title={p.fipAtrasada
+        ? `Material faturado (${fmtPct(p.matRealizado)}) atrás do serviço medido (${fmtPct(p.servMedido)}). A FIP precisa faturar ~R$ ${fmt(p.aFaturar)}.`
+        : undefined}
+    >
+      ({fmtPct(p.matRealizado)})
+    </span>
+  )
+}
 
 type Props = {
   item: DashboardItem
@@ -27,6 +69,7 @@ export const DashboardTreeRow = memo(function DashboardTreeRow({
   onToggle, onZoom, onClickRealizado, onClickPendente,
 }: Props) {
   const v = valoresPorModo(item, modo)
+  const p = percentuais(item)
   const podeExpandir = item.tem_filhos
   const indent = level * 16
 
@@ -70,35 +113,60 @@ export const DashboardTreeRow = memo(function DashboardTreeRow({
         <span className="font-mono text-[11px] text-[var(--text-3)] tabular-nums">{item.codigo}</span>
         <span className="truncate text-sm text-[var(--text-1)]">{item.nome}</span>
       </div>
-      <div className="text-right tabular-nums text-sm text-[var(--text-2)]">
-        {v.contratado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-      </div>
-      <div className="text-right tabular-nums text-sm text-[var(--text-1)]">
-        <NumeroClicavel
-          value={v.realizado}
-          onClick={onClickRealizado}
-          ariaLabel={`Ver notas que compoem realizado de ${item.nome}`}
-        />
-      </div>
-      <div className="text-right tabular-nums text-sm">
-        {/* Saldo = Contratado − Realizado. Negativo = item estourado: vermelho, nunca escondido. */}
-        <span
-          style={v.saldo < 0 ? { color: '#EF4444', fontWeight: 600 } : undefined}
-          className={v.saldo < 0 ? '' : 'text-[var(--text-1)]'}
-          title={v.saldo < 0 ? 'Realizado maior que o contratado' : undefined}
-        >
-          {v.saldo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        </span>
-      </div>
-      {v.pendenteNf !== null && (
-        <div className="text-right tabular-nums text-sm text-[var(--text-2)]">
-          <NumeroClicavel
-            value={v.pendenteNf}
-            onClick={onClickPendente}
-            ariaLabel={modo === 'servico' ? `Ver medições sem NF de ${item.nome}` : `Ver pedidos sem NF de ${item.nome}`}
-          />
-        </div>
-      )}
+      {colunasDoModo(modo).slice(1).map(col => {
+        switch (col.key) {
+          case 'contratado':
+            return (
+              <div key={col.key} className="text-right tabular-nums text-sm text-[var(--text-2)]">
+                {fmt(v.contratado)}
+              </div>
+            )
+          case 'realizado':
+            return (
+              <div key={col.key} className="text-right tabular-nums text-sm text-[var(--text-1)] whitespace-nowrap">
+                <span style={modo === 'material' && p.fipAtrasada ? { color: COR_FIP_ATRASADA } : undefined}>
+                  <NumeroClicavel
+                    value={v.realizado}
+                    onClick={onClickRealizado}
+                    ariaLabel={`Ver notas que compoem realizado de ${item.nome}`}
+                  />
+                </span>
+                {modo === 'material' && <PctRealizadoMaterial p={p} />}
+              </div>
+            )
+          case 'pctMedido':
+            return (
+              <div key={col.key} className="text-right tabular-nums text-sm">
+                <PctMedido p={p} />
+              </div>
+            )
+          case 'saldo':
+            return (
+              <div key={col.key} className="text-right tabular-nums text-sm">
+                {/* Saldo = Contratado − Realizado. Negativo = item estourado: vermelho, nunca escondido. */}
+                <span
+                  style={v.saldo < 0 ? { color: '#EF4444', fontWeight: 600 } : undefined}
+                  className={v.saldo < 0 ? '' : 'text-[var(--text-1)]'}
+                  title={v.saldo < 0 ? 'Realizado maior que o contratado' : undefined}
+                >
+                  {fmt(v.saldo)}
+                </span>
+              </div>
+            )
+          case 'pendente':
+            return (
+              <div key={col.key} className="text-right tabular-nums text-sm text-[var(--text-2)]">
+                <NumeroClicavel
+                  value={v.pendenteNf ?? 0}
+                  onClick={onClickPendente}
+                  ariaLabel={modo === 'servico' ? `Ver medições sem NF de ${item.nome}` : `Ver pedidos sem NF de ${item.nome}`}
+                />
+              </div>
+            )
+          default:
+            return null
+        }
+      })}
     </div>
   )
 })

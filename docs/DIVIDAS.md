@@ -45,3 +45,24 @@ A grandeza antiga virou coluna própria: **Med. s/ NF** (Serviço — medição
 aprovada sem NF da Wave) e **Aprov. s/ NF** (Material — pedido aprovado sem
 NF). O clique de origem "saldo" foi para essa coluna. Fonte única:
 `valoresPorModo` em `lib/export/visao-geral.ts`.
+
+## 2026-10-28 — % de serviço medido e alerta de faturamento FIP (Visão Geral)
+
+**Decisão:** em Serviço e Material a Visão Geral mostra o **% de serviço
+medido** do item = (medição aprovada + medição em aprovação) ÷ serviço
+contratado. Em aprovação = `submetido`, `em_analise`, `autorizado`
+(`MEDICAO_STATUS_EM_APROVACAO`). Quando parte do % vem de medição não
+aprovada, o número fica azul com relógio e um aviso acima da tabela nomeia a
+medição. Realizado e Saldo continuam contando só medição aprovada.
+
+Em Material, o Realizado ganha "(x%)" = NF de material ÷ material
+contratado. Se esse % (1 casa decimal) for menor que o % de serviço medido, o
+Realizado fica laranja: a FIP está atrás no faturamento. O tooltip mostra o
+valor a faturar = % serv. medido × material contratado − material faturado.
+
+**Por que incluir a medição em aprovação no %:** pedido do Alex — o % serve
+pra antecipar o faturamento da FIP; esperar a aprovação atrasa o alerta.
+Fonte única: `percentuais()` em `lib/export/visao-geral.ts`.
+
+**Limitação conhecida:** a comparação é por linha. No subtotal de um grupo,
+itens adiantados compensam itens atrasados; o laranja por item é o que vale.

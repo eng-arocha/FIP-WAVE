@@ -35,6 +35,7 @@ import { nfReservaSaldo } from '@/lib/db/nf-status'
 import { withSchemaFallback } from '@/lib/db/resilient'
 import { ehPedidoDeServicoWave } from '@/lib/db/saldo-detalhamento'
 import { compareCodigo } from '@/lib/db/wbs-utils'
+import { MEDICAO_STATUS_EM_APROVACAO } from '@/types/dashboard'
 import type {
   DashboardItem,
   DashboardNivel,
@@ -159,17 +160,24 @@ async function carregarModelo(contratoId: string) {
 
   // --------------------------------------------------------------------
   // 2) Medições aprovadas + medicao_itens → realizado_servico_det
+  //    Medições EM APROVAÇÃO (submetido / em_analise / autorizado) entram
+  //    à parte, em servico_em_aprovacao_det: não são realizado, mas o
+  //    "% serviço medido" da Visão Geral as considera (com aviso na tela).
   // --------------------------------------------------------------------
   const realizadoServicoDet = new Map<string, number>()
+  const servicoEmAprovacaoDet = new Map<string, number>()
 
   const { data: medicoesAprov, error: medErr } = await admin
     .from('medicoes')
-    .select('id')
+    .select('id, status')
     .eq('contrato_id', contratoId)
-    .eq('status', 'aprovado')
+    .in('status', ['aprovado', ...MEDICAO_STATUS_EM_APROVACAO])
   if (medErr) throw medErr
 
-  const medicaoIdsAprov = (medicoesAprov || []).map(m => m.id as string)
+  const medicaoAprovada = new Map(
+    (medicoesAprov || []).map(m => [m.id as string, m.status === 'aprovado']),
+  )
+  const medicaoIdsAprov = Array.from(medicaoAprovada.keys())
 
   if (medicaoIdsAprov.length > 0) {
     // `valor_medido` é GENERATED = quantidade_medida × valor_unitario, e
@@ -198,6 +206,7 @@ async function carregarModelo(contratoId: string) {
     if (itensMedRes.error) throw itensMedRes.error
 
     for (const it of (itensMedRes.data || []) as Array<{
+      medicao_id: string
       detalhamento_id: string | null
       valor_medido: number | string | null
       quantidade_medida: number | string | null
@@ -219,7 +228,8 @@ async function carregarModelo(contratoId: string) {
           // única grandeza disponível e representa o item inteiro.
           : Number(it.valor_medido || 0)
       }
-      realizadoServicoDet.set(detId, (realizadoServicoDet.get(detId) || 0) + v)
+      const alvo = medicaoAprovada.get(it.medicao_id) ? realizadoServicoDet : servicoEmAprovacaoDet
+      alvo.set(detId, (alvo.get(detId) || 0) + v)
     }
   }
 
@@ -436,6 +446,7 @@ async function carregarModelo(contratoId: string) {
     const nfWaveServico = nfWaveServicoDet.get(d.id) || 0
 
     return {
+      servico_em_aprovacao: servicoEmAprovacaoDet.get(d.id) || 0,
       id: d.id,
       codigo: d.codigo,
       nome: d.descricao,
@@ -461,9 +472,11 @@ async function carregarModelo(contratoId: string) {
     let realizadoServico = 0
     let aprovadoMaterial = 0
     let nfWaveServico = 0
+    let servicoEmAprovacao = 0
     let valorContratadoMaterial = 0
     let valorContratadoServico = 0
     for (const d of dets) {
+      servicoEmAprovacao += servicoEmAprovacaoDet.get(d.id) || 0
       const qtdContr = Number(d.quantidade_contratada || 0)
       const matUnit = Number(d.valor_material_unit || 0)
       const servUnit = Number(d.valor_servico_unit || 0)
@@ -495,6 +508,7 @@ async function carregarModelo(contratoId: string) {
     }
 
     return {
+      servico_em_aprovacao: servicoEmAprovacao,
       id: t.id,
       codigo: t.codigo,
       nome: t.nome,
@@ -518,6 +532,7 @@ async function carregarModelo(contratoId: string) {
     let realizadoServico = 0
     let aprovadoMaterial = 0
     let nfWaveServico = 0
+    let servicoEmAprovacao = 0
     // Mesmo princípio do nível 2: o grupo fecha com a soma dos filhos.
     // Antes lia `grupos_macro.valor_contratado` puro, sem fallback nenhum —
     // grupo com valor de cabeçalho zerado mostrava Contratado 0 com
@@ -541,6 +556,7 @@ async function carregarModelo(contratoId: string) {
         realizadoServico += realizadoServicoDet.get(d.id) || 0
         aprovadoMaterial += aprovadoMaterialDet.get(d.id) || 0
         nfWaveServico += nfWaveServicoDet.get(d.id) || 0
+        servicoEmAprovacao += servicoEmAprovacaoDet.get(d.id) || 0
       }
     }
 
@@ -551,6 +567,7 @@ async function carregarModelo(contratoId: string) {
     }
 
     return {
+      servico_em_aprovacao: servicoEmAprovacao,
       id: g.id,
       codigo: g.codigo,
       nome: g.nome,

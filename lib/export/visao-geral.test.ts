@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { valoresPorModo, filtrarRows, totalizarRows, rotuloSaldo, rotuloPendenteNf, type FlatRow } from './visao-geral'
+import { valoresPorModo, filtrarRows, totalizarRows, rotuloSaldo, rotuloPendenteNf, percentuais, fmtPct, type FlatRow } from './visao-geral'
 import type { DashboardItem } from '@/types/dashboard'
 
 function item(over: Partial<DashboardItem> & { id: string }): DashboardItem {
@@ -18,6 +18,7 @@ function item(over: Partial<DashboardItem> & { id: string }): DashboardItem {
     realizado_servico: over.realizado_servico ?? 0,
     saldo_aprovado_material: over.saldo_aprovado_material ?? 0,
     saldo_medicao_servico: over.saldo_medicao_servico ?? 0,
+    servico_em_aprovacao: over.servico_em_aprovacao ?? 0,
   } as DashboardItem
 }
 
@@ -109,7 +110,7 @@ describe('totalizarRows — sem dupla contagem entre níveis', () => {
   })
 
   it('lista vazia soma zero', () => {
-    expect(totalizarRows([], 'total')).toEqual({ contratado: 0, realizado: 0, saldo: 0, pendenteNf: 0 })
+    expect(totalizarRows([], 'total')).toMatchObject({ contratado: 0, realizado: 0, saldo: 0, pendenteNf: 0 })
   })
 })
 
@@ -129,5 +130,54 @@ describe('filtrarRows', () => {
     expect(ids).toContain('a')
     expect(ids).toContain('c')
     expect(ids).not.toContain('b')
+  })
+})
+
+describe('percentuais — serviço medido × material faturado', () => {
+  const base = {
+    id: 'p', valor_contratado_servico: 1000, valor_contratado_material: 2000,
+    realizado_servico: 500, servico_em_aprovacao: 100, realizado_material: 800,
+  }
+
+  it('% serviço medido soma aprovado + em aprovação e separa a parcela pendente', () => {
+    const p = percentuais(item(base))
+    expect(p.servMedido).toBeCloseTo(60, 6)
+    expect(p.servEmAprovacao).toBeCloseTo(10, 6)
+    expect(p.matRealizado).toBeCloseTo(40, 6)
+  })
+
+  it('material atrás do serviço → FIP atrasada, com valor a faturar', () => {
+    const p = percentuais(item(base))
+    expect(p.fipAtrasada).toBe(true)
+    // 60% de 2.000 = 1.200; já faturado 800 → falta 400
+    expect(p.aFaturar).toBe(400)
+  })
+
+  it('material em dia ou à frente → sem alerta', () => {
+    const p = percentuais(item({ ...base, realizado_material: 1200 }))
+    expect(p.fipAtrasada).toBe(false)
+    expect(p.aFaturar).toBe(0)
+  })
+
+  it('diferença que some na casa decimal exibida não acende alerta', () => {
+    const p = percentuais(item({ ...base, servico_em_aprovacao: 0, realizado_material: 999.99 }))
+    expect(p.fipAtrasada).toBe(false)
+  })
+
+  it('sem base de cálculo devolve null', () => {
+    const p = percentuais(item({ id: 'z' }))
+    expect(p.servMedido).toBeNull()
+    expect(p.matRealizado).toBeNull()
+    expect(fmtPct(p.servMedido)).toBe('—')
+    expect(fmtPct(52.345)).toBe('52,3%')
+  })
+
+  it('subtotal calcula o % sobre as somas das raízes', () => {
+    const rows: FlatRow[] = [
+      { item: item({ ...base, id: 'g1' }), level: 0 },
+      { item: item({ ...base, id: 't1', pai_id: 'g1' }), level: 1 },
+      { item: item({ id: 'g2', valor_contratado_servico: 1000, realizado_servico: 0 }), level: 0 },
+    ]
+    expect(totalizarRows(rows, 'servico').pct.servMedido).toBeCloseTo(30, 6)
   })
 })

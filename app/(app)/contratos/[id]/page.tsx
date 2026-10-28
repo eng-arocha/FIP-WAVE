@@ -17,6 +17,7 @@ import {
   Download, Upload, Ban, FileSpreadsheet,
 } from 'lucide-react'
 import { DashboardTree, VisaoGeralToolbar } from '@/components/contratos/visao-geral'
+import { MEDICAO_STATUS_EM_APROVACAO } from '@/types/dashboard'
 import { EditarContratoModal } from '@/components/contratos/editar-contrato-modal'
 import { EditableOrcamentoCell, parseBRLToNumber, type EditableCellCoordinator } from '@/components/contratos/editable-orcamento-cell'
 import {
@@ -120,6 +121,15 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   const [activeTab, setActiveTab] = useState('visao-geral')
   const [showMedidoResumo, setShowMedidoResumo] = useState(false)
   const [medicoes, setMedicoes] = useState<Medicao[]>([])
+  // Medições com quantidade medida mas ainda não aprovadas — o "% Medido" da
+  // Visão Geral as considera e o aviso nomeia cada uma.
+  const medicoesEmAprovacao = useMemo(
+    () => medicoes
+      .filter(m => (MEDICAO_STATUS_EM_APROVACAO as readonly string[]).includes(m.status))
+      .sort((a, b) => a.numero - b.numero)
+      .map(m => ({ numero: m.numero, status: MEDICAO_STATUS_LABELS[m.status as MedicaoStatus] ?? m.status })),
+    [medicoes],
+  )
   const [aditivos, setAditivos] = useState<Aditivo[]>([])
   const [fullscreenChart, setFullscreenChart] = useState<'bar' | null>(null)
   const [qtdEncerramentos, setQtdEncerramentos] = useState(0)
@@ -776,7 +786,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
               </button>
             </div>
             <div className="flex-1 overflow-auto p-6">
-              <DashboardTree contratoId={id} modo={viewMode} />
+              <DashboardTree contratoId={id} modo={viewMode} medicoesEmAprovacao={medicoesEmAprovacao} />
             </div>
           </div>
         )}
@@ -830,7 +840,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
               </CardHeader>
               <CardContent data-no-maximize>
                 <VisaoGeralToolbar contratoId={id} modo={viewMode} contratoNome={contrato.numero || contrato.descricao || 'Contrato'} />
-                <DashboardTree contratoId={id} modo={viewMode} />
+                <DashboardTree contratoId={id} modo={viewMode} medicoesEmAprovacao={medicoesEmAprovacao} />
               </CardContent>
             </Card>
           </TabsContent>
