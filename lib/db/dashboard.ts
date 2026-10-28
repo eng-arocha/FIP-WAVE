@@ -222,11 +222,17 @@ async function carregarModelo(contratoId: string) {
       } else {
         const det = detPorId.get(detId)
         const servUnit = Number(det?.valor_servico_unit || 0)
+        const matUnit = Number(det?.valor_material_unit || 0)
         v = servUnit > 0
           ? Number(it.quantidade_medida || 0) * servUnit
-          // Item sem quebra material/MO no orçamento: `valor_medido` é a
-          // única grandeza disponível e representa o item inteiro.
-          : Number(it.valor_medido || 0)
+          // Item 100% material (ex.: 19.1.1, administração faturada direto):
+          // não tem serviço. Antes caía no `valor_medido` e o 19.1.1 aparecia
+          // com R$ 322 mil de serviço "realizado" sobre contratado zero.
+          : matUnit > 0
+            ? 0
+            // Item sem quebra material/MO no orçamento: `valor_medido` é a
+            // única grandeza disponível e representa o item inteiro.
+            : Number(it.valor_medido || 0)
       }
       const alvo = medicaoAprovada.get(it.medicao_id) ? realizadoServicoDet : servicoEmAprovacaoDet
       alvo.set(detId, (alvo.get(detId) || 0) + v)
