@@ -29,6 +29,18 @@ reabrir a discussão do zero.
    total da MED-007 ou ganham rateio por item? (O 501,41 hoje aparece como
    −87,01 no 1.13.1, rateado pelos itens do #20.)
 
+**Rodar no Supabase (28/10):** manual-fix 100 (#20 = NF 228, zera os
+negativos pequenos do rateio) e 101 (remove tarefas-fantasma, recusa se
+houver referência). 19.1.1 corrigido no código (e46440f).
+
+**MSF/Cordeiro (item 2):** não precisa abrir saldo em item nenhum — a NF da
+MSF entra no saldo do próprio pedido #1085 (R$ 182.021,93 sem NF). O ajuste
+de R$ 31.916,58 é desconto da medição, não consome saldo de item.
+
+**Próximo passo de desenvolvimento:** spec
+docs/superpowers/specs/2026-10-28-congelar-informakon-e-cortes.md (itens 6 e
+7 abaixo) — aguardando OK do Alex; implementar em sessão nova.
+
 **Desenvolvimento (quando decidir / no próximo ciclo)**
 6. Aprovação de medição: digitar os números da tela "Valores Financeiros" do
    Informakon e congelar — acaba com os manual-fix 095/096/097.
