@@ -13,6 +13,12 @@ import { emitWebhook } from '@/lib/api/webhooks'
 import { assertMfaForRole } from '@/lib/api/mfa'
 import { log } from '@/lib/log'
 import { textoCortesSaldo } from '@/lib/db/limite-pedido'
+import {
+  validarValoresInformakon, divergenciasComSite, valoresDoSite,
+  type ValoresInformakon, type DivergenciaValor,
+} from '@/lib/informakon/valores-financeiros'
+
+const Valor = z.number().finite()
 
 const Body = z.object({
   comentario: z.string().max(2000).optional().default(''),
@@ -27,6 +33,18 @@ const Body = z.object({
    *  (Ex.: medição 03 / FIP-0017, faturamento direto avulso já aprovado.) */
   forcar_sem_nf_material: z.boolean().optional(),
   motivo_forcar: z.string().max(2000).optional(),
+  /** Tela "Valores Financeiros" do Informakon (spec 2026-10-28). Obrigatório:
+   *  o líquido vira o pedido Wave e a retenção vai pro livro-razão. */
+  valores_informakon: z.object({
+    contratual: Valor,
+    material: Valor,
+    retencao: Valor,
+    descontos_diversos: Valor,
+    liquido: Valor,
+    origem: z.enum(['importado', 'digitado']),
+    /** Obrigatória quando algum campo difere do site em mais de R$ 1,00. */
+    justificativa: z.string().max(2000).optional(),
+  }).optional(),
 })
 
 // Status da NF de material que CONTAM como "lançada" pro portão 2.
@@ -57,6 +75,33 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (!parsed.ok) return parsed.res
     const { comentario, medicao, notificar_envolvidos, destinatarios_ids, forcar_sem_nf_material, motivo_forcar } = parsed.data
     const { id: contratoId, medicaoId } = await params
+
+    const vi = parsed.data.valores_informakon
+    if (!vi) {
+      return NextResponse.json(
+        {
+          error: 'Informe os valores da tela "Valores Financeiros" do Informakon (contratual, material, retenção, ' +
+            'descontos diversos e líquido) para aprovar. Recarregue a página se o formulário não aparecer.',
+          code: 'VALORES_INFORMAKON_AUSENTES',
+        },
+        { status: 400 },
+      )
+    }
+    const valoresInformakon: ValoresInformakon = {
+      contratual: vi.contratual,
+      material: vi.material,
+      retencao: vi.retencao,
+      descontosDiversos: vi.descontos_diversos,
+      liquido: vi.liquido,
+    }
+    {
+      const erro = validarValoresInformakon(valoresInformakon)
+      if (erro) {
+        return NextResponse.json({ error: erro, code: 'VALORES_INFORMAKON_INVALIDOS' }, { status: 400 })
+      }
+    }
+    const justificativaValores = (vi.justificativa || '').trim()
+    let divergencias: DivergenciaValor[] = []
 
     // Recupera nome do aprovador a partir do perfil (não confia no body)
     const { createAdminClient } = await import('@/lib/supabase/admin')
@@ -152,6 +197,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       try {
         const previa = await calcularInformaconData(admin, contratoId, medicaoId)
         if (!previa) motivo = 'o boletim da medição voltou vazio'
+        else divergencias = divergenciasComSite(valoresInformakon, valoresDoSite(previa.totais))
       } catch (e: any) {
         motivo = e?.message || 'erro ao calcular o boletim'
       }
@@ -168,7 +214,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       }
     }
 
-    await aprovarMedicao(medicaoId, aprovadorNome, aprovadorEmail, comentario)
+    // Diferença site × Informakon acima de R$ 1,00: o Informakon vale, mas o
+    // aprovador precisa dizer por quê (fica na auditoria).
+    if (divergencias.length > 0 && justificativaValores.length < 10) {
+      return NextResponse.json(
+        {
+          error: 'Os valores do Informakon diferem do boletim do site em mais de R$ 1,00. ' +
+            'Confira e escreva a justificativa (mín. 10 caracteres) para aprovar.',
+          code: 'VALORES_INFORMAKON_DIVERGENTES',
+          divergencias,
+        },
+        { status: 409 },
+      )
+    }
+
+    await aprovarMedicao(medicaoId, aprovadorNome, aprovadorEmail, comentario, {
+      ...valoresInformakon,
+      origem: vi.origem,
+    })
 
     await audit({
       event: 'medicao.aprovada',
@@ -177,7 +240,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       actor_id: check.userId,
       actor_nome: aprovadorNome,
       actor_email: aprovadorEmail,
-      metadata: { comentario: comentario || null },
+      metadata: {
+        comentario: comentario || null,
+        valores_informakon: { ...valoresInformakon, origem: vi.origem },
+        divergencias_site: divergencias,
+        justificativa_divergencia: justificativaValores || null,
+      },
       request: req,
     })
 
@@ -226,12 +294,25 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             wave_bruto: valorWaveBruto,
             pct_retencao: pctRetencao,
             aprovador_id: check.userId,
+            retencao_informakon: valoresInformakon.retencao,
           })
           saldoRetencaoAntes = ret.saldo_antes
           creditoRetencao = ret.credito_aplicado
           debitoRetencao = ret.debito_aplicado
           saldoRetencaoDepois = ret.saldo_depois
-          valorWaveLiquido = ret.wave_liquido
+          // A NF Wave sai pelo líquido do Informakon, que já desconta a
+          // retenção e os descontos diversos. O livro-razão tem de chegar no
+          // mesmo número; se não chega, avisa (saldo de retenção sobrando ou
+          // faltando de medição anterior).
+          valorWaveLiquido = valoresInformakon.liquido
+          const pelaRazao = Math.round((ret.wave_liquido - valoresInformakon.descontosDiversos) * 100) / 100
+          if (Math.abs(pelaRazao - valorWaveLiquido) > 0.01) {
+            alertas.push(
+              `O livro-razão de retenção chegou a um líquido de R$ ${pelaRazao.toFixed(2).replace('.', ',')}, ` +
+              `diferente do Informakon (R$ ${valorWaveLiquido.toFixed(2).replace('.', ',')}). ` +
+              'O pedido Wave foi criado pelo Informakon; confira o saldo de retenção.',
+            )
+          }
         } catch (e: any) {
           // Antes havia um "fallback legado" que seguia sem gravar nada no
           // livro-razão. Era silencioso: o card de retenção ficava para trás
@@ -334,7 +415,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         // proporcionalmente ao valor bruto de cada um, ajustando o
         // residuo no ultimo item pra garantir soma == valorWaveLiquido.
         const linhasWave = informacon.linhas.filter(l => l.wave_servico > 0)
-        const fatorLiquido = valorWaveBruto > 0 ? valorWaveLiquido / valorWaveBruto : 1
+        // Rateio pelo serviço de cada linha. A base é a soma das LINHAS, não o
+        // bruto congelado: com o % real o bruto inclui material sem lastro,
+        // que não é linha de serviço, e o resíduo cairia inteiro no último item.
+        const somaWaveLinhas = linhasWave.reduce((s, l) => s + l.wave_servico, 0)
+        const fatorLiquido = somaWaveLinhas > 0 ? valorWaveLiquido / somaWaveLinhas : 1
         const itensWaveTmp = linhasWave.map(l => ({
           detalhamento_id: l.detalhamento_id,
           descricao: l.descricao,
@@ -353,6 +438,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             const obsWave =
               `Saldo de retenção antes desta medição: R$ ${saldoRetencaoAntes.toFixed(2).replace('.', ',')}. ` +
               `Crédito de retenção desta medição (5% × valor lançado no Informakon): R$ ${creditoRetencao.toFixed(2).replace('.', ',')}. ` +
+              `Valores do Informakon (${vi.origem}): contratual R$ ${valoresInformakon.contratual.toFixed(2).replace('.', ',')}, ` +
+              `material R$ ${valoresInformakon.material.toFixed(2).replace('.', ',')}, ` +
+              `descontos diversos R$ ${valoresInformakon.descontosDiversos.toFixed(2).replace('.', ',')}. ` +
               `Valor BRUTO da NF Wave: R$ ${valorWaveBruto.toFixed(2).replace('.', ',')}. ` +
               `Desconto de retenção aplicado nesta NF: R$ ${debitoRetencao.toFixed(2).replace('.', ',')}. ` +
               `Valor LÍQUIDO a emitir: R$ ${valorWaveLiquido.toFixed(2).replace('.', ',')}. ` +
@@ -447,6 +535,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           solicitacaoFatDiretoId,
           solicitacaoWaveId,
           valorWaveLiquido,
+          liquidoFinal: true,
           retencaoBreakdown: {
             saldo_antes: saldoRetencaoAntes,
             credito: creditoRetencao,
@@ -502,6 +591,8 @@ async function dispararEmailLiberacaoMedicao(args: {
   solicitacaoFatDiretoId?: string | null
   solicitacaoWaveId?: string | null
   valorWaveLiquido?: number
+  /** `valorWaveLiquido` já é o líquido final (Informakon), sem ajuste a abater. */
+  liquidoFinal?: boolean
   retencaoBreakdown?: {
     saldo_antes: number
     credito: number
@@ -647,7 +738,9 @@ async function dispararEmailLiberacaoMedicao(args: {
   const waveLiquidoBase = (args.valorWaveLiquido && args.valorWaveLiquido > 0)
     ? args.valorWaveLiquido
     : waveServicoTotal
-  const waveLiquidoNF = Math.max(0, waveLiquidoBase - ajusteRateioTotal)
+  const waveLiquidoNF = args.liquidoFinal && args.valorWaveLiquido && args.valorWaveLiquido > 0
+    ? args.valorWaveLiquido
+    : Math.max(0, waveLiquidoBase - ajusteRateioTotal)
 
   const tpl = templateLiberacaoMedicaoFornecedor({
     numero_medicao: (med as any).numero,

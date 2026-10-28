@@ -144,6 +144,12 @@ export async function aplicarRetencaoDaAprovacao(
     wave_bruto: number
     pct_retencao: number  // ex.: 5 → 5%
     aprovador_id: string
+    /**
+     * Retenção da tela "Valores Financeiros" do Informakon (spec 2026-10-28).
+     * Quando vem, é o crédito, e o débito na NF Wave não passa dela: a NF
+     * Wave sai pelo líquido do Informakon, que desconta exatamente isto.
+     */
+    retencao_informakon?: number
   },
 ): Promise<{
   saldo_antes: number
@@ -158,7 +164,9 @@ export async function aplicarRetencaoDaAprovacao(
   const saldoAntes = await getSaldoRetencao(admin, args.contrato_id)
 
   // Crédito = pct × base_retencao
-  const valorCredito = Math.round(args.base_retencao * (args.pct_retencao / 100) * 100) / 100
+  const valorCredito = args.retencao_informakon !== undefined
+    ? Math.round(args.retencao_informakon * 100) / 100
+    : Math.round(args.base_retencao * (args.pct_retencao / 100) * 100) / 100
 
   let creditoAplicado = 0
   let saldoAposCredito = saldoAntes
@@ -169,7 +177,9 @@ export async function aplicarRetencaoDaAprovacao(
       origem_tipo: 'medicao_aprovada',
       origem_id: args.medicao_id,
       valor: valorCredito,
-      descricao: `Retenção ${args.pct_retencao}% × (wave + mat − retido) da ${tag}: ${args.pct_retencao}% × R$ ${args.base_retencao.toFixed(2)}`,
+      descricao: args.retencao_informakon !== undefined
+        ? `Retenção da ${tag} conforme Informakon (Valores Financeiros): R$ ${valorCredito.toFixed(2)}`
+        : `Retenção ${args.pct_retencao}% × (wave + mat − retido) da ${tag}: ${args.pct_retencao}% × R$ ${args.base_retencao.toFixed(2)}`,
       criado_por: args.aprovador_id,
     })
     creditoAplicado = valorCredito
@@ -179,7 +189,9 @@ export async function aplicarRetencaoDaAprovacao(
   // Débito = min(saldo, wave_bruto) — abate o máximo que a NF Wave aguenta
   let debitoAplicado = 0
   let saldoDepois = saldoAposCredito
-  const debitoIdeal = Math.min(saldoAposCredito, args.wave_bruto)
+  const debitoIdeal = args.retencao_informakon !== undefined
+    ? Math.min(saldoAposCredito, args.wave_bruto, args.retencao_informakon)
+    : Math.min(saldoAposCredito, args.wave_bruto)
   const debitoArredondado = Math.round(debitoIdeal * 100) / 100
   if (debitoArredondado > 0) {
     const ret = await aplicarMovimentoRetencao(admin, {

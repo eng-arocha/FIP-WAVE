@@ -21,6 +21,7 @@ import {
   NfDescDrilldown, type NfDescLinha, type ColunaDrilldown,
 } from '@/components/medicoes/nf-desc-drilldown'
 import { EmailLiberacaoMedicaoModal } from '@/components/medicoes/email-liberacao-medicao-modal'
+import { ValoresInformakonForm, type PayloadValoresInformakon } from '@/components/medicoes/valores-informakon-form'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { exportCsv } from '@/lib/utils/csv'
@@ -204,6 +205,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
 
   const [modalAutorizar, setModalAutorizar] = useState(false)
   const [modalAprovar,   setModalAprovar]   = useState(false)
+  const [valoresInformakon, setValoresInformakon] = useState<PayloadValoresInformakon | null>(null)
   const [modalLiberacao, setModalLiberacao] = useState<'aprovar' | 'reenviar' | null>(null)
   const [modalRejeitar,  setModalRejeitar]  = useState(false)
   const [comentario,     setComentario]     = useState('')
@@ -383,10 +385,14 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
           aprovadorNome: 'Fiscal FIP',
           aprovadorEmail: 'fiscal@fipengenharia.com.br',
           comentario,
+          valores_informakon: valoresInformakon,
         }),
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) { setErroAcao(body?.error || `Falha (HTTP ${res.status}).`); return }
+      if (Array.isArray(body?.alertas) && body.alertas.length > 0) {
+        window.alert('Medição aprovada, mas com pendência:\n\n' + body.alertas.join('\n\n'))
+      }
       setModalAprovar(false)
       setComentario('')
       await carregar()
@@ -1790,7 +1796,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
 
       {/* Aprovar SEM email */}
       <Dialog open={modalAprovar} onOpenChange={(open) => { if (!open) { setModalAprovar(false); setErroAcao('') } }}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-emerald-400 flex items-center gap-2">
               <CheckCircle2 className="w-5 h-5" />
@@ -1805,6 +1811,9 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
               Aprovação simples, sem disparo de email aos envolvidos. Para aprovar e disparar o email de
               liberação, use <strong>Aprovar e liberar NF</strong>.
             </div>
+            {modalAprovar && (
+              <ValoresInformakonForm contratoId={contratoId} medicaoId={medicaoId} onChange={setValoresInformakon} />
+            )}
             <div className="space-y-1.5">
               <Label className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wider">Comentário (opcional)</Label>
               <Textarea
@@ -1818,7 +1827,7 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setModalAprovar(false)} disabled={saving}>Cancelar</Button>
-            <Button variant="success" onClick={aprovarSemEmail} loading={saving}>
+            <Button variant="success" onClick={aprovarSemEmail} loading={saving} disabled={!valoresInformakon}>
               <CheckCircle2 className="w-4 h-4" />
               Confirmar Aprovação
             </Button>

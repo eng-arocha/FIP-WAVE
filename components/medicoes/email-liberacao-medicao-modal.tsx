@@ -13,6 +13,7 @@
 
 import { useState, useEffect } from 'react'
 import { Send, Loader2, Mail, CheckCircle2 } from 'lucide-react'
+import { ValoresInformakonForm, type PayloadValoresInformakon } from '@/components/medicoes/valores-informakon-form'
 
 interface Envolvido {
   id: string
@@ -45,6 +46,7 @@ export function EmailLiberacaoMedicaoModal({
   const [comentario, setComentario] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState('')
+  const [valoresInformakon, setValoresInformakon] = useState<PayloadValoresInformakon | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -97,6 +99,7 @@ export function EmailLiberacaoMedicaoModal({
         comentario,
         notificar_envolvidos: true,
         destinatarios_ids: Array.from(selecionados),
+        valores_informakon: valoresInformakon,
       }
       const res = await fetch(url, {
         method: 'POST',
@@ -191,6 +194,12 @@ export function EmailLiberacaoMedicaoModal({
                 </label>
               ))}
             </div>
+            {/* Valores do Informakon: o líquido vira o pedido da NF Wave */}
+            {modo === 'aprovar' && (
+              <div className="px-4 py-3 overflow-y-auto" style={{ borderTop: '1px solid var(--border)', maxHeight: '45%' }}>
+                <ValoresInformakonForm contratoId={contratoId} medicaoId={medicaoId} onChange={setValoresInformakon} />
+              </div>
+            )}
             {/* Comentário do aprovador (vai pro audit log) */}
             {modo === 'aprovar' && (
               <div className="px-4 py-3" style={{ borderTop: '1px solid var(--border)' }}>
@@ -257,7 +266,7 @@ export function EmailLiberacaoMedicaoModal({
           </button>
           <button
             onClick={enviar}
-            disabled={enviando || loading || selecionados.size === 0}
+            disabled={enviando || loading || selecionados.size === 0 || (modo === 'aprovar' && !valoresInformakon)}
             className="px-4 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 text-white disabled:opacity-40"
             style={{ background: 'linear-gradient(135deg, #0F766E, #10B981)' }}
           >

@@ -28,6 +28,7 @@ import {
 import { MEDICAO_STATUS_LABELS, TIPO_MEDICAO_LABELS, MedicaoStatus } from '@/types'
 import { usePermissoes } from '@/lib/context/permissoes-context'
 import { EmailLiberacaoMedicaoModal } from '@/components/medicoes/email-liberacao-medicao-modal'
+import { ValoresInformakonForm, type PayloadValoresInformakon } from '@/components/medicoes/valores-informakon-form'
 import {
   useBreakdownAjuste, BreakdownAjusteGrid, BreakdownCarregando, fmtQtd,
 } from '@/components/medicoes/breakdown-ajuste'
@@ -190,6 +191,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
   const [modalLiberacao, setModalLiberacao] = useState<'aprovar' | 'reenviar' | null>(null)
   const [modalRejeitar, setModalRejeitar] = useState(false)
   const [comentario, setComentario] = useState('')
+  const [valoresInformakon, setValoresInformakon] = useState<PayloadValoresInformakon | null>(null)
   const [motivo, setMotivo] = useState('')
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState<MedicaoStatus | null>(null)
@@ -487,7 +489,10 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
     const res = await fetch(`/api/contratos/${contratoId}/medicoes/${medicaoId}/aprovar`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ aprovadorNome: 'Fiscal FIP', aprovadorEmail: 'fiscal@fipengenharia.com.br', comentario, medicao })
+      body: JSON.stringify({
+        aprovadorNome: 'Fiscal FIP', aprovadorEmail: 'fiscal@fipengenharia.com.br', comentario, medicao,
+        valores_informakon: valoresInformakon,
+      })
     })
     setSaving(false)
     const data = await res.json().catch(() => ({}))
@@ -1942,7 +1947,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
 
       {/* Modal Aprovar */}
       <Dialog open={modalAprovar} onOpenChange={setModalAprovar}>
-        <DialogContent className="bg-[var(--surface-2)] border border-[var(--border)]">
+        <DialogContent className="bg-[var(--surface-2)] border border-[var(--border)] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-emerald-400 flex items-center gap-2">
               <CheckCircle2 className="w-5 h-5" />
@@ -1956,6 +1961,9 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
             <div className="p-3 bg-emerald-900/20 border border-emerald-800/40 rounded-lg text-xs text-emerald-400">
               Ao aprovar, um e-mail automático será enviado para o fornecedor ({medicao.contrato?.contratado?.nome}) com a confirmação.
             </div>
+            {modalAprovar && (
+              <ValoresInformakonForm contratoId={contratoId} medicaoId={medicaoId} onChange={setValoresInformakon} />
+            )}
             <div className="space-y-1.5">
               <Label className="text-xs text-[var(--text-3)] font-medium uppercase tracking-wider">Comentário (opcional)</Label>
               <Textarea
@@ -1968,7 +1976,7 @@ export default function MedicaoDetailPage({ params }: { params: Promise<{ id: st
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setModalAprovar(false)}>Cancelar</Button>
-            <Button variant="success" onClick={aprovar} loading={saving}>
+            <Button variant="success" onClick={aprovar} loading={saving} disabled={!valoresInformakon}>
               <CheckCircle2 className="w-4 h-4" />
               Confirmar Aprovação
             </Button>

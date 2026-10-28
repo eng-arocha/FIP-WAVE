@@ -281,7 +281,23 @@ async function assertRetratoInformakonImportado(
   )
 }
 
-export async function aprovarMedicao(id: string, aprovadorNome: string, aprovadorEmail: string, comentario?: string) {
+/** Valores da tela "Valores Financeiros" do Informakon, já validados pela rota. */
+export interface ValoresInformakonAprovacao {
+  contratual: number
+  material: number
+  retencao: number
+  descontosDiversos: number
+  liquido: number
+  origem: 'importado' | 'digitado'
+}
+
+export async function aprovarMedicao(
+  id: string,
+  aprovadorNome: string,
+  aprovadorEmail: string,
+  comentario?: string,
+  valoresInformakon?: ValoresInformakonAprovacao,
+) {
   const supabase = await createClient()
 
   await assertRetratoInformakonImportado(supabase, id)
@@ -391,6 +407,20 @@ export async function aprovarMedicao(id: string, aprovadorNome: string, aprovado
     valor_material_correspondente: valorMaterialCorrespondente,
     valor_retencao_garantia: retencaoDoBoletim ?? valor_retencao_garantia,
   }
+  // Os números do Informakon mandam (spec 2026-10-28). Mesmas colunas que o
+  // manual-fix 097 gravou à mão: total = contratual lançado, material =
+  // material descontado; boletim, Visão Geral e conciliação já leem
+  // `serviço = total − material`. Descontos diversos abatem a NF Wave pelo
+  // mesmo caminho do ajuste de rateio.
+  if (valoresInformakon) {
+    updateExtra.valor_total = valoresInformakon.contratual
+    updateExtra.valor_material_correspondente = valoresInformakon.material
+    updateExtra.valor_retencao_garantia = valoresInformakon.retencao
+    updateExtra.ajuste_material_anterior = valoresInformakon.descontosDiversos
+    updateExtra.ajuste_material_anterior_motivo = valoresInformakon.descontosDiversos > 0
+      ? 'Descontos diversos lançados no Informakon'
+      : null
+  }
 
   const tryUpdate = await supabase.from('medicoes').update(updateExtra).eq('id', id)
   if (tryUpdate.error) {
@@ -405,6 +435,21 @@ export async function aprovarMedicao(id: string, aprovadorNome: string, aprovado
       if (retry.error) throw retry.error
     } else {
       throw tryUpdate.error
+    }
+  }
+
+  // Migration 086: líquido do Informakon, origem e a regra do % real (o
+  // boletim aberto que acabou de ser congelado já foi calculado por ela).
+  // Sem a migration, segue: o pedido Wave sai do líquido mesmo assim.
+  {
+    const extra: Record<string, unknown> = { regra_pct_real: true }
+    if (valoresInformakon) {
+      extra.informakon_liquido = valoresInformakon.liquido
+      extra.informakon_valores_origem = valoresInformakon.origem
+    }
+    const r086 = await supabase.from('medicoes').update(extra).eq('id', id)
+    if (r086.error) {
+      console.warn('[aprovarMedicao] colunas da migration 086 não gravadas:', (r086.error as any).message, { medicaoId: id })
     }
   }
 

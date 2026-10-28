@@ -24,6 +24,7 @@ import { MaximizableCard } from '@/components/ui/maximizable-card'
 import { FiltroSaldoItem } from '@/components/aprovacoes/filtro-saldo-item'
 import { useTableLayout, type ColumnDef } from '@/lib/hooks/use-table-layout'
 import { EmailEnvolvidosModal } from '@/components/fat-direto/email-envolvidos-modal'
+import { ValoresInformakonForm, type PayloadValoresInformakon } from '@/components/medicoes/valores-informakon-form'
 
 interface PendenteFip {
   id: string
@@ -121,6 +122,7 @@ export default function AprovacoesPage() {
   const [rejeitandoFip, setRejeitandoFip] = useState<string | null>(null)
   const [aprovandoFip, setAprovandoFip] = useState<string | null>(null)
   const [modalAprovar, setModalAprovar] = useState<string | null>(null)
+  const [valoresInformakon, setValoresInformakon] = useState<PayloadValoresInformakon | null>(null)
   const [modalRejeitar, setModalRejeitar] = useState<string | null>(null)
   const [comentario, setComentario] = useState('')
   const [motivo, setMotivo] = useState('')
@@ -307,6 +309,7 @@ export default function AprovacoesPage() {
           aprovadorEmail: 'fiscal@fipengenharia.com.br',
           comentario,
           medicao: medicaoAprovar,
+          valores_informakon: valoresInformakon,
         }),
       })
       if (res.ok) {
@@ -1289,7 +1292,7 @@ export default function AprovacoesPage() {
 
       {/* Modal Aprovar */}
       <Dialog open={!!modalAprovar} onOpenChange={() => { setModalAprovar(null); setErroAprovar('') }}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2" style={{ color: 'var(--green)' }}>
               <CheckCircle2 className="w-5 h-5" />
@@ -1315,6 +1318,14 @@ export default function AprovacoesPage() {
             >
               Um e-mail de confirmação será enviado automaticamente para o fornecedor e para os envolvidos no contrato.
             </div>
+            {medicaoAprovar && (
+              <ValoresInformakonForm
+                key={medicaoAprovar.id}
+                contratoId={medicaoAprovar.contrato.id}
+                medicaoId={medicaoAprovar.id}
+                onChange={setValoresInformakon}
+              />
+            )}
             <div className="space-y-1.5">
               <label className="text-sm font-medium" style={{ color: 'var(--text-2)' }}>
                 Comentário (opcional)
@@ -1340,7 +1351,7 @@ export default function AprovacoesPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setModalAprovar(null); setErroAprovar('') }}>Cancelar</Button>
-            <Button variant="success" onClick={confirmarAprovacao} loading={saving}>
+            <Button variant="success" onClick={confirmarAprovacao} loading={saving} disabled={!valoresInformakon}>
               <CheckCircle2 className="w-4 h-4" />
               Aprovar Medição
             </Button>
