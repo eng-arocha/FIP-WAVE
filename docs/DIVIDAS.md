@@ -3,6 +3,45 @@
 Decisões adiadas, com o motivo e o momento certo de aplicar — pra ninguém
 reabrir a discussão do zero.
 
+## ▶ Pendências em aberto (atualizado 28/10/2026)
+
+Índice — o detalhe de cada uma está na seção indicada abaixo.
+
+**Ações do Alex (operação)**
+1. Lançar no site a NF Wave reemitida de R$ 479.560,54 no pedido nº 21
+   (hoje só tem a NF 07 cancelada). → "MED-008: descontar R$ 31.916,58"
+2. MED-008, antes de aprovar: gravar o ajuste de R$ 31.916,58 (MSF/Cordeiro
+   do 1.3.1) quando as notas entrarem no Informakon — SQL pronto. Conferir o
+   líquido do site com "Valor Líquido da Medição" do Informakon antes do
+   pedido Wave. → mesma seção
+3. 1.3.1: R$ 71.305,95 do pedido FIP #20 acima do contratado (até 22.013,94
+   cabem como adiantamento no grupo 1; 49.292,01 fora do contrato) — NF de
+   devolução, adiantamento ou aditivo, com a FIP. → "Itens de material acima
+   do contratado"
+
+**Decisões do Alex (regra)**
+4. Regra dos próximos cortes: Informakon segue o % ajustado do site, OU o site
+   sugere o % real e o corte vira ajuste automático na medição em que a nota
+   entrar (recomendado). → "MED-008"
+5. R$ 501,41 a mais da NF 228 e R$ 33,70 de descontos diversos: ficam só no
+   total da MED-007 ou ganham rateio por item? (O 501,41 hoje aparece como
+   −87,01 no 1.13.1, rateado pelos itens do #20.)
+
+**Desenvolvimento (quando decidir / no próximo ciclo)**
+6. Aprovação de medição: digitar os números da tela "Valores Financeiros" do
+   Informakon e congelar — acaba com os manual-fix 095/096/097.
+7. Implementar a regra do item 4.
+8. Visão Geral: 19.1.1 mostra serviço −322 mil (item sem serviço contratado;
+   a medição dele é contada como serviço) — erro de exibição.
+9. Tarefas-fantasma duplicadas (1.6) no banco — a aba Estrutura ainda pode
+   mostrá-las. → "Tarefas duplicadas no orçamento"
+
+**Atenção na MED-008 (mudanças desta data que entram em vigor)**
+- Trava de saldo por item em criação/edição/aprovação de pedido e no pedido
+  FIP automático (corta o excedente e avisa).
+- A FIP do grupo é rateada pela falta de cada item, não mais pelo material
+  medido — o pedido FIP da MED-008 pode sair distribuído diferente da MED-007.
+
 ## 2026-10-28 — MED-008: descontar R$ 31.916,58 da MSF/Cordeiro (1.3.1)
 
 **O que é:** na MED-007 o Informakon lançou o 1.3.1 (Painel de Média Tensão)
