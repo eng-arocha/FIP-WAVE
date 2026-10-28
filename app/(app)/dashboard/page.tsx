@@ -240,7 +240,13 @@ export default function DashboardPage() {
 
   const totalContratado = contratos.reduce((a, c) => a + (c.valor_contratado || 0), 0)
   const totalMedidoServico = contratos.reduce((a, c) => a + (c.valor_medido || 0), 0)
-  const totalSaldo = totalContratado - totalMedidoServico - totalNfFatDireto
+  // Saldo global: o que ainda não foi consumido do contrato. Serviço consome
+  // quando é medido; material de fat. direto consome quando a solicitação é
+  // aprovada (o dinheiro já está comprometido com o fornecedor). Não usar a
+  // Medição Total aqui: o material medido já está dentro das sol. aprovadas e
+  // seria descontado duas vezes.
+  const totalSaldo = totalContratado - totalServicoMedido - totalSolAprovadas
+  const valorFatDireto = valorMaterialDireto
   const pendentesAprovacao = contratos.reduce((a, c) => a + (c.qtd_medicoes_pendentes || 0), 0)
 
   const animatedMedidoServico  = useCountUp(totalMedidoServico)
@@ -449,15 +455,16 @@ export default function DashboardPage() {
             <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full"
               style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(71,85,105,0.50)' }}
               onMouseEnter={e => (e.currentTarget.style.borderColor = '#475569')}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
+              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+              title={`Contrato ${formatCurrency(totalContratado)} − serviço medido ${formatCurrency(totalServicoMedido)} − sol. aprovadas ${formatCurrency(totalSolAprovadas)}`}>
               <div className="flex items-start justify-between">
                 <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Saldo</p>
-                  <p className="text-sm sm:text-xl font-bold truncate" style={{ color: 'var(--text-1)' }}>{formatCurrency(animatedSaldo)}</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Saldo Global</p>
+                  <p className="text-sm sm:text-xl font-bold truncate" style={{ color: totalSaldo < 0 ? 'var(--red, #EF4444)' : 'var(--text-1)' }}>{formatCurrency(animatedSaldo)}</p>
                   <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
-                    <span className="font-semibold" style={{ color: 'var(--text-2)' }}>{formatPercent(pctSaldo)}</span> do contrato → estrutura
+                    <span className="font-semibold" style={{ color: 'var(--text-2)' }}>{formatPercent(pctSaldo)}</span> do contrato · contrato − serviço medido − sol. aprovadas
                   </p>
-                  <SimTag valor={-simTotal} />
+                  <SimTag valor={-simServico} />
                 </div>
                 <DollarSign className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: 'var(--text-2)' }} />
               </div>
@@ -475,7 +482,7 @@ export default function DashboardPage() {
                   <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>NF Lançadas</p>
                   <p className="text-sm sm:text-xl font-bold truncate" style={{ color: '#6366F1' }}>{formatCurrency(animatedNfsLancadas)}</p>
                   <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
-                    <span className="font-semibold" style={{ color: '#6366F1' }}>{formatPercent(pctNfs)}</span> do fat. direto → ver NFs
+                    <span className="font-semibold" style={{ color: '#6366F1' }}>{formatPercent(pctNfs)}</span> de {formatCurrency(valorFatDireto)} (fat. direto) → ver NFs
                   </p>
                 </div>
                 <Receipt className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: '#6366F1' }} />
@@ -494,7 +501,7 @@ export default function DashboardPage() {
                   <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Sol. Aprovadas</p>
                   <p className="text-sm sm:text-xl font-bold truncate" style={{ color: '#F59E0B' }}>{formatCurrency(animatedSolAprovadas)}</p>
                   <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
-                    <span className="font-semibold" style={{ color: '#F59E0B' }}>{formatPercent(pctAprovadas)}</span> do fat. direto → ver aprovadas
+                    <span className="font-semibold" style={{ color: '#F59E0B' }}>{formatPercent(pctAprovadas)}</span> de {formatCurrency(valorFatDireto)} (fat. direto) → ver aprovadas
                   </p>
                 </div>
                 <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: '#F59E0B' }} />
@@ -517,7 +524,7 @@ export default function DashboardPage() {
                   <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Medição de Serviço</p>
                   <p className="text-sm sm:text-xl font-bold truncate" style={{ color: 'var(--green)' }}>{formatCurrency(totalServicoMedido)}</p>
                   <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
-                    <span className="font-semibold" style={{ color: '#10B981' }}>{valorServicos > 0 ? formatPercent((totalServicoMedido / valorServicos) * 100) : '0,00%'}</span> do valor de serviços
+                    <span className="font-semibold" style={{ color: '#10B981' }}>{valorServicos > 0 ? formatPercent((totalServicoMedido / valorServicos) * 100) : '0,00%'}</span> de {formatCurrency(valorServicos)} (serviços)
                   </p>
                   <SimTag valor={simServico} />
                 </div>
@@ -537,7 +544,7 @@ export default function DashboardPage() {
                   <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Fat. Direto Medido</p>
                   <p className="text-sm sm:text-xl font-bold truncate" style={{ color: '#06B6D4' }}>{formatCurrency(totalMaterialMedido)}</p>
                   <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
-                    <span className="font-semibold" style={{ color: '#06B6D4' }}>{valorMaterialDireto > 0 ? formatPercent((totalMaterialMedido / valorMaterialDireto) * 100) : '0,00%'}</span> do material direto
+                    <span className="font-semibold" style={{ color: '#06B6D4' }}>{valorMaterialDireto > 0 ? formatPercent((totalMaterialMedido / valorMaterialDireto) * 100) : '0,00%'}</span> de {formatCurrency(valorFatDireto)} (fat. direto)
                   </p>
                   <SimTag valor={simMaterial} />
                 </div>
@@ -557,7 +564,7 @@ export default function DashboardPage() {
                   <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Medição Total</p>
                   <p className="text-sm sm:text-xl font-bold truncate" style={{ color: '#A855F7' }}>{formatCurrency(totalMedicao)}</p>
                   <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
-                    <span className="font-semibold" style={{ color: '#A855F7' }}>{totalContratado > 0 ? formatPercent((totalMedicao / totalContratado) * 100) : '0,00%'}</span> do contrato (mat + serv)
+                    <span className="font-semibold" style={{ color: '#A855F7' }}>{totalContratado > 0 ? formatPercent((totalMedicao / totalContratado) * 100) : '0,00%'}</span> de {formatCurrency(totalContratado)} (contrato · mat + serv)
                   </p>
                   <SimTag valor={simTotal} />
                 </div>
@@ -574,9 +581,12 @@ export default function DashboardPage() {
               onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
               <div className="flex items-start justify-between">
                 <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Retenção Contratual</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Retenção Contratual (5%)</p>
                   <p className="text-sm sm:text-xl font-bold truncate" style={{ color: '#818CF8' }}>{formatCurrency(animatedRetencao)}</p>
                   <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
+                    5% do total medido (mat + serv) · já incluso na medição, descontado na NF Wave
+                  </p>
+                  <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
                     <span className="font-semibold" style={{ color: '#818CF8' }}>
                       {retencaoPrevistaFinal > 0 ? formatPercent((totalRetencao / retencaoPrevistaFinal) * 100) : '0,00%'}
                     </span> de {formatCurrency(retencaoPrevistaFinal)} previsto
