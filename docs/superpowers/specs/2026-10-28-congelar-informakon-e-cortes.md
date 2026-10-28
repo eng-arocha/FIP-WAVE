@@ -1,7 +1,7 @@
 # Congelar os números do Informakon na aprovação + corte vira desconto posterior
 
-**Status:** revisão 2 (28/10/2026, depois de ler o código) — aguardando OK do
-Alex antes de implementar. Mexe no valor da NF Wave.
+**Status:** revisão 2 aprovada e implementada (28/10/2026): migration 086,
+manual-fix 102. Pendente só o painel dedicado de pendentes (ver DIVIDAS item 7).
 **Origem:** manual-fix 095/096/097 (MED-007) e a pendência da MSF/Cordeiro
 (R$ 31.916,58) na MED-008. Ver docs/DIVIDAS.md.
 
