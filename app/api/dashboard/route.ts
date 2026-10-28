@@ -24,6 +24,7 @@ export async function GET() {
       { data: allNfs },
       medicoesAprovadasComItens,
       { data: medicoesEmAprovacao },
+      { data: itensEncerrados },
     ] = await Promise.all([
       supabase.from('vw_resumo_contrato').select('*'),
       supabase.from('medicoes')
@@ -55,6 +56,12 @@ export async function GET() {
         `)
         .in('status', STATUS_EM_APROVACAO)
         .order('numero'),
+      // Pedidos encerrados (migration 050): saem de 'aprovado', mas o que não
+      // foi devolvido continua consumido. Entram no Saldo Global.
+      admin.from('itens_solicitacao_fat_direto')
+        .select('valor_total, valor_devolvido, solicitacoes_fat_direto!inner(status, deletado_em)')
+        .eq('solicitacoes_fat_direto.status', 'encerrado')
+        .is('solicitacoes_fat_direto.deletado_em', null),
     ])
 
     // NFs de solicitações aprovadas (para Medição Fat. Direto legado)
@@ -75,6 +82,11 @@ export async function GET() {
 
     // Soma de solicitações aprovadas (valor_total)
     const totalSolAprovadas = (solsAprovadas || []).reduce((acc: number, s: any) => acc + (s.valor_total || 0), 0)
+
+    // Consumo efetivo dos pedidos encerrados = valor − devolvido.
+    const totalSolEncerradas = Math.round((itensEncerrados || []).reduce(
+      (acc: number, it: any) => acc + Number(it.valor_total || 0) - Number(it.valor_devolvido || 0), 0,
+    ) * 100) / 100
 
     // Valor de serviços e material direto dos contratos ativos
     const valorServicos       = (contratosRaw || []).reduce((acc: number, c: any) => acc + (c.valor_servicos || 0), 0)
@@ -301,6 +313,7 @@ export async function GET() {
       total_nf_fat_direto: totalNfFatDireto,
       total_nfs_lancadas: totalNfsLancadas,
       total_sol_aprovadas: totalSolAprovadas,
+      total_sol_encerradas: totalSolEncerradas,
       valor_servicos: valorServicos,
       valor_material_direto: valorMaterialDireto,
       total_retencao_acumulada: totalRetencao,

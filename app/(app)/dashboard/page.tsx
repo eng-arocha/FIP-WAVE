@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, type ReactNode } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { Topbar } from '@/components/layout/topbar'
@@ -12,7 +12,8 @@ import {
 } from 'recharts'
 import {
   TrendingUp, FileText, Clock, CheckCircle2, AlertCircle,
-  DollarSign, ArrowRight, Loader2, Receipt, Package, BarChart3, FlaskConical,
+  DollarSign, ArrowRight, Loader2, Receipt, Package, BarChart3, FlaskConical, ShieldCheck,
+  type LucideIcon,
 } from 'lucide-react'
 import { formatCurrency, formatPercent, getContratoStatusColor, getMedicaoStatusColor } from '@/lib/utils'
 import { CONTRATO_STATUS_LABELS, MEDICAO_STATUS_LABELS, type MedicaoStatus } from '@/types'
@@ -100,6 +101,64 @@ interface Simulacao {
   por_contrato: Record<string, number>
 }
 
+/** Grupo de cards com título pequeno — separa Contrato de Faturamento Direto. */
+function KpiSection({ titulo, children }: { titulo: string; children: ReactNode }) {
+  return (
+    <section>
+      <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-3)' }}>{titulo}</p>
+      {children}
+    </section>
+  )
+}
+
+/** Percentual em destaque dentro da linha de apoio do card. */
+function Pct({ cor, children }: { cor: string; children: ReactNode }) {
+  return <span className="font-semibold" style={{ color: cor }}>{children}</span>
+}
+
+/**
+ * Card de KPI do topo. `pct` desenha a barra de progresso (0–100, cortada nas
+ * pontas); `title` vira o tooltip com a fórmula do número.
+ */
+function KpiCard({ href, label, valor, valorCor, cor, icon: Icon, sub, extra, pct, title }: {
+  href: string
+  label: string
+  valor: string
+  valorCor?: string
+  cor: string
+  icon: LucideIcon
+  sub: ReactNode
+  extra?: ReactNode
+  pct?: number
+  title?: string
+}) {
+  return (
+    <Link href={href}>
+      <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full flex flex-col"
+        style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: `2px solid ${cor}80` }}
+        onMouseEnter={e => (e.currentTarget.style.borderColor = cor)}
+        onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+        title={title}>
+        <div className="flex items-start justify-between flex-1">
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>{label}</p>
+            <p className="text-sm sm:text-xl font-bold truncate" style={{ color: valorCor ?? cor }}>{valor}</p>
+            <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>{sub}</p>
+            {extra}
+          </div>
+          <Icon className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: cor }} />
+        </div>
+        {pct !== undefined && (
+          <div className="mt-2 h-1 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
+            <div className="h-full rounded-full transition-all duration-700"
+              style={{ width: `${Math.min(100, Math.max(0, pct))}%`, background: cor }} />
+          </div>
+        )}
+      </div>
+    </Link>
+  )
+}
+
 /** Linha "+ R$ X em aprovação" que aparece nos cards afetados pela simulação. */
 function SimTag({ valor }: { valor: number }) {
   if (!valor) return null
@@ -118,6 +177,7 @@ export default function DashboardPage() {
   const [totalNfFatDireto, setTotalNfFatDireto] = useState(0)
   const [totalNfsLancadas, setTotalNfsLancadas] = useState(0)
   const [totalSolAprovadas, setTotalSolAprovadas] = useState(0)
+  const [totalSolEncerradas, setTotalSolEncerradas] = useState(0)
   const [totalRetencaoAprovada, setTotalRetencao] = useState(0)
   const [qtdMedicoesComRetencao, setQtdMedicoesComRetencao] = useState(0)
   const [valorServicos, setValorServicos] = useState(0)
@@ -155,6 +215,7 @@ export default function DashboardPage() {
         setTotalNfFatDireto(data.total_nf_fat_direto || 0)
         setTotalNfsLancadas(data.total_nfs_lancadas || 0)
         setTotalSolAprovadas(data.total_sol_aprovadas || 0)
+        setTotalSolEncerradas(data.total_sol_encerradas || 0)
         setValorServicos(data.valor_servicos || 0)
         setValorMaterialDireto(data.valor_material_direto || 0)
         setTotalRetencao(data.total_retencao_acumulada || 0)
@@ -244,9 +305,12 @@ export default function DashboardPage() {
   // quando é medido; material de fat. direto consome quando a solicitação é
   // aprovada (o dinheiro já está comprometido com o fornecedor). Não usar a
   // Medição Total aqui: o material medido já está dentro das sol. aprovadas e
-  // seria descontado duas vezes.
-  const totalSaldo = totalContratado - totalServicoMedido - totalSolAprovadas
+  // seria descontado duas vezes. Pedido encerrado sai de 'aprovado', mas o
+  // que não foi devolvido continua gasto — entra também.
+  const totalSaldo = totalContratado - totalServicoMedido - totalSolAprovadas - totalSolEncerradas
   const valorFatDireto = valorMaterialDireto
+  // Comprometido sem nota: pedidos aprovados menos as NFs desses pedidos.
+  const totalAFaturar = Math.max(0, totalSolAprovadas - totalNfFatDireto)
   const pendentesAprovacao = contratos.reduce((a, c) => a + (c.qtd_medicoes_pendentes || 0), 0)
 
   const animatedMedidoServico  = useCountUp(totalMedidoServico)
@@ -261,6 +325,11 @@ export default function DashboardPage() {
   const pctNfs       = valorMaterialDireto > 0 ? (totalNfsLancadas    / valorMaterialDireto * 100) : 0
   const pctAprovadas = valorMaterialDireto > 0 ? (totalSolAprovadas   / valorMaterialDireto * 100) : 0
   const pctSaldo     = totalContratado > 0     ? (totalSaldo          / totalContratado     * 100) : 0
+  const pctServico        = valorServicos > 0         ? (totalServicoMedido  / valorServicos         * 100) : 0
+  const pctMaterialMedido = valorMaterialDireto > 0   ? (totalMaterialMedido / valorMaterialDireto   * 100) : 0
+  const pctMedicaoTotal   = totalContratado > 0       ? (totalMedicao        / totalContratado       * 100) : 0
+  const pctRetencao       = retencaoPrevistaFinal > 0 ? (totalRetencao       / retencaoPrevistaFinal * 100) : 0
+  const pctAFaturar       = totalSolAprovadas > 0     ? (totalAFaturar       / totalSolAprovadas     * 100) : 0
 
   // ID do primeiro contrato ativo (para link direto)
   const primeiroContratoId = contratos[0]?.id ?? ''
@@ -303,8 +372,16 @@ export default function DashboardPage() {
     const hasRealData = Object.keys(realByPeriod).length > 0
     if (!hasRealData) return CURVA_S_DATA
 
+    // A linha do realizado termina no último mês com medição. Depois dele não
+    // há dado — repetir o acumulado desenhava um platô até out/27, como se a
+    // obra tivesse parado.
+    const ultimoIdxReal = CURVA_S_DATA.reduce(
+      (ult, row, i) => (realByPeriod[row.mes] !== undefined ? i : ult), -1,
+    )
+
     let acumuladoReal = 0
-    return CURVA_S_DATA.map((row) => {
+    return CURVA_S_DATA.map((row, i) => {
+      if (i > ultimoIdxReal) return row
       if (realByPeriod[row.mes] !== undefined) {
         const realPct = totalContratado > 0
           ? (realByPeriod[row.mes] / totalContratado) * 100
@@ -385,9 +462,9 @@ export default function DashboardPage() {
       />
 
       {/* ── Sticky KPI bar ──
-          2 linhas de 4 cards.
-          Linha 1 — Visão geral financeira: Total Contratado, Saldo, NFs, Sol. Aprovadas
-          Linha 2 — Medição (spec 2026-05-06): Serviço, Fat. Direto, Total, Retenção
+          2 blocos com título.
+          Contrato — Total, Saldo Global, Medição de Serviço, Medição Total, Retenção
+          Faturamento Direto — Sol. Aprovadas, NF Lançadas, A Faturar, Fat. Direto Medido
        */}
       <div className="sticky top-14 z-10 px-3 sm:px-6 py-3 border-b space-y-2 sm:space-y-3" style={{ background: 'var(--background)', borderColor: 'var(--border)' }}>
         {/* ── Aviso + chave da simulação de medição em aprovação ── */}
@@ -430,174 +507,96 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* ── Linha 1 — Visão geral financeira ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
-
-          {/* Card — Total Contratado */}
-          <Link href={primeiroContratoId ? `/contratos/${primeiroContratoId}/estrutura` : '/contratos'}>
-            <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full"
-              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(59,130,246,0.50)' }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = '#3B82F6')}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
-              <div className="flex items-start justify-between">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Total Contratado</p>
-                  <p className="text-sm sm:text-xl font-bold truncate" style={{ color: 'var(--text-1)' }}>{formatCurrency(totalContratado)}</p>
-                  <p className="text-[10px] mt-1" style={{ color: '#3B82F6' }}>{Math.round(animatedTotalContratos)} contrato(s) · ver estrutura →</p>
-                </div>
-                <FileText className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: '#3B82F6' }} />
-              </div>
-            </div>
-          </Link>
-
-          {/* Card — Saldo */}
-          <Link href={primeiroContratoId ? `/contratos/${primeiroContratoId}/estrutura?tab=financeiro` : '/contratos'}>
-            <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full"
-              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(71,85,105,0.50)' }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = '#475569')}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
-              title={`Contrato ${formatCurrency(totalContratado)} − serviço medido ${formatCurrency(totalServicoMedido)} − sol. aprovadas ${formatCurrency(totalSolAprovadas)}`}>
-              <div className="flex items-start justify-between">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Saldo Global</p>
-                  <p className="text-sm sm:text-xl font-bold truncate" style={{ color: totalSaldo < 0 ? 'var(--red, #EF4444)' : 'var(--text-1)' }}>{formatCurrency(animatedSaldo)}</p>
-                  <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
-                    <span className="font-semibold" style={{ color: 'var(--text-2)' }}>{formatPercent(pctSaldo)}</span> do contrato · contrato − serviço medido − sol. aprovadas
-                  </p>
-                  <SimTag valor={-simServico} />
-                </div>
-                <DollarSign className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: 'var(--text-2)' }} />
-              </div>
-            </div>
-          </Link>
-
-          {/* Card — NF Lançadas */}
-          <Link href="/documentos/faturamento-direto?view=com-nf">
-            <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full"
-              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(99,102,241,0.50)' }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = '#6366F1')}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
-              <div className="flex items-start justify-between">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>NF Lançadas</p>
-                  <p className="text-sm sm:text-xl font-bold truncate" style={{ color: '#6366F1' }}>{formatCurrency(animatedNfsLancadas)}</p>
-                  <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
-                    <span className="font-semibold" style={{ color: '#6366F1' }}>{formatPercent(pctNfs)}</span> de {formatCurrency(valorFatDireto)} (fat. direto) → ver NFs
-                  </p>
-                </div>
-                <Receipt className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: '#6366F1' }} />
-              </div>
-            </div>
-          </Link>
-
-          {/* Card — Sol. Aprovadas */}
-          <Link href="/documentos/faturamento-direto?view=aprovadas">
-            <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full"
-              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(245,158,11,0.50)' }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = '#F59E0B')}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
-              <div className="flex items-start justify-between">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Sol. Aprovadas</p>
-                  <p className="text-sm sm:text-xl font-bold truncate" style={{ color: '#F59E0B' }}>{formatCurrency(animatedSolAprovadas)}</p>
-                  <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
-                    <span className="font-semibold" style={{ color: '#F59E0B' }}>{formatPercent(pctAprovadas)}</span> de {formatCurrency(valorFatDireto)} (fat. direto) → ver aprovadas
-                  </p>
-                </div>
-                <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: '#F59E0B' }} />
-              </div>
-            </div>
-          </Link>
-        </div>
-
-        {/* ── Linha 2 — Medição (spec 2026-05-06) ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
-
-          {/* Card — Medição de Serviço (= MO executada) */}
-          <Link href="/documentos/medicoes-servico">
-            <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full"
-              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(16,185,129,0.50)' }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = '#10B981')}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
-              <div className="flex items-start justify-between">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Medição de Serviço</p>
-                  <p className="text-sm sm:text-xl font-bold truncate" style={{ color: 'var(--green)' }}>{formatCurrency(totalServicoMedido)}</p>
-                  <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
-                    <span className="font-semibold" style={{ color: '#10B981' }}>{valorServicos > 0 ? formatPercent((totalServicoMedido / valorServicos) * 100) : '0,00%'}</span> de {formatCurrency(valorServicos)} (serviços)
-                  </p>
-                  <SimTag valor={simServico} />
-                </div>
-                <TrendingUp className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: 'var(--green)' }} />
-              </div>
-            </div>
-          </Link>
-
-          {/* Card — Fat. Direto Medido (= Material executado, inclui Admin) */}
-          <Link href="/documentos/faturamento-direto?view=aprovadas">
-            <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full"
-              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(6,182,212,0.50)' }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = '#06B6D4')}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
-              <div className="flex items-start justify-between">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Fat. Direto Medido</p>
-                  <p className="text-sm sm:text-xl font-bold truncate" style={{ color: '#06B6D4' }}>{formatCurrency(totalMaterialMedido)}</p>
-                  <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
-                    <span className="font-semibold" style={{ color: '#06B6D4' }}>{valorMaterialDireto > 0 ? formatPercent((totalMaterialMedido / valorMaterialDireto) * 100) : '0,00%'}</span> de {formatCurrency(valorFatDireto)} (fat. direto)
-                  </p>
-                  <SimTag valor={simMaterial} />
-                </div>
-                <Package className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: '#06B6D4' }} />
-              </div>
-            </div>
-          </Link>
-
-          {/* Card — Medição Total (= mat + serv) */}
-          <Link href="/documentos/medicoes-servico">
-            <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full"
-              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(168,85,247,0.50)' }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = '#A855F7')}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
-              <div className="flex items-start justify-between">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Medição Total</p>
-                  <p className="text-sm sm:text-xl font-bold truncate" style={{ color: '#A855F7' }}>{formatCurrency(totalMedicao)}</p>
-                  <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
-                    <span className="font-semibold" style={{ color: '#A855F7' }}>{totalContratado > 0 ? formatPercent((totalMedicao / totalContratado) * 100) : '0,00%'}</span> de {formatCurrency(totalContratado)} (contrato · mat + serv)
-                  </p>
-                  <SimTag valor={simTotal} />
-                </div>
-                <BarChart3 className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: '#A855F7' }} />
-              </div>
-            </div>
-          </Link>
-
-          {/* Card — Retenção Contratual (5% × Medição Total) */}
-          <Link href="/documentos/retencoes">
-            <div className="rounded-xl p-3 sm:p-4 transition-all duration-200 cursor-pointer h-full"
-              style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderBottom: '2px solid rgba(99,102,241,0.50)' }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = '#6366F1')}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
-              <div className="flex items-start justify-between">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-3)' }}>Retenção Contratual (5%)</p>
-                  <p className="text-sm sm:text-xl font-bold truncate" style={{ color: '#818CF8' }}>{formatCurrency(animatedRetencao)}</p>
-                  <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
-                    5% do total medido (mat + serv) · já incluso na medição, descontado na NF Wave
-                  </p>
+        {/* ── Bloco Contrato: o contrato inteiro (mat + serv) ── */}
+        <KpiSection titulo="Contrato">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-3">
+            <KpiCard
+              href={primeiroContratoId ? `/contratos/${primeiroContratoId}/estrutura` : '/contratos'}
+              label="Total Contratado" icon={FileText} cor="#3B82F6" valorCor="var(--text-1)"
+              valor={formatCurrency(totalContratado)}
+              sub={<span style={{ color: '#3B82F6' }}>{Math.round(animatedTotalContratos)} contrato(s) · ver estrutura →</span>}
+              title={`Serviços ${formatCurrency(valorServicos)} + fat. direto ${formatCurrency(valorFatDireto)}`}
+            />
+            <KpiCard
+              href={primeiroContratoId ? `/contratos/${primeiroContratoId}/estrutura?tab=financeiro` : '/contratos'}
+              label="Saldo Global" icon={DollarSign} cor="#475569"
+              valorCor={totalSaldo < 0 ? '#EF4444' : 'var(--text-1)'}
+              valor={formatCurrency(animatedSaldo)}
+              pct={pctSaldo}
+              sub={<><Pct cor="var(--text-2)">{formatPercent(pctSaldo)}</Pct> do contrato · contrato − serviço medido − pedidos aprovados</>}
+              extra={<SimTag valor={-simServico} />}
+              title={`Contrato ${formatCurrency(totalContratado)} − serviço medido ${formatCurrency(totalServicoMedido)} − pedidos aprovados ${formatCurrency(totalSolAprovadas)}${totalSolEncerradas > 0 ? ` − pedidos encerrados ${formatCurrency(totalSolEncerradas)}` : ''}`}
+            />
+            <KpiCard
+              href="/documentos/medicoes-servico"
+              label="Medição de Serviço" icon={TrendingUp} cor="#10B981" valorCor="var(--green)"
+              valor={formatCurrency(totalServicoMedido)}
+              pct={pctServico}
+              sub={<><Pct cor="#10B981">{formatPercent(pctServico)}</Pct> de {formatCurrency(valorServicos)} (serviços)</>}
+              extra={<SimTag valor={simServico} />}
+            />
+            <KpiCard
+              href="/documentos/medicoes-servico"
+              label="Medição Total" icon={BarChart3} cor="#A855F7"
+              valor={formatCurrency(totalMedicao)}
+              pct={pctMedicaoTotal}
+              sub={<><Pct cor="#A855F7">{formatPercent(pctMedicaoTotal)}</Pct> de {formatCurrency(totalContratado)} (contrato · mat + serv)</>}
+              extra={<SimTag valor={simTotal} />}
+              title={`Serviço medido ${formatCurrency(totalServicoMedido)} + fat. direto medido ${formatCurrency(totalMaterialMedido)}`}
+            />
+            <KpiCard
+              href="/documentos/retencoes"
+              label="Retenção Contratual (5%)" icon={ShieldCheck} cor="#818CF8"
+              valor={formatCurrency(animatedRetencao)}
+              pct={pctRetencao}
+              sub={<>5% do total medido (mat + serv) · já incluso na medição, descontado na NF Wave</>}
+              extra={
+                <>
                   <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
-                    <span className="font-semibold" style={{ color: '#818CF8' }}>
-                      {retencaoPrevistaFinal > 0 ? formatPercent((totalRetencao / retencaoPrevistaFinal) * 100) : '0,00%'}
-                    </span> de {formatCurrency(retencaoPrevistaFinal)} previsto
+                    <Pct cor="#818CF8">{formatPercent(pctRetencao)}</Pct> de {formatCurrency(retencaoPrevistaFinal)} previsto
                   </p>
                   <SimTag valor={simRetencao} />
-                </div>
-                <TrendingUp className="w-4 h-4 flex-shrink-0 mt-0.5 hidden sm:block" style={{ color: '#818CF8' }} />
-              </div>
-            </div>
-          </Link>
-        </div>
+                </>
+              }
+            />
+          </div>
+        </KpiSection>
+
+        {/* ── Bloco Faturamento Direto: pedido → NF → medido ── */}
+        <KpiSection titulo={`Faturamento Direto · ${formatCurrency(valorFatDireto)}`}>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+            <KpiCard
+              href="/documentos/faturamento-direto?view=aprovadas"
+              label="Sol. Aprovadas" icon={CheckCircle2} cor="#F59E0B"
+              valor={formatCurrency(animatedSolAprovadas)}
+              pct={pctAprovadas}
+              sub={<><Pct cor="#F59E0B">{formatPercent(pctAprovadas)}</Pct> de {formatCurrency(valorFatDireto)} (fat. direto) → ver aprovadas</>}
+            />
+            <KpiCard
+              href="/documentos/faturamento-direto?view=com-nf"
+              label="NF Lançadas" icon={Receipt} cor="#6366F1"
+              valor={formatCurrency(animatedNfsLancadas)}
+              pct={pctNfs}
+              sub={<><Pct cor="#6366F1">{formatPercent(pctNfs)}</Pct> de {formatCurrency(valorFatDireto)} (fat. direto) → ver NFs</>}
+            />
+            <KpiCard
+              href="/documentos/faturamento-direto?view=aprovadas"
+              label="A Faturar" icon={Clock} cor="#F97316"
+              valor={formatCurrency(totalAFaturar)}
+              pct={pctAFaturar}
+              sub={<><Pct cor="#F97316">{formatPercent(pctAFaturar)}</Pct> dos pedidos aprovados ainda sem NF</>}
+              title={`Sol. aprovadas ${formatCurrency(totalSolAprovadas)} − NFs dessas solicitações ${formatCurrency(totalNfFatDireto)}`}
+            />
+            <KpiCard
+              href="/documentos/faturamento-direto?view=aprovadas"
+              label="Fat. Direto Medido" icon={Package} cor="#06B6D4"
+              valor={formatCurrency(totalMaterialMedido)}
+              pct={pctMaterialMedido}
+              sub={<><Pct cor="#06B6D4">{formatPercent(pctMaterialMedido)}</Pct> de {formatCurrency(valorFatDireto)} (fat. direto)</>}
+              extra={<SimTag valor={simMaterial} />}
+            />
+          </div>
+        </KpiSection>
       </div>
 
       <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
