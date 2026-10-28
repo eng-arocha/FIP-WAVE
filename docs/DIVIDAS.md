@@ -3,6 +3,41 @@
 Decisões adiadas, com o motivo e o momento certo de aplicar — pra ninguém
 reabrir a discussão do zero.
 
+## 2026-10-28 — MED-008: descontar R$ 31.916,58 da MSF/Cordeiro (1.3.1)
+
+**O que é:** na MED-007 o Informakon lançou o 1.3.1 (Painel de Média Tensão)
+a 100%, sem as notas da MSF/Cordeiro. A Wave recebeu R$ 31.916,58 de material
+como serviço (NF Wave reemitida por R$ 479.560,54). O site foi alinhado ao
+Informakon no manual-fix 097: o snapshot do 1.3.1 está em 100% lançado, então
+a camada ① NÃO vai propor esse desconto sozinha.
+
+**O que fazer na MED-008, quando as notas entrarem no Informakon:**
+1. No Informakon, descontar as notas da MSF/Cordeiro no "Material Fornecido
+   a Descontar" da medição, **sem lançar % no 1.3.1** (ele já está a 100%).
+2. No site, antes de aprovar a MED-008, gravar o mesmo valor no ajuste da
+   medição. Use o valor efetivamente descontado no Informakon, até
+   R$ 31.916,58:
+   ```sql
+   update medicoes
+      set ajuste_material_anterior = 31916.58,
+          ajuste_material_anterior_motivo = 'Notas MSF/Cordeiro do 1.3.1 lançado a 100% na MED-007 sem nota (manual-fix 097)'
+    where contrato_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and numero = 8;
+   ```
+   O ajuste reduz a NF Wave e não mexe na retenção, como no Informakon: a
+   nota descontada não altera o valor contratual lançado.
+3. Conferir o líquido do site com "Valor Líquido da Medição" do Informakon
+   antes de emitir o pedido Wave.
+
+**Se as notas não vierem:** a Wave fica com os R$ 31.916,58. Cobrar da Wave
+ou descontar no encerramento.
+
+**Em aberto:** os R$ 501,41 a mais da NF 228 (FIP) e os R$ 33,70 de
+"descontos diversos" ficaram só no total da MED-007, sem rateio por item.
+
+**Regra para os próximos cortes (a decidir):** ou o Informakon segue o %
+ajustado do site, ou o site passa a sugerir o % real e transforma o corte em
+ajuste automático na medição em que a nota entrar.
+
 ## 2026-10-28 — Tarefas duplicadas no orçamento (ex.: três "1.6" no grupo 1)
 
 **O que é:** seeds antigos (migrations 005/011/015) gravaram a mesma tarefa
