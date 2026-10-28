@@ -139,6 +139,8 @@ interface Resp {
   } | null
   /** Compensação de lastro entre macro itens (migration 085). */
   compensacao_lastro?: CompensacaoLastroDados
+  /** Medição aprovada: o pedido FIP criado no portão 1. */
+  fip_pedido_vinculado?: { id: string; numero: number; valor: number; nfs: Array<{ numero: string; valor: number }> } | null
   totais: {
     material_medido: number
     servico_medido: number
@@ -1094,19 +1096,40 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
                 accent="#0F766E"
                 hint={`NF Wave a emitir · bruto ${formatCurrency(data.totais.wave_servico)} − retenção ${formatCurrency(data.totais.retencao)}${ajusteRateio !== 0 ? ` ${ajusteRateio > 0 ? '−' : '+'} ajuste de rateio ${formatCurrency(Math.abs(ajusteRateio))}` : ''}`}
               />
-              <Card label="FIP (Material)" value={formatCurrency(data.totais.fip_faturar)} accent="#3B82F6" hint="Fat-direto FIP a criar" />
+              {/* Aprovada: a nota da FIP desta medição é o pedido do portão 1.
+                  A camada ③ de uma aprovada roda sem o retrato e mostraria
+                  "a criar" um valor que ninguém precisa emitir. */}
+              {data.fip_pedido_vinculado ? (
+                <Card
+                  label="FIP (Material)"
+                  value={formatCurrency(data.fip_pedido_vinculado.valor)}
+                  accent="#3B82F6"
+                  hint={`Pedido nº ${data.fip_pedido_vinculado.numero} criado no portão 1 · ${
+                    data.fip_pedido_vinculado.nfs.length > 0
+                      ? data.fip_pedido_vinculado.nfs.map(n => `NF ${n.numero} ${formatCurrency(n.valor)}`).join(', ')
+                      : 'NF ainda não lançada'
+                  }`}
+                />
+              ) : (
+                <Card label="FIP (Material)" value={formatCurrency(data.totais.fip_faturar)} accent="#3B82F6" hint="Fat-direto FIP a criar" />
+              )}
               <Card
                 label="NF terceiro descontada"
                 value={formatCurrency(data.totais.nf_descontavel)}
                 accent="var(--text-2)"
-                hint={`Material medido descontado nesta medição, até o lastro que o Informakon tem lançado. Não é a dedução do espelho — essa é o material pelo rateio da FIP: ${formatCurrency(deducaoEspelho)}`}
+                hint={`Material descontado nesta medição, até o lastro que o Informakon tem lançado — é o "material fornecido" do Informakon. Material medido pelo rateio da FIP: ${formatCurrency(deducaoEspelho)}`}
               />
               <Card label="Fat. Direto em aberto" value={formatCurrency(data.totais.faturamento_direto_em_aberto)} accent="#F59E0B" hint="Pedido FIP fat-direto aprovado, NF a emitir" />
+              {/* O valor contratual que o Informakon registra é o % LANÇADO
+                  (serviço + desconto), e é sobre ele que retém os 5%. Com
+                  corte por falta de lastro ele fica abaixo do executado — e a
+                  conta da NF tem de fechar com o desconto, não com o material
+                  medido, senão não bate com o Informakon. */}
               <Card
-                label="Dados Informakon"
-                value={formatCurrency(data.totais.dados_informakon)}
+                label="Valor Informakon"
+                value={formatCurrency(Number(data.totais.informakon_a_lancar ?? data.totais.dados_informakon))}
                 accent="#10B981"
-                hint={`Serviço Wave + material medido · − retenção ${pctFmt(data.medicao.contrato.percentual_retencao)} (${formatCurrency(data.totais.retencao)}) − dedução material (${formatCurrency(deducaoEspelho)}) = NF ${formatCurrency(liquidoWave)}`}
+                hint={`Valor contratual lançado (serviço + desconto) − material fornecido (${formatCurrency(data.totais.nf_descontavel)}) − retenção ${pctFmt(data.medicao.contrato.percentual_retencao)} (${formatCurrency(data.totais.retencao)})${ajusteRateio !== 0 ? ` ${ajusteRateio > 0 ? '−' : '+'} ajuste de rateio ${formatCurrency(Math.abs(ajusteRateio))}` : ''} = NF ${formatCurrency(liquidoWave)}. Executado: ${formatCurrency(data.totais.dados_informakon)}`}
               />
             </div>
           )

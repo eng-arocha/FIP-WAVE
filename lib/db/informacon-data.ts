@@ -455,6 +455,13 @@ export interface InformaconData {
    */
   retrato_adotado: RetratoAdotado | null
   compensacao_lastro: CompensacaoLastroBoletim
+  /**
+   * Medição aprovada: o pedido de NF de material FIP criado no portão 1
+   * (`medicoes.material_fat_direto_id`). É ele que responde "quanto a FIP
+   * fatura nesta medição" — a camada ③ de uma aprovada roda sem o retrato e
+   * não serve para isso.
+   */
+  fip_pedido_vinculado?: { id: string; numero: number; valor: number; nfs: Array<{ numero: string; valor: number }> } | null
 }
 
 /** O que a UI mostra sobre o retrato em vigor nesta medição. */
@@ -1640,6 +1647,22 @@ export async function calcularInformaconData(
     compensacoes,
   })
 
+  // ── RETENÇÃO — sobre o valor contratual LANÇADO no Informakon ──────────
+  //
+  //     retenção = 5% × (serviço medido + desconto, já com o corte da camada ②)
+  //
+  // Decisão do usuário (22/10/2026, manual-fix 092): seguir o Informakon. Ele
+  // retém sobre o "valor contratual da medição" — o % que se digita lá —, não
+  // sobre o material executado. Com corte por falta de lastro as duas bases
+  // divergem: a MED-007 retinha 5% dos R$ 31.916,58 cortados, e a NF Wave do
+  // site saía R$ 1.595,83 abaixo da do Informakon. Só dá para calcular aqui,
+  // depois do retrato, porque é ele que decide o corte.
+  for (const l of linhas) {
+    const base = Number(l.informakon_a_lancar ?? (l.wave_servico + l.nf_descontavel))
+    l.base_retencao = base
+    l.retencao = base * (pctRetencao / 100)
+  }
+
   const totais: InformaconTotais = linhas.reduce<InformaconTotais>((acc, l) => ({
     material_medido: acc.material_medido + l.material_medido,
     servico_medido:  acc.servico_medido  + l.servico_medido,
@@ -1755,10 +1778,11 @@ export async function calcularInformaconData(
       totais.material_medido = matCongelado
       totais.servico_medido = servCongelado
       totais.wave_servico = servCongelado
-      totais.base_retencao = baseCongelada
+      // A base da retenção NÃO é a congelada (material + serviço executados):
+      // é o valor lançado, que sai do snapshot de desconto. Ver "RETENÇÃO".
       totais.retencao = Number.isFinite(retCongelada) && retCongelada > 0
         ? retCongelada
-        : baseCongelada * (pctRetencao / 100)
+        : totais.base_retencao * (pctRetencao / 100)
       totais.dados_informakon = baseCongelada
     }
   }
@@ -1786,6 +1810,7 @@ export async function calcularInformaconData(
     totais,
     retrato_adotado: retratoAdotado,
     compensacao_lastro: compensacaoLastro,
+    fip_pedido_vinculado: medicaoAprovada ? await carregarPedidoFipVinculado(admin, medicaoId) : null,
   }
 }
 
@@ -1867,3 +1892,32 @@ async function montarCompensacaoLastro(
     rotulos,
   }
 }
+
+/** Ver `InformaconData.fip_pedido_vinculado`. Resiliente à migration 073. */
+async function carregarPedidoFipVinculado(
+  admin: SupabaseClient,
+  medicaoId: string,
+): Promise<InformaconData['fip_pedido_vinculado']> {
+  const { data: med, error } = await admin
+    .from('medicoes')
+    .select('material_fat_direto_id')
+    .eq('id', medicaoId)
+    .maybeSingle()
+  const pedidoId = (med as any)?.material_fat_direto_id as string | undefined
+  if (error || !pedidoId) return null
+  const { data: ped } = await admin
+    .from('solicitacoes_fat_direto')
+    .select('id, numero, valor_total, deletado_em, notas:notas_fiscais_fat_direto!solicitacao_id(numero_nf, valor, status)')
+    .eq('id', pedidoId)
+    .maybeSingle()
+  if (!ped || (ped as any).deletado_em) return null
+  return {
+    id: (ped as any).id,
+    numero: Number((ped as any).numero ?? 0),
+    valor: Number((ped as any).valor_total ?? 0),
+    nfs: (((ped as any).notas ?? []) as any[])
+      .filter(n => n.status !== 'cancelada')
+      .map(n => ({ numero: String(n.numero_nf ?? ''), valor: Number(n.valor ?? 0) })),
+  }
+}
+

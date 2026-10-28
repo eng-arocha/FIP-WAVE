@@ -349,7 +349,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           try {
             const obsWave =
               `Saldo de retenção antes desta medição: R$ ${saldoRetencaoAntes.toFixed(2).replace('.', ',')}. ` +
-              `Crédito de retenção desta medição (5% × mat+serv): R$ ${creditoRetencao.toFixed(2).replace('.', ',')}. ` +
+              `Crédito de retenção desta medição (5% × valor lançado no Informakon): R$ ${creditoRetencao.toFixed(2).replace('.', ',')}. ` +
               `Valor BRUTO da NF Wave: R$ ${valorWaveBruto.toFixed(2).replace('.', ',')}. ` +
               `Desconto de retenção aplicado nesta NF: R$ ${debitoRetencao.toFixed(2).replace('.', ',')}. ` +
               `Valor LÍQUIDO a emitir: R$ ${valorWaveLiquido.toFixed(2).replace('.', ',')}. ` +

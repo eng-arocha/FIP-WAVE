@@ -353,6 +353,10 @@ export async function aprovarMedicao(id: string, aprovadorNome: string, aprovado
   // digitado, e os R$ 31.916,58 da MSF/Cordeiro sumiram da fila.
   const nfDescontadaPorDet = new Map<string, number>()
   let snapshotOk = false
+  // A retenção do boletim, que é sobre o valor LANÇADO no Informakon (ver
+  // "RETENÇÃO" em informacon-data.ts). A conta de cima, sobre o executado,
+  // só vale como fallback quando o boletim não calcula.
+  let retencaoDoBoletim: number | null = null
   if (medSnap) {
     try {
       const { createAdminClient } = await import('@/lib/supabase/admin')
@@ -366,6 +370,7 @@ export async function aprovarMedicao(id: string, aprovadorNome: string, aprovado
         for (const l of boletim.linhas ?? []) {
           if (l.nf_descontavel > 0) nfDescontadaPorDet.set(l.detalhamento_id, l.nf_descontavel)
         }
+        retencaoDoBoletim = Math.round(Number(boletim.totais.retencao || 0) * 100) / 100
         snapshotOk = true
       } else {
         console.error('[aprovarMedicao] boletim vazio — snapshot de NF não gravado', { medicaoId: id })
@@ -384,7 +389,7 @@ export async function aprovarMedicao(id: string, aprovadorNome: string, aprovado
     ...updateBase,
     andamento_fisico_pct,
     valor_material_correspondente: valorMaterialCorrespondente,
-    valor_retencao_garantia,
+    valor_retencao_garantia: retencaoDoBoletim ?? valor_retencao_garantia,
   }
 
   const tryUpdate = await supabase.from('medicoes').update(updateExtra).eq('id', id)

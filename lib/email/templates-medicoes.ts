@@ -407,7 +407,7 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
               <td style="padding:2px 0;text-align:right;font-family:ui-monospace,monospace;">${fmt(p.retencao_breakdown.saldo_antes)}</td>
             </tr>
             <tr>
-              <td style="padding:2px 0;">Crédito desta medição (5% × mat+serv)</td>
+              <td style="padding:2px 0;">Crédito desta medição (5% × valor lançado)</td>
               <td style="padding:2px 0;text-align:right;font-family:ui-monospace,monospace;color:#15803d;">+ ${fmt(p.retencao_breakdown.credito)}</td>
             </tr>
             <tr>
@@ -489,7 +489,7 @@ export function templateLiberacaoMedicaoFornecedor(p: LiberacaoMedicaoPayload): 
         <table style="width:100%;font-size:14px;">
           <tr><td style="padding:6px 0;color:#64748b;">Material correspondente medido</td><td style="padding:6px 0;text-align:right;">${fmt(p.resumo.retencao.material_correspondente)}</td></tr>
           <tr><td style="padding:6px 0;color:#64748b;">Serviço executado</td><td style="padding:6px 0;text-align:right;font-weight:700;font-size:16px;color:#0f766e;">${fmt(p.resumo.retencao.servico_medido)}</td></tr>
-          <tr><td style="padding:6px 0;color:#64748b;">Base de retenção (mat + serv)</td><td style="padding:6px 0;text-align:right;color:#475569;">${fmt(p.resumo.retencao.base_retencao)}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Base de retenção (valor lançado no Informakon)</td><td style="padding:6px 0;text-align:right;color:#475569;">${fmt(p.resumo.retencao.base_retencao)}</td></tr>
           <tr><td style="padding:6px 0;color:#64748b;">Retenção contratual (${pctFmt(p.resumo.retencao.percentual_aplicado, 2)} sobre a base)</td><td style="padding:6px 0;text-align:right;color:#b91c1c;font-weight:600;">− ${fmt(p.resumo.retencao.valor)}</td></tr>
           ${ajusteRateio !== 0 ? `<tr><td style="padding:6px 0;color:#64748b;">Ajuste de rateio material/serviço</td><td style="padding:6px 0;text-align:right;color:${ajusteRateio > 0 ? '#b91c1c' : '#059669'};font-weight:600;">${ajusteRateio > 0 ? '−' : '+'} ${fmt(Math.abs(ajusteRateio))}</td></tr>` : ''}
           <tr style="border-top:2px solid #e5e7eb;"><td style="padding:8px 0;color:#0f172a;font-weight:700;">Líquido a pagar (NF a emitir)</td><td style="padding:8px 0;text-align:right;font-weight:700;color:#059669;">${fmt(p.resumo.retencao.liquido_a_pagar)}</td></tr>

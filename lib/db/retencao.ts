@@ -1,5 +1,5 @@
 // Gestão da retenção contratual via livro-razão (tabela retencao_movimentos).
-// Crédito a cada medição aprovada (5% × mat+serv da medição). Débito a cada
+// Crédito a cada medição aprovada (5% × valor lançado no Informakon). Débito a cada
 // NF Wave emitida (até zerar o saldo). Resíduo final é pago via NF de
 // retenção da Wave SPE no encerramento do contrato.
 //
