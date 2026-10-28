@@ -161,7 +161,13 @@ livre de cada item, e correção dos três vínculos com decisão do Alex.
   item = (pendente + jaConsumido) − max(NF, aprovado). Item 100% comprado não
   recebe nota da FIP.
 
-**Pendente — decisão do Alex (dados, não código):**
+**Dados:** manual-fix `supabase/manual-fixes/098_realoca_pedidos_acima_do_contratado.sql`
+(decisão do Alex 28/10/2026; conferido contra o 097 — sem conflito: o
+desconto da MED-008 não lê a alocação dos pedidos e as realocações ficam
+dentro do mesmo grupo). Depois de rodar, o 1.3.1 ainda fica 71.305,95 acima
+— pendência com a FIP.
+
+**Plano original (decisão do Alex):**
 - Pedido #20 (FIP, MED-007): realocar 153.471,24 do 1.3.1 → 82.165,29 para
   1.13.1/1.5.1/1.11.1/1.6.1/1.4.1/1.9.1/1.1.1; até 22.013,94 cabem como
   adiantamento no grupo 1; 49.292,01 fora do contrato (NF de devolução ou
