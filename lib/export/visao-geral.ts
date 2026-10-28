@@ -21,13 +21,27 @@ export interface FlatRow { item: DashboardItem; level: number }
  * é exatamente o que precisa aparecer.
  */
 export function valoresPorModo(item: DashboardItem, modo: DashboardModo) {
-  const [contratado, realizado, pendenteNf]: [number, number, number | null] =
+  const [c, r, p]: [number, number, number | null] =
     modo === 'material'
       ? [item.valor_contratado_material, item.realizado_material, item.saldo_aprovado_material]
       : modo === 'servico'
         ? [item.valor_contratado_servico, item.realizado_servico, item.saldo_medicao_servico]
         : [item.valor_contratado_total, item.realizado_total, null]
-  return { contratado, realizado, saldo: contratado - realizado, pendenteNf }
+  // Arredonda em centavos ANTES de subtrair: a conta tem que fechar com os
+  // números que aparecem na tela (sem isso sobravam diferenças de R$ 0,01).
+  const contratado = centavos(c)
+  const realizado = centavos(r)
+  return {
+    contratado,
+    realizado,
+    saldo: centavos(contratado - realizado),
+    pendenteNf: p === null ? null : centavos(p),
+  }
+}
+
+/** Arredonda pra 2 casas e normaliza -0 (que aparecia como "-0,00"). */
+function centavos(n: number): number {
+  return Math.round((n || 0) * 100) / 100 + 0
 }
 
 /**
