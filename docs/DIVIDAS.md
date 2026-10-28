@@ -101,3 +101,36 @@ Fonte única: `percentuais()` em `lib/export/visao-geral.ts`.
 
 **Limitação conhecida:** a comparação é por linha. No subtotal de um grupo,
 itens adiantados compensam itens atrasados; o laranja por item é o que vale.
+
+## 2026-10-28 — Itens de material acima do contratado (1.3.1, 3.1.1, 17.2.1)
+
+Levantamento no filtro Material, só diferenças acima de R$ 1.000 (pedido
+aprovado − material contratado do item):
+
+| Item | Contratado | Comprometido | Estouro | Causa |
+|---|---|---|---|---|
+| 1.3.1 | 320.380,45 | 473.851,69 | 153.471,24 | Pedido FIP automático da MED-007 (26/10) |
+| 3.1.1 | 17.732,89 | 26.421,74 | 8.688,85 | Pedido #895 ("Subsolo 01") vinculado ao Subsolo 04 |
+| 17.2.1 | 2.256,18 | 5.932,09 | 3.675,91 | Pedido #1081 no item errado (17.1.1 tem exatamente 5.932,09 livres) |
+
+**Por que a trava não segurou — três brechas no código:**
+
+1. `criarSolicitacaoRascunhoDeMedicao` (lib/db/fat-direto.ts) cria o pedido
+   FIP da medição JÁ APROVADO e sem checar limite ("a medição já foi
+   validada" — mas a medição valida quantidade, não material comprometido).
+   O valor vem de `classificarCoberturaPorBalde` (lib/db/desconto-material.ts):
+   calcula a falta do grupo e RATEIA pelo material medido. O 1.3.1, maior
+   material medido do grupo 1 e já 100% comprado (Novemp #1059 + #1085),
+   recebeu 153.471,24. No grupo 1 inteiro só havia 104.179,23 livres e
+   82.165,29 de material medido sem cobertura → 49.292,01 passam do contrato
+   do grupo mesmo redistribuindo.
+2. `PUT /fat-direto/solicitacoes/[solId]` apaga e regrava os itens sem
+   checar limite, inclusive em pedido aprovado, e sem auditoria. Troca de
+   item/valor depois da criação passa direto (provável caso do 17.2.1).
+3. Até 29/07 (commit 1b5c770) a trava de criação usava material + serviço
+   como teto do pedido de material. 3.1.1: #895 (8.688,85) + #987
+   (17.732,89) = 26.421,74 < 31.375,93 (mat + serv) → passou.
+
+**Proposta (antes da próxima medição):** travas nos três caminhos (pedido
+automático da medição, edição, aprovação), rateio da FIP limitado ao saldo
+livre de cada item, e correção dos três vínculos com decisão do Alex.
