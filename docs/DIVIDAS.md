@@ -164,8 +164,11 @@ livre de cada item, e correção dos três vínculos com decisão do Alex.
 **Dados:** manual-fix `supabase/manual-fixes/098_realoca_pedidos_acima_do_contratado.sql`
 (decisão do Alex 28/10/2026; conferido contra o 097 — sem conflito: o
 desconto da MED-008 não lê a alocação dos pedidos e as realocações ficam
-dentro do mesmo grupo). Depois de rodar, o 1.3.1 ainda fica 71.305,95 acima
-— pendência com a FIP.
+dentro do mesmo grupo). **Rodado e conferido em 28/10/2026** (blocos 1 e 3
+batendo). Visão Geral: 3.1.1 e 17.2.1 zerados; único estouro > R$ 1.000 é o
+1.3.1 (−71.305,95 comprometido; −54.862,94 de saldo de material faturado) —
+pendência com a FIP. O 1.13.1 mostra −87,01: rateio dos R$ 501,41 que a NF
+228 tem a mais que o pedido #20 (abaixo do corte de R$ 1.000).
 
 **Plano original (decisão do Alex):**
 - Pedido #20 (FIP, MED-007): realocar 153.471,24 do 1.3.1 → 82.165,29 para
