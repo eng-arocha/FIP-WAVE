@@ -11,6 +11,12 @@ como serviço (NF Wave reemitida por R$ 479.560,54). O site foi alinhado ao
 Informakon no manual-fix 097: o snapshot do 1.3.1 está em 100% lançado, então
 a camada ① NÃO vai propor esse desconto sozinha.
 
+**Estado (28/10/2026):** 097 rodado e conferido — MED-007 = tela do
+Informakon (lançado 1.834.551,81, material 1.263.229,98, retenção 91.727,59,
+descontos diversos 33,70, líquido 479.560,54); livro-razão 91.727,59 nos dois
+lados; pedido nº 21 = 479.560,54; NF nº 07 (449.761,62) cancelada. Falta
+lançar no pedido nº 21 a NF reemitida de R$ 479.560,54.
+
 **O que fazer na MED-008, quando as notas entrarem no Informakon:**
 1. No Informakon, descontar as notas da MSF/Cordeiro no "Material Fornecido
    a Descontar" da medição, **sem lançar % no 1.3.1** (ele já está a 100%).
@@ -34,9 +40,17 @@ ou descontar no encerramento.
 **Em aberto:** os R$ 501,41 a mais da NF 228 (FIP) e os R$ 33,70 de
 "descontos diversos" ficaram só no total da MED-007, sem rateio por item.
 
-**Regra para os próximos cortes (a decidir):** ou o Informakon segue o %
-ajustado do site, ou o site passa a sugerir o % real e transforma o corte em
-ajuste automático na medição em que a nota entrar.
+**Regra para os próximos cortes (a decidir com o Alex):** ou o Informakon
+segue o % ajustado do site, ou o site passa a sugerir o % real e transforma o
+corte em ajuste automático na medição em que a nota entrar. Recomendação: a
+segunda, porque é como a operação do Informakon já trabalha (MED-007). Até
+decidir, conferir toda medição com corte contra a tela "Valores Financeiros"
+do Informakon antes de emitir o pedido Wave.
+
+**Melhoria sugerida:** na aprovação, digitar os números da tela "Valores
+Financeiros" do Informakon (valor contratual, material, retenção, descontos
+diversos, líquido) e congelar esses valores, em vez de corrigi-los depois por
+SQL como no 095/096/097.
 
 ## 2026-10-28 — Tarefas duplicadas no orçamento (ex.: três "1.6" no grupo 1)
 
