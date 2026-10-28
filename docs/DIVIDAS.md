@@ -25,13 +25,13 @@ reabrir a discussão do zero.
 4. Regra dos próximos cortes: Informakon segue o % ajustado do site, OU o site
    sugere o % real e o corte vira ajuste automático na medição em que a nota
    entrar (recomendado). → "MED-008"
-5. R$ 501,41 a mais da NF 228 e R$ 33,70 de descontos diversos: ficam só no
-   total da MED-007 ou ganham rateio por item? (O 501,41 hoje aparece como
-   −87,01 no 1.13.1, rateado pelos itens do #20.)
+5. ~~R$ 501,41 da NF 228~~ resolvido pelo 100. R$ 33,70 de descontos
+   diversos ficam no nível da medição (desconto da NF Wave, não é material).
 
-**Rodar no Supabase (28/10):** manual-fix 100 (#20 = NF 228, zera os
-negativos pequenos do rateio) e 101 (remove tarefas-fantasma, recusa se
-houver referência). 19.1.1 corrigido no código (e46440f).
+**Feito (28/10):** manual-fix 100 (#20 = NF 228 = 189.241,64) e 101 (2
+tarefas-fantasma 1.6 removidas, sem referências) rodados e conferidos.
+19.1.1 sem serviço fantasma (e46440f). Grupos 1 e 2 sem nenhum negativo de
+material; nenhum item do contrato com estouro > R$ 1.000.
 
 **MSF/Cordeiro (item 2):** não precisa abrir saldo em item nenhum — a NF da
 MSF entra no saldo do próprio pedido #1085 (R$ 182.021,93 sem NF). O ajuste
@@ -45,10 +45,8 @@ docs/superpowers/specs/2026-10-28-congelar-informakon-e-cortes.md (itens 6 e
 6. Aprovação de medição: digitar os números da tela "Valores Financeiros" do
    Informakon e congelar — acaba com os manual-fix 095/096/097.
 7. Implementar a regra do item 4.
-8. Visão Geral: 19.1.1 mostra serviço −322 mil (item sem serviço contratado;
-   a medição dele é contada como serviço) — erro de exibição.
-9. Tarefas-fantasma duplicadas (1.6) no banco — a aba Estrutura ainda pode
-   mostrá-las. → "Tarefas duplicadas no orçamento"
+8. ~~19.1.1~~ corrigido (e46440f).
+9. ~~Tarefas-fantasma 1.6~~ removidas (manual-fix 101).
 
 **Atenção na MED-008 (mudanças desta data que entram em vigor)**
 - Trava de saldo por item em criação/edição/aprovação de pedido e no pedido
