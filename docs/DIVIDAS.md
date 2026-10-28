@@ -148,3 +148,23 @@ aprovado − material contratado do item):
 **Proposta (antes da próxima medição):** travas nos três caminhos (pedido
 automático da medição, edição, aprovação), rateio da FIP limitado ao saldo
 livre de cada item, e correção dos três vínculos com decisão do Alex.
+
+**Implementado em 28/10/2026 (travas):**
+- `lib/db/limite-pedido.ts` — trava única por item (natureza, devoluções,
+  compensação de lastro). Usada na criação, na EDIÇÃO (PUT, agora com
+  auditoria `solicitacao_fat_direto.itens_editados`) e na APROVAÇÃO de pedido
+  (o próprio pedido sai da conta). Erro 422 com mensagem legível em `error`.
+- Pedido FIP automático da medição: corta o que passa do saldo livre de cada
+  item e devolve o corte como alerta (`alerta_saldo` na autorização,
+  `alertas` na aprovação). Nenhum item com saldo → pedido não é criado.
+- Rateio da FIP do grupo (`classificarCoberturaPorBalde`): pela falta de cada
+  item = (pendente + jaConsumido) − max(NF, aprovado). Item 100% comprado não
+  recebe nota da FIP.
+
+**Pendente — decisão do Alex (dados, não código):**
+- Pedido #20 (FIP, MED-007): realocar 153.471,24 do 1.3.1 → 82.165,29 para
+  1.13.1/1.5.1/1.11.1/1.6.1/1.4.1/1.9.1/1.1.1; até 22.013,94 cabem como
+  adiantamento no grupo 1; 49.292,01 fora do contrato (NF de devolução ou
+  aditivo). A trava de edição aceita a realocação (exclui o próprio pedido).
+- #895 → 3.1.4 (cabe 5.155,52; restante 3.533,33 → 3.1.15 ou 3.1.11).
+- #1081 → 17.1.1 (cabe exato).

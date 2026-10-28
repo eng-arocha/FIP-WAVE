@@ -181,14 +181,33 @@ export function classificarCoberturaPorBalde(
     const fipBalde = Math.max(0, pendente - cobertura)
     const aCaminhoBalde = Math.min(pendente, Math.min(aprovadoSemNota, cobertura))
 
-    for (const it of lista) {
+    // A FIP do balde vai para quem NÃO tem material comprado, na proporção do
+    // que falta em cada item. Ratear pelo material medido mandava a nota da
+    // FIP para o item que mais mediu — mesmo 100% comprado. Na MED-007 o
+    // 1.3.1 (Novemp + #1085 = contratado inteiro) recebeu R$ 153 mil e
+    // estourou o contrato (docs/DIVIDAS.md, 28/10/2026).
+    //
+    //     falta do item = material medido acumulado − material comprado
+    //                   = (pendente + jaConsumido) − max(NF, aprovado)
+    //
+    // `jaConsumido` entra porque o abatimento antigo fica gravado no item que
+    // MEDIU: é ali que o material sem nota mora. Sem falta em nenhum item,
+    // volta ao peso do medido.
+    const faltaPorItem = lista.map(it => {
+      const comprado = Math.max(norm(it.nfTerceiro), norm(it.pedidoAprovado))
+      return Math.max(0, norm(it.matMedido) + norm(it.jaConsumido) - comprado)
+    })
+    const faltaTotal = faltaPorItem.reduce((s, v) => s + v, 0)
+
+    lista.forEach((it, i) => {
       const peso = pendente > 0 ? norm(it.matMedido) / pendente : 0
+      const pesoFip = faltaTotal > 0 ? faltaPorItem[i] / faltaTotal : peso
       out.set(it.detalhamentoId, {
         cobertura: cobertura * peso,
         notaACaminho: aCaminhoBalde * peso,
-        fipPrecisaEmitir: fipBalde * peso,
+        fipPrecisaEmitir: fipBalde * pesoFip,
       })
-    }
+    })
   }
   return out
 }

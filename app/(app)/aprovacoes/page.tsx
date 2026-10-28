@@ -251,6 +251,10 @@ export default function AprovacoesPage() {
         setPendentesFip(prev => prev.filter(s => s.id !== sol.id))
         return true
       }
+      // Antes a falha era silenciosa. A trava de saldo por item (422) diz
+      // qual item passou do contratado — precisa chegar a quem aprova.
+      const data = await res.json().catch(() => ({}))
+      window.alert('Pedido não aprovado:\n\n' + (data?.error || `Falha (HTTP ${res.status}).`))
       return false
     } finally {
       setAprovandoFip(null)

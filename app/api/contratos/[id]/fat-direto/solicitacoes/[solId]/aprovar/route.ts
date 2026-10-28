@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { assertPermissao, getUsuarioLogado } from '@/lib/api/auth'
 import { atualizarStatusSolicitacao } from '@/lib/db/fat-direto'
 import { apiError } from '@/lib/api/error-response'
+import { respostaLimiteExcedido } from '@/lib/db/limite-pedido'
 import { parseBody } from '@/lib/api/schema'
 import { audit } from '@/lib/api/audit'
 import { emitWebhook } from '@/lib/api/webhooks'
@@ -123,6 +124,11 @@ export async function POST(
     })
     return NextResponse.json({ ok: true })
   } catch (e: any) {
+    // Trava de saldo por item (lib/db/limite-pedido.ts): 422 com mensagem
+    // legível — as telas de aprovação mostram `error`.
+    if (e?.message === 'ITEM_LIMITE_EXCEDIDO') {
+      return NextResponse.json(respostaLimiteExcedido(e), { status: 422 })
+    }
     return apiError(e)
   }
 }

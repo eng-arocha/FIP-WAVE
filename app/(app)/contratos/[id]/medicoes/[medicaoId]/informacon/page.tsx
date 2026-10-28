@@ -360,6 +360,10 @@ export default function BoletimInformaconPage({ params }: { params: Promise<{ id
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) { setErroAcao(body?.error || `Falha (HTTP ${res.status}).`); return }
+      // Material FIP acima do saldo do item é cortado do pedido — avisa.
+      if (body?.alerta_saldo) {
+        window.alert('Medição autorizada, mas com pendência:\n\n' + body.alerta_saldo)
+      }
       setModalAutorizar(false)
       setComentario('')
       await carregar()

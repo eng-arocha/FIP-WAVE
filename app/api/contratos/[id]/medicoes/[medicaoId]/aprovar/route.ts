@@ -12,6 +12,7 @@ import { audit } from '@/lib/api/audit'
 import { emitWebhook } from '@/lib/api/webhooks'
 import { assertMfaForRole } from '@/lib/api/mfa'
 import { log } from '@/lib/log'
+import { textoCortesSaldo } from '@/lib/db/limite-pedido'
 
 const Body = z.object({
   comentario: z.string().max(2000).optional().default(''),
@@ -308,6 +309,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
               })
               solicitacaoFipId = sol.id
               solicitacaoFipValor = Number(sol.valor_total ?? 0)
+              const cortado = textoCortesSaldo((sol as any).cortes_saldo)
+              if (cortado) alertas.push(cortado)
               await audit({
                 event: 'solicitacao_fat_direto.rascunho_auto_criado_da_medicao',
                 entity_type: 'solicitacao_fat_direto',

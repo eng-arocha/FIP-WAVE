@@ -14,6 +14,12 @@ import {
   type NaturezaPedido,
 } from '@/lib/db/saldo-detalhamento'
 import { carregarCompensadoPorDetalhamento } from '@/lib/db/compensacao-lastro'
+import {
+  carregarSaldosDetalhamentos,
+  erroLimiteExcedido,
+  limitarAoSaldo,
+  verificarLimitesDoPedido,
+} from '@/lib/db/limite-pedido'
 
 /** Linha de solicitação vista pelas funções de anexo — só o que interessa. */
 type LinhaComAnexos = Record<string, unknown> & {
@@ -364,96 +370,18 @@ export async function criarSolicitacao(input: {
     throw err
   }
 
-  // Verificar limite por detalhamento (nível 3).
-  // O limite é POR NATUREZA: um pedido de material consome `subtotal_material`
-  // e um pedido de serviço da Wave consome `subtotal_mo`. Usar `valor_total`
-  // (material + MO) pra qualquer natureza inflava o teto de material e, do
-  // outro lado, fazia a NF de serviço estourar a base de material.
-  const detIdsReq = input.itens.map(i => i.detalhamento_id).filter(Boolean) as string[]
-  if (detIdsReq.length > 0) {
-    const naturezaNova = naturezaDoPedido({
+  // Verificar limite por detalhamento (nível 3), POR NATUREZA: um pedido de
+  // material consome `subtotal_material` e um pedido de serviço da Wave
+  // consome `subtotal_mo`. Mesma trava da edição, da aprovação e do pedido
+  // automático da medição — ver lib/db/limite-pedido.ts.
+  const violacoes = await verificarLimitesDoPedido(admin, {
+    itens: input.itens,
+    natureza: naturezaDoPedido({
       fornecedor_cnpj: input.fornecedor_cnpj,
       fornecedor_razao_social: input.fornecedor_razao_social,
-    })
-
-    const { data: detsData } = await admin
-      .from('detalhamentos')
-      .select('id, codigo, descricao, valor_total, quantidade_contratada, valor_unitario, valor_material_unit, valor_servico_unit, subtotal_material, subtotal_mo')
-      .in('id', detIdsReq)
-
-    // Inclui valor_devolvido pra desconsiderar dos comprometimentos e `tipo`
-    // pra separar por natureza. withSchemaFallback: durante janela de schema
-    // cache stale (migrations 050/074), cai pro select enxuto — a natureza
-    // ainda é inferida por CNPJ / razão social (degradação OK).
-    const SOL_COMPLETA = 'solicitacoes_fat_direto!inner(status, deletado_em, tipo, fornecedor_cnpj, fornecedor_razao_social)'
-    const SOL_ENXUTA = 'solicitacoes_fat_direto!inner(status, deletado_em, fornecedor_cnpj, fornecedor_razao_social)'
-    const itensExistRes = await withSchemaFallback({
-      primary: () => admin
-        .from('itens_solicitacao_fat_direto')
-        .select(`detalhamento_id, valor_total, valor_devolvido, ${SOL_COMPLETA}`)
-        .in('detalhamento_id', detIdsReq)
-        .in('solicitacoes_fat_direto.status', ['aprovado', 'aguardando_aprovacao'])
-        .is('solicitacoes_fat_direto.deletado_em', null),
-      fallback: () => admin
-        .from('itens_solicitacao_fat_direto')
-        .select(`detalhamento_id, valor_total, ${SOL_ENXUTA}`)
-        .in('detalhamento_id', detIdsReq)
-        .in('solicitacoes_fat_direto.status', ['aprovado', 'aguardando_aprovacao'])
-        .is('solicitacoes_fat_direto.deletado_em', null),
-      missingColumns: ['valor_devolvido', 'tipo'],
-      context: 'criarSolicitacao_itensExist',
-    })
-    const itensExist = itensExistRes.data
-
-    // Só o consumo da MESMA natureza do pedido novo disputa a mesma base.
-    const aprovByDet: Record<string, number> = {}
-    const pendByDet: Record<string, number> = {}
-    ;(itensExist || []).forEach((it: any) => {
-      if (!it.detalhamento_id) return
-      const sol = it.solicitacoes_fat_direto
-      if (!sol || naturezaDoPedido(sol) !== naturezaNova) return
-      // Saldo efetivo = valor_total − valor_devolvido (devoluções liberam o saldo do item)
-      const efetivo = (it.valor_total || 0) - (it.valor_devolvido || 0)
-      if (efetivo <= 0) return
-      if (sol.status === 'aprovado') aprovByDet[it.detalhamento_id] = (aprovByDet[it.detalhamento_id] || 0) + efetivo
-      else if (sol.status === 'aguardando_aprovacao') pendByDet[it.detalhamento_id] = (pendByDet[it.detalhamento_id] || 0) + efetivo
-    })
-
-    // Compensação de lastro (migration 085) consome a base de MATERIAL do
-    // item como um pedido aprovado. Ver lib/informakon/compensacao-lastro.ts.
-    if (naturezaNova === 'material') {
-      const compensado = await carregarCompensadoPorDetalhamento(admin, detIdsReq)
-      for (const [detId, v] of Object.entries(compensado)) aprovByDet[detId] = (aprovByDet[detId] || 0) + v
-    }
-
-    // Group new items by detalhamento
-    const novoByDet: Record<string, number> = {}
-    input.itens.forEach(i => {
-      if (i.detalhamento_id) novoByDet[i.detalhamento_id] = (novoByDet[i.detalhamento_id] || 0) + i.valor_total
-    })
-
-    for (const det of (detsData || [])) {
-      const limite = baseParaNatureza(basesDoDetalhamento(det), naturezaNova)
-      if (limite <= 0) continue
-      const aprovado = aprovByDet[det.id] || 0
-      const emAprovacao = pendByDet[det.id] || 0
-      const novo = novoByDet[det.id] || 0
-      if (aprovado + emAprovacao + novo > limite) {
-        const err = new Error('ITEM_LIMITE_EXCEDIDO')
-        ;(err as any).itemViolation = {
-          codigo: det.codigo,
-          descricao: det.descricao,
-          natureza: naturezaNova,
-          limite,
-          aprovado,
-          emAprovacao,
-          saldoDisponivel: Math.max(0, limite - aprovado - emAprovacao),
-          novoValor: novo,
-        }
-        throw err
-      }
-    }
-  }
+    }),
+  })
+  if (violacoes.length > 0) throw erroLimiteExcedido(violacoes)
 
   const insertPayload: Record<string, unknown> = {
     contrato_id: input.contrato_id,
@@ -525,8 +453,13 @@ const FORNECEDORES_AUTO = {
  *   - Status nasce `rascunho` — admin abre, valida, completa numero_pedido_fip
  *     se aplicável, e submete pra aprovação interna
  *
- * Sem validações de teto / limite por detalhamento (a medição que origina
- * já foi validada).
+ * Pedido `fip_material` respeita o saldo de material de cada item: o que
+ * passar do saldo livre é CORTADO (não gravado) e volta em `cortes_saldo`
+ * para a rota avisar. Antes não havia trava aqui ("a medição já foi
+ * validada") — mas a medição valida QUANTIDADE, não o material já
+ * comprometido com outros fornecedores. Foi assim que o 1.3.1 recebeu
+ * R$ 153 mil acima do contratado na MED-007 (docs/DIVIDAS.md).
+ * Se nenhum item cabe, lança `FIP_MATERIAL_SEM_SALDO` (com `.cortes`).
  *
  * Retorna a solicitação criada. Lança erro se inserir falhar.
  */
@@ -555,6 +488,24 @@ export async function criarSolicitacaoRascunhoDeMedicao(input: {
 
   if (input.itens.length === 0) {
     throw new Error(`Nenhum item com valor > 0 para ${input.tipo} — sem rascunho a criar.`)
+  }
+
+  let cortesSaldo: ReturnType<typeof limitarAoSaldo>['cortes'] = []
+  if (input.tipo === 'fip_material') {
+    const saldos = await carregarSaldosDetalhamentos(
+      admin, input.itens.map(i => i.detalhamento_id), 'material',
+    )
+    const limitado = limitarAoSaldo(input.itens, saldos)
+    cortesSaldo = limitado.cortes
+    if (cortesSaldo.length > 0) {
+      log.warn('fip_material_cortado_no_saldo', { medicao_id: input.medicao_id, cortes: cortesSaldo })
+    }
+    if (limitado.itens.length === 0) {
+      const err = new Error('FIP_MATERIAL_SEM_SALDO')
+      ;(err as any).cortes = cortesSaldo
+      throw err
+    }
+    input = { ...input, itens: limitado.itens }
   }
 
   const detIds = input.itens.map(i => i.detalhamento_id)
@@ -646,7 +597,7 @@ export async function criarSolicitacaoRascunhoDeMedicao(input: {
     throw itErr
   }
 
-  return sol
+  return Object.assign(sol, { cortes_saldo: cortesSaldo })
 }
 
 export async function listarSolicitacoesAprovadas() {
@@ -724,6 +675,29 @@ export async function atualizarStatusSolicitacao(
   motivo_rejeicao?: string,
 ) {
   const admin = createAdminClient()
+
+  // Trava de saldo também na aprovação: o saldo pode ter mudado desde a
+  // criação (outro pedido aprovado no meio), e pedidos criados antes da
+  // trava nunca foram checados. O próprio pedido sai da conta.
+  if (status === 'aprovado') {
+    const { data: ped, error: pedErr } = await admin
+      .from('solicitacoes_fat_direto')
+      .select('id, fornecedor_cnpj, fornecedor_razao_social, itens:itens_solicitacao_fat_direto ( detalhamento_id, valor_total, valor_devolvido )')
+      .eq('id', id)
+      .single()
+    if (pedErr) throw pedErr
+    const itens = ((ped as any)?.itens || []).map((it: any) => ({
+      detalhamento_id: it.detalhamento_id,
+      valor_total: Number(it.valor_total || 0) - Number(it.valor_devolvido || 0),
+    }))
+    const violacoes = await verificarLimitesDoPedido(admin, {
+      itens,
+      natureza: naturezaDoPedido(ped as any),
+      excluirSolicitacaoId: id,
+    })
+    if (violacoes.length > 0) throw erroLimiteExcedido(violacoes)
+  }
+
   const updates: Record<string, unknown> = {
     status,
     updated_at: new Date().toISOString(),

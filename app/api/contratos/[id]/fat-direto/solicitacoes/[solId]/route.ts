@@ -12,6 +12,9 @@ import {
   type AnexoParcial,
 } from '@/lib/db/fat-direto-anexos'
 import { log } from '@/lib/log'
+import { audit } from '@/lib/api/audit'
+import { naturezaDoPedido } from '@/lib/db/saldo-detalhamento'
+import { erroLimiteExcedido, respostaLimiteExcedido, verificarLimitesDoPedido } from '@/lib/db/limite-pedido'
 
 const ADMIN_EMAILS = ['eng.arocha@gmail.com']
 const STORAGE_BUCKET = BUCKET_FAT_DIRETO
@@ -58,6 +61,33 @@ export async function PUT(
           )
         }
       }
+    }
+
+    // ── Trava de saldo por item ──
+    // A edição regrava os itens (troca de item do orçamento, valor) — até de
+    // pedido aprovado. Sem esta checagem foi por aqui que pedido foi parar
+    // em item sem saldo (ex.: 17.2.1, out/2026). O próprio pedido sai da
+    // conta; a natureza vem do `tipo` gravado + fornecedor do formulário.
+    const { data: atual } = await admin
+      .from('solicitacoes_fat_direto')
+      .select('status, tipo, fornecedor_cnpj, fornecedor_razao_social, itens:itens_solicitacao_fat_direto ( detalhamento_id, valor_unitario, qtde_solicitada )')
+      .eq('id', solId)
+      .single()
+    const itensNovos = ((body.itens as any[]) || []).map((it: any) => ({
+      detalhamento_id: (it.detalhamento_id as string) || null,
+      valor_total: parseFloat(it.valor_total) || 0,
+    }))
+    const violacoes = await verificarLimitesDoPedido(admin, {
+      itens: itensNovos,
+      natureza: naturezaDoPedido({
+        tipo: (atual as any)?.tipo,
+        fornecedor_cnpj: body.fornecedor_cnpj ?? (atual as any)?.fornecedor_cnpj,
+        fornecedor_razao_social: body.fornecedor_razao_social ?? (atual as any)?.fornecedor_razao_social,
+      }),
+      excluirSolicitacaoId: solId,
+    })
+    if (violacoes.length > 0) {
+      return NextResponse.json(respostaLimiteExcedido(erroLimiteExcedido(violacoes)), { status: 422 })
     }
 
     // ── Trava contra apagamento acidental dos anexos ──
@@ -170,6 +200,25 @@ export async function PUT(
     }))
     const { error: errItens } = await admin.from('itens_solicitacao_fat_direto').insert(novosItens)
     if (errItens) throw errItens
+
+    // Troca de item/valor muda saldo do contrato — fica registrada.
+    const { data: { user } } = await (await createClient()).auth.getUser()
+    await audit({
+      event: 'solicitacao_fat_direto.itens_editados',
+      entity_type: 'solicitacao_fat_direto',
+      entity_id: solId,
+      actor_id: user?.id ?? null,
+      actor_email: user?.email ?? null,
+      metadata: {
+        status: (atual as any)?.status,
+        antes: ((atual as any)?.itens || []).map((i: any) => ({
+          detalhamento_id: i.detalhamento_id,
+          valor: Number(i.valor_unitario || 0) * Number(i.qtde_solicitada || 1),
+        })),
+        depois: itensNovos,
+      },
+      request: req,
+    })
 
     return NextResponse.json({ ok: true })
   } catch (e: any) {

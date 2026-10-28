@@ -7,6 +7,7 @@ import { parseBody } from '@/lib/api/schema'
 import { audit } from '@/lib/api/audit'
 import { assertMfaForRole } from '@/lib/api/mfa'
 import { log } from '@/lib/log'
+import { textoCortesSaldo } from '@/lib/db/limite-pedido'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -110,6 +111,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     let pedidoFipId: string | null = null
     let pedidoFipValor: number | null = null
     let viaAvulso = false
+    let alertaSaldo: string | null = null
 
     try {
       if (vincular_pedido_fip_id) {
@@ -163,6 +165,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           })
           pedidoFipId = sol.id
           pedidoFipValor = Number(sol.valor_total ?? 0)
+          alertaSaldo = textoCortesSaldo((sol as any).cortes_saldo)
         }
       }
 
@@ -193,6 +196,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         })
       }
     } catch (e: any) {
+      if (e?.message === 'FIP_MATERIAL_SEM_SALDO') {
+        alertaSaldo = textoCortesSaldo(e.cortes) +
+          ' Nenhum item tinha saldo: o pedido de material FIP NÃO foi criado.'
+      }
       log.warn('portao1_material_falhou', { medicaoId, error: e?.message })
     }
 
@@ -202,6 +209,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       pedido_fip_material: pedidoFipId
         ? { id: pedidoFipId, valor_total: pedidoFipValor, via_avulso: viaAvulso }
         : null,
+      // Material FIP que passou do saldo do item e não foi gravado no pedido.
+      alerta_saldo: alertaSaldo,
       proximo_passo: pedidoFipId
         ? 'Lance a NF de material no sistema; depois use "Aprovar emissão NF serviço".'
         : 'Sem material a faturar — pode aprovar a emissão da NF de serviço.',

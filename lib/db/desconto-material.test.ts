@@ -29,10 +29,13 @@ describe('cobertura por balde', () => {
     // Balde: cobertura 300 − 120 consumidos = 180; pendente 400 → FIP 220.
     const fip = ['A', 'B', 'C'].reduce((s, k) => s + r.get(k)!.fipPrecisaEmitir, 0)
     expect(fip).toBeCloseTo(220, 2)
-    // Rateado pelo pendente de cada item: A 3/4, C 1/4, B nada.
-    expect(r.get('A')!.fipPrecisaEmitir).toBeCloseTo(165, 2)
-    expect(r.get('C')!.fipPrecisaEmitir).toBeCloseTo(55, 2)
-    expect(r.get('B')!.fipPrecisaEmitir).toBe(0)
+    // Rateado pelo que FALTA em cada item (medido acumulado − comprado):
+    // A está 100% comprado → nada; B consumiu 120 sem nota; C mediu 100 sem
+    // nota. Antes ia pelo pendente (A 165, C 55) e A — como o 1.3.1 na
+    // MED-007 — recebia nota da FIP acima do contratado.
+    expect(r.get('A')!.fipPrecisaEmitir).toBe(0)
+    expect(r.get('B')!.fipPrecisaEmitir).toBeCloseTo(120, 2)
+    expect(r.get('C')!.fipPrecisaEmitir).toBeCloseTo(100, 2)
   })
 
   it('pedido aprovado sem nota é "nota a caminho" do balde inteiro', () => {
