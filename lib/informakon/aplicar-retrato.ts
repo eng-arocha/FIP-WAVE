@@ -118,6 +118,21 @@ export interface ResumoRetratoAplicado {
   fipPeloCorte: number
 }
 
+export interface OpcoesRetrato {
+  /**
+   * Regra do "% real" (migration 086, spec 2026-10-28): o percentual a lançar
+   * é o FÍSICO — serviço + material do período —, e o corte por falta de
+   * lastro deixa de baixar o percentual. O material sem lastro fica como
+   * desconto pendente do item (camada ①) e é descontado, sem %, na medição em
+   * que a nota entrar no Informakon. É como o Informakon opera (MED-007: o
+   * 1.3.1 foi lançado a 100% sem as notas da MSF/Cordeiro).
+   *
+   * Sem a regra, o lançado é `serviço + desconto` — medições aprovadas antes
+   * dela continuam reimpressas como foram assinadas.
+   */
+  pctReal?: boolean
+}
+
 const cent = (n: number) => Math.round(n * 100) / 100
 const num = (n: unknown) => (Number.isFinite(Number(n)) ? Number(n) : 0)
 
@@ -129,6 +144,7 @@ const num = (n: unknown) => (Number.isFinite(Number(n)) ? Number(n) : 0)
 export function aplicarRetratoNasLinhas(
   linhas: LinhaAjustavel[],
   saldoPorChave: Map<string, number>,
+  opcoes: OpcoesRetrato = {},
 ): ResumoRetratoAplicado {
   const porChave = new Map<string, LinhaAjustavel[]>()
   for (const l of linhas) {
@@ -194,7 +210,7 @@ export function aplicarRetratoNasLinhas(
     }
 
     // A nota da FIP NÃO entra no percentual: ver o bloco no topo do arquivo.
-    const bruto = num(l.wave_servico) + num(l.nf_descontavel)
+    const bruto = baseALancar(l, opcoes.pctReal === true)
     const aLancar = cent(bruto)
     l.informakon_a_lancar = aLancar
     // O percentual sai do valor SEM arredondar. Arredondar antes de dividir
@@ -287,4 +303,25 @@ export function recuperadoDeMedicoesAnteriores(l: { nf_descontavel: number; mate
   if (l.material_medido === undefined) return 0
   const r = cent(num(l.nf_descontavel) - num(l.material_medido))
   return r > 0.01 ? r : 0
+}
+
+
+/**
+ * O valor contratual que o item lança no Informakon.
+ *
+ *     regra antiga:  serviço + desconto (o corte baixa o percentual)
+ *     % real:        serviço + material do período (o físico)
+ *
+ * No % real, o desconto que passa do material do período (pendente antigo que
+ * ganhou lastro) não sobe o percentual, e o que falta de lastro não o baixa:
+ * os dois ficam só no "material a descontar".
+ */
+export function baseALancar(
+  l: Pick<LinhaAjustavel, 'wave_servico' | 'nf_descontavel' | 'material_medido'>,
+  pctReal: boolean,
+): number {
+  if (pctReal && l.material_medido !== undefined) {
+    return num(l.wave_servico) + num(l.material_medido)
+  }
+  return num(l.wave_servico) + num(l.nf_descontavel)
 }

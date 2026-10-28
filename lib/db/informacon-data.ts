@@ -22,7 +22,7 @@ import { getCodigoInformakon } from '@/lib/data/informakon-codigos'
 // importadores existentes.
 export { ehPedidoDeServicoWave } from '@/lib/db/saldo-detalhamento'
 import { ehPedidoDeServicoWave } from '@/lib/db/saldo-detalhamento'
-import { aplicarRetratoNasLinhas, lastroFipEmLancamento } from '@/lib/informakon/aplicar-retrato'
+import { aplicarRetratoNasLinhas, baseALancar, lastroFipEmLancamento, type OpcoesRetrato } from '@/lib/informakon/aplicar-retrato'
 import { chaveMacroItem } from '@/lib/informakon/comparar-saldo'
 import { rechavearRetrato } from '@/lib/informakon/rechavear'
 import { carregarAlocacaoDeNotas } from '@/lib/db/alocacao-notas'
@@ -64,6 +64,7 @@ async function aplicarRetratoAdotado(
   insumos?: InsumosCompensacao,
   /** NF de material da FIP autorizada e ainda sem nota — ver `lastroFipEmLancamento`. */
   fipEmLancamento?: { porChave: Map<string, number>; pedidos: Array<{ numero: number; valor: number }> },
+  opcoes: OpcoesRetrato = {},
 ): Promise<RetratoAdotado | null> {
   // Sem retrato adotado nesta medição, cai no mais recente do contrato: a
   // CAMADA ② não é opcional. Lançar percentual que o ERP não consegue
@@ -174,7 +175,7 @@ async function aplicarRetratoAdotado(
   }
   const totalFipConsiderado = Math.round(Object.values(fipConsiderado).reduce((t, v) => t + v, 0) * 100) / 100
 
-  const resumo = aplicarRetratoNasLinhas(linhas, saldoPorChave)
+  const resumo = aplicarRetratoNasLinhas(linhas, saldoPorChave, opcoes)
   const snap = snapRes.data as any
   return {
     snapshot_id: String(snap.id),
@@ -1223,6 +1224,15 @@ export async function calcularInformaconData(
     return temValor ? snap : null
   })()
 
+  // Regra do % real (migration 086): medição aberta sempre; aprovada só com a
+  // flag gravada na aprovação. Lida em consulta própria pelo mesmo motivo do
+  // retrato adotado: coluna nova no select grande derruba tudo pro fallback.
+  const regraPctReal = await (async () => {
+    if ((medicao as any).status !== 'aprovado') return true
+    const r = await admin.from('medicoes').select('regra_pct_real').eq('id', medicaoId).maybeSingle()
+    return !r.error && (r.data as any)?.regra_pct_real === true
+  })()
+
   // ── CAMADA ① — o desconto ideal é o material ainda não lançado ──────────
   //
   //     desconto ideal = material acumulado − desconto já lançado nas aprovadas
@@ -1436,7 +1446,10 @@ export async function calcularInformaconData(
       //
       // A nota da FIP não entra: ela é tarefa da camada ③, e só muda o
       // percentual da medição seguinte, quando virar lastro no ERP.
-      const informakonALancar = waveServico + nfDescontavel
+      //
+      // Com a regra do % real (migration 086) o lançado é o físico: o corte
+      // por falta de lastro não baixa mais o percentual. Ver `baseALancar`.
+      const informakonALancar = regraPctReal ? dadosInformakon : waveServico + nfDescontavel
       // O percentual sai do valor SEM arredondar. Arredondar antes de dividir
       // empurrava o resultado meio centavo para cima, e um item 100% medido
       // saía com 25,0001% contra 25,0000% de físico — percentual acima do
@@ -1626,7 +1639,7 @@ export async function calcularInformaconData(
   const insumosCompensacao: InsumosCompensacao = {}
   const medicaoAprovada = (medicao as any).status === 'aprovado'
   const retratoAdotado = medicaoAprovada
-    ? (aplicarRetratoNasLinhas(linhas, new Map()), null)
+    ? (aplicarRetratoNasLinhas(linhas, new Map(), { pctReal: regraPctReal }), null)
     : await aplicarRetratoAdotado(admin, contratoId, snapshotIdAdotado, linhas, insumosCompensacao, {
         porChave: lastroFipEmLancamento(
           fipPendentePorDet,
@@ -1636,7 +1649,7 @@ export async function calcularInformaconData(
           ]),
         ),
         pedidos: fipPendentePedidos,
-      })
+      }, { pctReal: regraPctReal })
 
   const compensacaoLastro = await montarCompensacaoLastro(admin, contratoId, {
     medicaoId,
@@ -1658,7 +1671,7 @@ export async function calcularInformaconData(
   // site saía R$ 1.595,83 abaixo da do Informakon. Só dá para calcular aqui,
   // depois do retrato, porque é ele que decide o corte.
   for (const l of linhas) {
-    const base = Number(l.informakon_a_lancar ?? (l.wave_servico + l.nf_descontavel))
+    const base = Number(l.informakon_a_lancar ?? baseALancar(l, regraPctReal))
     l.base_retencao = base
     l.retencao = base * (pctRetencao / 100)
   }
@@ -1788,8 +1801,19 @@ export async function calcularInformaconData(
   }
 
   // Valor da NF de serviço a emitir. Fonte única — ver InformaconTotais.
-  totais.servico_liquido =
-    totais.wave_servico - totais.retencao - totais.ajuste_material_anterior
+  //
+  // Medição aberta com o % real: a Wave recebe o lançado menos o material que
+  // o Informakon desconta — não só o serviço. O material sem lastro vai junto
+  // (é pago agora e descontado quando a nota entrar), e o pendente antigo que
+  // ganhou lastro sai daqui. Aprovada: `wave_servico` já é o congelado
+  // (contratual − material do Informakon).
+  if (regraPctReal && (medicao as any).status !== 'aprovado') {
+    totais.servico_liquido =
+      totais.informakon_a_lancar - totais.nf_descontavel - totais.retencao - totais.ajuste_material_anterior
+  } else {
+    totais.servico_liquido =
+      totais.wave_servico - totais.retencao - totais.ajuste_material_anterior
+  }
 
   return {
     medicao: {

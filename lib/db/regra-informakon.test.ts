@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { descontoIdealDoItem, classificarCoberturaDoSite } from './desconto-material'
-import { aplicarRetratoNasLinhas, lastroFipEmLancamento, recuperadoDeMedicoesAnteriores, type LinhaAjustavel } from '@/lib/informakon/aplicar-retrato'
+import { aplicarRetratoNasLinhas, baseALancar, lastroFipEmLancamento, recuperadoDeMedicoesAnteriores, type LinhaAjustavel } from '@/lib/informakon/aplicar-retrato'
 
 /**
  * A regra de medição, nas três camadas, travada nos números reais.
@@ -443,5 +443,70 @@ describe('recuperação — o corte de uma medição volta quando a nota entra',
     const l = linha()
     aplicarRetratoNasLinhas([l], new Map([['1', 30_000]]))
     expect(recuperadoDeMedicoesAnteriores(l)).toBe(10_000)
+  })
+})
+
+describe('% real (migration 086) — o corte vira desconto posterior', () => {
+  // 1.3.1 da MED-007: material 320.380,45, lastro do grupo só 288.463,87 (sem
+  // as notas da MSF/Cordeiro). Serviço fictício de 30.000 para o item fechar
+  // em 100%.
+  const med7 = (): LinhaAjustavel & { material_medido: number } => ({
+    codigo: '1.3.1',
+    wave_servico: 30_000,
+    material_medido: 320_380.45,
+    nf_descontavel: 320_380.45,
+    gap_material: 0,
+    valor_total_item: 350_380.45,
+    dados_informakon: 350_380.45,
+  })
+
+  it('MED-007: lança 100% e desconta só o que tem lastro', () => {
+    const l = med7()
+    aplicarRetratoNasLinhas([l], new Map([['1', 288_463.87]]), { pctReal: true })
+    expect(l.pct_informakon_a_lancar).toBeCloseTo(100, 6)
+    expect(l.informakon_a_lancar).toBe(350_380.45)
+    expect(l.nf_descontavel).toBe(288_463.87)
+    // O que ficou sem desconto é o pendente da MSF/Cordeiro.
+    expect(l.gap_material).toBe(31_916.58)
+    expect(l.correcao_informakon).toBe(0)
+  })
+
+  it('regra antiga, mesmo item: o corte baixa o percentual (90,89%)', () => {
+    const l = med7()
+    aplicarRetratoNasLinhas([l], new Map([['1', 288_463.87]]))
+    expect(l.informakon_a_lancar).toBe(318_463.87)
+    expect(l.pct_informakon_a_lancar).toBeCloseTo(90.8908, 3)
+  })
+
+  it('MED-008: a nota entra, desconta 31.916,58 sem mexer no percentual', () => {
+    // Item sem evolução: pendente da camada ① = 320.380,45 − 288.463,87.
+    const l: LinhaAjustavel & { material_medido: number } = {
+      codigo: '1.3.1', wave_servico: 0, material_medido: 0,
+      nf_descontavel: 31_916.58, gap_material: 0,
+      valor_total_item: 350_380.45, dados_informakon: 0,
+    }
+    aplicarRetratoNasLinhas([l], new Map([['1', 31_916.58]]), { pctReal: true })
+    expect(l.nf_descontavel).toBe(31_916.58)
+    expect(l.informakon_a_lancar).toBe(0)
+    expect(l.pct_informakon_a_lancar).toBe(0)
+    expect(recuperadoDeMedicoesAnteriores(l)).toBe(31_916.58)
+  })
+
+  it('MED-008 sem a nota: nada é descontado e o pendente segue', () => {
+    const l: LinhaAjustavel & { material_medido: number } = {
+      codigo: '1.3.1', wave_servico: 0, material_medido: 0,
+      nf_descontavel: 31_916.58, gap_material: 0,
+      valor_total_item: 350_380.45, dados_informakon: 0,
+    }
+    aplicarRetratoNasLinhas([l], new Map([['1', 0]]), { pctReal: true })
+    expect(l.nf_descontavel).toBe(0)
+    expect(l.gap_material).toBe(31_916.58)
+    expect(l.informakon_a_lancar).toBe(0)
+  })
+
+  it('baseALancar: sem material do período cai na regra antiga', () => {
+    expect(baseALancar({ wave_servico: 10, nf_descontavel: 5 }, true)).toBe(15)
+    expect(baseALancar({ wave_servico: 10, nf_descontavel: 5, material_medido: 8 }, true)).toBe(18)
+    expect(baseALancar({ wave_servico: 10, nf_descontavel: 5, material_medido: 8 }, false)).toBe(15)
   })
 })
