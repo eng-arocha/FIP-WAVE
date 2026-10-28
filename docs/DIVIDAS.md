@@ -14,10 +14,11 @@ reabrir a discussão do zero.
    do 1.3.1) quando as notas entrarem no Informakon — SQL pronto. Conferir o
    líquido do site com "Valor Líquido da Medição" do Informakon antes do
    pedido Wave. → mesma seção
-3. 1.3.1: R$ 71.305,95 do pedido FIP #20 acima do contratado (até 22.013,94
-   cabem como adiantamento no grupo 1; 49.292,01 fora do contrato) — NF de
-   devolução, adiantamento ou aditivo, com a FIP. → "Itens de material acima
-   do contratado"
+3. 1.3.1: R$ 71.305,95 do pedido FIP #20 acima do contratado → DECIDIDO
+   (28/10): vão inteiros para o 2.2.1 (100% do serviço medido, 100.759,72 de
+   material sem pedido). Rodar o manual-fix 099 e conferir no Informakon que a
+   NF 228 não está lançada só no grupo 1. Premissa conferida: pedidos
+   aprovados sem NF seguem recebendo nota (NF consome o saldo do pedido).
 
 **Decisões do Alex (regra)**
 4. Regra dos próximos cortes: Informakon segue o % ajustado do site, OU o site
