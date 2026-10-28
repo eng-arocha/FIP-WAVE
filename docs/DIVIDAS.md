@@ -10,10 +10,11 @@ reabrir a discussão do zero.
 **Ações do Alex (operação)**
 1. Lançar no site a NF Wave reemitida de R$ 479.560,54 no pedido nº 21
    (hoje só tem a NF 07 cancelada). → "MED-008: descontar R$ 31.916,58"
-2. MED-008, antes de aprovar: gravar o ajuste de R$ 31.916,58 (MSF/Cordeiro
-   do 1.3.1) quando as notas entrarem no Informakon — SQL pronto. Conferir o
-   líquido do site com "Valor Líquido da Medição" do Informakon antes do
-   pedido Wave. → mesma seção
+2. MED-008: os R$ 31.916,58 (MSF/Cordeiro do 1.3.1) — ⚠ NÃO usar o SQL de
+   ajuste anotado abaixo: a rota de aprovação cria o pedido Wave sem abater
+   `ajuste_material_anterior` e o pedido sairia R$ 31.916,58 acima. Vai ser
+   resolvido pela spec revisada (manual-fix 102 + aprovação com os valores do
+   Informakon). → spec docs/superpowers/specs/2026-10-28-congelar-informakon-e-cortes.md
 3. 1.3.1: R$ 71.305,95 do pedido FIP #20 acima do contratado → RESOLVIDO
    (28/10): movidos inteiros para o 2.2.1 pelo manual-fix 099 (rodado e
    conferido). 1.3.1 comprometido = contratado (320.380,45); 2.2.1 =
