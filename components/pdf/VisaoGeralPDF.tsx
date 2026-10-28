@@ -1,6 +1,6 @@
 import { Document, Page, View, Text, StyleSheet, Image } from '@react-pdf/renderer'
 import type { DashboardModo } from '@/types/dashboard'
-import { valoresPorModo, rotuloSaldo, totalizarRows, type FlatRow } from '@/lib/export/visao-geral'
+import { valoresPorModo, rotuloSaldo, rotuloPendenteNf, totalizarRows, type FlatRow } from '@/lib/export/visao-geral'
 
 const BLU = '#1e3a8a'
 const BLU_LT = '#dbeafe'
@@ -16,8 +16,8 @@ const s = StyleSheet.create({
   thead: { flexDirection: 'row', backgroundColor: BLU, color: '#fff', fontFamily: 'Helvetica-Bold' },
   row: { flexDirection: 'row', borderBottomWidth: 0.5, borderBottomColor: BRD },
   cCod: { width: '12%', padding: 3 },
-  cItem: { width: '46%', padding: 3 },
-  cNum: { width: '14%', padding: 3, textAlign: 'right' },
+  cItem: { flex: 1, padding: 3 },
+  cNum: { width: '13%', padding: 3, textAlign: 'right' },
   tfoot: { flexDirection: 'row', backgroundColor: BLU, color: '#fff', fontFamily: 'Helvetica-Bold' },
 })
 
@@ -28,8 +28,9 @@ export function VisaoGeralPDF({
 }: { rows: FlatRow[]; modo: DashboardModo; contratoNome: string; chartImage?: string | null }) {
   const modoLabel = modo === 'material' ? 'Material' : modo === 'servico' ? 'Serviço' : 'Total'
   const saldoLabel = rotuloSaldo(modo)
+  const pendLabel = rotuloPendenteNf(modo)
   // Raízes do conjunto filtrado, pra não somar o mesmo dinheiro em 2-3 níveis.
-  const { contratado: totC, realizado: totR, saldo: totS } = totalizarRows(rows, modo)
+  const { contratado: totC, realizado: totR, saldo: totS, pendenteNf: totP } = totalizarRows(rows, modo)
   return (
     <Document>
       <Page size="A4" style={s.page} wrap>
@@ -43,6 +44,7 @@ export function VisaoGeralPDF({
           <Text style={s.cNum}>Contratado</Text>
           <Text style={s.cNum}>Realizado</Text>
           <Text style={s.cNum}>{saldoLabel}</Text>
+          {pendLabel ? <Text style={s.cNum}>{pendLabel}</Text> : null}
         </View>
 
         {rows.map(({ item, level }) => {
@@ -57,6 +59,7 @@ export function VisaoGeralPDF({
               <Text style={[s.cNum, { fontFamily: bold, color }]}>{fmt(v.contratado)}</Text>
               <Text style={[s.cNum, { fontFamily: bold, color }]}>{fmt(v.realizado)}</Text>
               <Text style={[s.cNum, { fontFamily: bold, color }]}>{fmt(v.saldo)}</Text>
+              {pendLabel ? <Text style={[s.cNum, { fontFamily: bold, color }]}>{fmt(v.pendenteNf ?? 0)}</Text> : null}
             </View>
           )
         })}
@@ -67,6 +70,7 @@ export function VisaoGeralPDF({
           <Text style={s.cNum}>{fmt(totC)}</Text>
           <Text style={s.cNum}>{fmt(totR)}</Text>
           <Text style={s.cNum}>{fmt(totS)}</Text>
+          {pendLabel ? <Text style={s.cNum}>{fmt(totP)}</Text> : null}
         </View>
 
         <Text style={{ position: 'absolute', bottom: 20, left: 28, right: 28, fontSize: 7, color: GRY, textAlign: 'center' }}

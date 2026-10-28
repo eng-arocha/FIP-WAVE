@@ -146,6 +146,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
     // Ao mudar modo ou scope, limpa o estado de expansão da DashboardTree
     if ('modo' in updates || 'scope' in updates) {
       next.delete('expand')
+      next.delete('recolher')
     }
     const qs = next.toString()
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })

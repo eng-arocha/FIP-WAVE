@@ -14,7 +14,6 @@ type Props = {
   modo: DashboardModo
   onDoubleClickItem: (item: DashboardItem) => void
   onClickRealizado: (item: DashboardItem) => void
-  onClickSaldo: (item: DashboardItem) => void
   height?: number
 }
 
@@ -56,7 +55,6 @@ export function DashboardBarChart({
   modo,
   onDoubleClickItem,
   onClickRealizado,
-  onClickSaldo,
   height = 320,
 }: Props) {
   const rows = useMemo(() => buildRows(itens, modo), [itens, modo])
@@ -78,7 +76,7 @@ export function DashboardBarChart({
           <YAxis
             dataKey="label"
             type="category"
-            width={220}
+            width={340}
             tick={{ fontSize: 11, fill: 'var(--text-2)' }}
             interval={0}
           />
@@ -117,19 +115,14 @@ export function DashboardBarChart({
             }}
             style={{ cursor: 'pointer' }}
           />
-          {/* Total: barra de saldo (a executar) é informativa — sem clique de origem. */}
+          {/* Saldo = contratado − realizado: barra informativa, sem clique de origem. */}
           <Bar
             dataKey="saldo"
             fill={COLORS.saldo}
-            onClick={modo !== 'total' ? (payload: unknown) => {
-              const item = extractItem(payload)
-              if (item) onClickSaldo(item)
-            } : undefined}
             onDoubleClick={(payload: unknown) => {
               const item = extractItem(payload)
               if (item) onDoubleClickItem(item)
             }}
-            style={{ cursor: 'pointer' }}
           />
         </BarChart>
       </ResponsiveContainer>

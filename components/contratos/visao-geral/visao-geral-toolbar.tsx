@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Search, FileSpreadsheet, FileText, Loader2, X } from 'lucide-react'
 import type { DashboardModo } from '@/types/dashboard'
 import {
-  filtrarRows, valoresPorModo, rotuloSaldo, totalizarRows,
+  filtrarRows, valoresPorModo, rotuloSaldo, rotuloPendenteNf, totalizarRows,
   exportarExcelVisaoGeral, type FlatRow,
 } from '@/lib/export/visao-geral'
 
@@ -68,6 +68,7 @@ export function VisaoGeralToolbar({
   )
   const totais = useMemo(() => totalizarRows(filtradas, modo), [filtradas, modo])
   const filtrando = texto.trim() !== '' || somenteSaldo
+  const pendLabel = rotuloPendenteNf(modo)
 
   async function baixarExcel() {
     if (filtradas.length === 0) return
@@ -152,6 +153,7 @@ export function VisaoGeralToolbar({
                   <th className="text-right py-1 px-2 font-semibold">Contratado</th>
                   <th className="text-right py-1 px-2 font-semibold">Realizado</th>
                   <th className="text-right py-1 px-2 font-semibold">{rotuloSaldo(modo)}</th>
+                  {pendLabel && <th className="text-right py-1 px-2 font-semibold">{pendLabel}</th>}
                 </tr>
               </thead>
               <tbody>
@@ -170,6 +172,9 @@ export function VisaoGeralToolbar({
                       >
                         {fmt(v.saldo)}
                       </td>
+                      {pendLabel && (
+                        <td className="py-1 px-2 text-right tabular-nums text-[var(--text-2)]">{fmt(v.pendenteNf ?? 0)}</td>
+                      )}
                     </tr>
                   )
                 })}
@@ -184,6 +189,9 @@ export function VisaoGeralToolbar({
                   <td className="py-1 px-2 text-right tabular-nums" style={{ color: totais.saldo < 0 ? '#EF4444' : 'var(--text-1)' }}>
                     {fmt(totais.saldo)}
                   </td>
+                  {pendLabel && (
+                    <td className="py-1 px-2 text-right tabular-nums text-[var(--text-1)]">{fmt(totais.pendenteNf)}</td>
+                  )}
                 </tr>
               </tfoot>
             </table>

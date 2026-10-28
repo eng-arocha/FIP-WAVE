@@ -77,10 +77,19 @@ interface RawGrupo {
   tarefas: RawTarefa[] | null
 }
 
-export async function getDashboardData(
-  contratoId: string,
-  filtros: { grupo_id?: string; tarefa_id?: string; detalhamento_id?: string },
-): Promise<DashboardResponse> {
+/** Normaliza código WBS pra comparação: '1.6.' e ' 1.6' viram '1.6'. */
+function codigoNorm(c: string | null | undefined): string {
+  return String(c ?? '').trim().replace(/\.+$/, '')
+}
+
+/**
+ * Carrega estrutura + movimentações UMA vez e devolve os builders de item.
+ * Tanto o drill-down por scope quanto a lista plana usam este modelo —
+ * antes a lista plana chamava getDashboardData uma vez por grupo e por
+ * tarefa (centenas de cargas completas), e a tela ficava presa em
+ * "Carregando itens para filtro/exportação…".
+ */
+async function carregarModelo(contratoId: string) {
   const admin = createAdminClient()
 
   // --------------------------------------------------------------------
@@ -129,7 +138,23 @@ export async function getDashboardData(
       }
       detsPorTarefa.set(t.id, detsDaTarefa)
     }
-    tarefasPorGrupo.set(g.id, tarefasDoGrupo)
+    // Tarefas-fantasma: seeds antigos (005/011/015) gravaram a mesma tarefa
+    // mais de uma vez — ex.: três "1.6" no grupo 1, duas vazias. A cópia sem
+    // detalhamentos não entra na soma do grupo (que fecha pelos
+    // detalhamentos), mas aparecia na lista com o valor de cabeçalho e
+    // duplicava a linha. Só sai a cópia vazia cujo código coincide com o de
+    // uma irmã que TEM detalhamentos; tarefa vazia de código único fica.
+    const codigosComDets = new Set(
+      tarefasDoGrupo
+        .filter(t => (t.detalhamentos || []).length > 0)
+        .map(t => codigoNorm(t.codigo)),
+    )
+    tarefasPorGrupo.set(
+      g.id,
+      tarefasDoGrupo.filter(t =>
+        (t.detalhamentos || []).length > 0 || !codigosComDets.has(codigoNorm(t.codigo)),
+      ),
+    )
   }
 
   // --------------------------------------------------------------------
@@ -543,6 +568,21 @@ export async function getDashboardData(
     }
   }
 
+  return {
+    grupos, grupoPorId, tarefaPorId, detPorId, tarefasPorGrupo, detsPorTarefa,
+    buildItemGrupo, buildItemTarefa, buildItemDet,
+  }
+}
+
+export async function getDashboardData(
+  contratoId: string,
+  filtros: { grupo_id?: string; tarefa_id?: string; detalhamento_id?: string },
+): Promise<DashboardResponse> {
+  const {
+    grupos, grupoPorId, tarefaPorId, detPorId, tarefasPorGrupo, detsPorTarefa,
+    buildItemGrupo, buildItemTarefa, buildItemDet,
+  } = await carregarModelo(contratoId)
+
   // --------------------------------------------------------------------
   // 6) Decidir nivel e selecionar itens
   // --------------------------------------------------------------------
@@ -682,17 +722,19 @@ export async function getDashboardChildrenByScope(
 export interface DashboardFlatItem { item: DashboardItem; level: number }
 
 export async function getDashboardFlat(contratoId: string): Promise<DashboardFlatItem[]> {
+  const { grupos, tarefasPorGrupo, detsPorTarefa, buildItemGrupo, buildItemTarefa, buildItemDet } =
+    await carregarModelo(contratoId)
+  const porCodigo = <T extends { codigo: string }>(xs: T[]) =>
+    [...xs].sort((a, b) => compareCodigo(a.codigo, b.codigo))
+
   const out: DashboardFlatItem[] = []
-  const grupos = await getDashboardChildrenByScope(contratoId, null)
-  for (const g of grupos.itens) {
-    out.push({ item: g, level: 0 })
-    if (!g.tem_filhos) continue
-    const tarefas = await getDashboardChildrenByScope(contratoId, g.id)
-    for (const t of tarefas.itens) {
-      out.push({ item: t, level: 1 })
-      if (!t.tem_filhos) continue
-      const dets = await getDashboardChildrenByScope(contratoId, t.id)
-      for (const d of dets.itens) out.push({ item: d, level: 2 })
+  for (const g of porCodigo(grupos)) {
+    out.push({ item: buildItemGrupo(g), level: 0 })
+    for (const t of porCodigo(tarefasPorGrupo.get(g.id) || [])) {
+      out.push({ item: buildItemTarefa(t), level: 1 })
+      for (const d of porCodigo(detsPorTarefa.get(t.id) || [])) {
+        out.push({ item: buildItemDet(d), level: 2 })
+      }
     }
   }
   return out

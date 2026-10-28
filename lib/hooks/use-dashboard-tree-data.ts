@@ -81,6 +81,40 @@ export function useDashboardTreeData(
     return cache.get(keyFor(scopeId))
   }, [cache])
 
+  /**
+   * Carrega a árvore inteira de uma vez (endpoint /flat) e preenche o cache
+   * de filhos de todos os nós. Usado pelo "Expandir tudo" — buscar nó a nó
+   * dispararia uma requisição por grupo e por tarefa.
+   */
+  const carregarTudo = useCallback(async () => {
+    const k = 'tudo'
+    if (loadingRef.current.get(k)) return
+    setLoadingKey(k, true)
+    try {
+      const res = await fetch(`/api/contratos/${contratoId}/dashboard/flat`, { cache: 'no-store' })
+      if (!res.ok) throw new Error(`dashboard flat ${res.status}`)
+      const data = await res.json()
+      const filhos = new Map<string | 'root', DashboardItem[]>()
+      for (const { item } of (data.itens ?? []) as Array<{ item: DashboardItem }>) {
+        const pk = keyFor(item.pai_id)
+        const lista = filhos.get(pk) ?? []
+        lista.push(item)
+        filhos.set(pk, lista)
+      }
+      setCache(prev => {
+        const next = new Map(prev)
+        filhos.forEach((itens, pk) => next.set(pk, itens))
+        return next
+      })
+    } catch (e) {
+      console.error('[useDashboardTreeData] carregarTudo error', e)
+    } finally {
+      setLoadingKey(k, false)
+    }
+  }, [contratoId, setLoadingKey])
+
+  const carregandoTudo = loadingMap.get('tudo') === true
+
   const invalidate = useCallback(() => {
     setCache(new Map())
     setLoadingMap(new Map())
@@ -118,5 +152,5 @@ export function useDashboardTreeData(
     return () => { cancelled = true }
   }, [contratoId, modo, rootScope, setCacheKey, setLoadingKey])
 
-  return { fetchChildren, isLoading, getCached, invalidate }
+  return { fetchChildren, isLoading, getCached, invalidate, carregarTudo, carregandoTudo }
 }

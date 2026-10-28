@@ -18,12 +18,13 @@ type Props = {
   onToggle: () => void
   onZoom?: () => void
   onClickRealizado?: () => void
-  onClickSaldo?: () => void
+  /** Clique na coluna "s/ NF" (só Material/Serviço) → origem dos pendentes. */
+  onClickPendente?: () => void
 }
 
 export const DashboardTreeRow = memo(function DashboardTreeRow({
   item, level, expanded, loading, modo, gridTemplateColumns,
-  onToggle, onZoom, onClickRealizado, onClickSaldo,
+  onToggle, onZoom, onClickRealizado, onClickPendente,
 }: Props) {
   const v = valoresPorModo(item, modo)
   const podeExpandir = item.tem_filhos
@@ -79,24 +80,25 @@ export const DashboardTreeRow = memo(function DashboardTreeRow({
           ariaLabel={`Ver notas que compoem realizado de ${item.nome}`}
         />
       </div>
-      <div className="text-right tabular-nums text-sm text-[var(--text-1)]">
-        {modo === 'total' ? (
-          // Saldo negativo = item estourado. Vermelho, nunca escondido.
-          <span
-            style={v.saldo < 0 ? { color: '#EF4444', fontWeight: 600 } : undefined}
-            className={v.saldo < 0 ? '' : 'text-[var(--text-3)]'}
-            title={v.saldo < 0 ? 'Realizado maior que o contratado' : undefined}
-          >
-            {v.saldo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </span>
-        ) : (
-          <NumeroClicavel
-            value={v.saldo}
-            onClick={onClickSaldo}
-            ariaLabel={`Ver pedidos com saldo de ${item.nome}`}
-          />
-        )}
+      <div className="text-right tabular-nums text-sm">
+        {/* Saldo = Contratado − Realizado. Negativo = item estourado: vermelho, nunca escondido. */}
+        <span
+          style={v.saldo < 0 ? { color: '#EF4444', fontWeight: 600 } : undefined}
+          className={v.saldo < 0 ? '' : 'text-[var(--text-1)]'}
+          title={v.saldo < 0 ? 'Realizado maior que o contratado' : undefined}
+        >
+          {v.saldo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
       </div>
+      {v.pendenteNf !== null && (
+        <div className="text-right tabular-nums text-sm text-[var(--text-2)]">
+          <NumeroClicavel
+            value={v.pendenteNf}
+            onClick={onClickPendente}
+            ariaLabel={modo === 'servico' ? `Ver medições sem NF de ${item.nome}` : `Ver pedidos sem NF de ${item.nome}`}
+          />
+        </div>
+      )}
     </div>
   )
 })

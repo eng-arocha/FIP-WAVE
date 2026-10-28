@@ -11,42 +11,41 @@ export interface FlatRow { item: DashboardItem; level: number }
  * importam daqui. Antes a mesma regra estava copiada em 4 arquivos, e os
  * rótulos já tinham divergido entre eles.
  *
+ * Saldo = Contratado − Realizado em TODOS os modos — é a conta que a
+ * planilha precisa fechar na leitura. Antes, em Material e Serviço a coluna
+ * "Saldo" mostrava outra grandeza (aprovado sem NF / medido sem NF), e a
+ * linha não batia com Contratado − Realizado. Essa grandeza continua
+ * disponível como `pendenteNf` (coluna própria, ver rotuloPendenteNf).
+ *
  * Saldo NÃO é clampado em zero: valor negativo significa item estourado, e
  * é exatamente o que precisa aparecer.
  */
 export function valoresPorModo(item: DashboardItem, modo: DashboardModo) {
-  if (modo === 'material') {
-    return {
-      contratado: item.valor_contratado_material,
-      realizado: item.realizado_material,
-      saldo: item.saldo_aprovado_material,
-      saldoLabel: 'Saldo aprov.',
-    }
-  }
-  if (modo === 'servico') {
-    return {
-      contratado: item.valor_contratado_servico,
-      realizado: item.realizado_servico,
-      saldo: item.saldo_medicao_servico,
-      saldoLabel: 'Saldo med.',
-    }
-  }
-  return {
-    contratado: item.valor_contratado_total,
-    realizado: item.realizado_total,
-    saldo: item.valor_contratado_total - item.realizado_total,
-    saldoLabel: 'Saldo a executar',
-  }
+  const [contratado, realizado, pendenteNf]: [number, number, number | null] =
+    modo === 'material'
+      ? [item.valor_contratado_material, item.realizado_material, item.saldo_aprovado_material]
+      : modo === 'servico'
+        ? [item.valor_contratado_servico, item.realizado_servico, item.saldo_medicao_servico]
+        : [item.valor_contratado_total, item.realizado_total, null]
+  return { contratado, realizado, saldo: contratado - realizado, pendenteNf }
 }
 
 /**
  * Rótulo da coluna de saldo. Não depende de nenhuma linha — antes o PDF e o
  * Excel derivavam de `rows[0]`, passando `{}` quando a lista estava vazia.
  */
-export function rotuloSaldo(modo: DashboardModo): string {
-  if (modo === 'material') return 'Saldo aprov.'
-  if (modo === 'servico') return 'Saldo med.'
-  return 'Saldo a executar'
+export function rotuloSaldo(_modo: DashboardModo): string {
+  return 'Saldo'
+}
+
+/**
+ * Rótulo da coluna "pendente de NF" — só existe em Material (pedido aprovado
+ * ainda sem NF) e Serviço (medição aprovada ainda sem NF da Wave).
+ */
+export function rotuloPendenteNf(modo: DashboardModo): string | null {
+  if (modo === 'material') return 'Aprov. s/ NF'
+  if (modo === 'servico') return 'Med. s/ NF'
+  return null
 }
 
 /**
@@ -89,6 +88,7 @@ export function totalizarRows(rows: FlatRow[], modo: DashboardModo) {
   let contratado = 0
   let realizado = 0
   let saldo = 0
+  let pendenteNf = 0
   for (const { item } of rows) {
     // Se o pai está na lista, este item já foi contado dentro dele.
     if (item.pai_id && idsPresentes.has(item.pai_id)) continue
@@ -96,8 +96,9 @@ export function totalizarRows(rows: FlatRow[], modo: DashboardModo) {
     contratado += v.contratado
     realizado += v.realizado
     saldo += v.saldo
+    pendenteNf += v.pendenteNf ?? 0
   }
-  return { contratado, realizado, saldo }
+  return { contratado, realizado, saldo, pendenteNf }
 }
 
 function nomeArquivo(base: string, ext: string) {
@@ -115,6 +116,8 @@ export async function exportarExcelVisaoGeral(
   const XLSX = await import('xlsx-js-style')
   const modoLabel = modo === 'material' ? 'Material' : modo === 'servico' ? 'Serviço' : 'Total'
   const saldoLabel = rotuloSaldo(modo)
+  const pendLabel = rotuloPendenteNf(modo)
+  const ultimaCol = pendLabel ? 5 : 4
 
   const azul = '1E3A8A'
   const headerStyle = {
@@ -134,6 +137,7 @@ export async function exportarExcelVisaoGeral(
   aoa.push([
     cell('Código', headerStyle), cell('Item', headerStyle),
     cell('Contratado', headerStyle), cell('Realizado', headerStyle), cell(saldoLabel, headerStyle),
+    ...(pendLabel ? [cell(pendLabel, headerStyle)] : []),
   ])
 
   let totC = 0, totR = 0, totS = 0
@@ -151,6 +155,7 @@ export async function exportarExcelVisaoGeral(
       { v: item.codigo, s: base },
       { v: `${'    '.repeat(level)}${item.nome}`, s: base },
       num(v.contratado), num(v.realizado), num(v.saldo),
+      ...(pendLabel ? [num(v.pendenteNf ?? 0)] : []),
     ])
   }
   // Totais: raízes do conjunto filtrado, pra não duplicar entre níveis.
@@ -160,11 +165,12 @@ export async function exportarExcelVisaoGeral(
   aoa.push([
     { v: 'TOTAL', s: { ...totStyle, alignment: { horizontal: 'left' } } }, { v: '', s: totStyle },
     { v: totC, t: 'n', z: money, s: totStyle }, { v: totR, t: 'n', z: money, s: totStyle }, { v: totS, t: 'n', z: money, s: totStyle },
+    ...(pendLabel ? [{ v: tot.pendenteNf, t: 'n', z: money, s: totStyle }] : []),
   ])
 
   const ws = XLSX.utils.aoa_to_sheet(aoa)
-  ws['!cols'] = [{ wch: 12 }, { wch: 60 }, { wch: 16 }, { wch: 16 }, { wch: 16 }]
-  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 4 } }]
+  ws['!cols'] = [{ wch: 12 }, { wch: 60 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, ...(pendLabel ? [{ wch: 16 }] : [])]
+  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: ultimaCol } }, { s: { r: 1, c: 0 }, e: { r: 1, c: ultimaCol } }]
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Visão Geral')
   XLSX.writeFile(wb, nomeArquivo(`visao-geral-${modoLabel.toLowerCase()}`, 'xlsx'))

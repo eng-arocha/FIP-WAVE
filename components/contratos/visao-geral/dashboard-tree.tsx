@@ -2,13 +2,13 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, ChevronsDownUp, ChevronsUpDown, Loader2 } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import type { DashboardItem, DashboardModo } from '@/types/dashboard'
 import { useTreeExpansion } from '@/lib/hooks/use-tree-expansion'
 import { useDashboardTreeData } from '@/lib/hooks/use-dashboard-tree-data'
 import { useTableLayout, type ColumnDef } from '@/lib/hooks/use-table-layout'
-import { valoresPorModo, rotuloSaldo } from '@/lib/export/visao-geral'
+import { valoresPorModo, rotuloSaldo, rotuloPendenteNf, totalizarRows } from '@/lib/export/visao-geral'
 import { DashboardTreeRow } from './dashboard-tree-row'
 import { DashboardBarChart } from './dashboard-bar-chart'
 
@@ -21,36 +21,56 @@ type FlatItem = { item: DashboardItem; level: number }
 
 const DOUBLE_CLICK_GUARD_MS = 250
 
-type ColunaVisaoGeral = 'item' | 'contratado' | 'realizado' | 'saldo'
+type ColunaVisaoGeral = 'item' | 'contratado' | 'realizado' | 'saldo' | 'pendente'
 
-const COLUNAS_VISAO_GERAL: Array<ColumnDef<ColunaVisaoGeral> & { label: string }> = [
-  { key: 'item', label: 'Item', defaultWidth: 280, min: 160, max: 900, type: 'string' },
-  { key: 'contratado', label: 'Contratado', defaultWidth: 130, min: 90, type: 'number' },
-  { key: 'realizado', label: 'Realizado', defaultWidth: 130, min: 90, type: 'number' },
-  // O rótulo desta muda com o modo — ver rotuloSaldo().
-  { key: 'saldo', label: 'Saldo', defaultWidth: 130, min: 90, type: 'number' },
+const COLUNAS_BASE: Array<ColumnDef<ColunaVisaoGeral> & { label: string }> = [
+  { key: 'item', label: 'Item', defaultWidth: 420, min: 160, max: 1200, type: 'string' },
+  { key: 'contratado', label: 'Contratado', defaultWidth: 140, min: 90, type: 'number' },
+  { key: 'realizado', label: 'Realizado', defaultWidth: 140, min: 90, type: 'number' },
+  { key: 'saldo', label: 'Saldo', defaultWidth: 140, min: 90, type: 'number' },
 ]
+// Só em Material/Serviço — rótulo vem de rotuloPendenteNf().
+const COLUNA_PENDENTE: ColumnDef<ColunaVisaoGeral> & { label: string } =
+  { key: 'pendente', label: 'Pendente NF', defaultWidth: 140, min: 90, type: 'number' }
+const COLUNAS_COM_PENDENTE = [...COLUNAS_BASE, COLUNA_PENDENTE]
+
+const fmt = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export function DashboardTree({ contratoId, modo }: Props) {
   const router = useRouter()
   const pathname = usePathname()
   const params = useSearchParams()
 
+  const pendLabel = rotuloPendenteNf(modo)
+  const colunas = pendLabel ? COLUNAS_COM_PENDENTE : COLUNAS_BASE
   const { gridTemplateColumns, startResize, reset: resetLayout } =
-    useTableLayout<ColunaVisaoGeral>('contrato:visao-geral:v1', COLUNAS_VISAO_GERAL)
+    useTableLayout<ColunaVisaoGeral>('contrato:visao-geral:v2', colunas)
 
   const scopeRaw = params.get('scope')
   const rootScope = scopeRaw === null || scopeRaw === '' || scopeRaw === 'null' ? null : scopeRaw
 
-  const { expandedIds, isExpanded, toggle } = useTreeExpansion()
-  const { fetchChildren, isLoading, getCached } = useDashboardTreeData(contratoId, modo, rootScope)
+  const { expandedIds, todos, isExpanded, toggle, expandAll, collapseAll } = useTreeExpansion()
+  const { fetchChildren, isLoading, getCached, carregarTudo, carregandoTudo } =
+    useDashboardTreeData(contratoId, modo, rootScope)
 
   // Carregar filhos de nós expandidos
   useEffect(() => {
+    if (todos) return
     expandedIds.forEach(id => {
       if (!getCached(id)) fetchChildren(id)
     })
-  }, [expandedIds, fetchChildren, getCached])
+  }, [todos, expandedIds, fetchChildren, getCached])
+
+  // "Expandir tudo": uma única carga da árvore inteira. Dispara de novo só se
+  // o cache foi zerado (troca de modo/scope) e a raiz já chegou.
+  const faltaFilho = useMemo(() => {
+    const raiz = getCached(rootScope)
+    if (!todos || !raiz) return false
+    return raiz.some(i => i.tem_filhos && !getCached(i.id))
+  }, [todos, getCached, rootScope])
+  useEffect(() => {
+    if (faltaFilho && !carregandoTudo) carregarTudo()
+  }, [faltaFilho, carregandoTudo, carregarTudo])
 
   // Achatar árvore visível (a partir do rootScope, não de null)
   const flat = useMemo<FlatItem[]>(() => {
@@ -60,7 +80,7 @@ export function DashboardTree({ contratoId, modo }: Props) {
     function walk(items: DashboardItem[], level: number) {
       for (const item of items) {
         out.push({ item, level })
-        if (item.tem_filhos && expandedIds.has(item.id)) {
+        if (item.tem_filhos && isExpanded(item.id)) {
           const children = getCached(item.id) ?? []
           walk(children, level + 1)
         }
@@ -68,7 +88,11 @@ export function DashboardTree({ contratoId, modo }: Props) {
     }
     walk(root, 0)
     return out
-  }, [expandedIds, getCached, rootScope])
+  }, [isExpanded, getCached, rootScope])
+
+  // Subtotal do que está na tela. totalizarRows soma só as raízes do
+  // conjunto — grupo aberto não conta de novo as tarefas dele.
+  const totais = useMemo(() => totalizarRows(flat, modo), [flat, modo])
 
   const lastClickRef = useRef<{ id: string; t: number } | null>(null)
 
@@ -83,6 +107,7 @@ export function DashboardTree({ contratoId, modo }: Props) {
     if (newScope === null) qs.delete('scope')
     else qs.set('scope', newScope)
     qs.delete('expand')
+    qs.delete('recolher')
     router.replace(`${pathname}?${qs.toString()}`, { scroll: false })
   }, [params, pathname, router])
 
@@ -132,75 +157,117 @@ export function DashboardTree({ contratoId, modo }: Props) {
           <span>Foco em um subgrupo</span>
         </div>
       )}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <div className="border border-[var(--border)] rounded-md overflow-hidden bg-[var(--surface-1)]">
-          <div className="flex items-center justify-end px-2 py-1">
+      <div className="border border-[var(--border)] rounded-md overflow-hidden bg-[var(--surface-1)]">
+        <div className="flex items-center justify-between gap-2 px-2 py-1">
+          <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={resetLayout}
-              className="text-[10px] px-1.5 py-0.5 rounded text-[var(--text-3)] hover:bg-[var(--surface-2)]"
-              title="Voltar as colunas à largura padrão"
+              onClick={expandAll}
+              disabled={carregandoTudo}
+              className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded text-[var(--text-2)] hover:bg-[var(--surface-2)] disabled:opacity-50"
+              title="Abrir todos os grupos e tarefas"
             >
-              Resetar colunas
+              {carregandoTudo
+                ? <Loader2 className="w-3 h-3 animate-spin" />
+                : <ChevronsUpDown className="w-3 h-3" />}
+              Expandir tudo
+            </button>
+            <button
+              type="button"
+              onClick={collapseAll}
+              className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded text-[var(--text-2)] hover:bg-[var(--surface-2)]"
+              title="Fechar todos os níveis"
+            >
+              <ChevronsDownUp className="w-3 h-3" />
+              Recolher tudo
             </button>
           </div>
-          {/* Header + corpo compartilham o mesmo overflow-x pra rolarem juntos */}
-          <div className="overflow-x-auto">
+          <button
+            type="button"
+            onClick={resetLayout}
+            className="text-[10px] px-1.5 py-0.5 rounded text-[var(--text-3)] hover:bg-[var(--surface-2)]"
+            title="Voltar as colunas à largura padrão"
+          >
+            Resetar colunas
+          </button>
+        </div>
+        {/* Header + corpo + rodapé compartilham o mesmo overflow-x pra rolarem juntos */}
+        <div className="overflow-x-auto">
+          <div
+            className="grid items-center gap-2 px-2 py-1.5 text-[10px] uppercase text-[var(--text-3)] border-b border-[var(--border)] bg-[var(--surface-2)] sticky top-0 z-10"
+            style={{ gridTemplateColumns, minWidth: 'max-content' }}
+          >
+            {colunas.map((col, i) => (
+              <div
+                key={col.key}
+                className={`relative ${i === 0 ? '' : 'text-right'}`}
+                title={col.key === 'saldo'
+                  ? 'Contratado − Realizado'
+                  : col.key === 'pendente'
+                    ? (modo === 'servico' ? 'Medição aprovada ainda sem NF de serviço' : 'Pedido aprovado ainda sem NF')
+                    : undefined}
+              >
+                {col.key === 'saldo' ? rotuloSaldo(modo) : col.key === 'pendente' ? pendLabel : col.label}
+                <span
+                  onMouseDown={e => startResize(col.key, e)}
+                  onClick={e => e.stopPropagation()}
+                  className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize"
+                  style={{ background: 'transparent' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                  title="Arraste para redimensionar"
+                />
+              </div>
+            ))}
+          </div>
+          <div className="max-h-[60vh] overflow-y-auto">
+            {flat.length === 0 ? (
+              <div className="p-6 text-center text-sm text-[var(--text-3)]">Carregando…</div>
+            ) : flat.map(({ item, level }) => {
+              const v = valoresPorModo(item, modo)
+              return (
+                <DashboardTreeRow
+                  key={`${item.id}-${level}`}
+                  item={item}
+                  level={level}
+                  expanded={isExpanded(item.id)}
+                  loading={isLoading(item.id)}
+                  modo={modo}
+                  gridTemplateColumns={gridTemplateColumns}
+                  onToggle={() => onToggle(item)}
+                  onZoom={() => onZoom(item)}
+                  onClickRealizado={v.realizado > 0 ? () => goToOrigem(item, 'realizado') : undefined}
+                  onClickPendente={(v.pendenteNf ?? 0) > 0 ? () => goToOrigem(item, 'saldo') : undefined}
+                />
+              )
+            })}
+          </div>
+          {flat.length > 0 && (
             <div
-              className="grid items-center gap-2 px-2 py-1.5 text-[10px] uppercase text-[var(--text-3)] border-b border-[var(--border)] bg-[var(--surface-2)] sticky top-0 z-10"
+              className="grid items-center gap-2 px-2 py-2 border-t-2 border-[var(--border)] bg-[var(--surface-2)] text-sm font-semibold tabular-nums"
               style={{ gridTemplateColumns, minWidth: 'max-content' }}
             >
-              {COLUNAS_VISAO_GERAL.map((col, i) => (
-                <div
-                  key={col.key}
-                  className={`relative ${i === 0 ? '' : 'text-right'}`}
-                >
-                  {col.key === 'saldo' ? rotuloSaldo(modo) : col.label}
-                  <span
-                    onMouseDown={e => startResize(col.key, e)}
-                    onClick={e => e.stopPropagation()}
-                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize"
-                    style={{ background: 'transparent' }}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent)' }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
-                    title="Arraste para redimensionar"
-                  />
-                </div>
-              ))}
+              <div className="text-[11px] uppercase text-[var(--text-2)]">
+                {rootScope ? 'Subtotal do subgrupo' : 'Subtotal'}
+              </div>
+              <div className="text-right text-[var(--text-1)]">{fmt(totais.contratado)}</div>
+              <div className="text-right text-[var(--text-1)]">{fmt(totais.realizado)}</div>
+              <div className="text-right" style={{ color: totais.saldo < 0 ? '#EF4444' : 'var(--text-1)' }}>
+                {fmt(totais.saldo)}
+              </div>
+              {pendLabel && <div className="text-right text-[var(--text-1)]">{fmt(totais.pendenteNf)}</div>}
             </div>
-            <div className="max-h-[60vh] overflow-y-auto">
-              {flat.length === 0 ? (
-                <div className="p-6 text-center text-sm text-[var(--text-3)]">Carregando…</div>
-              ) : flat.map(({ item, level }) => {
-                const v = valoresPorModo(item, modo)
-                return (
-                  <DashboardTreeRow
-                    key={`${item.id}-${level}`}
-                    item={item}
-                    level={level}
-                    expanded={isExpanded(item.id)}
-                    loading={isLoading(item.id)}
-                    modo={modo}
-                    gridTemplateColumns={gridTemplateColumns}
-                    onToggle={() => onToggle(item)}
-                    onZoom={() => onZoom(item)}
-                    onClickRealizado={v.realizado > 0 ? () => goToOrigem(item, 'realizado') : undefined}
-                    onClickSaldo={modo !== 'total' && v.saldo > 0 ? () => goToOrigem(item, 'saldo') : undefined}
-                  />
-                )
-              })}
-            </div>
-          </div>
+          )}
         </div>
-        <div className="border border-[var(--border)] rounded-md p-2 bg-[var(--surface-1)] overflow-x-auto">
-          <DashboardBarChart
-            itens={flat}
-            modo={modo}
-            onDoubleClickItem={onDoubleClickFromChart}
-            onClickRealizado={(item) => goToOrigem(item, 'realizado')}
-            onClickSaldo={(item) => goToOrigem(item, 'saldo')}
-          />
-        </div>
+      </div>
+      {/* Gráfico abaixo da tabela: a tabela é a fonte de leitura e precisa da largura toda. */}
+      <div className="border border-[var(--border)] rounded-md p-2 bg-[var(--surface-1)] overflow-x-auto max-h-[70vh] overflow-y-auto">
+        <DashboardBarChart
+          itens={flat}
+          modo={modo}
+          onDoubleClickItem={onDoubleClickFromChart}
+          onClickRealizado={(item) => goToOrigem(item, 'realizado')}
+        />
       </div>
     </div>
   )

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { valoresPorModo, filtrarRows, totalizarRows, rotuloSaldo, type FlatRow } from './visao-geral'
+import { valoresPorModo, filtrarRows, totalizarRows, rotuloSaldo, rotuloPendenteNf, type FlatRow } from './visao-geral'
 import type { DashboardItem } from '@/types/dashboard'
 
 function item(over: Partial<DashboardItem> & { id: string }): DashboardItem {
@@ -47,6 +47,16 @@ describe('valoresPorModo', () => {
     expect(valoresPorModo(it11, 'servico').contratado).toBe(16344.34)
   })
 
+  it('serviço e material: saldo = contratado − realizado; pendente de NF à parte', () => {
+    const s = valoresPorModo(it11, 'servico')
+    expect(s.saldo).toBeCloseTo(16344.34 - 14709.91, 2)
+    expect(s.pendenteNf).toBe(14709.91)
+    const m = valoresPorModo(it11, 'material')
+    expect(m.saldo).toBeCloseTo(14403.44 - 12500, 2)
+    expect(m.pendenteNf).toBe(0)
+    expect(valoresPorModo(it11, 'total').pendenteNf).toBeNull()
+  })
+
   it('NÃO clampa o saldo em zero — item estourado aparece negativo', () => {
     const estourado = item({ id: 'x', valor_contratado_total: 30747.78, realizado_total: 40173 })
     expect(valoresPorModo(estourado, 'total').saldo).toBeCloseTo(-9425.22, 2)
@@ -55,9 +65,12 @@ describe('valoresPorModo', () => {
 
 describe('rotuloSaldo', () => {
   it('não depende de nenhuma linha', () => {
-    expect(rotuloSaldo('material')).toBe('Saldo aprov.')
-    expect(rotuloSaldo('servico')).toBe('Saldo med.')
-    expect(rotuloSaldo('total')).toBe('Saldo a executar')
+    expect(rotuloSaldo('material')).toBe('Saldo')
+    expect(rotuloSaldo('servico')).toBe('Saldo')
+    expect(rotuloSaldo('total')).toBe('Saldo')
+    expect(rotuloPendenteNf('material')).toBe('Aprov. s/ NF')
+    expect(rotuloPendenteNf('servico')).toBe('Med. s/ NF')
+    expect(rotuloPendenteNf('total')).toBeNull()
   })
 })
 
@@ -96,7 +109,7 @@ describe('totalizarRows — sem dupla contagem entre níveis', () => {
   })
 
   it('lista vazia soma zero', () => {
-    expect(totalizarRows([], 'total')).toEqual({ contratado: 0, realizado: 0, saldo: 0 })
+    expect(totalizarRows([], 'total')).toEqual({ contratado: 0, realizado: 0, saldo: 0, pendenteNf: 0 })
   })
 })
 
