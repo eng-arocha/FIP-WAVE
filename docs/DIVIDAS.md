@@ -10,10 +10,11 @@ reabrir a discussão do zero.
 **Ações do Alex (operação)**
 1. Lançar no site a NF Wave reemitida de R$ 479.560,54 no pedido nº 21
    (hoje só tem a NF 07 cancelada). → "MED-008: descontar R$ 31.916,58"
-2. Rodar no SQL Editor, NA ORDEM: migration 086 e manual-fix 102 (MED-007 na
-   regra do % real; volta o pendente de R$ 31.916,58 no 1.3.1). Depois,
-   conferir no site: boletim da MED-007 com 1.3.1 a 100% e NF Wave
-   479.560,54. ⚠ NÃO usar o SQL de ajuste manual da seção abaixo (cancelado).
+2. ~~Rodar migration 086 e manual-fix 102~~ RODADOS (29/10): conferência do
+   bloco 3 bateu (regra_pct_real = true, snapshot 1.3.1 = 288.463,87, totais e
+   pedido nº 21 intactos). Falta só conferir no site: boletim da MED-007 com
+   1.3.1 a 100% e NF Wave 479.560,54; prévia da MED-008 com 31.916,58 pendente
+   no 1.3.1. ⚠ NÃO usar o SQL de ajuste manual da seção abaixo (cancelado).
 2a. MED-008: na aprovação, digitar/conferir os 5 valores da tela "Valores
    Financeiros" do Informakon. O desconto da MSF entra sozinho no 1.3.1 quando
    as notas estiverem no Informakon (sem %); o pedido Wave sai pelo líquido.
