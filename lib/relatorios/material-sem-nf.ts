@@ -13,6 +13,7 @@
 // ela só cobre o item se o material faturado lá for o mesmo que foi instalado
 // aqui (rateio errado do pedido) — e isso é conferência de obra, não conta.
 import { chaveMacroItem } from '@/lib/informakon/comparar-saldo'
+import { compareCodigo } from '@/lib/db/wbs-utils'
 
 export interface FornecedorDoItem {
   fornecedor: string
@@ -115,11 +116,12 @@ export function montarRelatorioMaterialSemNf(
       nome: nomeDoBalde(balde),
       semNf,
       sobra,
-      itens: comFalta,
+      itens: comFalta.sort((a, b) => compareCodigo(a.codigo, b.codigo)),
       itensComSobra: linhas.filter(l => l.sobra > TOL),
     })
   }
-  grupos.sort((a, b) => b.semNf - a.semNf)
+  // Pela ordem da planilha (1, 2, 3 … 10), não pelo valor: é como se procura.
+  grupos.sort((a, b) => compareCodigo(a.balde, b.balde))
 
   return {
     grupos,
