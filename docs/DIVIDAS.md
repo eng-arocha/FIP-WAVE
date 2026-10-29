@@ -56,23 +56,55 @@ docs/superpowers/specs/2026-10-28-congelar-informakon-e-cortes.md implementada
    mostrar que a coluna não basta.
 8. ~~19.1.1~~ corrigido (e46440f).
 9. ~~Tarefas-fantasma 1.6~~ removidas (manual-fix 101).
-10. Material medido sem NF nem pedido (29/10): R$ 189.106,79 em 31 itens;
-   R$ 47.314,29 sem sobra de NF no macro item (grupo 2: 2.2.1 28.952,36,
-   2.3.1 5.164,69, 2.7.1 13.507,24). A camada ③ não vê esse material: só
-   pergunta pela FIP sobre material ainda NÃO descontado, e medição anterior
-   a 27/08 é liquidada. Ferramenta: /contratos/[id]/material-sem-nf (atalho
-   "Material sem NF" na Visão Geral, modo Material). Ação do Alex: conferir
-   com compras o rateio do pedido MSF #1085 (2.2.1) e quem forneceu os
-   eletrodutos 2.3.1/2.7.1; o que for da FIP vira pedido FIP. Nos grupos 14,
-   18, 4, 7 a falta tem sobra de NF no vizinho — conferir se é rateio.
-   Decisão adiada: tornar isso automático na camada ③ (perguntar pela FIP
-   sobre material já descontado) — só se o relatório mostrar recorrência.
+10. ~~Material medido sem NF nem pedido~~ DECIDIDO E IMPLEMENTADO (29/10):
+   a camada ③ passou a ser item a item sobre o material instalado — ver a
+   seção "2026-10-29 — FIP item a item". Os R$ 189.106,79 em 31 itens agora
+   aparecem como "FIP precisa emitir" no boletim da MED-008 (linhas virtuais
+   para os itens que não forem medidos). Ação do Alex ANTES de aprovar a
+   MED-008: conferir com compras o rateio dos grupos 14 (R$ 80.045,03, sobra
+   de NF de R$ 357 mil no macro item), 18, 4 e 7 e o pedido MSF #1085 (2.2.1).
+   O que for rateio errado: corrigir o pedido — senão a aprovação gera o
+   rascunho do pedido FIP com o valor cheio.
 
 **Atenção na MED-008 (mudanças desta data que entram em vigor)**
 - Trava de saldo por item em criação/edição/aprovação de pedido e no pedido
   FIP automático (corta o excedente e avisa).
-- A FIP do grupo é rateada pela falta de cada item, não mais pelo material
-  medido — o pedido FIP da MED-008 pode sair distribuído diferente da MED-007.
+- A FIP é item a item (29/10): material medido acumulado − max(NF, pedido).
+  O pedido FIP automático da MED-008 deve sair com cerca de R$ 189 mil em 31
+  itens, inclusive material de medições anteriores. Ver item 10.
+
+## 2026-10-29 — FIP item a item (camada ③)
+
+**Regra:** FIP do item = max(0, material medido acumulado − max(NF lançada,
+pedido aprovado)). Acumulado = medições aprovadas + a medição aberta; inclui o
+material já descontado. Pedido FIP autorizado e sem nota está dentro do pedido
+aprovado (nota a caminho, não volta como emissão). Compensação de lastro
+(migration 085) conta no item em que foi registrada. Mesma base do relatório
+Material sem NF.
+
+**Por quê:** a regra anterior perguntava só sobre o material ainda NÃO
+descontado e compensava NF dos vizinhos no macro item. Material já descontado
+contra nota de outro item sumia: R$ 189.106,79 em 31 itens sem NF de ninguém,
+FIP pedida = R$ 0. E o piso por grupo jogou R$ 153 mil no 1.3.1 acima do
+contratado na MED-007.
+
+**O que saiu:** o rateio por balde (`classificarCoberturaPorBalde`) e, no
+retrato do Informakon (`aplicar-retrato.ts`), o abatimento `fip −
+nf_descontavel` e o piso da FIP pelo corte. A camada ② (lastro e % por macro
+item) não mudou. Nota que o Informakon tem e o site não tem: lançar no site.
+
+**Decisões do Alex (29/10):** sobra de NF no vizinho NÃO abate e NÃO vira
+alerta no card nem no pedido FIP — fica só no rodapé do relatório Material sem
+NF. Cards "coberto por sobra" e "descoberto" removidos do relatório.
+
+**Garantia:** pedido + FIP ≤ medido ≤ contratado, por construção (testes de
+regressão da MED-007 em lib/db/desconto-material.test.ts: 1.3.1 = 0; 2.2.1 =
+28.952,36 e fecha em 352.689,90).
+
+**Dívida conhecida:** linha virtual de medição JÁ APROVADA continua com FIP
+zero (só a medição aberta mostra a FIP de itens não medidos). Reimprimir um
+boletim aprovado mostra a FIP das linhas medidas pela regra nova, não a que
+valia na aprovação. Revisitar só se alguém precisar do número histórico.
 
 ## 2026-10-28 — MED-008: descontar R$ 31.916,58 da MSF/Cordeiro (1.3.1)
 

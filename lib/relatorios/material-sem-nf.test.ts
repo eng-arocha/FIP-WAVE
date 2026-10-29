@@ -41,7 +41,6 @@ describe('material medido sem NF', () => {
     const g = r.grupos[0]
     expect(g.semNf).toBe(34_117.05)
     expect(g.sobra).toBe(0)
-    expect(g.descoberto).toBe(34_117.05)
     expect(g.itens.map(i => i.codigo)).toEqual(['2.2.1', '2.3.1'])
     expect(g.itensComSobra).toHaveLength(0)
   })
@@ -53,7 +52,6 @@ describe('material medido sem NF', () => {
     })
     const g = montarRelatorioMaterialSemNf([i231, hidrante], () => 'G').grupos[0]
     expect(g.sobra).toBe(8_000)
-    expect(g.descoberto).toBe(0)
     expect(g.itensComSobra.map(i => i.codigo)).toEqual(['2.9.1'])
   })
 

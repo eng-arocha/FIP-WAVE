@@ -34,47 +34,17 @@
  * alguma coisa, e chutar zero derrubaria o percentual do grupo inteiro. Fica
  * como está, e o painel avisa que aquele grupo não pôde ser conferido.
  *
- * Pela mesma razão, ausência também não é COBERTURA: o abatimento da nota da
- * FIP abaixo só vale para grupo presente no retrato. Ler `nf_descontavel`
- * intocado como "tem lastro para tudo" transformaria falta de informação em
- * prova de que o material já foi faturado.
- *
  * ─────────────────────────────────────────────────────────────────────────
- * A NOTA DA FIP DEPOIS DO CORTE
+ * A NOTA DA FIP NÃO PASSA POR AQUI (29/10/2026)
  *
- * A camada ③ mede cobertura pelo SITE — nota de terceiro cadastrada mais
- * pedido aprovado. Só que o desconto que sai daqui é, por construção, nota
- * que o ERP TEM lançada: ele não abate o que não está lá. Onde o Informakon
- * tem nota que o nosso cadastro não tem, a camada ③ conclui que ninguém
- * comprou o material e manda a FIP emitir — uma segunda nota para o mesmo
- * material.
- *
- * O estrago não é imediato, e é por isso que passa despercebido: o desconto é
- * limitado ao material que falta descontar, então a nota extra não abate hoje.
- * Ela fica como lastro parado no ERP e, meses depois, cobre material real de
- * outro item — material descontado contra uma nota que não corresponde a
- * compra nenhuma. A Wave perde esse valor, com atraso e sem rastro.
- *
- * Então, depois do corte:
- *
- *     fip_faturar = max( 0 , fip_faturar − nf_descontavel )
- *
- * Em uma frase: do que a camada ③ ia mandar emitir, desconte o que o ERP já
- * tem lançado. O que sobra é material sem nota em lugar nenhum.
- *
- * A primeira versão disto usava `min(fip_faturar, corte)`, que trata as duas
- * coberturas como sobrepostas — a mesma nota contada dos dois lados. A
- * autorização do pedido da FIP provou que elas são DISJUNTAS: no 18.1.6 o
- * usuário autorizou os R$ 9.902,38 que faltavam, isso virou pedido aprovado no
- * site, e o `min` devolveu R$ 1.154,88 "ainda a emitir" — justamente a parte
- * que já tinha lastro no ERP. Autorizar de novo emitiria nota em duplicidade,
- * e o ciclo só terminaria depois de emitir R$ 11.057,26 onde bastavam
- * R$ 9.902,38.
- *
- * A subtração assume cobertura disjunta e pode, no caso oposto (nota nossa que
- * é a MESMA nota do ERP), pedir de menos. É o erro que se prefere: pedir de
- * menos volta sozinho no mês seguinte pelo pendente de lastro; pedir de mais
- * cria uma segunda nota para o mesmo material, que não volta de lugar nenhum.
+ * Até 29/10 esta camada mexia na FIP de dois jeitos: abatia o desconto
+ * lastreado (`fip − nf_descontavel`) e somava um piso por grupo (corte − nota
+ * a caminho). Os dois compensavam no nível do macro item — nota do vizinho
+ * zerava a FIP de um item sem nota, e o piso jogou R$ 153 mil no 1.3.1 acima
+ * do contratado na MED-007. A camada ③ agora é item a item, contra o material
+ * instalado e as compras do site (lib/db/desconto-material.ts), e o retrato
+ * do ERP não altera `fip_faturar`. Nota que o Informakon tem e o site não tem
+ * se resolve lançando a nota no site.
  */
 
 import { chaveMacroItem } from './comparar-saldo'
@@ -91,12 +61,9 @@ export interface LinhaAjustavel {
   desconto_ideal?: number
   /** `p × M` do PERÍODO. O que excede isso no ideal é material de meses anteriores. */
   material_medido?: number
-  /** Camada ③: quanto a FIP precisa emitir. Reduzido aqui pelo lastro do ERP. */
+  /** Camada ③: quanto a FIP precisa emitir. Esta camada não o altera. */
   fip_faturar?: number
-  /**
-   * Camada ③: material com pedido aprovado esperando a nota do fornecedor.
-   * Ausente = desconhecido, e aí o piso da FIP pelo corte não é aplicado.
-   */
+  /** Camada ③: material com pedido aprovado esperando a nota do fornecedor. */
   faturamento_direto_em_aberto?: number
   /** Valor global do item (qtd contratada × valor unitário) — base do %. */
   valor_total_item: number
@@ -112,10 +79,6 @@ export interface ResumoRetratoAplicado {
   /** Total cortado do desconto por falta de lastro no ERP. */
   total: number
   porMacroItem: Array<{ chave: string; pedido: number; disponivel: number; falta: number }>
-  /** Quanto saiu de "FIP precisa emitir" por já haver nota lançada no ERP. */
-  fipAbatidoPeloLastro: number
-  /** Quanto entrou em "FIP precisa emitir" pelo corte sem nota a caminho. */
-  fipPeloCorte: number
 }
 
 export interface OpcoesRetrato {
@@ -155,7 +118,7 @@ export function aplicarRetratoNasLinhas(
     else porChave.set(k, [l])
   }
 
-  const resumo: ResumoRetratoAplicado = { total: 0, porMacroItem: [], fipAbatidoPeloLastro: 0, fipPeloCorte: 0 }
+  const resumo: ResumoRetratoAplicado = { total: 0, porMacroItem: [] }
 
   for (const [chave, doGrupo] of porChave) {
     // Grupo fora do retrato não é conferido — nem para cortar, nem para
@@ -195,20 +158,6 @@ export function aplicarRetratoNasLinhas(
   }
 
   for (const l of linhas) {
-    // ── CAMADA ③ revisitada, agora que o corte é conhecido ───────────────
-    //
-    //     fip_faturar = max( 0 , fip_faturar − nf_descontavel )
-    //
-    // Só para grupo presente no retrato: ver "MACRO ITEM AUSENTE" no topo.
-    if (l.fip_faturar !== undefined && saldoPorChave.has(chaveMacroItem(l.codigo))) {
-      const antes = num(l.fip_faturar)
-      const depois = Math.max(0, cent(antes - num(l.nf_descontavel)))
-      if (depois < antes) {
-        resumo.fipAbatidoPeloLastro = cent(resumo.fipAbatidoPeloLastro + (antes - depois))
-      }
-      l.fip_faturar = cent(depois)
-    }
-
     // A nota da FIP NÃO entra no percentual: ver o bloco no topo do arquivo.
     const bruto = baseALancar(l, opcoes.pctReal === true)
     const aLancar = cent(bruto)
@@ -225,36 +174,6 @@ export function aplicarRetratoNasLinhas(
   }
 
   resumo.porMacroItem.sort((a, b) => b.falta - a.falta)
-  // ── O PISO DA FIP: o corte que nenhuma nota a caminho cobre ───────────
-  //
-  //     FIP do grupo ≥ corte do grupo − nota a caminho do grupo
-  //
-  // Decisão do usuário (26/10/2026), MED-007: "não tem lastro e só tem nota a
-  // caminho — a FIP deveria lançar a diferença". O abatimento acima só olha
-  // para baixo (`fip − nf_descontavel`) e, quando o site conta como cobertura
-  // uma nota que o ERP lançou em outro macro item, zera a FIP com R$ 185 mil
-  // cortados e R$ 32 mil a caminho. O corte é o que o ERP NÃO tem; se nenhum
-  // pedido aprovado vai trazer a nota, ninguém mais fatura esse material.
-  //
-  // Pedido da FIP já autorizado e sem nota conta como "a caminho", então a
-  // nota autorizada não volta como emissão nova. Grupo com nota a caminho
-  // desconhecida (linha sem o campo) fica como estava.
-  for (const [chave, doGrupo] of porChave) {
-    if (!saldoPorChave.has(chave)) continue
-    if (doGrupo.some(l => l.faturamento_direto_em_aberto === undefined)) continue
-    const corte = doGrupo.reduce((t, l) => t + num(l.nf_nao_lancada_no_erp), 0)
-    if (!(corte > 0.005)) continue
-    const aCaminho = doGrupo.reduce((t, l) => t + num(l.faturamento_direto_em_aberto), 0)
-    const jaPedido = doGrupo.reduce((t, l) => t + num(l.fip_faturar), 0)
-    const extra = cent(corte - aCaminho - jaPedido)
-    if (!(extra > 0.005)) continue
-    for (const l of doGrupo) {
-      const parte = extra * (num(l.nf_nao_lancada_no_erp) / corte)
-      if (parte > 0) l.fip_faturar = cent(num(l.fip_faturar) + parte)
-    }
-    resumo.fipPeloCorte = cent(resumo.fipPeloCorte + extra)
-  }
-
   return resumo
 }
 

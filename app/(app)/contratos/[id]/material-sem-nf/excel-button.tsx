@@ -29,7 +29,7 @@ export function ExcelMaterialSemNf({ data }: { data: RelatorioMaterialSemNf }) {
           { v: g.balde, s: grupoS }, { v: g.nome, s: grupoS },
           { v: '', s: grupoS }, { v: '', s: grupoS }, { v: '', s: grupoS }, { v: '', s: grupoS },
           { v: `Sobra de NF: ${g.sobra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, s: grupoS },
-          { v: `Descoberto: ${g.descoberto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, s: grupoS },
+          { v: '', s: grupoS },
           n(g.semNf, grupoS),
         ])
         for (const l of g.itens) {
@@ -43,7 +43,6 @@ export function ExcelMaterialSemNf({ data }: { data: RelatorioMaterialSemNf }) {
       }
       aoa.push([])
       aoa.push([{ v: 'TOTAL', s: { font: { bold: true } } }, '', '', '', '', '', '', '', n(data.totalSemNf, { font: { bold: true } })])
-      aoa.push([{ v: 'Sem sobra de NF no macro item', s: { font: { bold: true } } }, '', '', '', '', '', '', '', n(data.totalDescoberto, { font: { bold: true } })])
 
       const ws = XLSX.utils.aoa_to_sheet(aoa)
       ws['!cols'] = [{ wch: 10 }, { wch: 55 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 60 }, { wch: 14 }]

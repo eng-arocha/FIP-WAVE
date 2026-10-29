@@ -31,19 +31,26 @@
  *     ⇒ (p_acum × MO + desconto acumulado) / G ≤ p_acum
  *
  * ─────────────────────────────────────────────────────────────────────────
- * ③ A NOTA DA FIP, POR ITEM
+ * ③ A NOTA DA FIP, ITEM A ITEM (decisão do usuário, 29/10/2026)
  *
- *     cobertura no site = NF de terceiro lançada + saldo de pedido aprovado
- *
- *     cobertura ≥ p × M   →  a FIP NÃO emite. O material já está comprado; o
- *                            que falta é lançar a nota no Informakon.
- *     cobertura <  p × M  →  a FIP emite a diferença.
+ *     comprado do item  = max(NF de terceiro lançada, pedido aprovado)
+ *     FIP do item       = max(0, material medido ACUMULADO − comprado)
  *
  * Esta camada NÃO mexe no percentual. Ela responde outra pergunta: alguém
- * precisa emitir nota, ou é só atraso de lançamento? Sem ela, o sistema pediria
- * à FIP para faturar material que o fornecedor já faturou — na Medição 5 seriam
- * R$ 50.291,03 no grupo 1, que tem R$ 73.057,03 de pedido aprovado esperando a
- * nota chegar.
+ * precisa emitir nota, ou é só atraso de lançamento? Pedido aprovado sem
+ * nota (inclusive o da FIP já autorizado) é "nota a caminho", não emissão.
+ *
+ * A base é o material INSTALADO, não o que ainda falta descontar. A versão
+ * anterior perguntava só sobre o pendente de desconto e compensava NF dos
+ * vizinhos do macro item: material que a Wave já teve descontado contra nota
+ * de outro item sumia da conta — R$ 189.106,79 em 31 itens sem NF de ninguém
+ * na análise de 29/10/2026 (relatório Material sem NF), e a FIP nunca era
+ * chamada. Sobra de NF no vizinho não abate: ela só cobre o item se for
+ * rateio errado do pedido, e isso é conferência de obra, não conta.
+ *
+ * Por construção a FIP nunca estoura o contrato: pedido + FIP ≤ medido ≤
+ * contratado (MED-007: o 1.3.1 recebeu R$ 153 mil da FIP pela regra do
+ * balde e passou do contratado).
  *
  * E a nota que a FIP emitir não muda o percentual do mês corrente: ela vira
  * lastro quando for lançada no ERP, e a camada ② a enxerga na medição seguinte.
@@ -74,37 +81,35 @@ export function descontoPendenteDeLastro(matAcumulado: number, jaLancado: number
 
 export interface ItemCoberturaSite {
   detalhamentoId: string
-  /** `p × M` — o material medido no período. */
+  /**
+   * Material medido ACUMULADO do item: medições aprovadas mais o período da
+   * medição aberta. Inclui o que já foi descontado — o desconto pode ter
+   * usado nota de outro item.
+   */
   matMedido: number
   /** NF de terceiro já lançada NO SITE, alocada a este detalhamento. */
   nfTerceiro: number
-  /** Pedido de fat-direto APROVADO alocado a este detalhamento. */
+  /**
+   * Pedido de fat-direto APROVADO alocado a este detalhamento, inclusive o
+   * pedido da FIP ainda sem nota — esse já foi autorizado e não volta como
+   * emissão nova.
+   */
   pedidoAprovado: number
   /**
-   * Quanto desta cobertura JÁ foi consumido por medições aprovadas anteriores
-   * (`medicao_itens.nf_material_descontada`).
-   *
-   * Sem isto a conta compara estoque com fluxo: `nfTerceiro` e `pedidoAprovado`
-   * são acumulados de contrato inteiro, e `matMedido` é só o período. Um item
-   * cujo material já foi todo coberto em medições passadas continuaria
-   * parecendo coberto ao medir material NOVO, e a FIP nunca seria chamada a
-   * emitir — nem o portão de aprovação que exige essa nota seria acionado.
+   * Compensação de lastro registrada NESTE item (migration 085): nota de
+   * outro macro item parada aqui, que paga material deste item. Sem somá-la,
+   * ao medir esse material o site pediria à FIP uma segunda nota. Ver
+   * lib/informakon/compensacao-lastro.ts.
    */
-  jaConsumido?: number
-  /**
-   * Parte de `pedidoAprovado` que é pedido de NF de material da FIP ainda sem
-   * nota. Não pode ter sido consumida por abatimento nenhum — sem nota não há
-   * lastro no ERP — então não entra no desconto de `jaConsumido`.
-   */
-  fipPendente?: number
+  coberturaExtra?: number
 }
 
 export interface CoberturaDoItem {
-  /** NF lançada + saldo de pedido aprovado. O material que já está comprado. */
+  /** max(NF, pedido aprovado) + compensação. O material que já está comprado. */
   cobertura: number
   /** Parte do material medido que tem pedido aprovado esperando a nota chegar. */
   notaACaminho: number
-  /** `max(0, p × M − cobertura)`: o que a FIP precisa emitir. */
+  /** `max(0, medido acumulado − cobertura)`: o que a FIP precisa emitir. */
   fipPrecisaEmitir: number
 }
 
@@ -112,122 +117,24 @@ export interface CoberturaDoItem {
  * Camada ③. Classifica o material medido de cada item entre o que já está
  * comprado e o que exige nota nova da FIP.
  *
- * Por item, sem compensação: pedido aprovado de um item não cobre o material do
- * vizinho. `cobertura = max(NF, aprovado)` porque o pedido aprovado já contém o
- * que dele virou nota — somar os dois contaria a mesma compra duas vezes.
+ * Por item, sem compensação: NF ou pedido de um item não cobre o material do
+ * vizinho, nem no mesmo macro item. `max(NF, aprovado)` e não soma porque o
+ * pedido aprovado já contém o que dele virou nota.
  */
-/**
- * Camada ③ no nível do BALDE — a mesma chave da camada ② (`chaveMacroItem`:
- * o grupo macro, ou o detalhamento no grupo 19).
- *
- * Por item a conta estava cega para o transbordo. A nota é do balde — o
- * Informakon consolida por macro item — e o abatimento das medições
- * aprovadas é gravado no item que MEDIU material, não no item que tem a
- * nota. Então um item sem nota (quadros da subestação, 100% medidos) consome
- * as notas do vizinho (equipamentos), o `jaConsumido` fica no primeiro e o
- * segundo segue com consumo zero, "coberto". Na MED-007 o grupo 1 mostrava
- * R$ 497 mil disponíveis com R$ 289 mil de líquido real, e a FIP não era
- * chamada para R$ 185 mil de material que não tem nota em lugar nenhum.
- *
- *     cobertura do balde = Σ max(NF, aprovado) − Σ jaConsumido
- *     FIP do balde       = max(0, Σ pendente − cobertura)
- *
- * O resultado volta para os itens rateado pelo pendente de cada um — a
- * pergunta "quem emite?" é do balde, mas a tela é por linha. Item sem balde
- * (código fora do padrão) segue na regra por item.
- */
-export function classificarCoberturaPorBalde(
-  itens: Array<ItemCoberturaSite & { balde: string }>,
-  /**
-   * Cobertura que não vem de nota alocada aqui: a compensação de lastro
-   * (migration 085). A nota de outro macro item parada neste balde paga
-   * material deste balde — sem somá-la, ao medir esse material o site
-   * pediria à FIP uma segunda nota. Ver lib/informakon/compensacao-lastro.ts.
-   */
-  coberturaExtraPorBalde?: Map<string, number>,
-): Map<string, CoberturaDoItem> {
-  const out = new Map<string, CoberturaDoItem>()
-  const porBalde = new Map<string, Array<ItemCoberturaSite & { balde: string }>>()
-  const semBalde: ItemCoberturaSite[] = []
-  for (const it of itens) {
-    if (!it.balde) { semBalde.push(it); continue }
-    const lista = porBalde.get(it.balde)
-    if (lista) lista.push(it)
-    else porBalde.set(it.balde, [it])
-  }
-  for (const [id, cob] of classificarCoberturaDoSite(semBalde)) out.set(id, cob)
-
-  for (const [balde, lista] of porBalde) {
-    let pendente = 0
-    let comprado = norm(coberturaExtraPorBalde?.get(balde))
-    let aprovadoSemNota = 0
-    let consumido = 0
-    let fipPendente = 0
-    for (const it of lista) {
-      const nf = norm(it.nfTerceiro)
-      const aprovado = norm(it.pedidoAprovado)
-      const fip = Math.min(norm(it.fipPendente), aprovado)
-      pendente += norm(it.matMedido)
-      comprado += Math.max(nf, aprovado - fip)
-      aprovadoSemNota += Math.max(0, aprovado - nf)
-      consumido += norm(it.jaConsumido)
-      fipPendente += fip
-    }
-    // O pedido da FIP sem nota fica fora do desconto do consumido. Sem isso,
-    // um item que já abateu mais nota do que tem comprada no site (rateio
-    // diferente do ERP) engolia o pedido recém-autorizado, e o card pedia a
-    // mesma nota de novo — MED-007, 2.2.1, R$ 35.268,99.
-    const cobertura = Math.max(0, comprado - consumido) + fipPendente
-    const fipBalde = Math.max(0, pendente - cobertura)
-    const aCaminhoBalde = Math.min(pendente, Math.min(aprovadoSemNota, cobertura))
-
-    // A FIP do balde vai para quem NÃO tem material comprado, na proporção do
-    // que falta em cada item. Ratear pelo material medido mandava a nota da
-    // FIP para o item que mais mediu — mesmo 100% comprado. Na MED-007 o
-    // 1.3.1 (Novemp + #1085 = contratado inteiro) recebeu R$ 153 mil e
-    // estourou o contrato (docs/DIVIDAS.md, 28/10/2026).
-    //
-    //     falta do item = material medido acumulado − material comprado
-    //                   = (pendente + jaConsumido) − max(NF, aprovado)
-    //
-    // `jaConsumido` entra porque o abatimento antigo fica gravado no item que
-    // MEDIU: é ali que o material sem nota mora. Sem falta em nenhum item,
-    // volta ao peso do medido.
-    const faltaPorItem = lista.map(it => {
-      const comprado = Math.max(norm(it.nfTerceiro), norm(it.pedidoAprovado))
-      return Math.max(0, norm(it.matMedido) + norm(it.jaConsumido) - comprado)
-    })
-    const faltaTotal = faltaPorItem.reduce((s, v) => s + v, 0)
-
-    lista.forEach((it, i) => {
-      const peso = pendente > 0 ? norm(it.matMedido) / pendente : 0
-      const pesoFip = faltaTotal > 0 ? faltaPorItem[i] / faltaTotal : peso
-      out.set(it.detalhamentoId, {
-        cobertura: cobertura * peso,
-        notaACaminho: aCaminhoBalde * peso,
-        fipPrecisaEmitir: fipBalde * pesoFip,
-      })
-    })
-  }
-  return out
-}
-
 export function classificarCoberturaDoSite(
   itens: ItemCoberturaSite[],
 ): Map<string, CoberturaDoItem> {
   const out = new Map<string, CoberturaDoItem>()
   for (const it of itens) {
-    const matMedido = norm(it.matMedido)
+    const medido = norm(it.matMedido)
     const nf = norm(it.nfTerceiro)
     const aprovado = norm(it.pedidoAprovado)
-    // `max` e não soma: o pedido aprovado já contém o que dele virou nota.
-    // Menos o que medições anteriores já consumiram, senão é estoque contra
-    // fluxo — ver `jaConsumido`.
-    const cobertura = Math.max(0, Math.max(nf, aprovado) - norm(it.jaConsumido))
+    const cobertura = Math.max(nf, aprovado) + norm(it.coberturaExtra)
     out.set(it.detalhamentoId, {
       cobertura,
-      notaACaminho: Math.min(matMedido, Math.max(0, Math.min(aprovado - nf, cobertura))),
-      fipPrecisaEmitir: Math.max(0, matMedido - cobertura),
+      // O medido além da nota que um pedido aprovado ainda vai trazer.
+      notaACaminho: Math.min(Math.max(0, medido - nf), Math.max(0, aprovado - nf)),
+      fipPrecisaEmitir: Math.max(0, medido - cobertura),
     })
   }
   return out

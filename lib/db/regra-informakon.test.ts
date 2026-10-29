@@ -174,95 +174,34 @@ describe('CAMADA ③ — a nota da FIP não mexe no percentual, só na tarefa', 
 })
 
 /**
- * CAMADA ③ depois do corte — a FIP só emite onde não há lastro no ERP nem
- * pedido no site.
+ * CAMADA ③ depois do corte — o retrato do ERP não mexe na FIP (29/10/2026).
  *
- * A camada ③ mede cobertura pelo SITE. O desconto que a camada ② deixa passar
- * é, por construção, nota que o ERP TEM lançada. Onde o Informakon tem nota
- * que o nosso cadastro não tem, a camada ③ pedia à FIP uma SEGUNDA nota para
- * o mesmo material. Números reais da Medição 5.
+ * Antes o retrato abatia o desconto lastreado da FIP e somava um piso por
+ * grupo. Os dois compensavam no macro item (MED-007: R$ 153 mil no 1.3.1,
+ * acima do contratado). A FIP agora é item a item, contra o site.
  */
-describe('CAMADA ③ — a nota da FIP depois do corte', () => {
-  it('4.2.4: desconto integralmente lastreado zera a emissão', () => {
-    // Material 4.453,17, sem nota nem pedido no site — a camada ③ pedia tudo.
-    // Mas o grupo 4 tem lastro para o desconto inteiro: a nota existe no ERP.
+describe('CAMADA ③ — o retrato não altera a FIP', () => {
+  it('desconto integralmente lastreado não zera a emissão (4.2.4)', () => {
     const l = linha({
       codigo: '4.2.4', wave_servico: 6_764.62, nf_descontavel: 4_453.17,
       desconto_ideal: 4_453.17, fip_faturar: 4_453.17, valor_total_item: 12_464.21,
     })
-    const r = aplicarRetratoNasLinhas([l], new Map([['4', 4_453.17]]))
-    expect(l.fip_faturar).toBe(0)
-    expect(r.fipAbatidoPeloLastro).toBeCloseTo(4_453.17, 2)
-  })
-
-  it('18.1.6: a FIP emite exatamente o que foi cortado', () => {
-    // Grupo 18: desconto ideal 13.167,85 contra lastro de 3.265,48.
-    const l186 = linha({
-      codigo: '18.1.6', wave_servico: 7_708.44, nf_descontavel: 11_057.26,
-      desconto_ideal: 11_057.26, fip_faturar: 11_057.26, valor_total_item: 19_753.37,
-    })
-    const l1814 = linha({
-      codigo: '18.1.14', wave_servico: 2_367.23, nf_descontavel: 2_110.60,
-      desconto_ideal: 2_110.60, fip_faturar: 0, valor_total_item: 53_733.96,
-    })
-    aplicarRetratoNasLinhas([l186, l1814], new Map([['18', 3_265.48]]))
-    // O corte cai no maior desconto: 11.057,26 − 9.902,38 = 1.154,88.
-    expect(l186.nf_descontavel).toBeCloseTo(1_154.88, 2)
-    // E é exatamente isso que a FIP emite — o mesmo número da Folha de Rosto.
-    expect(l186.fip_faturar).toBeCloseTo(9_902.38, 2)
-  })
-
-  it('pedido aprovado no site segura a emissão mesmo com corte', () => {
-    // Grupo 1: cortado em 50.291,03, mas há 73.057,03 de pedido aprovado —
-    // a nota do fornecedor está a caminho, a FIP não emite nada.
-    const l = linha({
-      codigo: '1.8.1', wave_servico: 4_950.40, nf_descontavel: 119_977.36,
-      desconto_ideal: 119_977.36, fip_faturar: 0, valor_total_item: 124_927.76,
-    })
-    aplicarRetratoNasLinhas([l], new Map([['1', 69_686.33]]))
-    expect(l.nf_descontavel).toBeCloseTo(69_686.33, 2)
-    expect(l.fip_faturar).toBe(0)
-  })
-
-  it('grupo AUSENTE do retrato não abate a emissão', () => {
-    // A trava que impede transformar falta de informação em prova de que o
-    // material já foi faturado. Sem o grupo no retrato, nada foi conferido.
-    const l = linha({
-      codigo: '4.2.4', wave_servico: 6_764.62, nf_descontavel: 4_453.17,
-      desconto_ideal: 4_453.17, fip_faturar: 4_453.17, valor_total_item: 12_464.21,
-    })
-    const r = aplicarRetratoNasLinhas([l], new Map())
+    aplicarRetratoNasLinhas([l], new Map([['4', 4_453.17]]))
     expect(l.fip_faturar).toBe(4_453.17)
-    expect(r.fipAbatidoPeloLastro).toBe(0)
   })
 
-  it('nunca aumenta a emissão', () => {
-    const l = linha({
-      codigo: '9.1.1', wave_servico: 1_000, nf_descontavel: 6_000,
-      desconto_ideal: 10_000, fip_faturar: 1_000, valor_total_item: 20_000,
+  it('corte sem nota a caminho não cria FIP no grupo (MED-007 grupo 1)', () => {
+    const l131 = linha({
+      codigo: '1.3.1', wave_servico: 0, nf_descontavel: 320_380.45, desconto_ideal: 320_380.45,
+      fip_faturar: 0, faturamento_direto_em_aberto: 17_625.35, valor_total_item: 400_000,
     })
-    aplicarRetratoNasLinhas([l], new Map([['9', 6_000]]))
-    expect(l.fip_faturar!).toBeLessThanOrEqual(1_000)
-  })
-
-  it('o pedido da FIP já autorizado não volta como emissão nova', () => {
-    // O caso real do 18.1.6 depois da autorização: o usuário autorizou os
-    // R$ 9.902,38 que faltavam, isso virou pedido aprovado no site, e a
-    // camada ③ passou a pedir R$ 1.154,88 — justamente a parte que já tinha
-    // lastro no ERP. Autorizar de novo emitiria nota em duplicidade.
-    const l = linha({
-      codigo: '18.1.6', wave_servico: 7_708.44, nf_descontavel: 11_057.26,
-      material_medido: 11_057.26, desconto_ideal: 11_057.26,
-      fip_faturar: 1_154.88, valor_total_item: 19_753.37,
+    const l161 = linha({
+      codigo: '1.6.1', wave_servico: 0, nf_descontavel: 216_610.84, desconto_ideal: 216_610.84,
+      fip_faturar: 0, faturamento_direto_em_aberto: 14_291.23, valor_total_item: 300_000,
     })
-    const irmao = linha({
-      codigo: '18.1.14', wave_servico: 2_367.23, nf_descontavel: 2_110.60,
-      material_medido: 2_110.60, desconto_ideal: 2_110.60,
-      fip_faturar: 0, valor_total_item: 53_733.96,
-    })
-    aplicarRetratoNasLinhas([l, irmao], new Map([['18', 3_265.48]]))
-    expect(l.nf_descontavel).toBeCloseTo(1_154.88, 2)
-    expect(l.fip_faturar).toBe(0)
+    aplicarRetratoNasLinhas([l131, l161], new Map([['1', 351_603.47]]))
+    expect(l131.fip_faturar).toBe(0)
+    expect(l161.fip_faturar).toBe(0)
   })
 })
 
@@ -303,7 +242,6 @@ describe('prioridade — o mês corrente antes da recuperação', () => {
     expect(l185.nf_descontavel).toBe(0)                    // recuperação pura cede tudo
     expect(l1814.nf_descontavel).toBeCloseTo(2_110.60, 2)  // sobra só o material do mês
     expect(l186.nf_descontavel).toBeCloseTo(1_154.88, 2)   // o número da Folha de Rosto
-    expect(l186.fip_faturar).toBeCloseTo(9_902.38, 2)
   })
 
   it('o total lançado do grupo não muda — só a distribuição', () => {
@@ -341,46 +279,6 @@ describe('prioridade — o mês corrente antes da recuperação', () => {
     aplicarRetratoNasLinhas([mes, rec], new Map([['9', 2_300]]))
     expect(mes.nf_descontavel).toBe(2_000)
     expect(rec.nf_descontavel).toBe(300)
-  })
-})
-
-/**
- * Decisão do usuário (26/10/2026), MED-007: "não tem lastro e só tem nota a
- * caminho — a FIP deveria lançar a diferença". O corte da camada ② é o que o
- * ERP não tem; o que não está a caminho em pedido aprovado, a FIP fatura.
- */
-describe('CAMADA ③ — a FIP fatura o corte que nenhuma nota a caminho cobre', () => {
-  it('MED-007 grupo 1: corte 185.387,82, a caminho 31.916,58 → FIP 153.471,24', () => {
-    const l131 = linha({
-      codigo: '1.3.1', wave_servico: 0, nf_descontavel: 320_380.45, desconto_ideal: 320_380.45,
-      fip_faturar: 0, faturamento_direto_em_aberto: 17_625.35, valor_total_item: 400_000,
-    })
-    const l161 = linha({
-      codigo: '1.6.1', wave_servico: 0, nf_descontavel: 216_610.84, desconto_ideal: 216_610.84,
-      fip_faturar: 0, faturamento_direto_em_aberto: 14_291.23, valor_total_item: 300_000,
-    })
-    const r = aplicarRetratoNasLinhas([l131, l161], new Map([['1', 351_603.47]]))
-    const fip = (l131.fip_faturar ?? 0) + (l161.fip_faturar ?? 0)
-    expect(fip).toBeCloseTo(153_471.24, 2)
-    expect(r.fipPeloCorte).toBeCloseTo(153_471.24, 2)
-  })
-
-  it('nota a caminho maior que o corte: a FIP não emite', () => {
-    const l = linha({
-      codigo: '1.8.1', wave_servico: 0, nf_descontavel: 119_977.36, desconto_ideal: 119_977.36,
-      fip_faturar: 0, faturamento_direto_em_aberto: 73_057.03, valor_total_item: 124_927.76,
-    })
-    aplicarRetratoNasLinhas([l], new Map([['1', 69_686.33]]))
-    expect(l.fip_faturar).toBe(0)
-  })
-
-  it('não soma duas vezes o que a camada ③ já pediu', () => {
-    const l = linha({
-      codigo: '2.2.1', wave_servico: 0, nf_descontavel: 35_268.99, desconto_ideal: 35_268.99,
-      fip_faturar: 35_268.99, faturamento_direto_em_aberto: 0, valor_total_item: 400_000,
-    })
-    aplicarRetratoNasLinhas([l], new Map([['2', 0]]))
-    expect(l.fip_faturar).toBeCloseTo(35_268.99, 2)
   })
 })
 
