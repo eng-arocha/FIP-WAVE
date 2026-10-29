@@ -10,8 +10,7 @@ import { nfReservaSaldo } from '@/lib/db/nf-status'
 import {
   descontoIdealDoItem,
   descontoPendenteDeLastro,
-  classificarCoberturaPorBalde,
-  type ItemCoberturaSite,
+  classificarCoberturaDoSite,
 } from '@/lib/db/desconto-material'
 import { getCodigoInformakon } from '@/lib/data/informakon-codigos'
 
@@ -639,13 +638,11 @@ export async function calcularBoletimSimulado(
   // (mesma lógica de calcularInformaconData)
   const aprovadoPorDet: Record<string, number> = {}
   const nfAlocadaPorDet: Record<string, number> = {}
-  /** Pedido de NF de material da FIP aprovado e ainda sem nota, por item. */
-  const fipPendentePorDet: Record<string, number> = {}
   {
     const { data: solRaw } = await admin
       .from('solicitacoes_fat_direto')
       .select(`id, status, deletado_em, fornecedor_cnpj, fornecedor_razao_social,
-        itens:itens_solicitacao_fat_direto ( detalhamento_id, valor_total ),
+        itens:itens_solicitacao_fat_direto ( detalhamento_id, valor_total, valor_devolvido ),
         nfs:notas_fiscais_fat_direto!solicitacao_id ( valor, status )`)
       .eq('contrato_id', contratoId)
       .eq('status', 'aprovado')
@@ -655,8 +652,13 @@ export async function calcularBoletimSimulado(
       // Aqui a coluna `tipo` não é selecionada de propósito: a simulação roda
       // no caminho crítico da tela de nova medição e o CNPJ já resolve.
       if (ehPedidoDeServicoWave(sol)) continue
+      // Devolução abatida, como no relatório Material sem NF: material
+      // devolvido não está comprado.
       const itensVal = ((sol.itens || []) as any[])
-        .map(it => ({ detId: it.detalhamento_id as string | null, valor: Number(it.valor_total || 0) }))
+        .map(it => ({
+          detId: it.detalhamento_id as string | null,
+          valor: Math.max(0, Number(it.valor_total || 0) - Number(it.valor_devolvido || 0)),
+        }))
         .filter(x => x.detId)
       const totalSol = itensVal.reduce((s, it) => s + it.valor, 0)
       for (const it of itensVal) aprovadoPorDet[it.detId!] = (aprovadoPorDet[it.detId!] || 0) + it.valor
@@ -671,16 +673,6 @@ export async function calcularBoletimSimulado(
         for (const it of itensVal) {
           const share = it.valor / totalSol
           nfAlocadaPorDet[it.detId!] = (nfAlocadaPorDet[it.detId!] || 0) + totalNfsSol * share
-        }
-      }
-
-      // Pedido da FIP autorizado e sem nota: a camada ③ não deixa abatimento
-      // antigo consumi-lo. Ver `fipPendente` em lib/db/desconto-material.ts.
-      const ehFip = sol.tipo === 'fip_material' || /^FIP ENGENHARIA/i.test(String(sol.fornecedor_razao_social ?? '').trim())
-      const pendenteFip = totalSol - totalNfsSol
-      if (ehFip && totalSol > 0 && pendenteFip > 0.005) {
-        for (const it of itensVal) {
-          fipPendentePorDet[it.detId!] = (fipPendentePorDet[it.detId!] || 0) + pendenteFip * (it.valor / totalSol)
         }
       }
     }
@@ -792,16 +784,14 @@ export async function calcularBoletimSimulado(
     nfJaAbatidaPorDet[detId] || 0,
   )
 
-  // No nível do balde, como a medição real — ver classificarCoberturaPorBalde.
-  const coberturaSimulada = classificarCoberturaPorBalde(
+  // Item a item, como a medição real — ver classificarCoberturaDoSite. A
+  // base é o material INSTALADO (aprovadas + período), não o pendente.
+  const coberturaSimulada = classificarCoberturaDoSite(
     detIdsRelevantes.map(detId => ({
       detalhamentoId: detId,
-      balde: chaveMacroItem(detMap.get(detId)?.codigo),
-      matMedido: pendenteSimulado(detId),
+      matMedido: (matAcumAprovadoPorDet[detId] || 0) + (medidoPorDet.get(detId) ?? 0),
       nfTerceiro: nfAlocadaPorDet[detId] || 0,
       pedidoAprovado: aprovadoPorDet[detId] || 0,
-      jaConsumido: nfJaAbatidaPorDet[detId] || 0,
-      fipPendente: fipPendentePorDet[detId] || 0,
     })),
   )
 
@@ -1160,7 +1150,7 @@ export async function calcularInformaconData(
   {
     const SELECT_SOL = `
         id, numero, status, deletado_em, fornecedor_cnpj, fornecedor_razao_social,
-        itens:itens_solicitacao_fat_direto ( detalhamento_id, valor_total ),
+        itens:itens_solicitacao_fat_direto ( detalhamento_id, valor_total, valor_devolvido ),
         nfs:notas_fiscais_fat_direto!solicitacao_id ( valor, status )
     `
     let solRaw: any[] = []
@@ -1192,9 +1182,11 @@ export async function calcularInformaconData(
       // Wave, não uma nota de material de terceiro.
       if (ehPedidoDeServicoWave(sol)) continue
       const itens = (sol.itens || []) as any[]
+      // Devolução abatida, como no relatório Material sem NF: material
+      // devolvido não está comprado.
       const itensVal = itens.map(it => ({
         detId: it.detalhamento_id as string | null,
-        valor: Number(it.valor_total || 0),
+        valor: Math.max(0, Number(it.valor_total || 0) - Number(it.valor_devolvido || 0)),
       })).filter(x => x.detId)
 
       const totalSol = itensVal.reduce((s, it) => s + it.valor, 0)
@@ -1218,8 +1210,9 @@ export async function calcularInformaconData(
         }
       }
 
-      // Pedido da FIP autorizado e sem nota: a camada ③ não deixa abatimento
-      // antigo consumi-lo. Ver `fipPendente` em lib/db/desconto-material.ts.
+      // Pedido da FIP autorizado e sem nota: vira lastro em lançamento na
+      // camada ② (lastroFipEmLancamento). Na camada ③ ele já está dentro do
+      // pedido aprovado, como nota a caminho.
       const ehFip = sol.tipo === 'fip_material' || /^FIP ENGENHARIA/i.test(String(sol.fornecedor_razao_social ?? '').trim())
       const pendenteFip = totalSol - totalNfsSol
       if (ehFip && totalSol > 0 && pendenteFip > 0.005) {
@@ -1307,59 +1300,37 @@ export async function calcularInformaconData(
     })
   }
 
-  // ── CAMADA ③ — a nota da FIP, por BALDE ─────────────────────────────────
+  // ── CAMADA ③ — a nota da FIP, ITEM A ITEM ────────────────────────────
   //
-  //     cobertura no site = NF de terceiro lançada + saldo de pedido aprovado
-  //                         − o que as medições aprovadas já consumiram,
-  //                         somados no balde da camada ② (chaveMacroItem)
-  //     cobertura ≥ p × M  →  a FIP não emite; falta lançar a nota no ERP
-  //     cobertura <  p × M  →  a FIP emite a diferença
+  //     FIP do item = max(0, material medido acumulado − max(NF, pedido aprovado))
   //
   // Não mexe no percentual. Responde outra pergunta: alguém precisa emitir
-  // nota, ou é só atraso de lançamento? Ver lib/db/desconto-material.ts.
-  // Compensação de lastro (migration 085): o que foi compensado contra um
-  // macro item conta como cobertura dele. Ver lib/informakon/compensacao-lastro.ts.
+  // nota, ou é só atraso de lançamento? Base = material INSTALADO (aprovadas
+  // + esta medição), inclusive o já descontado — e NF do vizinho do macro
+  // item não cobre. Ver lib/db/desconto-material.ts.
+  // Compensação de lastro (migration 085): o valor registrado no item conta
+  // como cobertura dele. Ver lib/informakon/compensacao-lastro.ts.
   const compensacoes = await carregarCompensacoes(admin, contratoId)
-  const coberturaCompensada = somarPorChave(compensacoes.lista, 'chave_nota')
+  const compensadoPorDet = new Map<string, number>()
+  for (const c of compensacoes.lista) {
+    for (const i of c.itens) {
+      compensadoPorDet.set(i.detalhamento_id, (compensadoPorDet.get(i.detalhamento_id) || 0) + i.valor)
+    }
+  }
 
   const coberturaPorDet = (() => {
-    const entrada: Array<ItemCoberturaSite & { balde: string }> = []
-    for (const it of (medicaoItens || []) as any[]) {
-      const det = it.detalhamento
-      if (!det?.id) continue
-      entrada.push({
-        detalhamentoId: det.id,
-        balde: chaveMacroItem(det.codigo),
-        // Mesma base da camada ①: o material que ainda falta descontar, não
-        // só o do período. Senão as duas camadas falariam de materiais
-        // diferentes e a pergunta "a FIP precisa emitir?" seria respondida
-        // sobre um valor que o boletim nem está mandando descontar.
-        matMedido: pendenteDeLastro(det.id),
-        nfTerceiro: nfAlocadaPorDet[det.id] || 0,
-        pedidoAprovado: aprovadoPorDet[det.id] || 0,
-        jaConsumido: nfJaAbatidaPorDet[det.id] || 0,
-        fipPendente: fipPendentePorDet[det.id] || 0,
-      })
-    }
-    // Detalhamento sem linha nesta medição também precisa de veredito: se ele
-    // tem pendente de lastro, vai virar linha de recuperação e a pergunta
-    // "a FIP emite?" vale igual.
-    const jaTem = new Set(entrada.map(e => e.detalhamentoId))
-    for (const det of (todosDetalhamentos || []) as any[]) {
-      if (!det?.id || jaTem.has(det.id)) continue
-      const pendente = pendenteDeLastro(det.id)
-      if (pendente <= 0) continue
-      entrada.push({
-        detalhamentoId: det.id,
-        balde: chaveMacroItem(det.codigo),
-        matMedido: pendente,
-        nfTerceiro: nfAlocadaPorDet[det.id] || 0,
-        pedidoAprovado: aprovadoPorDet[det.id] || 0,
-        jaConsumido: nfJaAbatidaPorDet[det.id] || 0,
-        fipPendente: fipPendentePorDet[det.id] || 0,
-      })
-    }
-    return classificarCoberturaPorBalde(entrada, coberturaCompensada)
+    const ids = new Set<string>()
+    for (const it of (medicaoItens || []) as any[]) if (it.detalhamento?.id) ids.add(it.detalhamento.id)
+    // Detalhamento sem linha nesta medição também precisa de veredito: o
+    // material sem nota de meses anteriores vira linha virtual com a FIP.
+    for (const det of (todosDetalhamentos || []) as any[]) if (det?.id) ids.add(det.id)
+    return classificarCoberturaDoSite(Array.from(ids).map(detId => ({
+      detalhamentoId: detId,
+      matMedido: matAcumuladoDe(detId),
+      nfTerceiro: nfAlocadaPorDet[detId] || 0,
+      pedidoAprovado: aprovadoPorDet[detId] || 0,
+      coberturaExtra: compensadoPorDet.get(detId) || 0,
+    })))
   })()
 
   // Monta linhas
@@ -1392,18 +1363,19 @@ export async function calcularInformaconData(
       const nfDescontavel  = c?.nfDescontavel ?? 0
       const descontoIdeal  = c?.descontoIdeal ?? nfDescontavel
       const gapMaterial    = c?.gapMaterial ?? 0
-      const pendenteItem   = c?.pendente ?? 0
 
       // CAMADA ③ — o material já está comprado, ou a FIP precisa emitir?
       // Nenhuma das duas mexe no percentual: "Nota a caminho" é informação e
       // "FIP precisa emitir" é tarefa. Confirmação "sem mais NF" tira a espera:
-      // se não vem mais nota do fornecedor, o material inteiro é da FIP.
+      // se não vem mais nota do fornecedor, o material sem nota é da FIP —
+      // menos o pedido da FIP já autorizado, que não volta como emissão nova.
       const cob = coberturaPorDet.get(det.id)
       const faturamentoDiretoEmAberto = Boolean(it.confirmacao_sem_nf)
         ? 0
         : (cob?.notaACaminho ?? 0)
       const fipFaturar = Boolean(it.confirmacao_sem_nf)
-        ? Math.max(0, pendenteItem - nfTerceiroItem)
+        ? Math.max(0, matAcumuladoDe(det.id) - nfTerceiroItem
+            - (fipPendentePorDet[det.id] || 0) - (compensadoPorDet.get(det.id) || 0))
         : (cob?.fipPrecisaEmitir ?? 0)
 
       const valorGlobalItem = qtdContr * valorUnit
@@ -1567,7 +1539,10 @@ export async function calcularInformaconData(
     // Medição aprovada não inventa desconto novo: o que valeu está congelado
     // nos itens que existiam. Linha virtual em medição aprovada é sempre zero.
     const pendenteVirtual = snapshotAprovado ? 0 : pendenteDeLastro(det.id)
-    const coberturaVirtual = pendenteVirtual > 0 ? coberturaPorDet.get(det.id) : undefined
+    // A FIP vale para o material sem nota de meses anteriores mesmo sem
+    // pendente de desconto: é a tarefa da medição aberta. Numa aprovada a
+    // linha virtual segue zerada, como o desconto.
+    const coberturaVirtual = snapshotAprovado ? undefined : coberturaPorDet.get(det.id)
     const linhaVirtual: InformaconLinha = {
       medicao_item_id: null,
       existe_no_banco: false,

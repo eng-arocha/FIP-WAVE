@@ -40,8 +40,8 @@ export default async function MaterialSemNfPage({ params }: { params: Promise<{ 
           <h1 className="text-xl font-semibold text-[var(--text-1)]">Material medido sem NF</h1>
           <p className="text-xs text-[var(--text-3)] mt-1 max-w-3xl">
             Material instalado (medições aprovadas) sem NF lançada nem pedido aprovado no próprio item —
-            candidato a NF de material da FIP. O boletim não pega esses casos: ele só pergunta pela FIP sobre
-            material ainda não descontado da Wave.
+            é o que o boletim pede à FIP para emitir, item a item. NF sobrando no vizinho não abate: se for
+            rateio, corrija o pedido.
           </p>
         </div>
         {data && data.grupos.length > 0 && <ExcelMaterialSemNf data={data} />}
@@ -64,10 +64,6 @@ export default async function MaterialSemNfPage({ params }: { params: Promise<{ 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
             <Card titulo="Medido sem NF nem pedido" valor={`R$ ${fmt(data.totalSemNf)}`} cor={COR_SEM_NF}
               nota={`${data.qtdItens} item(ns) em ${data.grupos.length} macro item(ns)`} />
-            <Card titulo="Sem sobra de NF no macro item" valor={`R$ ${fmt(data.totalDescoberto)}`} cor={COR_SEM_NF}
-              nota="Nenhum vizinho tem NF além do medido — candidato mais forte a NF da FIP" />
-            <Card titulo="Coberto por sobra de vizinho" valor={`R$ ${fmt(data.totalSemNf - data.totalDescoberto)}`} cor={COR_SOBRA}
-              nota="Só é do vizinho se o material faturado lá foi instalado aqui (rateio) — conferir na obra" />
           </div>
 
           <div className="flex flex-col gap-3">
@@ -79,8 +75,6 @@ export default async function MaterialSemNfPage({ params }: { params: Promise<{ 
                   </div>
                   <div className="flex flex-wrap gap-4 text-xs tabular-nums">
                     <span>Sem NF: <b style={{ color: COR_SEM_NF }}>R$ {fmt(g.semNf)}</b></span>
-                    <span>Sobra de NF no macro item: <b style={{ color: COR_SOBRA }}>R$ {fmt(g.sobra)}</b></span>
-                    <span>Descoberto: <b className="text-[var(--text-1)]">R$ {fmt(g.descoberto)}</b></span>
                   </div>
                 </div>
                 <div className="overflow-x-auto">

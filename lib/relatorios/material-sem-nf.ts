@@ -1,21 +1,17 @@
 // lib/relatorios/material-sem-nf.ts
 // Relatório "Material medido sem NF" — candidato a NF de material da FIP.
 //
-// A camada ③ do boletim só pergunta "a FIP precisa emitir?" sobre o material
-// AINDA NÃO DESCONTADO. Material que a Wave já teve descontado — porque o
-// Informakon tinha nota sobrando no macro item, ou porque a medição é anterior
-// à regra (27/08/2026) — sai da conta, mesmo sem NF de ninguém no item
-// (2.2.1, 2.3.1 e 2.7.1 na análise de 29/10/2026). Este relatório olha o
-// material instalado contra o material comprado, item a item:
+// Mesma conta da camada ③ do boletim desde 29/10/2026
+// (lib/db/desconto-material.ts): o material instalado contra o material
+// comprado, item a item, inclusive o que a Wave já teve descontado:
 //
 //     sem NF = material medido (aprovado) − max(NF lançada, pedido aprovado)
 //
 // `max` e não soma: o pedido aprovado já contém o que dele virou nota.
 //
-// A sobra de outros itens do mesmo macro item aparece ao lado, sem abater
-// automaticamente: ela só cobre o item se o material faturado lá for o mesmo
-// que foi instalado aqui (rateio errado do pedido) — e isso é conferência de
-// obra, não conta.
+// A sobra de outros itens do mesmo macro item aparece no rodapé, sem abater:
+// ela só cobre o item se o material faturado lá for o mesmo que foi instalado
+// aqui (rateio errado do pedido) — e isso é conferência de obra, não conta.
 import { chaveMacroItem } from '@/lib/informakon/comparar-saldo'
 
 export interface FornecedorDoItem {
@@ -59,8 +55,6 @@ export interface GrupoMaterialSemNf {
   semNf: number
   /** Σ NF além do medido nos itens do macro item. */
   sobra: number
-  /** Parte do sem NF que nem a sobra do macro item cobre. */
-  descoberto: number
   /** Só os itens com sem NF > 0. */
   itens: LinhaMaterialSemNf[]
   /** Itens com sobra, para conferir rateio. */
@@ -70,7 +64,6 @@ export interface GrupoMaterialSemNf {
 export interface RelatorioMaterialSemNf {
   grupos: GrupoMaterialSemNf[]
   totalSemNf: number
-  totalDescoberto: number
   qtdItens: number
 }
 
@@ -116,7 +109,6 @@ export function montarRelatorioMaterialSemNf(
       nome: nomeDoBalde(balde),
       semNf,
       sobra,
-      descoberto: cent(Math.max(0, semNf - sobra)),
       itens: comFalta,
       itensComSobra: linhas.filter(l => l.sobra > TOL),
     })
@@ -126,7 +118,6 @@ export function montarRelatorioMaterialSemNf(
   return {
     grupos,
     totalSemNf: cent(grupos.reduce((s, g) => s + g.semNf, 0)),
-    totalDescoberto: cent(grupos.reduce((s, g) => s + g.descoberto, 0)),
     qtdItens: grupos.reduce((s, g) => s + g.itens.length, 0),
   }
 }
