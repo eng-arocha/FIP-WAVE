@@ -83,6 +83,30 @@ export async function getRelatorioMaterialSemNf(contratoId: string): Promise<Rel
     }
   }
 
+  // Pedido da FIP ainda não aprovado: o botão "Gerar pedido FIP" não pode
+  // criar um segundo para o mesmo material.
+  const fipEmAndamento = new Map<string, number>()
+  {
+    const { data, error } = await admin
+      .from('solicitacoes_fat_direto')
+      .select('tipo, fornecedor_razao_social, status, itens:itens_solicitacao_fat_direto ( detalhamento_id, valor_total )')
+      .eq('contrato_id', contratoId)
+      .not('status', 'in', '(aprovado,encerrado,rejeitado)')
+      .is('deletado_em', null)
+    if (error) console.warn('[material-sem-nf] pedidos FIP em andamento:', error.message)
+    for (const sol of (data || []) as Array<{
+      tipo?: string | null
+      fornecedor_razao_social?: string | null
+      itens: Array<{ detalhamento_id: string | null; valor_total: number | string | null }> | null
+    }>) {
+      if (sol.tipo !== 'fip_material' && !/^FIP ENGENHARIA/i.test(String(sol.fornecedor_razao_social ?? '').trim())) continue
+      for (const it of sol.itens || []) {
+        if (!it.detalhamento_id) continue
+        fipEmAndamento.set(it.detalhamento_id, (fipEmAndamento.get(it.detalhamento_id) || 0) + Number(it.valor_total || 0))
+      }
+    }
+  }
+
   const nomePorCodigo = new Map(flat.map(({ item }) => [item.codigo, item.nome]))
   const itens = flat
     .filter(({ item }) => item.nivel === 3)
@@ -93,6 +117,7 @@ export async function getRelatorioMaterialSemNf(contratoId: string): Promise<Rel
       materialContratado: item.valor_contratado_material,
       materialMedido: item.material_medido,
       materialDescontado: item.material_descontado,
+      fipEmAndamento: Math.round((fipEmAndamento.get(item.id) || 0) * 100) / 100,
       fornecedores: Array.from(porDet.get(item.id)?.values() ?? [])
         .map(f => ({ ...f, pedido: Math.round(f.pedido * 100) / 100, nf: Math.round(f.nf * 100) / 100 }))
         .sort((a, b) => b.pedido - a.pedido),

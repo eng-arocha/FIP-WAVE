@@ -5,6 +5,7 @@ import { ChevronLeft } from 'lucide-react'
 import { getRelatorioMaterialSemNf } from '@/lib/db/material-sem-nf'
 import type { RelatorioMaterialSemNf } from '@/lib/relatorios/material-sem-nf'
 import { ExcelMaterialSemNf } from './excel-button'
+import { PedidoFipButton } from './pedido-fip-button'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,7 +45,17 @@ export default async function MaterialSemNfPage({ params }: { params: Promise<{ 
             rateio, corrija o pedido.
           </p>
         </div>
-        {data && data.grupos.length > 0 && <ExcelMaterialSemNf data={data} />}
+        {data && data.grupos.length > 0 && (
+          <div className="flex items-center gap-2">
+            <PedidoFipButton
+              contratoId={id}
+              itens={data.grupos.flatMap(g => g.itens).map(l => ({
+                id: l.id, codigo: l.codigo, nome: l.nome, semNf: l.semNf, fipEmAndamento: l.fipEmAndamento ?? 0,
+              }))}
+            />
+            <ExcelMaterialSemNf data={data} />
+          </div>
+        )}
       </div>
 
       {erro && (
@@ -97,6 +108,11 @@ export default async function MaterialSemNfPage({ params }: { params: Promise<{ 
                           <td className="py-1.5 px-2">
                             <span className="font-mono text-[var(--text-3)] mr-1.5">{l.codigo}</span>
                             <span className="text-[var(--text-2)]">{l.nome}</span>
+                            {(l.fipEmAndamento ?? 0) > 0.5 && (
+                              <div className="text-[10px] text-[#B45309]">
+                                Pedido FIP em andamento: R$ {fmt(l.fipEmAndamento ?? 0)}
+                              </div>
+                            )}
                           </td>
                           <td className="py-1.5 px-2 text-right tabular-nums text-[var(--text-2)]">{fmt(l.materialContratado)}</td>
                           <td className="py-1.5 px-2 text-right tabular-nums text-[var(--text-1)] whitespace-nowrap">
