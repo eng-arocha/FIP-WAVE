@@ -95,7 +95,6 @@ export default async function MaterialSemNfPage({ params }: { params: Promise<{ 
                         <th className="text-left py-1.5 px-2">Item</th>
                         <th className="text-right py-1.5 px-2">Mat. contratado</th>
                         <th className="text-right py-1.5 px-2">Mat. medido</th>
-                        <th className="text-right py-1.5 px-2">Descontado Wave</th>
                         <th className="text-right py-1.5 px-2">NF lançada</th>
                         <th className="text-right py-1.5 px-2">Pedido aprovado</th>
                         <th className="text-left py-1.5 px-2">Fornecedores (pedido / NF)</th>
@@ -118,7 +117,6 @@ export default async function MaterialSemNfPage({ params }: { params: Promise<{ 
                           <td className="py-1.5 px-2 text-right tabular-nums text-[var(--text-1)] whitespace-nowrap">
                             {fmt(l.materialMedido)} <span className="text-[var(--text-3)]">({pct(l.materialMedido, l.materialContratado)})</span>
                           </td>
-                          <td className="py-1.5 px-2 text-right tabular-nums text-[var(--text-2)]">{fmt(l.materialDescontado)}</td>
                           <td className="py-1.5 px-2 text-right tabular-nums text-[var(--text-2)]">{fmt(l.nf)}</td>
                           <td className="py-1.5 px-2 text-right tabular-nums text-[var(--text-2)]">{fmt(l.pedido)}</td>
                           <td className="py-1.5 px-2 text-[var(--text-2)]">
