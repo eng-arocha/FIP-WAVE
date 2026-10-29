@@ -9,6 +9,7 @@ import { useTreeExpansion } from '@/lib/hooks/use-tree-expansion'
 import { useDashboardTreeData } from '@/lib/hooks/use-dashboard-tree-data'
 import { useTableLayout } from '@/lib/hooks/use-table-layout'
 import { valoresPorModo, totalizarRows, percentuais, fmtPct } from '@/lib/export/visao-geral'
+import { nomesCurtos } from '@/lib/nome-curto'
 import { DashboardTreeRow, PctMedido, PctRealizadoMaterial, PctDescontado } from './dashboard-tree-row'
 import { colunasDoModo, COR_EM_APROVACAO, COR_FIP_ATRASADA, COR_SEM_LASTRO, COR_MAT_ADIANTADO, type ColunaVisaoGeral } from './colunas'
 import { DashboardBarChart } from './dashboard-bar-chart'
@@ -22,7 +23,7 @@ type Props = {
   medicoesEmAprovacao?: MedicaoEmAprovacao[]
 }
 
-type FlatItem = { item: DashboardItem; level: number }
+type FlatItem = { item: DashboardItem; level: number; nomeCurto?: string }
 
 const DOUBLE_CLICK_GUARD_MS = 250
 
@@ -70,8 +71,10 @@ export function DashboardTree({ contratoId, modo, medicoesEmAprovacao = [] }: Pr
     const root = getCached(rootScope) ?? []
 
     function walk(items: DashboardItem[], level: number) {
+      // A parte do nome que diferencia os irmãos (o pavimento) — ver lib/nome-curto.ts.
+      const curtos = nomesCurtos(items)
       for (const item of items) {
-        out.push({ item, level })
+        out.push({ item, level, nomeCurto: curtos.get(item.id) })
         if (item.tem_filhos && isExpanded(item.id)) {
           const children = getCached(item.id) ?? []
           walk(children, level + 1)
@@ -271,12 +274,13 @@ export function DashboardTree({ contratoId, modo, medicoesEmAprovacao = [] }: Pr
           <div className="max-h-[60vh] overflow-y-auto">
             {flat.length === 0 ? (
               <div className="p-6 text-center text-sm text-[var(--text-3)]">Carregando…</div>
-            ) : flat.map(({ item, level }) => {
+            ) : flat.map(({ item, level, nomeCurto }) => {
               const v = valoresPorModo(item, modo)
               return (
                 <DashboardTreeRow
                   key={`${item.id}-${level}`}
                   item={item}
+                  nomeCurto={nomeCurto}
                   level={level}
                   expanded={isExpanded(item.id)}
                   loading={isLoading(item.id)}

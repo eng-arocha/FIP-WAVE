@@ -77,6 +77,8 @@ export function PctDescontado({ p }: { p: Percentuais }) {
 
 type Props = {
   item: DashboardItem
+  /** Nome sem o trecho comum aos irmãos; o completo vai no tooltip. */
+  nomeCurto?: string
   level: number
   expanded: boolean
   loading: boolean
@@ -91,7 +93,7 @@ type Props = {
 }
 
 export const DashboardTreeRow = memo(function DashboardTreeRow({
-  item, level, expanded, loading, modo, gridTemplateColumns,
+  item, nomeCurto, level, expanded, loading, modo, gridTemplateColumns,
   onToggle, onZoom, onClickRealizado, onClickPendente,
 }: Props) {
   const v = valoresPorModo(item, modo)
@@ -118,7 +120,8 @@ export const DashboardTreeRow = memo(function DashboardTreeRow({
         style={{ paddingLeft: `${indent}px` }}
         onClick={() => { if (podeExpandir) onToggle() }}
         onDoubleClick={() => { if (onZoom) onZoom() }}
-        title={podeExpandir ? '1× clique = expandir · 2× clique = zoom' : ''}
+        title={podeExpandir ? `${item.nome}
+1× clique = expandir · 2× clique = zoom` : item.nome}
       >
         {podeExpandir ? (
           <button
@@ -137,7 +140,7 @@ export const DashboardTreeRow = memo(function DashboardTreeRow({
           <span className="w-4" />
         )}
         <span className="font-mono text-[11px] text-[var(--text-3)] tabular-nums">{item.codigo}</span>
-        <span className="truncate text-sm text-[var(--text-1)]">{item.nome}</span>
+        <span className="truncate text-sm text-[var(--text-1)]">{nomeCurto ?? item.nome}</span>
       </div>
       {colunasDoModo(modo).slice(1).map(col => {
         switch (col.key) {

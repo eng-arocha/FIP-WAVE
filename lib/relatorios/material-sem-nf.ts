@@ -32,6 +32,12 @@ export interface ItemMaterialEntrada {
   /** Material já descontado da Wave (mesma régua da camada ①). */
   materialDescontado: number
   fornecedores: FornecedorDoItem[]
+  /**
+   * Pedido de NF de material da FIP ainda NÃO aprovado (rascunho ou em
+   * aprovação) com este item. Não cobre nada — só aprovado é compra —, mas
+   * impede gerar um segundo pedido para o mesmo material.
+   */
+  fipEmAndamento?: number
 }
 
 export interface LinhaMaterialSemNf extends ItemMaterialEntrada {

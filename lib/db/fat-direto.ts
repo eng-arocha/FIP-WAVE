@@ -466,8 +466,11 @@ const FORNECEDORES_AUTO = {
 export async function criarSolicitacaoRascunhoDeMedicao(input: {
   contrato_id: string
   solicitante_id: string
-  medicao_id: string
-  medicao_numero: number
+  /** Ausente = pedido avulso, sem medição (relatório Material sem NF). */
+  medicao_id?: string
+  medicao_numero?: number
+  /** Texto da observação quando não há medição. */
+  origem?: string
   data_aprovacao?: string   // ISO; default = NOW()
   tipo: 'fip_material' | 'wave_servico'
   observacoes_extra?: string  // ex.: "Valor LÍQUIDO após retenção 5%: R$ X"
@@ -520,12 +523,14 @@ export async function criarSolicitacaoRascunhoDeMedicao(input: {
   }
 
   const valor_total = input.itens.reduce((s, i) => s + i.valor_total, 0)
-  const tag = `MED-${String(input.medicao_numero).padStart(3, '0')}`
   const data = input.data_aprovacao ? new Date(input.data_aprovacao) : new Date()
   const dataFmt = data.toLocaleDateString('pt-BR')
   const fornecedor = FORNECEDORES_AUTO[input.tipo]
 
-  const observacoesBase = `Aprovação da medição ${tag} em ${dataFmt}. ` +
+  const origem = input.medicao_numero != null
+    ? `Aprovação da medição MED-${String(input.medicao_numero).padStart(3, '0')}`
+    : (input.origem ?? 'Pedido avulso')
+  const observacoesBase = `${origem} em ${dataFmt}. ` +
     (input.tipo === 'wave_servico'
       ? `NF de SERVIÇO emitida pela WAVE INSTALACOES SPE LTDA pelo valor LÍQUIDO (já descontados 5% de retenção contratual). Os 5% retidos serão pagos ao final mediante condições contratuais e emissão de NF de serviço específica.`
       : `NF de MATERIAL FIP fat-direto. Lançar primeiro no Informakon antes da NF Wave.`)

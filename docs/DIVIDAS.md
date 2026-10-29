@@ -65,6 +65,9 @@ docs/superpowers/specs/2026-10-28-congelar-informakon-e-cortes.md implementada
    de NF de R$ 357 mil no macro item), 18, 4 e 7 e o pedido MSF #1085 (2.2.1).
    O que for rateio errado: corrigir o pedido — senão a aprovação gera o
    rascunho do pedido FIP com o valor cheio.
+   Sem medição: botão "Gerar pedido FIP" no relatório Material sem NF cria o
+   rascunho `fip_material` com os itens marcados (valor recalculado no
+   servidor, trava de saldo, item com pedido FIP em andamento bloqueado).
 
 **Atenção na MED-008 (mudanças desta data que entram em vigor)**
 - Trava de saldo por item em criação/edição/aprovação de pedido e no pedido
