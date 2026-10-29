@@ -21,20 +21,20 @@ export function ExcelMaterialSemNf({ data }: { data: RelatorioMaterialSemNf }) {
         [{ v: 'Material medido sem NF nem pedido — candidato a NF da FIP', s: { font: { bold: true, sz: 13, color: { rgb: azul } } } }],
         [{ v: `Gerado em ${new Date().toLocaleString('pt-BR')}`, s: { font: { italic: true, sz: 8 } } }],
         [],
-        ['Item', 'Descrição', 'Mat. contratado', 'Mat. medido', 'Descontado Wave', 'NF lançada', 'Pedido aprovado', 'Fornecedores (pedido / NF)', 'Sem NF']
+        ['Item', 'Descrição', 'Mat. contratado', 'Mat. medido', 'NF lançada', 'Pedido aprovado', 'Fornecedores (pedido / NF)', 'Sem NF']
           .map(v => ({ v, s: head })),
       ]
       for (const g of data.grupos) {
         aoa.push([
           { v: g.balde, s: grupoS }, { v: g.nome, s: grupoS },
-          { v: '', s: grupoS }, { v: '', s: grupoS }, { v: '', s: grupoS }, { v: '', s: grupoS },
+          { v: '', s: grupoS }, { v: '', s: grupoS }, { v: '', s: grupoS },
           { v: `Sobra de NF: ${g.sobra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, s: grupoS },
           { v: '', s: grupoS },
           n(g.semNf, grupoS),
         ])
         for (const l of g.itens) {
           aoa.push([
-            l.codigo, l.nome, n(l.materialContratado), n(l.materialMedido), n(l.materialDescontado),
+            l.codigo, l.nome, n(l.materialContratado), n(l.materialMedido),
             n(l.nf), n(l.pedido),
             l.fornecedores.map(f => `${f.fornecedor}: ${f.pedido.toFixed(2)} / ${f.nf.toFixed(2)}`).join(' | ') || 'nenhum pedido',
             n(l.semNf, { font: { bold: true, color: { rgb: 'B45309' } } }),
@@ -42,10 +42,10 @@ export function ExcelMaterialSemNf({ data }: { data: RelatorioMaterialSemNf }) {
         }
       }
       aoa.push([])
-      aoa.push([{ v: 'TOTAL', s: { font: { bold: true } } }, '', '', '', '', '', '', '', n(data.totalSemNf, { font: { bold: true } })])
+      aoa.push([{ v: 'TOTAL', s: { font: { bold: true } } }, '', '', '', '', '', '', n(data.totalSemNf, { font: { bold: true } })])
 
       const ws = XLSX.utils.aoa_to_sheet(aoa)
-      ws['!cols'] = [{ wch: 10 }, { wch: 55 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 60 }, { wch: 14 }]
+      ws['!cols'] = [{ wch: 10 }, { wch: 55 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 60 }, { wch: 14 }]
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Material sem NF')
       const d = new Date()
