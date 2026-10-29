@@ -56,6 +56,17 @@ docs/superpowers/specs/2026-10-28-congelar-informakon-e-cortes.md implementada
    mostrar que a coluna não basta.
 8. ~~19.1.1~~ corrigido (e46440f).
 9. ~~Tarefas-fantasma 1.6~~ removidas (manual-fix 101).
+10. Material medido sem NF nem pedido (29/10): R$ 189.106,79 em 31 itens;
+   R$ 47.314,29 sem sobra de NF no macro item (grupo 2: 2.2.1 28.952,36,
+   2.3.1 5.164,69, 2.7.1 13.507,24). A camada ③ não vê esse material: só
+   pergunta pela FIP sobre material ainda NÃO descontado, e medição anterior
+   a 27/08 é liquidada. Ferramenta: /contratos/[id]/material-sem-nf (atalho
+   "Material sem NF" na Visão Geral, modo Material). Ação do Alex: conferir
+   com compras o rateio do pedido MSF #1085 (2.2.1) e quem forneceu os
+   eletrodutos 2.3.1/2.7.1; o que for da FIP vira pedido FIP. Nos grupos 14,
+   18, 4, 7 a falta tem sobra de NF no vizinho — conferir se é rateio.
+   Decisão adiada: tornar isso automático na camada ③ (perguntar pela FIP
+   sobre material já descontado) — só se o relatório mostrar recorrência.
 
 **Atenção na MED-008 (mudanças desta data que entram em vigor)**
 - Trava de saldo por item em criação/edição/aprovação de pedido e no pedido
