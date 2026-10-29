@@ -5,7 +5,7 @@
 import type { DashboardModo } from '@/types/dashboard'
 import type { ColumnDef } from '@/lib/hooks/use-table-layout'
 
-export type ColunaVisaoGeral = 'item' | 'contratado' | 'pctMedido' | 'realizado' | 'saldo' | 'pendente'
+export type ColunaVisaoGeral = 'item' | 'contratado' | 'pctMedido' | 'realizado' | 'pctDescontado' | 'saldo' | 'pendente'
 
 export type ColunaDef = ColumnDef<ColunaVisaoGeral> & { label: string; dica?: string }
 
@@ -39,7 +39,11 @@ const COLUNAS: Record<DashboardModo, ColunaDef[]> = {
     },
     {
       ...REALIZADO, defaultWidth: 200,
-      dica: 'NF de material lançada (% do contratado). Laranja = faturamento atrás do serviço medido: a FIP precisa faturar.',
+      dica: 'NF de material lançada (% do contratado). Laranja = faturamento atrás do serviço medido: a FIP precisa faturar. Verde-azulado = material à frente do serviço: se o físico andou, há serviço a medir.',
+    },
+    {
+      key: 'pctDescontado', label: '% Mat. desc.', defaultWidth: 110, min: 80, type: 'number',
+      dica: 'Material já descontado da Wave nas medições aprovadas (% do contratado). Roxo = parte do material medido ainda sem desconto: falta lastro no ERP.',
     },
     SALDO,
     {
@@ -56,3 +60,6 @@ export function colunasDoModo(modo: DashboardModo): ColunaDef[] {
 /** Cores dos marcadores — mesmas na tela e na legenda. */
 export const COR_EM_APROVACAO = '#3B82F6'
 export const COR_FIP_ATRASADA = '#F59E0B'
+export const COR_SEM_LASTRO = '#8B5CF6'
+export const COR_MAT_ADIANTADO = '#0D9488'
+export const COR_ESTOURO = '#EF4444'

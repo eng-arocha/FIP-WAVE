@@ -9,8 +9,8 @@ import { useTreeExpansion } from '@/lib/hooks/use-tree-expansion'
 import { useDashboardTreeData } from '@/lib/hooks/use-dashboard-tree-data'
 import { useTableLayout } from '@/lib/hooks/use-table-layout'
 import { valoresPorModo, totalizarRows, percentuais, fmtPct } from '@/lib/export/visao-geral'
-import { DashboardTreeRow, PctMedido, PctRealizadoMaterial } from './dashboard-tree-row'
-import { colunasDoModo, COR_EM_APROVACAO, COR_FIP_ATRASADA, type ColunaVisaoGeral } from './colunas'
+import { DashboardTreeRow, PctMedido, PctRealizadoMaterial, PctDescontado } from './dashboard-tree-row'
+import { colunasDoModo, COR_EM_APROVACAO, COR_FIP_ATRASADA, COR_SEM_LASTRO, COR_MAT_ADIANTADO, type ColunaVisaoGeral } from './colunas'
 import { DashboardBarChart } from './dashboard-bar-chart'
 
 export type MedicaoEmAprovacao = { numero: number; status: string }
@@ -36,7 +36,7 @@ export function DashboardTree({ contratoId, modo, medicoesEmAprovacao = [] }: Pr
   const colunas = colunasDoModo(modo)
   // Chave por modo: cada modo tem seu conjunto de colunas e larguras.
   const { gridTemplateColumns, startResize, reset: resetLayout } =
-    useTableLayout<ColunaVisaoGeral>(`contrato:visao-geral:v3:${modo}`, colunas)
+    useTableLayout<ColunaVisaoGeral>(`contrato:visao-geral:v4:${modo}`, colunas)
 
   const scopeRaw = params.get('scope')
   const rootScope = scopeRaw === null || scopeRaw === '' || scopeRaw === 'null' ? null : scopeRaw
@@ -88,6 +88,11 @@ export function DashboardTree({ contratoId, modo, medicoesEmAprovacao = [] }: Pr
   const mostraPct = modo !== 'total'
   const algumEmAprovacao = mostraPct && totais.pct.servEmAprovacao > 0.0001
   const algumaFipAtrasada = modo === 'material' && flat.some(({ item }) => percentuais(item).fipAtrasada)
+  const algumSemLastro = modo === 'material' && flat.some(({ item }) => percentuais(item).pendenteSemLastro > 0.005)
+  const algumAdiantado = modo === 'material' && flat.some(({ item }) => {
+    const p = percentuais(item)
+    return p.matAdiantado && !p.matAcimaContrato
+  })
 
   const lastClickRef = useRef<{ id: string; t: number } | null>(null)
 
@@ -152,7 +157,7 @@ export function DashboardTree({ contratoId, modo, medicoesEmAprovacao = [] }: Pr
           <span>Foco em um subgrupo</span>
         </div>
       )}
-      {(algumEmAprovacao || algumaFipAtrasada) && (
+      {(algumEmAprovacao || algumaFipAtrasada || algumSemLastro || algumAdiantado) && (
         <div className="flex flex-col gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-xs text-[var(--text-2)]">
           {algumEmAprovacao && (
             <p className="flex items-start gap-1.5">
@@ -178,6 +183,26 @@ export function DashboardTree({ contratoId, modo, medicoesEmAprovacao = [] }: Pr
                 Realizado em <span style={{ color: COR_FIP_ATRASADA, fontWeight: 600 }}>laranja</span>: o material
                 faturado (entre parênteses) está atrás do serviço medido — a FIP precisa faturar.
                 Passe o mouse sobre o % para ver quanto.
+              </span>
+            </p>
+          )}
+          {algumAdiantado && (
+            <p className="flex items-start gap-1.5">
+              <Info className="w-3.5 h-3.5 mt-px shrink-0" style={{ color: COR_MAT_ADIANTADO }} />
+              <span>
+                % do realizado em <span style={{ color: COR_MAT_ADIANTADO, fontWeight: 600 }}>verde-azulado</span>: o
+                material faturado está à frente do serviço medido. Se o físico já andou, há serviço a medir —
+                é o que libera o faturamento da Wave.
+              </span>
+            </p>
+          )}
+          {algumSemLastro && (
+            <p className="flex items-start gap-1.5">
+              <Info className="w-3.5 h-3.5 mt-px shrink-0" style={{ color: COR_SEM_LASTRO }} />
+              <span>
+                <b>% Mat. desc.</b> em <span style={{ color: COR_SEM_LASTRO, fontWeight: 600 }}>roxo</span>: parte do
+                material medido ainda não foi descontado da Wave (falta lastro no ERP). Desconta sozinho na
+                medição em que a nota entrar. Passe o mouse para ver quanto.
               </span>
             </p>
           )}
@@ -287,6 +312,8 @@ export function DashboardTree({ contratoId, modo, medicoesEmAprovacao = [] }: Pr
                     )
                   case 'pctMedido':
                     return <div key={col.key} className="text-right"><PctMedido p={totais.pct} /></div>
+                  case 'pctDescontado':
+                    return <div key={col.key} className="text-right"><PctDescontado p={totais.pct} /></div>
                   case 'saldo':
                     return (
                       <div key={col.key} className="text-right" style={{ color: totais.saldo < 0 ? '#EF4444' : 'var(--text-1)' }}>

@@ -59,6 +59,17 @@ export interface DashboardItem {
    * Não é realizado — só alimenta o "% serviço medido" da Visão Geral.
    */
   servico_em_aprovacao: number
+  /**
+   * Material MEDIDO nas medições aprovadas (Σ quantidade × material unit.).
+   * É o que a Wave já lançou de material pelo físico.
+   */
+  material_medido: number
+  /**
+   * Material já DESCONTADO da Wave nas medições aprovadas (snapshot
+   * `medicao_itens.nf_material_descontada`, mesma régua da camada ①).
+   * material_medido − material_descontado = pendente sem lastro.
+   */
+  material_descontado: number
 
   // ---- saldos aprovados (compromisso aprovado, ainda sem NF) ----
   /**

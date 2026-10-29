@@ -275,6 +275,29 @@ async function carregarNfJaAbatida(
   return out
 }
 
+/**
+ * Material já descontado da Wave por item, somando TODAS as medições
+ * aprovadas — com a mesma régua do pendente de lastro (camada ①): medição
+ * sem snapshot ou liquidada (aprovada antes da regra de três camadas) conta
+ * como tendo descontado o próprio material medido. Usado pela Visão Geral
+ * para mostrar "% Mat. descontado" sem divergir do boletim.
+ */
+export async function carregarMaterialDescontadoPorDet(
+  admin: SupabaseClient,
+  aprovadas: Array<{ id: string; data_aprovacao?: string | null }>,
+  matUnitDe: (detalhamentoId: string) => number,
+): Promise<Record<string, number>> {
+  const liquidadas = new Set(
+    aprovadas
+      .filter(m => {
+        const quando = m.data_aprovacao ? Date.parse(String(m.data_aprovacao)) : NaN
+        return !Number.isFinite(quando) || quando < REGRA_TRES_CAMADAS_EM
+      })
+      .map(m => m.id),
+  )
+  return carregarNfJaAbatida(admin, aprovadas.map(m => m.id), matUnitDe, liquidadas)
+}
+
 export interface AjusteAdmin {
   quantidade_anterior: number
   quantidade_nova: number

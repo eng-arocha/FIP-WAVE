@@ -19,6 +19,8 @@ function item(over: Partial<DashboardItem> & { id: string }): DashboardItem {
     saldo_aprovado_material: over.saldo_aprovado_material ?? 0,
     saldo_medicao_servico: over.saldo_medicao_servico ?? 0,
     servico_em_aprovacao: over.servico_em_aprovacao ?? 0,
+    material_medido: over.material_medido ?? 0,
+    material_descontado: over.material_descontado ?? 0,
   } as DashboardItem
 }
 
@@ -179,5 +181,50 @@ describe('percentuais — serviço medido × material faturado', () => {
       { item: item({ id: 'g2', valor_contratado_servico: 1000, realizado_servico: 0 }), level: 0 },
     ]
     expect(totalizarRows(rows, 'servico').pct.servMedido).toBeCloseTo(30, 6)
+  })
+})
+
+describe('percentuais — material descontado (1.3.1 depois do manual-fix 102)', () => {
+  // 1.3.1: serviço 100% medido, NF 303.748,01, descontado 288.463,87.
+  const i131 = item({
+    id: 'd131',
+    valor_contratado_servico: 10_000,
+    realizado_servico: 10_000,
+    valor_contratado_material: 320_380.45,
+    realizado_material: 303_748.01,
+    material_medido: 320_380.45,
+    material_descontado: 288_463.87,
+  })
+
+  it('mostra o % descontado e o pendente sem lastro', () => {
+    const p = percentuais(i131)
+    expect(p.matDescontado).toBeCloseTo(90.04, 2)
+    expect(p.pendenteSemLastro).toBe(31_916.58)
+    expect(p.fipAtrasada).toBe(true)
+    expect(p.matAdiantado).toBe(false)
+  })
+
+  it('material à frente do serviço = há serviço a medir', () => {
+    const p = percentuais(item({
+      id: 'x', valor_contratado_servico: 1000, realizado_servico: 250,
+      valor_contratado_material: 4351.14, realizado_material: 4351.14,
+      material_medido: 1087.79, material_descontado: 1087.79,
+    }))
+    expect(p.matAdiantado).toBe(true)
+    expect(p.matAcimaContrato).toBe(false)
+    expect(p.pendenteSemLastro).toBe(0)
+  })
+
+  it('NF acima do contratado do item', () => {
+    const p = percentuais(item({
+      id: 'y', valor_contratado_servico: 1000, realizado_servico: 950,
+      valor_contratado_material: 18_290.20, realizado_material: 18_662.67,
+    }))
+    expect(p.matAcimaContrato).toBe(true)
+  })
+
+  it('totalizarRows soma material medido e descontado', () => {
+    const t = totalizarRows([{ item: i131, level: 0 }], 'material')
+    expect(t.pct.pendenteSemLastro).toBe(31_916.58)
   })
 })

@@ -6,7 +6,7 @@ import { memo } from 'react'
 import type { DashboardItem, DashboardModo } from '@/types/dashboard'
 import { valoresPorModo, percentuais, fmtPct, type Percentuais } from '@/lib/export/visao-geral'
 import { NumeroClicavel } from './numero-clicavel'
-import { colunasDoModo, COR_EM_APROVACAO, COR_FIP_ATRASADA } from './colunas'
+import { colunasDoModo, COR_EM_APROVACAO, COR_FIP_ATRASADA, COR_SEM_LASTRO, COR_MAT_ADIANTADO, COR_ESTOURO } from './colunas'
 
 const fmt = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -36,15 +36,38 @@ export function PctMedido({ p }: { p: Percentuais }) {
  */
 export function PctRealizadoMaterial({ p }: { p: Percentuais }) {
   if (p.matRealizado === null) return null
+  const [cor, dica] = p.matAcimaContrato
+    ? [COR_ESTOURO, `NF de material (${fmtPct(p.matRealizado)}) acima do contratado do item — conferir o rateio da NF.`]
+    : p.fipAtrasada
+      ? [COR_FIP_ATRASADA, `Material faturado (${fmtPct(p.matRealizado)}) atrás do serviço medido (${fmtPct(p.servMedido)}). A FIP precisa faturar ~R$ ${fmt(p.aFaturar)}.`]
+      : p.matAdiantado
+        ? [COR_MAT_ADIANTADO, `Material faturado (${fmtPct(p.matRealizado)}) à frente do serviço medido (${fmtPct(p.servMedido)}). Se o físico já andou, há serviço a medir.`]
+        : [null, undefined]
   return (
     <span
       className="ml-1 text-[11px]"
-      style={p.fipAtrasada ? { color: COR_FIP_ATRASADA, fontWeight: 600 } : { color: 'var(--text-3)' }}
-      title={p.fipAtrasada
-        ? `Material faturado (${fmtPct(p.matRealizado)}) atrás do serviço medido (${fmtPct(p.servMedido)}). A FIP precisa faturar ~R$ ${fmt(p.aFaturar)}.`
-        : undefined}
+      style={cor ? { color: cor, fontWeight: 600 } : { color: 'var(--text-3)' }}
+      title={dica}
     >
       ({fmtPct(p.matRealizado)})
+    </span>
+  )
+}
+
+/**
+ * "% Mat. desc." — material já descontado da Wave. Roxo quando parte do
+ * material medido ainda não foi descontado (falta lastro no ERP); o
+ * desconto entra sozinho na medição em que a nota for lançada.
+ */
+export function PctDescontado({ p }: { p: Percentuais }) {
+  if (p.matDescontado === null) return <span className="text-[var(--text-3)]">—</span>
+  if (!(p.pendenteSemLastro > 0.005)) return <span className="text-[var(--text-2)]">{fmtPct(p.matDescontado)}</span>
+  return (
+    <span
+      style={{ color: COR_SEM_LASTRO, fontWeight: 600 }}
+      title={`R$ ${fmt(p.pendenteSemLastro)} de material medido ainda não descontado da Wave — falta lastro (nota no ERP). Desconta sozinho na medição em que a nota entrar.`}
+    >
+      {fmtPct(p.matDescontado)}
     </span>
   )
 }
@@ -138,6 +161,12 @@ export const DashboardTreeRow = memo(function DashboardTreeRow({
             return (
               <div key={col.key} className="text-right tabular-nums text-sm">
                 <PctMedido p={p} />
+              </div>
+            )
+          case 'pctDescontado':
+            return (
+              <div key={col.key} className="text-right tabular-nums text-sm">
+                <PctDescontado p={p} />
               </div>
             )
           case 'saldo':
