@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Search, FileSpreadsheet, FileText, Loader2, X } from 'lucide-react'
+import Link from 'next/link'
+import { Search, FileSpreadsheet, FileText, Loader2, X, PackageSearch } from 'lucide-react'
 import type { DashboardModo } from '@/types/dashboard'
 import {
   filtrarRows, valoresPorModo, totalizarRows, percentuais, colunasExport, fmtPct,
@@ -136,6 +137,16 @@ export function VisaoGeralToolbar({
           {exportando === 'pdf' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
           PDF
         </button>
+        {modo === 'material' && (
+          <Link
+            href={`/contratos/${contratoId}/material-sem-nf`}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
+            title="Material medido sem NF nem pedido no item — candidato a NF da FIP"
+          >
+            <PackageSearch className="w-3.5 h-3.5" />
+            Material sem NF
+          </Link>
+        )}
       </div>
 
       {loading && <p className="text-xs text-[var(--text-3)]">Carregando itens para filtro/exportação…</p>}
