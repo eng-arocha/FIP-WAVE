@@ -85,8 +85,8 @@ export function VisaoGeralPDF({
 
         {modo !== 'total' && (
           <Text style={{ marginTop: 6, fontSize: 7, color: GRY }}>
-            % de serviço medido inclui medições em aprovação (submetidas, em análise ou autorizadas). Realizado e Saldo contam só medição aprovada.
-            {modo === 'material' ? ' Em laranja: material faturado atrás do serviço medido — a FIP precisa faturar.' : ''}
+            % de {modo === 'material' ? 'material' : 'serviço'} medido inclui medições em aprovação (submetidas, em análise ou autorizadas). Realizado e Saldo contam só medição aprovada.
+            {modo === 'material' ? ' Em laranja: material faturado atrás do material medido — a FIP precisa faturar.' : ''}
           </Text>
         )}
 

@@ -20,6 +20,7 @@ function item(over: Partial<DashboardItem> & { id: string }): DashboardItem {
     saldo_medicao_servico: over.saldo_medicao_servico ?? 0,
     servico_em_aprovacao: over.servico_em_aprovacao ?? 0,
     material_medido: over.material_medido ?? 0,
+    material_em_aprovacao: over.material_em_aprovacao ?? 0,
     material_descontado: over.material_descontado ?? 0,
   } as DashboardItem
 }
@@ -139,6 +140,7 @@ describe('percentuais — serviço medido × material faturado', () => {
   const base = {
     id: 'p', valor_contratado_servico: 1000, valor_contratado_material: 2000,
     realizado_servico: 500, servico_em_aprovacao: 100, realizado_material: 800,
+    material_medido: 1000, material_em_aprovacao: 200,
   }
 
   it('% serviço medido soma aprovado + em aprovação e separa a parcela pendente', () => {
@@ -162,7 +164,7 @@ describe('percentuais — serviço medido × material faturado', () => {
   })
 
   it('diferença que some na casa decimal exibida não acende alerta', () => {
-    const p = percentuais(item({ ...base, servico_em_aprovacao: 0, realizado_material: 999.99 }))
+    const p = percentuais(item({ ...base, servico_em_aprovacao: 0, material_em_aprovacao: 0, realizado_material: 999.99 }))
     expect(p.fipAtrasada).toBe(false)
   })
 
@@ -226,5 +228,21 @@ describe('percentuais — material descontado (1.3.1 depois do manual-fix 102)',
   it('totalizarRows soma material medido e descontado', () => {
     const t = totalizarRows([{ item: i131, level: 0 }], 'material')
     expect(t.pct.pendenteSemLastro).toBe(31_916.58)
+  })
+})
+
+describe('percentuais — % Mat. medido pondera pelo material (16.1)', () => {
+  it('65,3% de serviço vira 55,3% de material e não acende laranja com NF 100%', () => {
+    const p = percentuais(item({
+      id: 't161', valor_contratado_servico: 100, realizado_servico: 65.3,
+      valor_contratado_material: 59_829.91, realizado_material: 59_829.90,
+      material_medido: 33_089.67, material_descontado: 33_089.68,
+    }))
+    expect(p.servMedido).toBeCloseTo(65.3, 1)
+    expect(p.matMedido).toBeCloseTo(55.3, 1)
+    expect(p.matDescontado).toBeCloseTo(55.3, 1)
+    expect(p.pendenteSemLastro).toBe(0)
+    expect(p.fipAtrasada).toBe(false)
+    expect(p.matAdiantado).toBe(true)
   })
 })

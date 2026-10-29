@@ -86,7 +86,8 @@ export function DashboardTree({ contratoId, modo, medicoesEmAprovacao = [] }: Pr
   // conjunto — grupo aberto não conta de novo as tarefas dele.
   const totais = useMemo(() => totalizarRows(flat, modo), [flat, modo])
   const mostraPct = modo !== 'total'
-  const algumEmAprovacao = mostraPct && totais.pct.servEmAprovacao > 0.0001
+  const pctEmAprovacao = modo === 'material' ? totais.pct.matEmAprovacao : totais.pct.servEmAprovacao
+  const algumEmAprovacao = mostraPct && pctEmAprovacao > 0.0001
   const algumaFipAtrasada = modo === 'material' && flat.some(({ item }) => percentuais(item).fipAtrasada)
   const algumSemLastro = modo === 'material' && flat.some(({ item }) => percentuais(item).pendenteSemLastro > 0.005)
   const algumAdiantado = modo === 'material' && flat.some(({ item }) => {
@@ -163,7 +164,7 @@ export function DashboardTree({ contratoId, modo, medicoesEmAprovacao = [] }: Pr
             <p className="flex items-start gap-1.5">
               <Clock className="w-3.5 h-3.5 mt-px shrink-0" style={{ color: COR_EM_APROVACAO }} />
               <span>
-                O <b>% {modo === 'material' ? 'serv. medido' : 'medido'}</b> já considera{' '}
+                O <b>% {modo === 'material' ? 'mat. medido' : 'medido'}</b> já considera{' '}
                 {medicoesEmAprovacao.length > 0
                   ? medicoesEmAprovacao
                       .map(m => `a Medição nº ${String(m.numero).padStart(2, '0')} (${m.status})`)
@@ -171,7 +172,7 @@ export function DashboardTree({ contratoId, modo, medicoesEmAprovacao = [] }: Pr
                   : 'medição'}
                 {' '}— ainda não aprovada. Valores em{' '}
                 <span style={{ color: COR_EM_APROVACAO, fontWeight: 600 }}>azul</span> têm parte do % vinda dela
-                {' '}({fmtPct(totais.pct.servEmAprovacao)} do serviço{rootScope ? ' deste subgrupo' : ' do contrato'}).
+                {' '}({fmtPct(pctEmAprovacao)} do {modo === 'material' ? 'material' : 'serviço'}{rootScope ? ' deste subgrupo' : ' do contrato'}).
                 Realizado e Saldo contam só medição aprovada.
               </span>
             </p>
@@ -181,7 +182,7 @@ export function DashboardTree({ contratoId, modo, medicoesEmAprovacao = [] }: Pr
               <Info className="w-3.5 h-3.5 mt-px shrink-0" style={{ color: COR_FIP_ATRASADA }} />
               <span>
                 Realizado em <span style={{ color: COR_FIP_ATRASADA, fontWeight: 600 }}>laranja</span>: o material
-                faturado (entre parênteses) está atrás do serviço medido — a FIP precisa faturar.
+                faturado (entre parênteses) está atrás do material medido — a FIP precisa faturar.
                 Passe o mouse sobre o % para ver quanto.
               </span>
             </p>
@@ -191,7 +192,7 @@ export function DashboardTree({ contratoId, modo, medicoesEmAprovacao = [] }: Pr
               <Info className="w-3.5 h-3.5 mt-px shrink-0" style={{ color: COR_MAT_ADIANTADO }} />
               <span>
                 % do realizado em <span style={{ color: COR_MAT_ADIANTADO, fontWeight: 600 }}>verde-azulado</span>: o
-                material faturado está à frente do serviço medido. Se o físico já andou, há serviço a medir —
+                material faturado está à frente do material medido. Se o físico já andou, há serviço a medir —
                 é o que libera o faturamento da Wave.
               </span>
             </p>
@@ -311,7 +312,7 @@ export function DashboardTree({ contratoId, modo, medicoesEmAprovacao = [] }: Pr
                       </div>
                     )
                   case 'pctMedido':
-                    return <div key={col.key} className="text-right"><PctMedido p={totais.pct} /></div>
+                    return <div key={col.key} className="text-right"><PctMedido p={totais.pct} material={modo === 'material'} /></div>
                   case 'pctDescontado':
                     return <div key={col.key} className="text-right"><PctDescontado p={totais.pct} /></div>
                   case 'saldo':

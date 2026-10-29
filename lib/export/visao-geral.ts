@@ -65,18 +65,27 @@ export function rotuloPendenteNf(modo: DashboardModo): string | null {
 type CamposPercentual = Pick<DashboardItem,
   'valor_contratado_servico' | 'realizado_servico' | 'servico_em_aprovacao' |
   'valor_contratado_material' | 'realizado_material'> &
-  Partial<Pick<DashboardItem, 'material_medido' | 'material_descontado'>>
+  Partial<Pick<DashboardItem, 'material_medido' | 'material_em_aprovacao' | 'material_descontado'>>
 
 export interface Percentuais {
   /** % do serviço contratado já medido — aprovado + em aprovação. null sem serviço contratado. */
   servMedido: number | null
   /** Pedaço de `servMedido` que vem de medição ainda em aprovação (p.p.). */
   servEmAprovacao: number
+  /**
+   * % do MATERIAL contratado já medido (aprovado + em aprovação). No item é o
+   * mesmo % do serviço (mesma quantidade); em tarefa e grupo pondera pelo
+   * material — o % do serviço pondera pelo serviço e engana a comparação com
+   * a NF de material (16.1: 65,3% de serviço = 55,3% de material).
+   */
+  matMedido: number | null
+  /** Pedaço de `matMedido` que vem de medição ainda em aprovação (p.p.). */
+  matEmAprovacao: number
   /** % do material contratado já faturado (NF lançada). null sem material contratado. */
   matRealizado: number | null
-  /** Material faturado atrás do serviço medido: a FIP precisa faturar. */
+  /** Material faturado atrás do material medido: a FIP precisa faturar. */
   fipAtrasada: boolean
-  /** R$ de material que a FIP precisa faturar pra alcançar o % de serviço medido. */
+  /** R$ de material que a FIP precisa faturar pra alcançar o material medido. */
   aFaturar: number
   /** % do material contratado já DESCONTADO da Wave nas medições aprovadas. */
   matDescontado: number | null
@@ -106,20 +115,24 @@ export function percentuais(item: CamposPercentual): Percentuais {
   const emAprov = item.servico_em_aprovacao || 0
   const servMedido = cs > 0 ? ((aprovado + emAprov) / cs) * 100 : null
   const matRealizado = cm > 0 ? ((item.realizado_material || 0) / cm) * 100 : null
-  const fipAtrasada = servMedido !== null && matRealizado !== null && pct1(matRealizado) < pct1(servMedido)
-  const aFaturar = fipAtrasada && servMedido !== null
-    ? centavos(Math.max(0, (servMedido / 100) * cm - (item.realizado_material || 0)))
+  const matMedidoRs = (item.material_medido || 0) + (item.material_em_aprovacao || 0)
+  const matMedido = cm > 0 ? (matMedidoRs / cm) * 100 : null
+  const fipAtrasada = matMedido !== null && matRealizado !== null && pct1(matRealizado) < pct1(matMedido)
+  const aFaturar = fipAtrasada
+    ? centavos(Math.max(0, matMedidoRs - (item.realizado_material || 0)))
     : 0
   const descontado = item.material_descontado || 0
   return {
     servMedido,
     servEmAprovacao: cs > 0 ? (emAprov / cs) * 100 : 0,
+    matMedido,
+    matEmAprovacao: cm > 0 ? ((item.material_em_aprovacao || 0) / cm) * 100 : 0,
     matRealizado,
     fipAtrasada,
     aFaturar,
     matDescontado: cm > 0 ? (descontado / cm) * 100 : null,
     pendenteSemLastro: centavos(Math.max(0, (item.material_medido || 0) - descontado)),
-    matAdiantado: servMedido !== null && matRealizado !== null && pct1(matRealizado) > pct1(servMedido),
+    matAdiantado: matMedido !== null && matRealizado !== null && pct1(matRealizado) > pct1(matMedido),
     matAcimaContrato: matRealizado !== null && pct1(matRealizado) > 100,
   }
 }
@@ -174,7 +187,7 @@ export function totalizarRows(rows: FlatRow[], modo: DashboardModo) {
   const base: Required<CamposPercentual> = {
     valor_contratado_servico: 0, realizado_servico: 0, servico_em_aprovacao: 0,
     valor_contratado_material: 0, realizado_material: 0,
-    material_medido: 0, material_descontado: 0,
+    material_medido: 0, material_em_aprovacao: 0, material_descontado: 0,
   }
   for (const { item } of rows) {
     // Se o pai está na lista, este item já foi contado dentro dele.
@@ -185,6 +198,7 @@ export function totalizarRows(rows: FlatRow[], modo: DashboardModo) {
     base.valor_contratado_material += item.valor_contratado_material || 0
     base.realizado_material += item.realizado_material || 0
     base.material_medido += item.material_medido || 0
+    base.material_em_aprovacao += item.material_em_aprovacao || 0
     base.material_descontado += item.material_descontado || 0
     const v = valoresPorModo(item, modo)
     contratado += v.contratado
@@ -224,7 +238,7 @@ export function colunasExport(modo: DashboardModo): ColunaExport[] {
   if (modo === 'material') {
     return [
       contratado,
-      { label: '% Serv. med.', tipo: 'pct', valor: (_v, p) => p.servMedido },
+      { label: '% Mat. med.', tipo: 'pct', valor: (_v, p) => p.matMedido },
       { ...realizado, alerta: p => p.fipAtrasada },
       { label: '% Realizado', tipo: 'pct', valor: (_v, p) => p.matRealizado, alerta: p => p.fipAtrasada },
       { label: '% Mat. desc.', tipo: 'pct', valor: (_v, p) => p.matDescontado, alerta: p => p.pendenteSemLastro > 0.005 },
@@ -309,9 +323,9 @@ export async function exportarExcelVisaoGeral(
   if (modo !== 'total') {
     aoa.push([])
     const nota = { font: { italic: true, sz: 8, color: { rgb: '64748B' } } }
-    aoa.push([{ v: '% de serviço medido inclui medições em aprovação (submetidas, em análise ou autorizadas). Realizado e Saldo contam só medição aprovada.', s: nota }])
+    aoa.push([{ v: `% de ${modo === 'material' ? 'material' : 'serviço'} medido inclui medições em aprovação (submetidas, em análise ou autorizadas). Realizado e Saldo contam só medição aprovada.`, s: nota }])
     if (modo === 'material') {
-      aoa.push([{ v: 'Em laranja: material faturado atrás do serviço medido — a FIP precisa faturar.', s: nota }])
+      aoa.push([{ v: 'Em laranja: material faturado atrás do material medido — a FIP precisa faturar.', s: nota }])
       aoa.push([{ v: '% Mat. desc. em laranja: material medido ainda não descontado da Wave (falta lastro no ERP).', s: nota }])
     }
   }

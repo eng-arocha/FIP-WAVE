@@ -64,6 +64,8 @@ export interface DashboardItem {
    * É o que a Wave já lançou de material pelo físico.
    */
   material_medido: number
+  /** Material de medições EM APROVAÇÃO — só entra no "% Mat. medido". */
+  material_em_aprovacao: number
   /**
    * Material já DESCONTADO da Wave nas medições aprovadas (snapshot
    * `medicao_itens.nf_material_descontada`, mesma régua da camada ①).

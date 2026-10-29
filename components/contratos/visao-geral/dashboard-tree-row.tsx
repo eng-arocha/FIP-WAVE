@@ -11,21 +11,24 @@ import { colunasDoModo, COR_EM_APROVACAO, COR_FIP_ATRASADA, COR_SEM_LASTRO, COR_
 const fmt = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 /**
- * "% Medido" do serviço. Quando parte do % vem de medição ainda em
- * aprovação, o número fica azul com relógio e o tooltip abre a conta.
+ * "% Medido" — do serviço, ou do material no modo Material. Quando parte do
+ * % vem de medição ainda em aprovação, o número fica azul com relógio e o
+ * tooltip abre a conta.
  */
-export function PctMedido({ p }: { p: Percentuais }) {
-  if (p.servMedido === null) return <span className="text-[var(--text-3)]">—</span>
-  const temPendente = p.servEmAprovacao > 0.0001
-  if (!temPendente) return <span className="text-[var(--text-2)]">{fmtPct(p.servMedido)}</span>
+export function PctMedido({ p, material = false }: { p: Percentuais; material?: boolean }) {
+  const medido = material ? p.matMedido : p.servMedido
+  const emAprov = material ? p.matEmAprovacao : p.servEmAprovacao
+  if (medido === null) return <span className="text-[var(--text-3)]">—</span>
+  const temPendente = emAprov > 0.0001
+  if (!temPendente) return <span className="text-[var(--text-2)]">{fmtPct(medido)}</span>
   return (
     <span
       className="inline-flex items-center justify-end gap-1"
       style={{ color: COR_EM_APROVACAO }}
-      title={`${fmtPct(p.servMedido - p.servEmAprovacao)} aprovado + ${fmtPct(p.servEmAprovacao)} de medição em aprovação`}
+      title={`${fmtPct(medido - emAprov)} aprovado + ${fmtPct(emAprov)} de medição em aprovação`}
     >
       <Clock className="w-3 h-3" aria-hidden />
-      {fmtPct(p.servMedido)}
+      {fmtPct(medido)}
     </span>
   )
 }
@@ -39,9 +42,9 @@ export function PctRealizadoMaterial({ p }: { p: Percentuais }) {
   const [cor, dica] = p.matAcimaContrato
     ? [COR_ESTOURO, `NF de material (${fmtPct(p.matRealizado)}) acima do contratado do item — conferir o rateio da NF.`]
     : p.fipAtrasada
-      ? [COR_FIP_ATRASADA, `Material faturado (${fmtPct(p.matRealizado)}) atrás do serviço medido (${fmtPct(p.servMedido)}). A FIP precisa faturar ~R$ ${fmt(p.aFaturar)}.`]
+      ? [COR_FIP_ATRASADA, `Material faturado (${fmtPct(p.matRealizado)}) atrás do material medido (${fmtPct(p.matMedido)}). A FIP precisa faturar ~R$ ${fmt(p.aFaturar)}.`]
       : p.matAdiantado
-        ? [COR_MAT_ADIANTADO, `Material faturado (${fmtPct(p.matRealizado)}) à frente do serviço medido (${fmtPct(p.servMedido)}). Se o físico já andou, há serviço a medir.`]
+        ? [COR_MAT_ADIANTADO, `Material faturado (${fmtPct(p.matRealizado)}) à frente do material medido (${fmtPct(p.matMedido)}). Se o físico já andou, há serviço a medir.`]
         : [null, undefined]
   return (
     <span
@@ -160,7 +163,7 @@ export const DashboardTreeRow = memo(function DashboardTreeRow({
           case 'pctMedido':
             return (
               <div key={col.key} className="text-right tabular-nums text-sm">
-                <PctMedido p={p} />
+                <PctMedido p={p} material={modo === 'material'} />
               </div>
             )
           case 'pctDescontado':

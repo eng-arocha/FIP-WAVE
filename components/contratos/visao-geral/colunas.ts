@@ -34,12 +34,12 @@ const COLUNAS: Record<DashboardModo, ColunaDef[]> = {
   material: [
     ITEM, CONTRATADO,
     {
-      key: 'pctMedido', label: '% Serv. med.', defaultWidth: 110, min: 80, type: 'number',
-      dica: 'Quanto do SERVIÇO deste item já foi medido. Inclui medição em aprovação (em azul).',
+      key: 'pctMedido', label: '% Mat. med.', defaultWidth: 110, min: 80, type: 'number',
+      dica: 'Material medido ÷ material contratado. No item é o mesmo % do serviço; em tarefa e grupo pondera pelo material. Inclui medição em aprovação (em azul).',
     },
     {
       ...REALIZADO, defaultWidth: 200,
-      dica: 'NF de material lançada (% do contratado). Laranja = faturamento atrás do serviço medido: a FIP precisa faturar. Verde-azulado = material à frente do serviço: se o físico andou, há serviço a medir.',
+      dica: 'NF de material lançada (% do contratado). Laranja = NF atrás do material medido: a FIP precisa faturar. Verde-azulado = NF à frente do medido: se o físico andou, há serviço a medir.',
     },
     {
       key: 'pctDescontado', label: '% Mat. desc.', defaultWidth: 110, min: 80, type: 'number',
