@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { assertAdmin, getUsuarioLogado } from '@/lib/api/auth'
-import { encerrarSolicitacao, EncerramentoError } from '@/lib/db/fat-direto'
+import { encerrarSolicitacao, EncerramentoError, pedidoEstaExcluido, MSG_PEDIDO_EXCLUIDO } from '@/lib/db/fat-direto'
 import { apiError } from '@/lib/api/error-response'
 import { sendEmail } from '@/lib/email/send'
 import { templatePedidoEncerrado } from '@/lib/email/templates-fat-direto'
@@ -26,6 +26,9 @@ export async function POST(
 ) {
   try {
     const { id: contratoId, solId } = await params
+    if (await pedidoEstaExcluido(solId)) {
+      return NextResponse.json({ error: MSG_PEDIDO_EXCLUIDO }, { status: 409 })
+    }
 
     // Apenas admin pode encerrar (decisão de design)
     const user = await getUsuarioLogado()

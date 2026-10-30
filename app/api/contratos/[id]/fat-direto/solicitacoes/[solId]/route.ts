@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireAlgumaPermissao } from '@/lib/api/auth'
-import { getSolicitacao, checkPedidoFipDuplicado } from '@/lib/db/fat-direto'
+import { getSolicitacao, checkPedidoFipDuplicado, pedidoEstaExcluido, MSG_PEDIDO_EXCLUIDO } from '@/lib/db/fat-direto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { apiError } from '@/lib/api/error-response'
@@ -44,6 +44,9 @@ export async function PUT(
   if (negado) return negado
   try {
     const { solId } = await params
+    if (await pedidoEstaExcluido(solId)) {
+      return NextResponse.json({ error: MSG_PEDIDO_EXCLUIDO }, { status: 409 })
+    }
     const body = await req.json()
     const admin = createAdminClient()
 
@@ -237,6 +240,9 @@ export async function DELETE(
   if (negado) return negado
   try {
     const { solId } = await params
+    if (await pedidoEstaExcluido(solId)) {
+      return NextResponse.json({ error: MSG_PEDIDO_EXCLUIDO }, { status: 409 })
+    }
 
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()

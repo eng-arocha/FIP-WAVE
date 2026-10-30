@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { assertPermissao, getUsuarioLogado } from '@/lib/api/auth'
-import { atualizarStatusSolicitacao } from '@/lib/db/fat-direto'
+import { atualizarStatusSolicitacao, pedidoEstaExcluido, MSG_PEDIDO_EXCLUIDO } from '@/lib/db/fat-direto'
 import { apiError } from '@/lib/api/error-response'
 import { respostaLimiteExcedido } from '@/lib/db/limite-pedido'
 import { parseBody } from '@/lib/api/schema'
@@ -30,6 +30,9 @@ export async function POST(
     if (!parsed.ok) return parsed.res
     const { acao, motivo_rejeicao, destinatarios_ids } = parsed.data
     const { id: contratoId, solId } = await params
+    if (await pedidoEstaExcluido(solId)) {
+      return NextResponse.json({ error: MSG_PEDIDO_EXCLUIDO }, { status: 409 })
+    }
 
     if (acao === 'aprovado' || acao === 'rejeitado') {
       const check = await assertPermissao('aprovacoes', 'aprovar')

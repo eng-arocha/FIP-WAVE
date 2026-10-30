@@ -24,6 +24,8 @@ interface Solicitacao {
   numero: number
   contrato_id: string
   status: string
+  /** Exclusão lógica: o status continua o de antes, mas o pedido não vale. */
+  deletado_em?: string | null
   data_solicitacao: string
   data_aprovacao?: string
   valor_total: number
@@ -470,7 +472,8 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
     </div>
   )
 
-  const statusColor = STATUS_COLORS[sol.status] ?? '#475569'
+  const excluido = !!sol.deletado_em
+  const statusColor = excluido ? '#EF4444' : (STATUS_COLORS[sol.status] ?? '#475569')
   // Total recebido = NFs que reservam saldo (exclui cancelada / rejeitada legada).
   const totalNF = (sol.notas_fiscais || [])
     .filter(n => nfReservaSaldo(n.status))
@@ -504,7 +507,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                   className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide"
                   style={{ background: `${statusColor}20`, color: statusColor }}
                 >
-                  {STATUS_LABELS[sol.status]}
+                  {excluido ? 'Excluído' : STATUS_LABELS[sol.status]}
                 </span>
               </div>
               <p className="text-sm text-[var(--text-3)]">
@@ -514,9 +517,19 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
           </div>
           <div className="text-right">
             <p className="text-xs text-[var(--text-3)] uppercase tracking-wide">Valor Total</p>
-            <p className="text-2xl font-black" style={{ color: 'var(--text-1)' }}>{formatCurrency(sol.valor_total)}</p>
+            <p className={`text-2xl font-black ${excluido ? 'line-through opacity-60' : ''}`} style={{ color: 'var(--text-1)' }}>{formatCurrency(sol.valor_total)}</p>
           </div>
         </div>
+
+        {excluido && (
+          <div className="p-4 rounded-xl" style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.40)' }}>
+            <p className="text-sm font-semibold text-red-400 mb-1">Pedido excluído em {formatDate(sol.deletado_em!)}</p>
+            <p className="text-xs text-[var(--text-2)]">
+              Não vale como pedido: não entra no saldo, no boletim nem nos relatórios, e não aceita alterações.
+              Fica aqui só como registro. O motivo, quando informado, está nas observações.
+            </p>
+          </div>
+        )}
 
         {/* Supplier info */}
         {sol.fornecedor_razao_social && (
@@ -548,7 +561,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                 ? [{ nome: sol.pedido_pdf_nome || 'pedido.pdf', url: sol.pedido_pdf_url, tipo: 'application/pdf' }]
                 : [])
           // Bloco de upload inline (admin/qualquer status)
-          const uploadZone = isAdmin ? (
+          const uploadZone = isAdmin && !excluido ? (
             <div className="mt-3 space-y-2">
               <input
                 ref={uploadAnexoRef}
@@ -622,6 +635,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
           ) : null
 
           if (anexos.length === 0) {
+            if (excluido) return null
             // Sem anexos: mostra aviso + zona de upload direta para admin
             return (
               <Card style={{ background: 'var(--surface-1)', border: `1px dashed ${isAdmin ? 'rgba(99,102,241,0.40)' : 'rgba(245,158,11,0.40)'}` }}>
@@ -754,7 +768,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
         })()}
 
         {/* Approval actions */}
-        {sol.status === 'aguardando_aprovacao' && (
+        {!excluido && sol.status === 'aguardando_aprovacao' && (
           <Card style={{ background: 'var(--surface-1)', border: '1px solid #F59E0B40' }}>
             <CardContent className="pt-4 pb-4">
               <p className="text-sm text-[#F59E0B] font-semibold mb-3">Ação de Aprovação WAVE</p>
@@ -832,7 +846,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
         )}
 
         {/* Notificar envolvidos (pedido rejeitado) — simetrico ao card de aprovado */}
-        {sol.status === 'rejeitado' && (
+        {!excluido && sol.status === 'rejeitado' && (
           <Card style={{ background: 'var(--surface-1)', border: '1px solid rgba(239,68,68,0.25)' }}>
             <CardContent className="pt-4 pb-4">
               <div className="flex items-start justify-between gap-3">
@@ -860,7 +874,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
         )}
 
         {/* Enviar pra análise (rascunho / rejeitado / cancelado) */}
-        {(sol.status === 'rascunho' || sol.status === 'rejeitado' || sol.status === 'cancelado') && (
+        {!excluido && (sol.status === 'rascunho' || sol.status === 'rejeitado' || sol.status === 'cancelado') && (
           <Card style={{ background: 'var(--surface-1)', border: '1px solid rgba(245,158,11,0.30)' }}>
             <CardContent className="pt-4 pb-4">
               <div className="flex items-start justify-between gap-3">
@@ -900,7 +914,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
         )}
 
         {/* Notificar envolvidos (pedido aprovado) */}
-        {sol.status === 'aprovado' && (
+        {!excluido && sol.status === 'aprovado' && (
           <Card style={{ background: 'var(--surface-1)', border: '1px solid rgba(59,130,246,0.25)' }}>
             <CardContent className="pt-4 pb-4">
               <div className="flex items-start justify-between gap-3">
@@ -929,7 +943,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
 
         {/* Solicitar encerramento de saldo — disponível pra qualquer usuário (Wave/fornecedor),
             sem privilégio admin. Só aparece quando há saldo > R$ 0,01 ainda não encerrado. */}
-        {sol.status === 'aprovado' && saldo && saldo.saldo_liquido > 0.01 && (
+        {!excluido && sol.status === 'aprovado' && saldo && saldo.saldo_liquido > 0.01 && (
           <Card style={{ background: 'var(--surface-1)', border: '1px solid rgba(245,158,11,0.30)' }}>
             <CardContent className="pt-4 pb-4">
               <div className="flex items-start justify-between gap-3">
@@ -963,7 +977,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
         )}
 
         {/* Admin actions for approved/rejected */}
-        {isAdmin && sol.status !== 'aguardando_aprovacao' && (
+        {isAdmin && !excluido && sol.status !== 'aguardando_aprovacao' && (
           <Card style={{ background: 'var(--surface-1)', border: '1px solid rgba(239,68,68,0.2)' }}>
             <CardContent className="pt-4 pb-4">
               <p className="text-sm text-red-400 font-semibold mb-3">Ações de Administrador</p>
@@ -1076,7 +1090,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
             <div>
               <CardTitle className="text-sm" style={{ color: 'var(--text-1)' }}>Notas Fiscais</CardTitle>
               {totalNF > 0 && <p className="text-xs text-[#06B6D4] mt-0.5">Total recebido: {formatCurrency(totalNF)}</p>}
-              {saldo && saldo.alerta !== 'ok' && (
+              {!excluido && saldo && saldo.alerta !== 'ok' && (
                 <p
                   className="text-xs mt-0.5 font-semibold"
                   style={{ color: saldo.alerta === 'atencao' ? '#F59E0B' : '#EF4444' }}
@@ -1085,7 +1099,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
                 </p>
               )}
             </div>
-            {sol.status === 'aprovado' && (
+            {!excluido && sol.status === 'aprovado' && (
               <Button
                 onClick={() => setShowNFForm(v => !v)}
                 size="sm"
@@ -1234,7 +1248,7 @@ export default function SolicitacaoDetailPage({ params }: { params: Promise<{ id
               <div className="divide-y divide-[var(--border)] -mx-5 px-0">
                 {(sol.notas_fiscais || []).map(nf => {
                   const badge = nfStatusBadge(nf.status)
-                  const emCorrecao = nf.status === 'em_correcao'
+                  const emCorrecao = !excluido && nf.status === 'em_correcao'
                   const corrigindo = corrigindoNfId === nf.id
                   return (
                     <div key={nf.id} className="px-5 py-3">
