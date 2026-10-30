@@ -105,6 +105,22 @@ export async function listarSolicitacoes(contratoId: string) {
   return linhas
 }
 
+/**
+ * Pedido com exclusão lógica (deletado_em) fica só como registro de auditoria:
+ * as rotas que alteram o pedido recusam mexer nele. O status continua o de antes
+ * ("aprovado", por exemplo), então olhar só o status não basta.
+ */
+export const MSG_PEDIDO_EXCLUIDO = 'Este pedido foi excluído e não aceita alterações.'
+
+export async function pedidoEstaExcluido(id: string): Promise<boolean> {
+  const { data } = await createAdminClient()
+    .from('solicitacoes_fat_direto')
+    .select('deletado_em')
+    .eq('id', id)
+    .maybeSingle()
+  return !!(data as { deletado_em?: string | null } | null)?.deletado_em
+}
+
 export async function getSolicitacao(id: string) {
   const admin = createAdminClient()
 
@@ -133,7 +149,7 @@ export async function getSolicitacao(id: string) {
       fornecedor_razao_social, fornecedor_cnpj, fornecedor_contato,
       fornecedor_contato_nome, fornecedor_contato_telefone,
       numero_pedido_fip, pedido_pdf_url, pedido_pdf_nome, pedido_anexos,
-      data_encerramento, encerrado_por_id, motivo_encerramento,
+      data_encerramento, encerrado_por_id, motivo_encerramento, deletado_em,
       solicitante:perfis!solicitante_id(nome, email),
       aprovador:perfis!aprovador_id(nome, email),
       encerrado_por:perfis!encerrado_por_id(nome, email),
@@ -170,6 +186,7 @@ export async function getSolicitacao(id: string) {
       'encerrado_por_id',
       'motivo_encerramento',
       'valor_devolvido',
+      'deletado_em',
     ],
     context: 'getSolicitacao',
   })

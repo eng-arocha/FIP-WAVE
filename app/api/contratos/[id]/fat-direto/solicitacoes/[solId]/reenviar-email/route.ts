@@ -5,6 +5,7 @@ import { apiError } from '@/lib/api/error-response'
 import { parseBody } from '@/lib/api/schema'
 import { audit } from '@/lib/api/audit'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { pedidoEstaExcluido, MSG_PEDIDO_EXCLUIDO } from '@/lib/db/fat-direto'
 import { dispararEmailAutorizacao, dispararEmailRejeicao } from '../aprovar/route'
 
 const Body = z.object({
@@ -34,6 +35,9 @@ export async function POST(
     if (!parsed.ok) return parsed.res
     const { destinatarios_ids } = parsed.data
     const { id: contratoId, solId } = await params
+    if (await pedidoEstaExcluido(solId)) {
+      return NextResponse.json({ error: MSG_PEDIDO_EXCLUIDO }, { status: 409 })
+    }
 
     const admin = createAdminClient()
     const { data: sol } = await admin
