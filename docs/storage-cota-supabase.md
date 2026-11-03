@@ -19,11 +19,15 @@ Tentativas que **não** funcionam enquanto a org está restrita:
 Pagar o Pro por **um mês**, limpar e voltar para o Free.
 
 ## Próximos passos
-1. [ ] Upgrade para Pro (Alex, pelo painel de billing).
-2. [ ] `npx vite-node scripts/storage-cleanup.ts` → backup + estimativa.
-3. [ ] `npx vite-node scripts/storage-cleanup.ts --apply` → apaga órfãos e recomprime.
-4. [ ] Conferir algumas NFs abrindo pelo app (legibilidade).
-5. [ ] Downgrade para Free quando o bucket estiver abaixo de ~400 MB.
+1. [x] Upgrade para Pro (Alex, 03/11/2026).
+2. [x] Backup completo em `C:\dev\FIP-WAVE-storage-backup` (658 arquivos, 1,48 GB).
+3. [x] `--apply` em 03/11/2026: 87 órfãos apagados (150 MB), 249 PDFs
+       1.301 MB → 108 MB, sem falhas. **Bucket: 1.482 MB → 138 MB.**
+       Amostra conferida: DANFE de 15,8 MB → 0,6 MB, totalmente legível.
+4. [ ] Conferir algumas NFs abrindo pelo app.
+5. [ ] Downgrade para Free perto da data de renovação do Pro (o mês já está pago).
+
+Para rodar o script de novo: `ENV_FILE=<.env do vercel env pull> npx vite-node scripts/storage-cleanup.ts`.
 6. [ ] Apagar a org vazia "Mourao Rocha 2", criada na tentativa de transferência.
 
 ## Dívidas conhecidas

@@ -30,7 +30,10 @@ const IDADE_MIN_ORFAO_MS = 24 * 60 * 60 * 1000
 /** PDFs menores que isso já estão bons. */
 const MIN_BYTES_COMPRIMIR = 400 * 1024
 
-const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+// Opcional: ler de um .env (ex.: `vercel env pull`) via ENV_FILE=caminho
+if (process.env.ENV_FILE) process.loadEnvFile(process.env.ENV_FILE)
+// Variável da Vercel às vezes vem com "\n" literal ou espaço no fim
+const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY?.replace(/\\n/g, '').trim()
 const APPLY = process.argv.includes('--apply')
 if (!KEY) {
   console.error('❌  Defina SUPABASE_SERVICE_ROLE_KEY (Dashboard → Settings → API Keys → service_role)')
