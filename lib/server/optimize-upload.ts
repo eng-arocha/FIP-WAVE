@@ -1,6 +1,7 @@
 import sharp from 'sharp'
 import { PDFDocument } from 'pdf-lib'
 import { log } from '@/lib/log'
+import { recompressPdfImages } from './pdf-recompress'
 
 /**
  * Otimização server-side de uploads para reduzir custo de Storage e tempo
@@ -11,10 +12,10 @@ import { log } from '@/lib/log'
  *   - Imagens (JPG/PNG/WebP): re-encode JPEG q75, max 2400px no maior lado,
  *     strip EXIF/metadata. Foto de celular de 5MB vira ~300KB sem perda
  *     perceptível de leitura de NF.
- *   - PDF: strip metadata (autor/título/etc), flatten de forms (transforma
- *     em "documento de leitura" — sem campos editáveis), save com
- *     useObjectStreams. Ganho 5-20% em PDFs típicos. PDFs já bem
- *     comprimidos podem aumentar ligeiramente — nesses casos mantemos
+ *   - PDF: recomprime imagens embarcadas (NF escaneada de 4-18 MB cai para
+ *     algumas centenas de KB), strip metadata (autor/título/etc), flatten
+ *     de forms (transforma em "documento de leitura" — sem campos
+ *     editáveis), save com useObjectStreams. Se ficar maior, mantemos
  *     o original.
  *   - XML (NFe): minify whitespace, mantém o conteúdo.
  *   - Outros tipos: passa direto.
@@ -80,10 +81,8 @@ async function optimizeImage(buffer: Buffer): Promise<{ buffer: Buffer; mime: st
 }
 
 /**
- * Otimização leve de PDF — útil para PDFs nativos. Não recomprime imagens
- * embarcadas (precisaria de Ghostscript que não temos no Vercel). Para
- * PDFs scaneados grandes, o ganho é mínimo — nesses casos retornamos
- * o original.
+ * Otimização leve de PDF (metadata + forms). A recompressão das imagens de
+ * PDF escaneado fica em `pdf-recompress.ts` e roda antes desta.
  */
 async function optimizePdf(buffer: Buffer): Promise<{ buffer: Buffer; mime: string } | null> {
   try {
@@ -134,7 +133,9 @@ export async function optimizeUpload(input: Buffer, mime: string): Promise<Optim
   if (mime === 'image/jpeg' || mime === 'image/png' || mime === 'image/webp') {
     optimized = await optimizeImage(input)
   } else if (mime === 'application/pdf') {
-    optimized = await optimizePdf(input)
+    // PDF escaneado: recomprime as imagens primeiro (é onde está o peso)
+    const recompressed = await recompressPdfImages(input)
+    optimized = await optimizePdf(recompressed ?? input)
   } else if (mime === 'application/xml' || mime === 'text/xml') {
     optimized = optimizeXml(input)
   }
