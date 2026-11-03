@@ -51,7 +51,7 @@ describe('valoresPorModo', () => {
     expect(valoresPorModo(it11, 'servico').contratado).toBe(16344.34)
   })
 
-  it('serviço e material: saldo = contratado − realizado; pendente de NF à parte', () => {
+  it('serviço: saldo = contratado − realizado; pendente de NF à parte', () => {
     const s = valoresPorModo(it11, 'servico')
     expect(s.saldo).toBeCloseTo(16344.34 - 14709.91, 2)
     expect(s.pendenteNf).toBe(14709.91)
@@ -59,6 +59,21 @@ describe('valoresPorModo', () => {
     expect(m.saldo).toBeCloseTo(14403.44 - 12500, 2)
     expect(m.pendenteNf).toBe(0)
     expect(valoresPorModo(it11, 'total').pendenteNf).toBeNull()
+  })
+
+  it('material: saldo a solicitar desconta o pedido aprovado sem NF (3.2.12 todo no #1712)', () => {
+    const i3212 = item({ id: 'd3212', valor_contratado_material: 44719.57, realizado_material: 0, saldo_aprovado_material: 44719.57 })
+    const m = valoresPorModo(i3212, 'material')
+    expect(m.pendenteNf).toBe(44719.57)
+    expect(m.saldo).toBe(0)
+    // 3.2.11: 543.528 contratado, 470.494 em NF, 73.034 pedido sem NF → nada a pedir
+    const i3211 = item({ id: 'd3211', valor_contratado_material: 543528, realizado_material: 470494, saldo_aprovado_material: 73034 })
+    expect(valoresPorModo(i3211, 'material').saldo).toBe(0)
+  })
+
+  it('material: NF acima do pedido não devolve o excesso ao saldo a solicitar', () => {
+    const i = item({ id: 'nf', valor_contratado_material: 100, realizado_material: 90, saldo_aprovado_material: -10 })
+    expect(valoresPorModo(i, 'material').saldo).toBe(10)
   })
 
   it('NÃO clampa o saldo em zero — item estourado aparece negativo', () => {
@@ -69,7 +84,7 @@ describe('valoresPorModo', () => {
 
 describe('rotuloSaldo', () => {
   it('não depende de nenhuma linha', () => {
-    expect(rotuloSaldo('material')).toBe('Saldo')
+    expect(rotuloSaldo('material')).toBe('Saldo a solicitar')
     expect(rotuloSaldo('servico')).toBe('Saldo')
     expect(rotuloSaldo('total')).toBe('Saldo')
     expect(rotuloPendenteNf('material')).toBe('Aprov. s/ NF')

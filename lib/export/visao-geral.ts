@@ -11,14 +11,17 @@ export interface FlatRow { item: DashboardItem; level: number }
  * importam daqui. Antes a mesma regra estava copiada em 4 arquivos, e os
  * rótulos já tinham divergido entre eles.
  *
- * Saldo = Contratado − Realizado em TODOS os modos — é a conta que a
- * planilha precisa fechar na leitura. Antes, em Material e Serviço a coluna
- * "Saldo" mostrava outra grandeza (aprovado sem NF / medido sem NF), e a
- * linha não batia com Contratado − Realizado. Essa grandeza continua
- * disponível como `pendenteNf` (coluna própria, ver rotuloPendenteNf).
+ * Total e Serviço: Saldo = Contratado − Realizado.
  *
- * Saldo NÃO é clampado em zero: valor negativo significa item estourado, e
- * é exatamente o que precisa aparecer.
+ * Material: Saldo A SOLICITAR = Contratado − Realizado − Aprov. s/ NF, ou
+ * seja, Contratado − pedido aprovado (decisão do Alex, 03/11/2026). O pedido
+ * aprovado sem nota já está comprado e aparece na coluna Aprov. s/ NF; contá-lo
+ * de novo no saldo dava a impressão de material ainda a pedir onde não havia
+ * (3.2.12/13/14, todo no pedido #1712). A linha fecha da esquerda para a
+ * direita: Contratado = Realizado + Aprov. s/ NF + Saldo a solicitar.
+ *
+ * Saldo NÃO é clampado em zero: valor negativo significa item estourado
+ * (pedido ou NF acima do contratado), e é exatamente o que precisa aparecer.
  */
 export function valoresPorModo(item: DashboardItem, modo: DashboardModo) {
   const [c, r, p]: [number, number, number | null] =
@@ -31,11 +34,15 @@ export function valoresPorModo(item: DashboardItem, modo: DashboardModo) {
   // números que aparecem na tela (sem isso sobravam diferenças de R$ 0,01).
   const contratado = centavos(c)
   const realizado = centavos(r)
+  const pendenteNf = p === null ? null : centavos(p)
+  // Aprov. s/ NF negativo = NF acima do pedido: o que falta pedir é então
+  // Contratado − NF, sem devolver o excesso ao saldo.
+  const aSolicitar = modo === 'material' ? Math.max(0, pendenteNf ?? 0) : 0
   return {
     contratado,
     realizado,
-    saldo: centavos(contratado - realizado),
-    pendenteNf: p === null ? null : centavos(p),
+    saldo: centavos(contratado - realizado - aSolicitar),
+    pendenteNf,
   }
 }
 
@@ -48,8 +55,8 @@ function centavos(n: number): number {
  * Rótulo da coluna de saldo. Não depende de nenhuma linha — antes o PDF e o
  * Excel derivavam de `rows[0]`, passando `{}` quando a lista estava vazia.
  */
-export function rotuloSaldo(_modo: DashboardModo): string {
-  return 'Saldo'
+export function rotuloSaldo(modo: DashboardModo): string {
+  return modo === 'material' ? 'Saldo a solicitar' : 'Saldo'
 }
 
 /**
@@ -242,8 +249,9 @@ export function colunasExport(modo: DashboardModo): ColunaExport[] {
       { ...realizado, alerta: p => p.fipAtrasada },
       { label: '% Realizado', tipo: 'pct', valor: (_v, p) => p.matRealizado, alerta: p => p.fipAtrasada },
       { label: '% Mat. desc.', tipo: 'pct', valor: (_v, p) => p.matDescontado, alerta: p => p.pendenteSemLastro > 0.005 },
-      saldo,
+      // Aprov. s/ NF antes do saldo: Contratado = Realizado + Aprov. s/ NF + Saldo a solicitar.
       pendente,
+      saldo,
     ]
   }
   return [contratado, realizado, saldo]

@@ -16,7 +16,7 @@ import {
   DollarSign, Wallet, ClipboardList, Search, X, Maximize2,
   Download, Upload, Ban, FileSpreadsheet,
 } from 'lucide-react'
-import { DashboardTree, VisaoGeralToolbar } from '@/components/contratos/visao-geral'
+import { DashboardTree, VisaoGeralToolbar, VisaoGeralFiltroProvider } from '@/components/contratos/visao-geral'
 import { MEDICAO_STATUS_EM_APROVACAO } from '@/types/dashboard'
 import { EditarContratoModal } from '@/components/contratos/editar-contrato-modal'
 import { EditableOrcamentoCell, parseBRLToNumber, type EditableCellCoordinator } from '@/components/contratos/editable-orcamento-cell'
@@ -537,6 +537,7 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
   const qtdPendentes = contrato.qtd_medicoes_pendentes ?? 0
 
   return (
+    <VisaoGeralFiltroProvider contratoId={id}>
     <div className="flex-1">
       <Topbar
         title={
@@ -1380,5 +1381,6 @@ export default function ContratoDetailPage({ params }: { params: Promise<{ id: s
         />
       )}
     </div>
+    </VisaoGeralFiltroProvider>
   )
 }
