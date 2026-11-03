@@ -1,8 +1,8 @@
 // components/contratos/visao-geral/dashboard-tree.tsx
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { ArrowLeft, ChevronsDownUp, ChevronsUpDown, Clock, Info, Loader2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowLeft, ChevronsDownUp, ChevronsUpDown, Clock, Filter, Info, Loader2, X } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import type { DashboardItem, DashboardModo } from '@/types/dashboard'
 import { useTreeExpansion } from '@/lib/hooks/use-tree-expansion'
@@ -13,6 +13,12 @@ import { nomesCurtos } from '@/lib/nome-curto'
 import { DashboardTreeRow, PctMedido, PctRealizadoMaterial, PctDescontado } from './dashboard-tree-row'
 import { colunasDoModo, COR_EM_APROVACAO, COR_FIP_ATRASADA, COR_SEM_LASTRO, COR_MAT_ADIANTADO, type ColunaVisaoGeral } from './colunas'
 import { DashboardBarChart } from './dashboard-bar-chart'
+import { useVisaoGeralFiltro } from './filtro-context'
+import { FiltroExcel } from '@/components/ui/filtro-excel'
+import { descreverFiltro, filtroAtivo } from '@/lib/filtro-excel'
+import {
+  aplicarFiltrosArvore, algumFiltroAtivo, tipoDaColuna, valoresDistintos,
+} from '@/lib/export/visao-geral-filtro'
 
 export type MedicaoEmAprovacao = { numero: number; status: string }
 
@@ -85,15 +91,63 @@ export function DashboardTree({ contratoId, modo, medicoesEmAprovacao = [] }: Pr
     return out
   }, [isExpanded, getCached, rootScope])
 
+  // ── Filtro estilo Excel no cabeçalho ──────────────────────────────────
+  // Com filtro ativo a tabela sai da carga preguiçosa por nó e passa a usar a
+  // lista plana inteira (aplicarFiltrosArvore): o filtro vale para os itens e
+  // grupo/tarefa mostram a soma dos itens que passaram.
+  const { rows: todasRows, carregando: carregandoFlat, filtrosDo, definirFiltro, limparFiltros } =
+    useVisaoGeralFiltro(contratoId)
+  const filtros = filtrosDo(modo)
+  const filtrando = algumFiltroAtivo(filtros)
+  const [recolhidos, setRecolhidos] = useState<Set<string>>(() => new Set())
+
+  const filtradas = useMemo(
+    () => (filtrando ? aplicarFiltrosArvore(todasRows, modo, filtros, rootScope) : []),
+    [filtrando, todasRows, modo, filtros, rootScope],
+  )
+
+  const flatFiltrado = useMemo<FlatItem[]>(() => {
+    if (!filtrando) return []
+    const irmaos = new Map<string | null, DashboardItem[]>()
+    for (const { item } of filtradas) {
+      const k = item.pai_id ?? null
+      irmaos.set(k, [...(irmaos.get(k) ?? []), item])
+    }
+    const curtos = new Map<string, string>()
+    for (const grupo of irmaos.values()) nomesCurtos(grupo).forEach((v, k) => curtos.set(k, v))
+    const escondidos = new Set<string>()
+    const out: FlatItem[] = []
+    for (const { item, level } of filtradas) {
+      const pai = item.pai_id
+      if (pai && (recolhidos.has(pai) || escondidos.has(pai))) { escondidos.add(item.id); continue }
+      out.push({ item, level, nomeCurto: curtos.get(item.id) })
+    }
+    return out
+  }, [filtrando, filtradas, recolhidos])
+
+  const valoresPorColuna = useMemo(() => {
+    const out: Partial<Record<ColunaVisaoGeral, string[]>> = {}
+    for (const col of colunas) {
+      out[col.key] = valoresDistintos(todasRows, modo, filtros, col.key, rootScope).map(v => v.texto)
+    }
+    return out
+  }, [colunas, todasRows, modo, filtros, rootScope])
+
+  const linhas = filtrando ? flatFiltrado : flat
+  const estaAberto = useCallback(
+    (id: string) => (filtrando ? !recolhidos.has(id) : isExpanded(id)),
+    [filtrando, recolhidos, isExpanded],
+  )
+
   // Subtotal do que está na tela. totalizarRows soma só as raízes do
   // conjunto — grupo aberto não conta de novo as tarefas dele.
-  const totais = useMemo(() => totalizarRows(flat, modo), [flat, modo])
+  const totais = useMemo(() => totalizarRows(linhas, modo), [linhas, modo])
   const mostraPct = modo !== 'total'
   const pctEmAprovacao = modo === 'material' ? totais.pct.matEmAprovacao : totais.pct.servEmAprovacao
   const algumEmAprovacao = mostraPct && pctEmAprovacao > 0.0001
-  const algumaFipAtrasada = modo === 'material' && flat.some(({ item }) => percentuais(item).fipAtrasada)
-  const algumSemLastro = modo === 'material' && flat.some(({ item }) => percentuais(item).pendenteSemLastro > 0.005)
-  const algumAdiantado = modo === 'material' && flat.some(({ item }) => {
+  const algumaFipAtrasada = modo === 'material' && linhas.some(({ item }) => percentuais(item).fipAtrasada)
+  const algumSemLastro = modo === 'material' && linhas.some(({ item }) => percentuais(item).pendenteSemLastro > 0.005)
+  const algumAdiantado = modo === 'material' && linhas.some(({ item }) => {
     const p = percentuais(item)
     return p.matAdiantado && !p.matAcimaContrato
   })
@@ -102,9 +156,27 @@ export function DashboardTree({ contratoId, modo, medicoesEmAprovacao = [] }: Pr
 
   const onToggle = useCallback((item: DashboardItem) => {
     if (!item.tem_filhos) return
+    if (filtrando) {
+      setRecolhidos(prev => {
+        const next = new Set(prev)
+        if (next.has(item.id)) next.delete(item.id)
+        else next.add(item.id)
+        return next
+      })
+      return
+    }
     if (!getCached(item.id)) fetchChildren(item.id)
     toggle(item.id)
-  }, [fetchChildren, getCached, toggle])
+  }, [filtrando, fetchChildren, getCached, toggle])
+
+  const expandirTudo = useCallback(() => {
+    if (filtrando) setRecolhidos(new Set())
+    else expandAll()
+  }, [filtrando, expandAll])
+  const recolherTudo = useCallback(() => {
+    if (filtrando) setRecolhidos(new Set(filtradas.filter(r => r.item.tem_filhos).map(r => r.item.id)))
+    else collapseAll()
+  }, [filtrando, filtradas, collapseAll])
 
   const updateScope = useCallback((newScope: string | null) => {
     const qs = new URLSearchParams(params.toString())
@@ -212,12 +284,37 @@ export function DashboardTree({ contratoId, modo, medicoesEmAprovacao = [] }: Pr
           )}
         </div>
       )}
+      {filtrando && (
+        <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-xs text-[var(--text-2)]">
+          <Filter className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--accent)' }} />
+          <span className="font-semibold text-[var(--text-1)]">Filtro:</span>
+          {colunas.filter(c => filtroAtivo(filtros[c.key])).map(c => (
+            <span key={c.key} className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--surface-1)] pl-2 pr-1 py-0.5">
+              <b>{c.label}</b> {descreverFiltro(filtros[c.key]!, tipoDaColuna(c.key))}
+              <button
+                type="button"
+                onClick={() => definirFiltro(modo, c.key, null)}
+                className="p-0.5 rounded-full hover:bg-[var(--surface-2)]"
+                aria-label={`Limpar filtro de ${c.label}`}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
+          <button type="button" onClick={() => limparFiltros(modo)} className="ml-1 text-[var(--accent)] hover:underline">
+            Limpar todos
+          </button>
+          <span className="basis-full text-[11px] text-[var(--text-3)]">
+            {filtradas.filter(r => !r.item.tem_filhos).length} item(ns). Grupos e tarefas mostram a soma só dos itens filtrados.
+          </span>
+        </div>
+      )}
       <div className="border border-[var(--border)] rounded-md overflow-hidden bg-[var(--surface-1)]">
         <div className="flex items-center justify-between gap-2 px-2 py-1">
           <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={expandAll}
+              onClick={expandirTudo}
               disabled={carregandoTudo}
               className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded text-[var(--text-2)] hover:bg-[var(--surface-2)] disabled:opacity-50"
               title="Abrir todos os grupos e tarefas"
@@ -229,7 +326,7 @@ export function DashboardTree({ contratoId, modo, medicoesEmAprovacao = [] }: Pr
             </button>
             <button
               type="button"
-              onClick={collapseAll}
+              onClick={recolherTudo}
               className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded text-[var(--text-2)] hover:bg-[var(--surface-2)]"
               title="Fechar todos os níveis"
             >
@@ -258,7 +355,16 @@ export function DashboardTree({ contratoId, modo, medicoesEmAprovacao = [] }: Pr
                 className={`relative ${i === 0 ? '' : 'text-right'}`}
                 title={col.dica}
               >
-                {col.label}
+                <FiltroExcel
+                  label={col.label}
+                  tipo={tipoDaColuna(col.key)}
+                  valores={valoresPorColuna[col.key] ?? []}
+                  filtro={filtros[col.key]}
+                  onAplicar={f => definirFiltro(modo, col.key, f)}
+                  alinhar={i === 0 ? 'left' : 'right'}
+                >
+                  {col.label}
+                </FiltroExcel>
                 <span
                   onMouseDown={e => startResize(col.key, e)}
                   onClick={e => e.stopPropagation()}
@@ -272,9 +378,11 @@ export function DashboardTree({ contratoId, modo, medicoesEmAprovacao = [] }: Pr
             ))}
           </div>
           <div className="max-h-[60vh] overflow-y-auto">
-            {flat.length === 0 ? (
-              <div className="p-6 text-center text-sm text-[var(--text-3)]">Carregando…</div>
-            ) : flat.map(({ item, level, nomeCurto }) => {
+            {linhas.length === 0 ? (
+              <div className="p-6 text-center text-sm text-[var(--text-3)]">
+                {filtrando && !carregandoFlat ? 'Nenhum item atende aos filtros.' : 'Carregando…'}
+              </div>
+            ) : linhas.map(({ item, level, nomeCurto }) => {
               const v = valoresPorModo(item, modo)
               return (
                 <DashboardTreeRow
@@ -282,8 +390,8 @@ export function DashboardTree({ contratoId, modo, medicoesEmAprovacao = [] }: Pr
                   item={item}
                   nomeCurto={nomeCurto}
                   level={level}
-                  expanded={isExpanded(item.id)}
-                  loading={isLoading(item.id)}
+                  expanded={estaAberto(item.id)}
+                  loading={!filtrando && isLoading(item.id)}
                   modo={modo}
                   gridTemplateColumns={gridTemplateColumns}
                   onToggle={() => onToggle(item)}
@@ -294,13 +402,13 @@ export function DashboardTree({ contratoId, modo, medicoesEmAprovacao = [] }: Pr
               )
             })}
           </div>
-          {flat.length > 0 && (
+          {linhas.length > 0 && (
             <div
               className="grid items-center gap-2 px-2 py-2 border-t-2 border-[var(--border)] bg-[var(--surface-2)] text-sm font-semibold tabular-nums"
               style={{ gridTemplateColumns, minWidth: 'max-content' }}
             >
               <div className="text-[11px] uppercase text-[var(--text-2)]">
-                {rootScope ? 'Subtotal do subgrupo' : 'Subtotal'}
+                {filtrando ? 'Subtotal do filtro' : rootScope ? 'Subtotal do subgrupo' : 'Subtotal'}
               </div>
               {colunas.slice(1).map(col => {
                 switch (col.key) {
@@ -338,7 +446,7 @@ export function DashboardTree({ contratoId, modo, medicoesEmAprovacao = [] }: Pr
       {/* Gráfico abaixo da tabela: a tabela é a fonte de leitura e precisa da largura toda. */}
       <div className="border border-[var(--border)] rounded-md p-2 bg-[var(--surface-1)] overflow-x-auto max-h-[70vh] overflow-y-auto">
         <DashboardBarChart
-          itens={flat}
+          itens={linhas}
           modo={modo}
           onDoubleClickItem={onDoubleClickFromChart}
           onClickRealizado={(item) => goToOrigem(item, 'realizado')}

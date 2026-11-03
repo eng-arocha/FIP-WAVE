@@ -1,3 +1,10 @@
+-- ===========================================================================
+-- ⛔ DESCARTADO — NÃO RODAR (Alex, 03/11/2026).
+-- A troca partiu da leitura de que havia saldo a pedir no pós-tipo; não havia
+-- (3.2.12/13/14 já 100% pedidos no #1712). A coluna da Visão Geral passou a
+-- ser "Saldo a solicitar" (Contratado − Realizado − Aprov. s/ NF) para não
+-- induzir essa leitura de novo. Mantido só como registro da análise.
+-- ===========================================================================
 -- ---------------------------------------------------------------------------
 -- 101 — Troca de alocação 3.2.11 ↔ 3.2.12/13/14 entre os pedidos 1405 e 1712
 --

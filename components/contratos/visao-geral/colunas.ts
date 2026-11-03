@@ -45,10 +45,13 @@ const COLUNAS: Record<DashboardModo, ColunaDef[]> = {
       key: 'pctDescontado', label: '% Mat. desc.', defaultWidth: 110, min: 80, type: 'number',
       dica: 'Material já descontado da Wave nas medições aprovadas (% do contratado). Roxo = parte do material medido ainda sem desconto: falta lastro no ERP.',
     },
-    SALDO,
     {
       key: 'pendente', label: 'Aprov. s/ NF', defaultWidth: 130, min: 90, type: 'number',
       dica: 'Pedido aprovado ainda sem NF',
+    },
+    {
+      ...SALDO, label: 'Saldo a solicitar', defaultWidth: 150,
+      dica: 'Contratado − Realizado − Aprov. s/ NF: o que ainda falta pedir. Negativo = pedido/NF acima do contratado.',
     },
   ],
 }

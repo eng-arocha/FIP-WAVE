@@ -178,11 +178,11 @@ export const DashboardTreeRow = memo(function DashboardTreeRow({
           case 'saldo':
             return (
               <div key={col.key} className="text-right tabular-nums text-sm">
-                {/* Saldo = Contratado − Realizado. Negativo = item estourado: vermelho, nunca escondido. */}
+                {/* Saldo = Contratado − Realizado (Material: − Aprov. s/ NF). Negativo = item estourado: vermelho, nunca escondido. */}
                 <span
                   style={v.saldo < 0 ? { color: '#EF4444', fontWeight: 600 } : undefined}
                   className={v.saldo < 0 ? '' : 'text-[var(--text-1)]'}
-                  title={v.saldo < 0 ? 'Realizado maior que o contratado' : undefined}
+                  title={v.saldo < 0 ? (modo === 'material' ? 'Pedido/NF acima do contratado' : 'Realizado maior que o contratado') : undefined}
                 >
                   {fmt(v.saldo)}
                 </span>
