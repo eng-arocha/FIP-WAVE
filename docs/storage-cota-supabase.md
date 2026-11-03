@@ -24,7 +24,7 @@ Pagar o Pro por **um mês**, limpar e voltar para o Free.
 3. [x] `--apply` em 03/11/2026: 87 órfãos apagados (150 MB), 249 PDFs
        1.301 MB → 108 MB, sem falhas. **Bucket: 1.482 MB → 138 MB.**
        Amostra conferida: DANFE de 15,8 MB → 0,6 MB, totalmente legível.
-4. [ ] Conferir algumas NFs abrindo pelo app.
+4. [x] Login voltou e NFs conferidas pelo app, legíveis (Alex, 03/11/2026).
 5. [ ] Downgrade para Free perto da data de renovação do Pro (o mês já está pago).
 
 Para rodar o script de novo: `ENV_FILE=<.env do vercel env pull> npx vite-node scripts/storage-cleanup.ts`.
