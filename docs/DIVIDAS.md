@@ -75,6 +75,30 @@ docs/superpowers/specs/2026-10-28-congelar-informakon-e-cortes.md implementada
 - A FIP é item a item (29/10): material medido acumulado − max(NF, pedido).
   O pedido FIP automático da MED-008 deve sair com cerca de R$ 189 mil em 31
   itens, inclusive material de medições anteriores. Ver item 10.
+- 9.1.13 (esgoto, tipo): FIP de ~R$ 34.122,57 ACEITA pelo Alex (03/11) — ver
+  a seção "2026-11-03 — Realocação tipo → prumada/pós-tipo".
+
+## 2026-11-03 — Realocação tipo → prumada/pós-tipo (manual-fix 103 e 104)
+
+Material de prumada e pós-tipo (1º pav., cobertura, rooftop, casa de máquinas,
+heliponto) já está 100% na obra e veio em pedidos lançados no pavimento tipo.
+Decisão do Alex: realocar dentro dos pedidos já 100% faturados, para o pós-tipo
+ficar com Saldo a solicitar zero; o saldo que faltar fica no tipo; se sobrar
+depois de executar os tipos, vira faturamento de material FIP. Rodados e
+conferidos no centavo em 03/11/2026:
+
+- **103** (#1235): 30.361,14 do 8.1.13 → 8.1.12/14/15/16/17.
+- **104**: 92.450,35 do 9.1.13 → 9.1.1 (50.000) + 9.1.12/14/15/16 (7 pedidos);
+  51.223,40 do 10.1.12 → 10.1.1 (#1176).
+- **⚠ 9.1.13 fica com comprado 68.735,87 contra 102.858,44 de material medido
+  (28,1%)**: a camada ③ pede NF da FIP de ~R$ 34.122,57. Aceito pelo Alex —
+  "vai medir na próxima medição". Não é erro de rateio; não reabrir.
+- 101 (3.2.11 ↔ 3.2.12/13/14) DESCARTADO: os itens já estavam 100% pedidos no
+  #1712. Por isso a coluna virou "Saldo a solicitar" (Contratado − Realizado −
+  Aprov. s/ NF).
+- Candidatos levantados e ainda não decididos: 14.2.16 (10.172), 13.2.2
+  (7.111), 17.1.6/17.1.7 (5.266), 7.1.11/7.1.12 (4.833). Esperam o Alex dizer
+  se o material já está na obra.
 
 ## 2026-10-29 — FIP item a item (camada ③)
 
