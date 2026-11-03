@@ -53,6 +53,38 @@ function isUrlNoNossoBucket(url: string): boolean {
   return url.startsWith(`${supabaseUrl}/storage/v1/object/public/${BUCKET}/`)
 }
 
+/**
+ * Path A sobe o arquivo direto no Storage, sem passar pelo `optimizeUpload`.
+ * Foi assim que as NFs escaneadas de 4-18 MB estouraram a cota do Supabase.
+ * Aqui baixamos o PDF recém-enviado, compactamos e regravamos no mesmo path
+ * (a URL não muda). Best-effort: qualquer falha mantém o original.
+ */
+async function compactarNoLugar(admin: ReturnType<typeof createAdminClient>, url: string, solId: string) {
+  const prefixo = `/storage/v1/object/public/${BUCKET}/`
+  const path = decodeURIComponent(url.slice(url.indexOf(prefixo) + prefixo.length))
+  if (!path.toLowerCase().endsWith('.pdf')) return
+  try {
+    const { data, error } = await admin.storage.from(BUCKET).download(path)
+    if (error || !data) return
+    const original = Buffer.from(await data.arrayBuffer())
+    const optimized = await optimizeUpload(original, 'application/pdf')
+    if (!optimized.optimized) return
+    const { error: upErr } = await admin.storage
+      .from(BUCKET)
+      .upload(path, optimized.buffer, { contentType: 'application/pdf', upsert: true })
+    if (upErr) throw upErr
+    log.info('nf_upload_compactado', {
+      solId,
+      sizeBefore: optimized.sizeBefore,
+      sizeAfter:  optimized.sizeAfter,
+      ratio: ((1 - optimized.sizeAfter / optimized.sizeBefore) * 100).toFixed(1) + '%',
+      via: 'signed_url',
+    })
+  } catch (e) {
+    log.warn('nf_compactar_no_lugar_falhou', { solId, erro: String(e) })
+  }
+}
+
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string; solId: string }> },
@@ -166,6 +198,7 @@ export async function POST(
           { status: 400 },
         )
       }
+      await compactarNoLugar(admin, arquivo_url, solId)
     }
 
     // Path B: upload via multipart (legado / arquivos pequenos < 4MB)
